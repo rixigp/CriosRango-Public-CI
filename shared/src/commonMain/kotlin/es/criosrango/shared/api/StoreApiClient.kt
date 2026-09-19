@@ -1,20 +1,102 @@
 package es.criosrango.shared.api
-import es.criosrango.shared.createStoreHttpClient
-import es.criosrango.shared.model.StoreCategory
-import es.criosrango.shared.model.StoreProduct
-import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.request.get
-import io.ktor.client.request.parameter
-import io.ktor.client.statement.bodyAsText
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.serialization.json.Json
+
+import io.ktor.http.Headers
+
+interface StoreSessionStore {
+    var cartToken: String?
+    var nonce: String?
+    var cookieHeader: String?
+
+    fun updateFromResponse(headers: Headers) {
+        headers["Cart-Token"]?.takeIf { it.isNotBlank() }?.let { cartToken = it }
+        headers["Nonce"]?.takeIf { it.isNotBlank() }?.let { nonce = it }
+        headers.getAll("Set-Cookie").orEmpty().forEach { raw ->
+            val pair = raw.substringBefore(";").trim()
+            val name = pair.substringBefore("=", "")
+            if (name.isNotBlank() && pair.contains("=")) {
+                val current = cookieHeader.orEmpty()
+                    .split(";")
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .associate { it.substringBefore("=") to it }
+                    .toMutableMap()
+                current[name] = pair
+                cookieHeader = current.values.joinToString("; ")
+            }
+        }
+    }
+}
+
+class InMemoryStoreSessionStore(
+    override var cartToken: String? = null,
+    override var nonce: String? = null,
+    override var cookieHeader: String? = null
+) : StoreSessionStore
+
+class StoreApiException(
+    val statusCode: Int,
+    val apiCode: String?,
+    override val message: String
+) : Exception(message)
+
 class StoreApiClient(
     private val baseUrl: String = "https://criosrango.es/wp-json/wc/store/v1/",
-    private val client: HttpClient = createStoreHttpClient()
+    private val client: HttpClient = createStoreHttpClient(),
+    private val session: StoreSessionStore = InMemoryStoreSessionStore()
 ) {
+    private suspend inline fun <reified T> executeCart(
+        request: suspend () -> io.ktor.client.statement.HttpResponse
+    ): T {
+        val response = request()
+        session.updateFromResponse(response.headers)
+        val raw = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            val error = runCatching {
+                Json { ignoreUnknownKeys = true }.decodeFromString<es.criosrango.shared.model.StoreCartApiError>(raw)
+            }.getOrNull()
+            throw StoreApiException(
+                response.status.value,
+                error?.code,
+                error?.message?.takeIf { it.isNotBlank() } ?: raw.ifBlank { response.status.description }
+            )
+        }
+        return Json { ignoreUnknownKeys = true }.decodeFromString(raw)
+    }
+
+    private fun io.ktor.client.request.HttpRequestBuilder.sessionHeaders() {
+        session.cartToken?.let { headers.append("Cart-Token", it) }
+        session.nonce?.let { headers.append("Nonce", it) }
+        session.cookieHeader?.let { headers.append("Cookie", it) }
+    }
+
+    suspend fun cart(): es.criosrango.shared.model.StoreCart =
+        executeCart { client.get(baseUrl + "cart") { sessionHeaders() } }
+
+    suspend fun addCartItem(request: es.criosrango.shared.model.StoreCartRequest): es.criosrango.shared.model.StoreCart =
+        executeCart {
+            client.post(baseUrl + "cart/add-item") {
+                sessionHeaders()
+                contentType(io.ktor.http.ContentType.Application.Json)
+                setBody(request)
+            }
+        }
+
+    suspend fun updateCartItem(key: String, quantity: Int): es.criosrango.shared.model.StoreCart =
+        executeCart {
+            client.post(baseUrl + "cart/update-item") {
+                sessionHeaders()
+                url { parameter("key", key); parameter("quantity", quantity) }
+            }
+        }
+
+    suspend fun removeCartItem(key: String): es.criosrango.shared.model.StoreCart =
+        executeCart {
+            client.post(baseUrl + "cart/remove-item") {
+                sessionHeaders()
+                url { parameter("key", key) }
+            }
+        }
+
     suspend fun product(id: Int): StoreProduct =
         client.get(baseUrl + "products/" + id).body()
 
@@ -68,9 +150,10 @@ class StoreApiClient(
             featured?.let { parameter("featured", it) }
             tag?.let { parameter("tag", it) }
         }.body()
+
     suspend fun categories(perPage: Int = 100): List<StoreCategory> =
         client.get("${baseUrl}products/categories") { parameter("per_page", perPage) }.body()
-    /** DEBUG/SMOKE only: raw JSON and models from the same HTTP response. */
+
     internal suspend fun productsWithRawJson(perPage: Int = 12, page: Int = 1, category: Int? = null): Pair<String, List<StoreProduct>> {
         val response = client.get("${baseUrl}products") {
             parameter("per_page", perPage); parameter("page", page)
@@ -80,12 +163,13 @@ class StoreApiClient(
         val models = Json { ignoreUnknownKeys = true }.decodeFromString<List<StoreProduct>>(rawJson)
         return rawJson to models
     }
-    /** DEBUG/SMOKE only: raw JSON and models from the same HTTP response. */
+
     internal suspend fun categoriesWithRawJson(perPage: Int = 100): Pair<String, List<StoreCategory>> {
         val response = client.get("${baseUrl}products/categories") { parameter("per_page", perPage) }
         val rawJson = response.bodyAsText()
         val models = Json { ignoreUnknownKeys = true }.decodeFromString<List<StoreCategory>>(rawJson)
         return rawJson to models
     }
+
     fun close() = client.close()
 }
