@@ -57,6 +57,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":shared"))
     implementation("androidx.media3:media3-exoplayer:1.6.1")
     implementation("androidx.media3:media3-ui:1.6.1")
     implementation("androidx.browser:browser:1.8.0")
