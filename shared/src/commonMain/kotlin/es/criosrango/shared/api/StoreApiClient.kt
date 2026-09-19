@@ -7,11 +7,45 @@ import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.Json
 class StoreApiClient(
     private val baseUrl: String = "https://criosrango.es/wp-json/wc/store/v1/",
     private val client: HttpClient = createStoreHttpClient()
 ) {
+    suspend fun product(id: Int): StoreProduct =
+        client.get(baseUrl + "products/" + id).body()
+
+    suspend fun productWithVariationAvailability(id: Int): StoreProduct {
+        val product = product(id)
+        if (product.variations.isEmpty()) return product
+        val details = coroutineScope {
+            product.variations.map { variation ->
+                async { runCatching { product(variation.id) }.getOrNull() }
+            }.awaitAll()
+        }
+        return product.copy(
+            variations = product.variations.mapIndexed { index, variation ->
+                val detail = details[index]
+                variation.copy(
+                    prices = detail?.prices ?: variation.prices,
+                    images = detail?.images ?: variation.images,
+                    isInStock = detail?.isInStock ?: variation.isInStock,
+                    isPurchasable = detail?.isPurchasable ?: variation.isPurchasable,
+                    isOnBackorder = detail?.isOnBackorder ?: variation.isOnBackorder,
+                    lowStockRemaining = detail?.lowStockRemaining ?: variation.lowStockRemaining,
+                    stockStatus = detail?.stockStatus ?: variation.stockStatus,
+                    stockQuantity = detail?.stockQuantity ?: variation.stockQuantity,
+                    manageStock = detail?.manageStock ?: variation.manageStock,
+                    quantityLimits = detail?.quantityLimits ?: variation.quantityLimits,
+                    addToCart = detail?.addToCart ?: variation.addToCart
+                )
+            }
+        )
+    }
+
     suspend fun products(
         perPage: Int = 24,
         page: Int = 1,
