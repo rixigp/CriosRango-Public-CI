@@ -184,11 +184,11 @@ private suspend fun fetchStore(session: StoreSessionStore = InMemoryStoreSession
 }
 
 @Composable
-fun CriosRangoSpikeScreen() {
+fun CriosRangoSpikeScreen(session: StoreSessionStore = InMemoryStoreSessionStore()) {
     var state by remember { mutableStateOf<SpikeState>(SpikeState.Loading) }
     var reloadKey by remember { mutableStateOf(0) }
     LaunchedEffect(reloadKey) {
-        state = runCatching { fetchStore() }.fold(
+        state = runCatching { fetchStore(session) }.fold(
             onSuccess = { (products, categories) ->
                 if (products.isEmpty()) SpikeState.Empty("No encontramos productos")
                 else SpikeState.Content(products, categories)
