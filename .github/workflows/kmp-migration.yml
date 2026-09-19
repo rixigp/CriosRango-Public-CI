@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - kmp-migration
   workflow_dispatch:
 
 permissions:
@@ -67,8 +68,14 @@ jobs:
             -storepass "$STOREPASS" \
             -alias "criosrango-development"
 
-      - name: Build Android
-        run: ./gradlew :app:assembleDebug :shared:compileDebugKotlinAndroid --stacktrace
+      - name: Compile shared Android
+        run: ./gradlew :shared:compileDebugKotlinAndroid --stacktrace
+
+      - name: Compile Android app
+        run: ./gradlew :app:compileDebugKotlin --stacktrace
+
+      - name: Assemble Android debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
 
       - name: Prepare named APKs
         id: apk
