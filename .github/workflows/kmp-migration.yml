@@ -72,14 +72,14 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          import json, urllib.parse, urllib.request
+          import json, subprocess, urllib.parse
           base = "https://criosrango.es/wp-json/wc/store/v1/"
           def get(path, params=None):
               url = base + path
               if params:
                   url += "?" + urllib.parse.urlencode(params)
-              with urllib.request.urlopen(url, timeout=30) as r:
-                  return json.load(r), r.headers
+              raw = subprocess.check_output(["curl","-fsSL","-A","Mozilla/5.0",url], text=True)
+              return json.loads(raw), None
           categories, _ = get("products/categories", {"per_page": 100})
           target = next(c for c in categories if c.get("name") == "Mujer invierno")
           print(f"OUTLET_DIAG_CATEGORY id={target['id']} name={target['name']} parent={target.get('parent')}")
