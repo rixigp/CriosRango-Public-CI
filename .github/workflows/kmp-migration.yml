@@ -28,15 +28,52 @@ jobs:
           test -n "$GOOGLE_SERVICES_JSON_BASE64"
           printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
           test -s app/google-services.json
-      - name: Prepare CI debug signing
+
+      - name: Prepare permanent debug keystore
+        env:
+          CRIOSRANGO_DEBUG_KEYSTORE_BASE64: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_BASE64 }}
+          CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD }}
+          CRIOSRANGO_DEBUG_KEY_ALIAS: ${{ secrets.CRIOSRANGO_DEBUG_KEY_ALIAS }}
+          CRIOSRANGO_DEBUG_KEY_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEY_PASSWORD }}
         run: |
-          keytool -genkeypair -v             -keystore criosrango-debug.jks             -storepass changeit             -keypass changeit             -alias ci             -keyalg RSA             -keysize 2048             -validity 1             -dname "CN=Críos&Rango CI"
+          set -euo pipefail
+          test -n "$CRIOSRANGO_DEBUG_KEYSTORE_BASE64"
+          test -n "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD"
+          test -n "$CRIOSRANGO_DEBUG_KEY_ALIAS"
+          test -n "$CRIOSRANGO_DEBUG_KEY_PASSWORD"
+
+          printf '%s' "$CRIOSRANGO_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/criosrango-debug.jks"
+          chmod 600 "$RUNNER_TEMP/criosrango-debug.jks"
+          test -s "$RUNNER_TEMP/criosrango-debug.jks"
+
           {
-            echo "CRIOSRANGO_DEBUG_KEYSTORE_FILE=$GITHUB_WORKSPACE/criosrango-debug.jks"
-            echo "CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD=changeit"
-            echo "CRIOSRANGO_DEBUG_KEY_ALIAS=ci"
-            echo "CRIOSRANGO_DEBUG_KEY_PASSWORD=changeit"
+            echo "CRIOSRANGO_DEBUG_KEYSTORE_FILE=$RUNNER_TEMP/criosrango-debug.jks"
+            echo "CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD=$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD"
+            echo "CRIOSRANGO_DEBUG_KEY_ALIAS=$CRIOSRANGO_DEBUG_KEY_ALIAS"
+            echo "CRIOSRANGO_DEBUG_KEY_PASSWORD=$CRIOSRANGO_DEBUG_KEY_PASSWORD"
           } >> "$GITHUB_ENV"
+
+      - name: Verify permanent signing certificate
+        env:
+          CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD }}
+          CRIOSRANGO_DEBUG_KEY_ALIAS: ${{ secrets.CRIOSRANGO_DEBUG_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+
+          FINGERPRINT="$(
+            keytool -list -v \
+              -keystore "$RUNNER_TEMP/criosrango-debug.jks" \
+              -storepass "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD" \
+              -alias "$CRIOSRANGO_DEBUG_KEY_ALIAS" |
+            awk -F': ' '/SHA256:/{print $2; exit}'
+          )"
+
+          EXPECTED="53:A6:C9:CA:97:22:5E:9A:62:E1:0F:FD:45:EA:27:4F:3B:B2:27:16:77:E0:F8:79:90:68:A8:CD:69:E7:DC:CE"
+
+          test "$FINGERPRINT" = "$EXPECTED"
+
+          echo "Android signing certificate SHA-256: $FINGERPRINT"
+
       - name: Build Android
         run: ./gradlew :app:assembleDebug :shared:compileDebugKotlinAndroid --stacktrace
 
@@ -99,6 +136,10 @@ jobs:
         if: always()
         run: rm -f app/google-services.json
 
+      - name: Cleanup signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/criosrango-debug.jks"
+
   ios:
     name: iOS simulator build
     runs-on: macos-14
@@ -116,20 +157,22 @@ jobs:
           test -n "$GOOGLE_SERVICES_JSON_BASE64"
           printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
           test -s app/google-services.json
-      - name: Prepare CI debug signing
-        run: |
-          keytool -genkeypair -v             -keystore criosrango-debug.jks             -storepass changeit             -keypass changeit             -alias ci             -keyalg RSA             -keysize 2048             -validity 1             -dname "CN=Críos&Rango CI"
-          {
-            echo "CRIOSRANGO_DEBUG_KEYSTORE_FILE=$GITHUB_WORKSPACE/criosrango-debug.jks"
-            echo "CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD=changeit"
-            echo "CRIOSRANGO_DEBUG_KEY_ALIAS=ci"
-            echo "CRIOSRANGO_DEBUG_KEY_PASSWORD=changeit"
-          } >> "$GITHUB_ENV"
+
       - name: Build Kotlin iOS framework
         run: ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 --stacktrace
+
       - name: Build iOS app
         run: |
-          xcodebuild             -project iosApp/iosApp.xcodeproj             -scheme CriosRangoKMPSpike             -sdk iphonesimulator             -configuration Debug             -destination 'generic/platform=iOS Simulator'             CODE_SIGNING_ALLOWED=NO             -derivedDataPath "$GITHUB_WORKSPACE/ios-derived-data"             build
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme CriosRangoKMPSpike \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            -derivedDataPath "$GITHUB_WORKSPACE/ios-derived-data" \
+            build
+
       - name: Runtime smoke test on iOS Simulator
         run: |
           set -euo pipefail
@@ -194,6 +237,7 @@ jobs:
             grep -Ein "error|exception|fatal|crash|abort|failed" "$CONSOLE_LOG" | head -n 1 || true
             exit 1
           fi
+
       - name: Cleanup Google Services
         if: always()
         run: rm -f app/google-services.json
