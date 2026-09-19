@@ -158,6 +158,30 @@ jobs:
           printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
           test -s app/google-services.json
 
+      - name: Prepare permanent debug keystore
+        env:
+          CRIOSRANGO_DEBUG_KEYSTORE_BASE64: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_BASE64 }}
+          CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD }}
+          CRIOSRANGO_DEBUG_KEY_ALIAS: ${{ secrets.CRIOSRANGO_DEBUG_KEY_ALIAS }}
+          CRIOSRANGO_DEBUG_KEY_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$CRIOSRANGO_DEBUG_KEYSTORE_BASE64"
+          test -n "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD"
+          test -n "$CRIOSRANGO_DEBUG_KEY_ALIAS"
+          test -n "$CRIOSRANGO_DEBUG_KEY_PASSWORD"
+
+          printf '%s' "$CRIOSRANGO_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/criosrango-debug.jks"
+          chmod 600 "$RUNNER_TEMP/criosrango-debug.jks"
+          test -s "$RUNNER_TEMP/criosrango-debug.jks"
+
+          {
+            echo "CRIOSRANGO_DEBUG_KEYSTORE_FILE=$RUNNER_TEMP/criosrango-debug.jks"
+            echo "CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD=$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD"
+            echo "CRIOSRANGO_DEBUG_KEY_ALIAS=$CRIOSRANGO_DEBUG_KEY_ALIAS"
+            echo "CRIOSRANGO_DEBUG_KEY_PASSWORD=$CRIOSRANGO_DEBUG_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
       - name: Build Kotlin iOS framework
         run: ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 --stacktrace
 
@@ -237,6 +261,10 @@ jobs:
             grep -Ein "error|exception|fatal|crash|abort|failed" "$CONSOLE_LOG" | head -n 1 || true
             exit 1
           fi
+
+      - name: Cleanup signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/criosrango-debug.jks"
 
       - name: Cleanup Google Services
         if: always()
