@@ -1,6 +1,25 @@
 package es.criosrango.shared.api
 
 import io.ktor.http.Headers
+import es.criosrango.shared.createStoreHttpClient
+import es.criosrango.shared.model.StoreCart
+import es.criosrango.shared.model.StoreCartApiError
+import es.criosrango.shared.model.StoreCartRequest
+import es.criosrango.shared.model.StoreCategory
+import es.criosrango.shared.model.StoreProduct
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.parameter
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.isSuccess
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.serialization.json.Json
 
 interface StoreSessionStore {
     var cartToken: String?
