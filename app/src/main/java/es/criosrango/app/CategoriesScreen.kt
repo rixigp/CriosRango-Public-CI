@@ -202,10 +202,6 @@ internal fun OutletAwareCatalogGrid(
             }
         }
 
-    products.firstOrNull { it.id == 50842 }?.let { product ->
-        Log.d("OutletOriginTrace", "UI bubbles current=${current.id} id=50842 categories=${product.categories.map { it.id }} originalCategoryIds=${product.originalCategoryIds}")
-    }
-
     val bubbles =
         remember(
             products,
