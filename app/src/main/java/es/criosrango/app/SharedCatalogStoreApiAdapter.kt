@@ -2,6 +2,9 @@ package es.criosrango.app
 
 import android.util.Log
 import es.criosrango.shared.api.StoreApiClient
+import es.criosrango.shared.model.StoreCart
+import es.criosrango.shared.model.StoreCartRequest
+import es.criosrango.shared.model.StoreCartVariation
 import es.criosrango.shared.model.AddToCart as SharedAddToCart
 import es.criosrango.shared.model.AttributeTerm as SharedAttributeTerm
 import es.criosrango.shared.model.ProductAttribute as SharedProductAttribute
@@ -32,6 +35,28 @@ class SharedCatalogStoreApiAdapter(
     private val retrofitApi: StoreApi,
     private val sharedClient: StoreApiClient
 ) : StoreApi by retrofitApi {
+
+    override suspend fun cart(): WooCart {
+        Log.d("CriosRangoSharedCatalog", "CART source=shared operation=GET")
+        return try { sharedClient.cart().toAndroid() } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
+    }
+
+    override suspend fun addCartItem(request: AddCartRequest): WooCart {
+        Log.d("CriosRangoSharedCatalog", "CART source=shared operation=ADD")
+        return try {
+            sharedClient.addCartItem(request.toShared()).toAndroid()
+        } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
+    }
+
+    override suspend fun updateCartItem(key: String, quantity: Int): WooCart {
+        Log.d("CriosRangoSharedCatalog", "CART source=shared operation=UPDATE")
+        return try { sharedClient.updateCartItem(key, quantity).toAndroid() } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
+    }
+
+    override suspend fun removeCartItem(key: String): WooCart {
+        Log.d("CriosRangoSharedCatalog", "CART source=shared operation=REMOVE")
+        return try { sharedClient.removeCartItem(key).toAndroid() } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
+    }
 
     override suspend fun product(id: Int): StoreProduct {
         Log.d("CriosRangoSharedCatalog", "PRODUCT_DETAIL source=shared id=$id")
@@ -235,3 +260,73 @@ private fun Exception.toAndroidCatalogException(): Exception = when (this) {
     }
     else -> this
 }
+
+
+private fun AddCartRequest.toShared(): StoreCartRequest = StoreCartRequest(
+    id = id,
+    quantity = quantity,
+    variation = variation.map { StoreCartVariation(attribute = it.attribute, value = it.value) }
+)
+
+private fun StoreCart.toAndroid(): WooCart = WooCart(
+    items = items.map { line ->
+        CartLine(
+            key = line.key,
+            id = line.id,
+            name = line.name,
+            quantity = line.quantity,
+            quantityLimits = line.quantityLimits?.let { QuantityLimits(it.minimum, it.maximum, it.multipleOf) },
+            prices = line.prices.toAndroid(),
+            totals = CartLineTotals(
+                linePrice = line.totals.linePrice,
+                linePriceTax = line.totals.linePriceTax,
+                lineSubtotal = line.totals.lineSubtotal,
+                lineSubtotalTax = line.totals.lineSubtotalTax,
+                lineTotal = line.totals.lineTotal,
+                lineTotalTax = line.totals.lineTotalTax,
+                discount = line.totals.discount,
+                discountTax = line.totals.discountTax
+            ),
+            images = line.images.map(SharedProductImage::toAndroid),
+            variation = line.variation.map { CartVariation(it.attribute, it.value) }
+        )
+    },
+    coupons = coupons.map { CartCoupon(it.code, it.label, CartCouponTotals(it.totals.totalDiscount, it.totals.totalDiscountTax)) },
+    totals = CartTotals(
+        totalItems = totals.totalItems,
+        totalItemsTax = totals.totalItemsTax,
+        totalFees = totals.totalFees,
+        totalFeesTax = totals.totalFeesTax,
+        totalDiscount = totals.totalDiscount,
+        totalDiscountTax = totals.totalDiscountTax,
+        totalShipping = totals.totalShipping,
+        totalShippingTax = totals.totalShippingTax,
+        totalPrice = totals.totalPrice,
+        totalTax = totals.totalTax,
+        currencySymbol = totals.currencySymbol,
+        currencyMinorUnit = totals.currencyMinorUnit
+    ),
+    paymentMethods = paymentMethods,
+    shippingRates = shippingRates.map { pkg ->
+        ShippingRate(
+            packageId = pkg.packageId,
+            name = pkg.name,
+            destination = pkg.destination?.let { ShippingDestination(it.address1, it.city, it.state, it.postcode, it.country) },
+            rates = pkg.rates.map { rate ->
+                ShippingOption(
+                    rateId = rate.rateId,
+                    name = rate.name,
+                    methodId = rate.methodId,
+                    price = rate.price,
+                    taxes = rate.taxes,
+                    currencySymbol = rate.currencySymbol,
+                    currencyMinorUnit = rate.currencyMinorUnit,
+                    selected = rate.selected
+                )
+            }
+        )
+    },
+    shippingPackages = shippingPackages,
+    itemsCount = itemsCount,
+    errors = errors.map { CartError(it.code, it.message) }
+)
