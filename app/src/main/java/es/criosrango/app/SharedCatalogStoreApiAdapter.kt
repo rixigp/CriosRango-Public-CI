@@ -33,6 +33,24 @@ class SharedCatalogStoreApiAdapter(
     private val sharedClient: StoreApiClient
 ) : StoreApi by retrofitApi {
 
+    override suspend fun product(id: Int): StoreProduct {
+        Log.d("CriosRangoSharedCatalog", "PRODUCT_DETAIL source=shared id=$id")
+        return try {
+            sharedClient.product(id).toAndroid()
+        } catch (exception: Exception) {
+            throw exception.toAndroidCatalogException()
+        }
+    }
+
+    override suspend fun productWithVariationAvailability(id: Int): StoreProduct {
+        Log.d("CriosRangoSharedCatalog", "PRODUCT_DETAIL_VARIATIONS source=shared id=$id")
+        return try {
+            sharedClient.productWithVariationAvailability(id).toAndroid()
+        } catch (exception: Exception) {
+            throw exception.toAndroidCatalogException()
+        }
+    }
+
     override suspend fun products(
         perPage: Int,
         page: Int,
