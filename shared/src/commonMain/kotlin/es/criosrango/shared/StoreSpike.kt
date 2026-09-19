@@ -128,6 +128,22 @@ private suspend fun fetchStore(session: StoreSessionStore = InMemoryStoreSession
         println("KMP_MODEL_VARIATION_COMPLETION_IMAGES=" + completedSelected.images.size)
         println("KMP_MODEL_VARIATION_COMPLETION_STOCK=" + completedSelected.isInStock)
 
+        println("KMP_RUNTIME_REQUEST_OUTLET_ORIGIN endpoint=/products?category=Mujer%20invierno")
+        val smokeCategories = api.categories(100)
+        val mujerInvierno = smokeCategories.firstOrNull { it.name == "Mujer invierno" }
+        assertion("OUTLET_MUJER_INVIERNO_CATEGORY_PRESENT", mujerInvierno != null)
+        val jerseis = smokeCategories.firstOrNull { it.id == 461 }
+        assertion("OUTLET_ORIGIN_CATEGORY_461_PRESENT", jerseis?.name == "Jerséis")
+        assertion("OUTLET_ORIGIN_CATEGORY_461_PARENT", jerseis?.parent == 71)
+        val outletListing = api.products(perPage = 100, category = checkNotNull(mujerInvierno).id)
+        println("KMP_RUNTIME_HTTP_STATUS_OUTLET_LISTING status=200")
+        val outletProduct50842 = outletListing.firstOrNull { it.id == 50842 }
+        assertion("OUTLET_PRODUCT_50842_PRESENT", outletProduct50842 != null)
+        val outletProduct = checkNotNull(outletProduct50842)
+        assertion("OUTLET_PRODUCT_50842_ORIGIN_IDS", outletProduct.originalCategoryIds == listOf(461))
+        println("KMP_MODEL_OUTLET_50842_CATEGORIES=" + outletProduct.categories.map { it.id })
+        println("KMP_MODEL_OUTLET_50842_ORIGINAL_CATEGORY_IDS=" + outletProduct.originalCategoryIds)
+
         println("KMP_RUNTIME_REQUEST_CART endpoint=/cart")
         val firstCart = api.cart()
         println("KMP_RUNTIME_HTTP_STATUS_CART status=200")
