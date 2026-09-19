@@ -125,7 +125,12 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
 
     private fun updateCategoryProducts(categoryId: Int, state: CategoryProductsState) {
         _categoryProducts.value = _categoryProducts.value.toMutableMap().apply { put(categoryId, state) }
-        if (_activeCategoryId.value == categoryId) _activeCategoryProducts.value = state.products
+        if (_activeCategoryId.value == categoryId) {
+            _activeCategoryProducts.value = state.products
+            state.products.firstOrNull { it.id == 50842 }?.let { product ->
+                Log.d("OutletOriginTrace", "ViewModel category=$categoryId id=50842 categories=${product.categories.map { it.id }} originalCategoryIds=${product.originalCategoryIds}")
+            }
+        }
     }
 
     internal fun applyCategoryCacheUpdate(update: CategoryCacheUpdate) {

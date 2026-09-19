@@ -122,7 +122,7 @@ interface CatalogDao {
     @Query("SELECT * FROM catalog_priority_fallback WHERE categoryId = :categoryId ORDER BY catalogOrder ASC") suspend fun getPriorityFallback(categoryId: Int): List<CatalogPriorityFallbackEntity>
 }
 
-@Database(entities = [CatalogProductEntity::class, CatalogProductCategoryEntity::class, CatalogCategoryEntity::class, CatalogSyncMetadataEntity::class, CatalogPriorityFallbackEntity::class], version = 3, exportSchema = false)
+@Database(entities = [CatalogProductEntity::class, CatalogProductCategoryEntity::class, CatalogCategoryEntity::class, CatalogSyncMetadataEntity::class, CatalogPriorityFallbackEntity::class], version = 4, exportSchema = false)
 abstract class CategoryProductCacheDatabase : RoomDatabase() {
     abstract fun catalogDao(): CatalogDao
     companion object {
@@ -132,7 +132,15 @@ abstract class CategoryProductCacheDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_catalog_priority_fallback_categoryId ON catalog_priority_fallback(categoryId)")
             }
         }
-        fun create(context: Context): CategoryProductCacheDatabase = Room.databaseBuilder(context.applicationContext, CategoryProductCacheDatabase::class.java, "criosrango_catalog.db").addMigrations(MIGRATION_2_3).fallbackToDestructiveMigration(false).build()
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // The cached JSON payload now carries Outlet origin metadata. Invalidate the
+                // previous snapshot so stale Room rows can never hide originalCategoryIds.
+                db.execSQL("UPDATE catalog_sync_metadata SET activeGeneration = NULL, lastCompleteSyncAt = NULL, hasValidSnapshot = 0 WHERE id = 1")
+                db.execSQL("DELETE FROM catalog_priority_fallback")
+            }
+        }
+        fun create(context: Context): CategoryProductCacheDatabase = Room.databaseBuilder(context.applicationContext, CategoryProductCacheDatabase::class.java, "criosrango_catalog.db").addMigrations(MIGRATION_2_3, MIGRATION_3_4).fallbackToDestructiveMigration(false).build()
     }
 }
 
@@ -293,6 +301,7 @@ val metadata = snapshotMetadata()
             CategoryLoadTelemetry.networkStart(categoryId)
             val products = priorityNetworkMutex.withLock { networkFallback() }
             CategoryLoadTelemetry.networkEnd(categoryId, products.size)
+            products.firstOrNull { it.id == 50842 }?.let { android.util.Log.d("OutletOriginTrace", "priority HTTP category=$categoryId id=50842 categories=${it.categories.map { c -> c.id }} originalCategoryIds=${it.originalCategoryIds}") }
             CategoryLoadTelemetry.parseEnd(categoryId, products.size)
             deferred.complete(products)
             val type = object : TypeToken<StoreProduct>() {}.type
@@ -393,6 +402,7 @@ val metadata = snapshotMetadata()
         val relationEntities = ArrayList<CatalogProductCategoryEntity>()
         val categoryEntities = LinkedHashMap<Int, CatalogCategoryEntity>()
         val type = object : TypeToken<StoreProduct>() {}.type
+        orderedProducts.firstOrNull { it.id == 50842 }?.let { android.util.Log.d("OutletOriginTrace", "global HTTP id=50842 categories=${it.categories.map { c -> c.id }} originalCategoryIds=${it.originalCategoryIds}") }
         orderedProducts.forEachIndexed { index, product ->
             productEntities += CatalogProductEntity(generation, product.id, gson.toJson(product, type), index)
             product.categories.forEach { category ->

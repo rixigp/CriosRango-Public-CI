@@ -119,6 +119,20 @@ internal fun productBelongsToCategory(
     }
 }
 
+internal fun isCategoryDescendantOf(
+    categoryId: Int,
+    ancestorId: Int,
+    categoriesById: Map<Int, ProductCategory>
+): Boolean {
+    var currentId = categoryId
+    val visited = mutableSetOf<Int>()
+    while (currentId != 0 && visited.add(currentId)) {
+        if (currentId == ancestorId) return true
+        currentId = categoriesById[currentId]?.parent ?: 0
+    }
+    return false
+}
+
 internal fun productBelongsToOutletOriginCategory(
     product: StoreProduct,
     categoryId: Int,
@@ -188,6 +202,10 @@ internal fun OutletAwareCatalogGrid(
             }
         }
 
+    products.firstOrNull { it.id == 50842 }?.let { product ->
+        Log.d("OutletOriginTrace", "UI bubbles current=${current.id} id=50842 categories=${product.categories.map { it.id }} originalCategoryIds=${product.originalCategoryIds}")
+    }
+
     val bubbles =
         remember(
             products,
@@ -200,8 +218,8 @@ internal fun OutletAwareCatalogGrid(
                 emptyList()
             } else {
                 allCategories
-                    .filter {
-                        it.parent == rootId
+                    .filter { category ->
+                        rootId != null && category.id != rootId && isCategoryDescendantOf(category.id, rootId, categoriesById)
                     }
                     .filter { category ->
                         products.any { product ->

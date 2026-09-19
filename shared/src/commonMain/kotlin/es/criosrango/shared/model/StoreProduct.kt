@@ -20,7 +20,10 @@ data class StoreProduct(
     @SerialName("quantity_limits") val quantityLimits: QuantityLimits? = null,
     @SerialName("stock_availability") val stockAvailability: StockAvailability? = null,
     @SerialName("add_to_cart") val addToCart: AddToCart? = null
-)
+) {
+    val originalCategoryIds: List<Int>
+        get() = extensions?.criosrangoOutlet?.originalCategoryIds.orEmpty()
+}
 @Serializable
 data class StoreProductExtensions(
     @SerialName("criosrango_outlet") val criosrangoOutlet: OutletOriginExtension? = null
