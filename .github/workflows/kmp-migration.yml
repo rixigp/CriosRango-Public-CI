@@ -82,6 +82,8 @@ jobs:
               return json.loads(raw), None
           categories, _ = get("products/categories", {"per_page": 100})
           target = next(c for c in categories if c.get("name") == "Mujer invierno")
+          origin = next(c for c in categories if c.get("id") == 461)
+          print(f"OUTLET_DIAG_ORIGIN_CATEGORY id={origin['id']} name={origin['name']} parent={origin.get('parent')}")
           print(f"OUTLET_DIAG_CATEGORY id={target['id']} name={target['name']} parent={target.get('parent')}")
           found = None
           page = 1
