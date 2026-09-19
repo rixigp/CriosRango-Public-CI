@@ -301,7 +301,6 @@ val metadata = snapshotMetadata()
             CategoryLoadTelemetry.networkStart(categoryId)
             val products = priorityNetworkMutex.withLock { networkFallback() }
             CategoryLoadTelemetry.networkEnd(categoryId, products.size)
-            products.firstOrNull { it.id == 50842 }?.let { android.util.Log.d("OutletOriginTrace", "priority HTTP category=$categoryId id=50842 categories=${it.categories.map { c -> c.id }} originalCategoryIds=${it.originalCategoryIds}") }
             CategoryLoadTelemetry.parseEnd(categoryId, products.size)
             deferred.complete(products)
             val type = object : TypeToken<StoreProduct>() {}.type
@@ -402,7 +401,6 @@ val metadata = snapshotMetadata()
         val relationEntities = ArrayList<CatalogProductCategoryEntity>()
         val categoryEntities = LinkedHashMap<Int, CatalogCategoryEntity>()
         val type = object : TypeToken<StoreProduct>() {}.type
-        orderedProducts.firstOrNull { it.id == 50842 }?.let { android.util.Log.d("OutletOriginTrace", "global HTTP id=50842 categories=${it.categories.map { c -> c.id }} originalCategoryIds=${it.originalCategoryIds}") }
         orderedProducts.forEachIndexed { index, product ->
             productEntities += CatalogProductEntity(generation, product.id, gson.toJson(product, type), index)
             product.categories.forEach { category ->
