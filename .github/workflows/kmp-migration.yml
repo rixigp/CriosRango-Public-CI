@@ -6,6 +6,10 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: write
+  actions: write
+
 jobs:
   android:
     name: Android validation
@@ -35,6 +39,61 @@ jobs:
           } >> "$GITHUB_ENV"
       - name: Build Android
         run: ./gradlew :app:assembleDebug :shared:compileDebugKotlinAndroid --stacktrace
+
+      - name: Prepare named APKs
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION_NAME=$(grep -E 'versionName[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
+          VERSION_CODE=$(grep -E 'versionCode[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/')
+          VERSIONED_APK="CriosRango-v${VERSION_NAME}-code${VERSION_CODE}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$VERSIONED_APK"
+          cp app/build/outputs/apk/debug/app-debug.apk CriosRango-latest.apk
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "versioned_apk=$VERSIONED_APK" >> "$GITHUB_OUTPUT"
+          ls -lh "$VERSIONED_APK" CriosRango-latest.apk
+
+      - name: Upload APK artifact
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: CriosRango-v${{ steps.apk.outputs.version_name }}-code${{ steps.apk.outputs.version_code }}
+          retention-days: 2
+          path: |
+            ${{ steps.apk.outputs.versioned_apk }}
+            CriosRango-latest.apk
+
+      - name: Publish latest development APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSIONED_APK: ${{ steps.apk.outputs.versioned_apk }}
+          VERSION_NAME: ${{ steps.apk.outputs.version_name }}
+          VERSION_CODE: ${{ steps.apk.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          RELEASE_NOTES="CriosRango v${VERSION_NAME} code ${VERSION_CODE} - automatic development build from commit ${GITHUB_SHA}"
+
+          if ! gh release view dev-latest >/dev/null 2>&1; then
+            gh release create dev-latest \
+              --title "Development latest" \
+              --notes "$RELEASE_NOTES" \
+              --prerelease \
+              --target "${GITHUB_SHA}"
+          else
+            gh release edit dev-latest \
+              --title "Development latest" \
+              --notes "$RELEASE_NOTES" \
+              --prerelease \
+              --target "${GITHUB_SHA}"
+          fi
+
+          gh release upload dev-latest \
+            "$VERSIONED_APK" \
+            CriosRango-latest.apk \
+            --clobber
 
       - name: Cleanup Google Services
         if: always()
