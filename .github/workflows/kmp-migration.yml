@@ -59,15 +59,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          ACTUAL_JKS_SHA256="$(sha256sum "$RUNNER_TEMP/criosrango-debug.jks" | awk '{print $1}')"
-          EXPECTED_JKS_SHA256="93a73ba8b35108deb0d2ca596f6dc6f17b81e2b2950d6fd836ab8e9572cde49d"
-
-          echo "JKS file SHA-256 actual:   $ACTUAL_JKS_SHA256"
-          echo "JKS file SHA-256 expected: $EXPECTED_JKS_SHA256"
-
           STOREPASS="$(printf '%s' "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD" | tr -d '\r\n')"
-
-          echo "Testing JKS with fixed alias criosrango-development..."
+          echo "STOREPASS length: ${#STOREPASS}"
 
           keytool -list \
             -keystore "$RUNNER_TEMP/criosrango-debug.jks" \
