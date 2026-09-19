@@ -127,5 +127,4 @@ data class StoreCartRequest(
 data class StoreCartApiError(
     val code: String = "",
     val message: String = "",
-    val data: JsonElement? = null
 )
