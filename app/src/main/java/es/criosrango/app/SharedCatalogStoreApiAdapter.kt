@@ -2,6 +2,7 @@ package es.criosrango.app
 
 import android.util.Log
 import es.criosrango.shared.api.StoreApiClient
+import es.criosrango.shared.api.StoreApiException
 import es.criosrango.shared.model.StoreCart
 import es.criosrango.shared.model.StoreCartRequest
 import es.criosrango.shared.model.StoreCartVariation
@@ -253,6 +254,7 @@ private fun SharedAddToCart.toAndroid(): AddToCart = AddToCart(
 )
 
 private fun Exception.toAndroidCatalogException(): Exception = when (this) {
+    is StoreApiException -> CartException(message)
     is HttpRequestTimeoutException -> SocketTimeoutException(message).also { it.initCause(this) }
     is ResponseException -> {
         val code = response.status.value
