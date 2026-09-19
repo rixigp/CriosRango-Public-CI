@@ -1,7 +1,6 @@
 package es.criosrango.app
 
 import android.util.Log
-import com.google.gson.Gson
 import es.criosrango.shared.api.StoreApiClient
 import es.criosrango.shared.api.StoreApiException
 import es.criosrango.shared.model.StoreCart
@@ -329,7 +328,7 @@ private fun StoreCart.toAndroid(): WooCart = WooCart(
             }
         )
     },
-    shippingPackages = shippingPackages?.let { Gson().fromJson(it.toString(), com.google.gson.JsonElement::class.java) },
+    shippingPackages = null,
     itemsCount = itemsCount,
     errors = errors.map { CartError(it.code, it.message) }
 )
