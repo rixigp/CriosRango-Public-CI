@@ -15,6 +15,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import es.criosrango.shared.api.StoreApiClient
+import es.criosrango.shared.api.StoreSessionStore
+import es.criosrango.shared.api.InMemoryStoreSessionStore
 import es.criosrango.shared.model.StoreProduct
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
@@ -35,8 +37,8 @@ private fun assertion(name: String, condition: Boolean) {
     check(condition) { "Model assertion failed: " + name }
 }
 
-private suspend fun fetchStore(): Pair<List<StoreProduct>, Int> {
-    val api = StoreApiClient()
+private suspend fun fetchStore(session: StoreSessionStore = InMemoryStoreSessionStore()): Pair<List<StoreProduct>, Int> {
+    val api = StoreApiClient(session = session)
     return try {
         println("KMP_RUNTIME_PRODUCTS_REQUEST endpoint=/products")
         val (productsRawJson, products) = api.productsWithRawJson(perPage = 12)
@@ -125,6 +127,31 @@ private suspend fun fetchStore(): Pair<List<StoreProduct>, Int> {
         println("KMP_MODEL_VARIATION_COMPLETION_PRICE_PRESENT=true")
         println("KMP_MODEL_VARIATION_COMPLETION_IMAGES=" + completedSelected.images.size)
         println("KMP_MODEL_VARIATION_COMPLETION_STOCK=" + completedSelected.isInStock)
+
+        println("KMP_RUNTIME_REQUEST_CART endpoint=/cart")
+        val firstCart = api.cart()
+        println("KMP_RUNTIME_HTTP_STATUS_CART status=200")
+        assertion("CART_MODEL_PARSED", firstCart.itemsCount >= 0 && firstCart.totals.totalPrice.isNotBlank())
+        println("KMP_MODEL_CART_ITEMS=" + firstCart.items.size)
+        println("KMP_MODEL_CART_ITEMS_COUNT=" + firstCart.itemsCount)
+        println("KMP_MODEL_CART_TOTAL_PRICE=" + firstCart.totals.totalPrice)
+        println("KMP_SESSION_CART_TOKEN_PRESENT=" + !session.cartToken.isNullOrBlank())
+        println("KMP_SESSION_NONCE_PRESENT=" + !session.nonce.isNullOrBlank())
+        println("KMP_SESSION_COOKIE_PRESENT=" + !session.cookieHeader.isNullOrBlank())
+        val tokenAfterFirstCart = session.cartToken
+        val nonceAfterFirstCart = session.nonce
+        val cookieAfterFirstCart = session.cookieHeader
+
+        println("KMP_RUNTIME_REQUEST_CART_SECOND endpoint=/cart")
+        val secondCart = api.cart()
+        println("KMP_RUNTIME_HTTP_STATUS_CART_SECOND status=200")
+        assertion("CART_SECOND_MODEL_PARSED", secondCart.itemsCount >= 0)
+        assertion("CART_TOKEN_RETAINED", tokenAfterFirstCart == null || session.cartToken == tokenAfterFirstCart)
+        assertion("NONCE_RETAINED", nonceAfterFirstCart == null || session.nonce == nonceAfterFirstCart)
+        assertion("COOKIE_RETAINED", cookieAfterFirstCart == null || session.cookieHeader == cookieAfterFirstCart)
+        println("KMP_SESSION_CART_TOKEN_RETAINED=true")
+        println("KMP_SESSION_NONCE_RETAINED=" + (nonceAfterFirstCart == null || session.nonce == nonceAfterFirstCart))
+        println("KMP_SESSION_COOKIE_RETAINED=" + (cookieAfterFirstCart == null || session.cookieHeader == cookieAfterFirstCart))
         val (categoriesRawJson, categories) = api.categoriesWithRawJson(perPage = 100)
         println("KMP_RUNTIME_HTTP_STATUS_CATEGORIES status=200")
         println("KMP_RUNTIME_CATEGORIES_COUNT count=" + categories.size)
