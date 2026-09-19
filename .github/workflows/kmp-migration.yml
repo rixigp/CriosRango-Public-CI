@@ -60,20 +60,40 @@ jobs:
         run: |
           set -euo pipefail
 
-          FINGERPRINT="$(
-            keytool -list -v \
-              -keystore "$RUNNER_TEMP/criosrango-debug.jks" \
-              -storepass "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD" \
-              -alias "$CRIOSRANGO_DEBUG_KEY_ALIAS" |
-            awk -F': ' '/SHA256:/{print $2; exit}'
-          )"
-
           EXPECTED="53:A6:C9:CA:97:22:5E:9A:62:E1:0F:FD:45:EA:27:4F:3B:B2:27:16:77:E0:F8:79:90:68:A8:CD:69:E7:DC:CE"
 
-          test "$FINGERPRINT" = "$EXPECTED"
+          if ! keytool -list \
+            -keystore "$RUNNER_TEMP/criosrango-debug.jks" \
+            -storepass "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD" \
+            -alias "$CRIOSRANGO_DEBUG_KEY_ALIAS" \
+            >/dev/null 2>&1
+          then
+            echo "::error::No se puede leer la entrada de firma de la JKS."
+            exit 1
+          fi
 
-          echo "Android signing certificate SHA-256: $FINGERPRINT"
+          FINGERPRINT="$(
+            keytool -exportcert -rfc \
+              -keystore "$RUNNER_TEMP/criosrango-debug.jks" \
+              -storepass "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD" \
+              -alias "$CRIOSRANGO_DEBUG_KEY_ALIAS" 2>/dev/null |
+            openssl x509 -noout -fingerprint -sha256 |
+            sed 's/^sha256 Fingerprint=//I' |
+            tr -d '\r\n'
+          )"
 
+          echo "Android signing certificate SHA-256: <$FINGERPRINT>"
+          echo "Expected SHA-256:                    <$EXPECTED>"
+
+          if [ -z "$FINGERPRINT" ]; then
+            echo "::error::No se pudo extraer el SHA-256 del certificado."
+            exit 1
+          fi
+
+          if [ "$FINGERPRINT" != "$EXPECTED" ]; then
+            echo "::error::El certificado de firma no coincide con la firma permanente esperada."
+            exit 1
+          fi
       - name: Build Android
         run: ./gradlew :app:assembleDebug :shared:compileDebugKotlinAndroid --stacktrace
 
