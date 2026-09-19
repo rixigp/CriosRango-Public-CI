@@ -1,3 +1,3 @@
 package es.criosrango.shared
 import androidx.compose.ui.window.ComposeUIViewController
-fun MainViewController() = ComposeUIViewController { CriosRangoSpikeScreen() }
+fun MainViewController() = ComposeUIViewController { CriosRangoSpikeScreen(IosStoreSessionStore()) }
