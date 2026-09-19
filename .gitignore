@@ -19,3 +19,7 @@ local.properties
 
 build/
 **/build/
+
+*.zip
+**/google-services.json
+**/*service-account*.json
