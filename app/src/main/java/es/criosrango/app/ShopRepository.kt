@@ -415,33 +415,8 @@ class StoreRepository(private val api: StoreApi) {
     suspend fun selectShippingRate(request: SelectShippingRateRequest) = api.selectShippingRate(request)
     suspend fun updateCustomer(request: UpdateCustomerRequest) = api.updateCustomer(request)
 
-    suspend fun productWithVariationAvailability(id: Int): StoreProduct {
-        val product = api.product(id)
-        if (product.variations.isEmpty()) return product
-        val details = coroutineScope {
-            product.variations.map { variation ->
-                async {
-                    runCatching { api.product(variation.id) }.getOrNull()
-                }
-            }.awaitAll()
-        }
-        return product.copy(variations = product.variations.mapIndexed { index, variation ->
-            val detail = details[index]
-            variation.copy(
-                prices = detail?.prices ?: variation.prices,
-                images = detail?.images ?: variation.images,
-                isInStock = detail?.isInStock ?: variation.isInStock,
-                isPurchasable = detail?.isPurchasable ?: variation.isPurchasable,
-                isOnBackorder = detail?.isOnBackorder ?: variation.isOnBackorder,
-                lowStockRemaining = detail?.lowStockRemaining ?: variation.lowStockRemaining,
-                stockStatus = detail?.stockStatus ?: variation.stockStatus,
-                stockQuantity = detail?.stockQuantity ?: variation.stockQuantity,
-                manageStock = detail?.manageStock ?: variation.manageStock,
-                quantityLimits = detail?.quantityLimits ?: variation.quantityLimits,
-                addToCart = detail?.addToCart ?: variation.addToCart
-            )
-        })
-    }
+    suspend fun productWithVariationAvailability(id: Int): StoreProduct =
+        api.productWithVariationAvailability(id)
 }
 
 enum class CartLoadState { LOADING, SUCCESS_ITEMS, SUCCESS_EMPTY, ERROR }
