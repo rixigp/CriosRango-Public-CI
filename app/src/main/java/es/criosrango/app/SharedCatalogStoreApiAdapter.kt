@@ -60,7 +60,34 @@ class SharedCatalogStoreApiAdapter(
             "PRODUCTS source=shared StoreApiClient perPage=$perPage page=$page category=$category"
         )
         return try {
-            sharedClient.products(perPage = perPage, page = page, category = category)
+            sharedClient.products(
+                perPage = perPage,
+                page = page,
+                search = search,
+                category = category,
+                orderBy = orderBy,
+                order = order,
+                after = after,
+                featured = featured
+            ).also {
+                Log.d(
+                    "CriosRangoSharedCatalog",
+                    "PRODUCTS source=shared params=search=${search != null} category=$category orderby=$orderBy order=$order after=${after != null} featured=$featured"
+                )
+            }.map(SharedStoreProduct::toAndroid)
+        } catch (exception: Exception) {
+            throw exception.toAndroidCatalogException()
+        }
+    }
+
+    override suspend fun productsByTag(
+        perPage: Int,
+        page: Int,
+        tag: String
+    ): List<StoreProduct> {
+        Log.d("CriosRangoSharedCatalog", "PRODUCTS source=shared params=tag=true perPage=$perPage page=$page")
+        return try {
+            sharedClient.products(perPage = perPage, page = page, tag = tag)
                 .map(SharedStoreProduct::toAndroid)
         } catch (exception: Exception) {
             throw exception.toAndroidCatalogException()
