@@ -2,7 +2,6 @@ package es.criosrango.shared.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class StoreCart(
@@ -11,7 +10,6 @@ data class StoreCart(
     val totals: StoreCartTotals = StoreCartTotals(),
     @SerialName("payment_methods") val paymentMethods: List<String> = emptyList(),
     @SerialName("shipping_rates") val shippingRates: List<StoreShippingPackage> = emptyList(),
-    @SerialName("shipping_packages") val shippingPackages: JsonElement? = null,
     @SerialName("items_count") val itemsCount: Int = 0,
     val errors: List<StoreCartError> = emptyList()
 )
