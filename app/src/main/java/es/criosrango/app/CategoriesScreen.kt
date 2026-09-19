@@ -119,6 +119,37 @@ internal fun productBelongsToCategory(
     }
 }
 
+internal fun productBelongsToOutletOriginCategory(
+    product: StoreProduct,
+    categoryId: Int,
+    categoriesById: Map<Int, ProductCategory>
+): Boolean {
+
+    val assignedCategoryIds =
+        product.categories.map { it.id } + product.originalCategoryIds
+
+    return assignedCategoryIds.any { assignedId ->
+
+        var currentId = assignedId
+        val visited = mutableSetOf<Int>()
+
+        while (
+            currentId != 0 &&
+            visited.add(currentId)
+        ) {
+            if (currentId == categoryId) {
+                return@any true
+            }
+
+            currentId =
+                categoriesById[currentId]?.parent
+                    ?: 0
+        }
+
+        false
+    }
+}
+
 @Composable
 internal fun OutletAwareCatalogGrid(
     current: ProductCategory?,
@@ -174,7 +205,7 @@ internal fun OutletAwareCatalogGrid(
                     }
                     .filter { category ->
                         products.any { product ->
-                            productBelongsToCategory(
+                            productBelongsToOutletOriginCategory(
                                 product,
                                 category.id,
                                 categoriesById
@@ -202,7 +233,7 @@ internal fun OutletAwareCatalogGrid(
                 products
             } else {
                 products.filter { product ->
-                    productBelongsToCategory(
+                    productBelongsToOutletOriginCategory(
                         product,
                         selected,
                         categoriesById

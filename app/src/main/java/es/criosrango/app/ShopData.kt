@@ -19,6 +19,7 @@ data class StoreProduct(
     val prices: ProductPrices = ProductPrices(),
     val images: List<ProductImage> = emptyList(),
     val categories: List<ProductCategory> = emptyList(),
+    @SerializedName("extensions") val extensions: StoreProductExtensions? = null,
     val tags: List<ProductTag> = emptyList(),
     val attributes: List<ProductAttribute> = emptyList(),
     val variations: List<ProductVariation> = emptyList(),
@@ -32,7 +33,18 @@ data class StoreProduct(
     @SerializedName("quantity_limits") val quantityLimits: QuantityLimits? = null,
     @SerializedName("stock_availability") val stockAvailability: StockAvailability? = null,
     @SerializedName("add_to_cart") val addToCart: AddToCart? = null
-) 
+) {
+    val originalCategoryIds: List<Int>
+        get() = extensions?.criosrangoOutlet?.originalCategoryIds.orEmpty()
+}
+
+data class StoreProductExtensions(
+    @SerializedName("criosrango_outlet") val criosrangoOutlet: OutletOriginExtension? = null
+)
+
+data class OutletOriginExtension(
+    @SerializedName("original_category_ids") val originalCategoryIds: List<Int> = emptyList()
+)
 
 data class StockAvailability(
     val text: String = "",

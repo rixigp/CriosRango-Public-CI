@@ -159,6 +159,7 @@ private fun SharedStoreProduct.toAndroid(): StoreProduct = StoreProduct(
     prices = prices.toAndroid(),
     images = images.map(SharedProductImage::toAndroid),
     categories = categories.map(SharedStoreCategory::toAndroid),
+    extensions = extensions?.toAndroid(),
     tags = tags.map(SharedProductTag::toAndroid),
     attributes = attributes.map(SharedProductAttribute::toAndroid),
     variations = variations.map(SharedProductVariation::toAndroid),
@@ -172,6 +173,10 @@ private fun SharedStoreProduct.toAndroid(): StoreProduct = StoreProduct(
     quantityLimits = quantityLimits?.toAndroid(),
     stockAvailability = stockAvailability?.toAndroid(),
     addToCart = addToCart?.toAndroid()
+)
+
+private fun SharedStoreProductExtensions.toAndroid(): StoreProductExtensions = StoreProductExtensions(
+    criosrangoOutlet = criosrangoOutlet?.let { OutletOriginExtension(it.originalCategoryIds) }
 )
 
 private fun SharedProductImage.toAndroid(): ProductImage = ProductImage(

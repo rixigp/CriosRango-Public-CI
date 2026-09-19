@@ -7,6 +7,7 @@ data class StoreProduct(
     @SerialName("short_description") val shortDescription: String = "", val description: String = "",
     @SerialName("on_sale") val onSale: Boolean = false, val prices: ProductPrices = ProductPrices(),
     val images: List<ProductImage> = emptyList(), val categories: List<StoreCategory> = emptyList(),
+    val extensions: StoreProductExtensions? = null,
     val tags: List<ProductTag> = emptyList(), val attributes: List<ProductAttribute> = emptyList(),
     val variations: List<ProductVariation> = emptyList(),
     @SerialName("is_in_stock") val isInStock: Boolean = true,
