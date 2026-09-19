@@ -17,6 +17,8 @@ import es.criosrango.shared.model.QuantityLimits as SharedQuantityLimits
 import es.criosrango.shared.model.StockAvailability as SharedStockAvailability
 import es.criosrango.shared.model.StoreCategory as SharedStoreCategory
 import es.criosrango.shared.model.StoreProduct as SharedStoreProduct
+import es.criosrango.shared.model.StoreProductExtensions as SharedStoreProductExtensions
+import es.criosrango.shared.model.OutletOriginExtension as SharedOutletOriginExtension
 import es.criosrango.shared.model.VariationAttribute as SharedVariationAttribute
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.ResponseException
