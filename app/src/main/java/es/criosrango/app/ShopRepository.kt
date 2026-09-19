@@ -54,6 +54,9 @@ interface StoreApi {
     @GET("products/{id}")
     suspend fun product(@Path("id") id: Int): StoreProduct
 
+    /** Public catalog operation; SharedCatalogStoreApiAdapter routes this to KMP. */
+    suspend fun productWithVariationAvailability(id: Int): StoreProduct
+
     @GET("products/categories")
     suspend fun categories(@Query("per_page") perPage: Int = 100): List<ProductCategory>
 
