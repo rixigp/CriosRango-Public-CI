@@ -21,6 +21,14 @@ data class StoreProduct(
     @SerialName("stock_availability") val stockAvailability: StockAvailability? = null,
     @SerialName("add_to_cart") val addToCart: AddToCart? = null
 )
+@Serializable
+data class StoreProductExtensions(
+    @SerialName("criosrango_outlet") val criosrangoOutlet: OutletOriginExtension? = null
+)
+@Serializable
+data class OutletOriginExtension(
+    @SerialName("original_category_ids") val originalCategoryIds: List<Int> = emptyList()
+)
 @Serializable data class ProductPrices(
     val price: String = "0", @SerialName("regular_price") val regularPrice: String = "0",
     @SerialName("sale_price") val salePrice: String = "0",
