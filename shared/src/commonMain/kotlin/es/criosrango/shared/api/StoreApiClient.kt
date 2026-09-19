@@ -12,10 +12,27 @@ class StoreApiClient(
     private val baseUrl: String = "https://criosrango.es/wp-json/wc/store/v1/",
     private val client: HttpClient = createStoreHttpClient()
 ) {
-    suspend fun products(perPage: Int = 24, page: Int = 1, category: Int? = null): List<StoreProduct> =
+    suspend fun products(
+        perPage: Int = 24,
+        page: Int = 1,
+        search: String? = null,
+        category: Int? = null,
+        orderBy: String? = null,
+        order: String? = null,
+        after: String? = null,
+        featured: Boolean? = null,
+        tag: String? = null
+    ): List<StoreProduct> =
         client.get("${baseUrl}products") {
-            parameter("per_page", perPage); parameter("page", page)
+            parameter("per_page", perPage)
+            parameter("page", page)
+            search?.let { parameter("search", it) }
             category?.let { parameter("category", it) }
+            orderBy?.let { parameter("orderby", it) }
+            order?.let { parameter("order", it) }
+            after?.let { parameter("after", it) }
+            featured?.let { parameter("featured", it) }
+            tag?.let { parameter("tag", it) }
         }.body()
     suspend fun categories(perPage: Int = 100): List<StoreCategory> =
         client.get("${baseUrl}products/categories") { parameter("per_page", perPage) }.body()
