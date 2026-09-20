@@ -285,6 +285,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                     if (generation != accountGeneration) return@launch
                     if (handleAuthenticatedHttpError(exception, "No hemos podido cargar tus pedidos.")) return@launch
                 }
+                if (generation == accountGeneration) claimPendingOrderIfAuthenticated()
             } catch (exception: Exception) {
                 if (generation != accountGeneration) return@launch
                 if ((exception is HttpException && exception.code() == 401) || !repository.hasSession) {
@@ -409,6 +410,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                     }
                     emptyList()
                 }
+                if (_authState.value == AccountAuthState.AUTHENTICATED) claimPendingOrderIfAuthenticated()
             } catch (e: HttpException) {
                 _error.value = when (e.code()) {
                     400 -> "Revisa los datos introducidos."
@@ -467,6 +469,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 _address.value = loadedAddress
                 syncCheckoutAddress(loadedAddress)
                 _orders.value = repository.orders()
+                claimPendingOrderIfAuthenticated()
             } catch (e: HttpException) {
                 _authState.value = if (repository.hasSession) AccountAuthState.CHECKING else AccountAuthState.UNAUTHENTICATED
                 _error.value = when (e.code()) {
@@ -480,6 +483,27 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 _loading.value = false
             }
         }
+    }
+
+    private fun claimPendingOrderIfAuthenticated() {
+        if (_user.value == null || _authState.value != AccountAuthState.AUTHENTICATED) return
+        val generation = accountGeneration
+        viewModelScope.launch {
+            try {
+                repository.claimPendingOrder()
+                if (generation == accountGeneration) _orders.value = repository.orders()
+            } catch (exception: Exception) {
+                if (generation != accountGeneration) return@launch
+                if (!handleAuthenticatedHttpError(exception, "No se ha podido actualizar el pedido.")) {
+                    android.util.Log.e("CriosRangoAccount", "Pending order claim failed", exception)
+                }
+            }
+        }
+    }
+
+    fun prepareClaimOrder(orderId: Int, orderKey: String) {
+        repository.prepareClaimOrder(orderId, orderKey)
+        claimPendingOrderIfAuthenticated()
     }
 
     fun claimOrder(orderId: Int, orderKey: String) {
