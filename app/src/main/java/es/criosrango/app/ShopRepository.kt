@@ -69,6 +69,8 @@ interface StoreApi {
     @POST("cart/remove-item")
     suspend fun removeCartItem(@Query("key") key: String): WooCart
 
+    suspend fun clearCartItems(): WooCart
+
     @GET("checkout")
     suspend fun checkout(): CheckoutResponse
 
@@ -515,11 +517,18 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
     }
 
     suspend fun consumeConfirmedOrder() {
+        val cleared = withTimeout(18_000) { api.clearCartItems() }
+        if (cleared.items.isNotEmpty()) {
+            throw CartException("WooCommerce no ha vaciado el carrito remoto tras el pago confirmado.")
+        }
+        val verified = withTimeout(18_000) { api.cart() }
+        if (verified.items.isNotEmpty()) {
+            throw CartException("WooCommerce sigue devolviendo productos tras vaciar el carrito remoto.")
+        }
         confirmedCart = WooCart()
         _cart.value = confirmedCart
         preferences.edit().remove("cart_snapshot").remove("cart_line_parents").apply()
         _state.value = CartLoadState.SUCCESS_EMPTY
-        runCatching { api.cart() }
     }
 
     private suspend fun execute(endpoint: String, operation: suspend () -> WooCart): Boolean {
