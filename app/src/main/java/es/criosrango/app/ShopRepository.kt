@@ -518,8 +518,7 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
 
     suspend fun lookupOrderStatus(
         orderId: Int,
-        orderKey: String,
-        billingEmail: String
+        orderKey: String
     ): OrderStatusResponse = withTimeout(18_000) {
         api.getOrderStatus(orderId, orderKey)
     }

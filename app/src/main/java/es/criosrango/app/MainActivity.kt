@@ -132,7 +132,6 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
     val checkoutPhase by viewModel.checkoutPhase.collectAsStateWithLifecycle()
     val paymentRedirect by viewModel.paymentRedirect.collectAsStateWithLifecycle()
     val cardPaymentResult by viewModel.cardPaymentResult.collectAsStateWithLifecycle()
-    val pendingCardPayment by viewModel.pendingCardPayment.collectAsStateWithLifecycle()
     val paymentReturnUri = paymentReturnUriState.value
     val bizumOrderId by viewModel.bizumOrderId.collectAsStateWithLifecycle()
     LaunchedEffect(checkout?.orderId, checkout?.orderKey) {
@@ -168,7 +167,7 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
     MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF183B35), secondary = Color(0xFFD18162))) {
         Surface(Modifier.fillMaxSize(), color = Color(0xFFFCFAF7)) {
             if (checkoutOpen) {
-                RedesignedCheckoutScreen(remoteCart, checkout, checkoutLoading, checkoutError, checkoutPhase, { checkoutOpen = false; viewModel.abandonCheckout() }, viewModel::loadCheckout, viewModel::selectShippingRate, viewModel::createOrder, viewModel.deliveryAddressStore, pendingCardPayment != null, viewModel::resumePendingPayment, viewModel::verifyCardPaymentReturn)
+                RedesignedCheckoutScreen(remoteCart, checkout, checkoutLoading, checkoutError, checkoutPhase, { checkoutOpen = false; viewModel.abandonCheckout() }, viewModel::loadCheckout, viewModel::selectShippingRate, viewModel::createOrder, viewModel.deliveryAddressStore)
             } else if (selectedProduct != null) {
                 ProductDetail(selectedProduct!!, selectedVariation, cartItems, viewModel::loadVariation, viewModel::closeProduct, { tab = AppTab.CART; viewModel.closeProduct() }, viewModel::addToCart)
             } else Scaffold(
@@ -216,10 +215,19 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
     var cardPaymentDialogDismissed by remember { mutableStateOf(false) }
     LaunchedEffect(cardPaymentResult?.orderId, cardPaymentResult?.paid) { cardPaymentDialogDismissed = false }
     cardPaymentResult?.let { result -> if (!cardPaymentDialogDismissed) {
-        val title = when (result.paid) { true -> "Pedido recibido"; false -> "Pago no completado"; null -> "Pago pendiente de confirmación" }
-        val message = when (result.paid) { true -> "Tu pedido #${result.orderId} se ha pagado correctamente."; false -> "El pago no se ha completado."; null -> "El pedido #${result.orderId} sigue pendiente de confirmación. No vuelvas a pagar ni crees otro pedido. Comprueba el estado del pago cuando quieras." }
-        val button = when (result.paid) { true -> "Seguir comprando"; false -> "Volver al carrito"; null -> "Comprobar pago" }
-        AlertDialog(onDismissRequest = { if (result.paid != null) cardPaymentDialogDismissed = true }, title = { Text(title) }, text = { Text(message) }, confirmButton = { TextButton(onClick = { when (result.paid) { true -> { viewModel.consumeCardPaymentResult(); checkoutOpen = false; tab = AppTab.HOME }; false -> viewModel.consumeCardPaymentResult(); null -> { viewModel.consumeCardPaymentResult(); viewModel.verifyCardPaymentReturn() } } }) { Text(button) } }, dismissButton = { if (result.paid == null) TextButton(onClick = { viewModel.consumeCardPaymentResult(); viewModel.resumePendingPayment() }) { Text("Continuar pago") } })
+        val title = if (result.paid) "Pedido recibido" else "Pago no completado"
+        val message = if (result.paid) "Tu pedido #${result.orderId} se ha pagado correctamente." else "El pago no se ha completado."
+        AlertDialog(
+            onDismissRequest = { cardPaymentDialogDismissed = true },
+            title = { Text(title) },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.consumeCardPaymentResult()
+                    if (result.paid) { checkoutOpen = false; tab = AppTab.HOME }
+                }) { Text(if (result.paid) "Seguir comprando" else "Volver al carrito") }
+            }
+        )
     } }
     bizumOrderId?.let { orderId ->
         val closeBizumConfirmation = { viewModel.consumeBizumOrder(); checkoutOpen = false; tab = AppTab.HOME; viewModel.refreshCart() }

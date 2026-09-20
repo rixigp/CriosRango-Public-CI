@@ -83,7 +83,13 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private val _bizumOrderId = MutableStateFlow<Int?>(null)
     val bizumOrderId = _bizumOrderId
     val paymentRedirect: StateFlow<PaymentRedirect?> = _paymentRedirect.asStateFlow()
-    init { refreshHome(); viewModelScope.launch { cartStore.refresh() } }
+    init {
+        refreshHome()
+        viewModelScope.launch {
+            cartStore.refresh()
+            reconcileAfterProcessDeath()
+        }
+    }
     private var productsRequestVersion = 0
     private val searchResultCache = mutableMapOf<String, List<StoreProduct>>()
 
@@ -270,8 +276,6 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     fun removeCartLine(item: CartLine) { invalidateCheckout(); viewModelScope.launch { cartStore.remove(item) } }
     fun clearCart() {
         invalidateCheckout()
-        pendingCardPaymentStore.clear()
-        _pendingCardPayment.value = null
         viewModelScope.launch { cartStore.cart.value.items.toList().forEach { item -> cartStore.remove(item) } }
     }
     fun refreshCart() { invalidateCheckout(); viewModelScope.launch { cartStore.refresh() } }
@@ -304,20 +308,67 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         }
     }
 
-    private val _pendingCardPayment = MutableStateFlow<PendingCardPayment?>(pendingCardPaymentStore.load())
-    val pendingCardPayment: StateFlow<PendingCardPayment?> = _pendingCardPayment.asStateFlow()
-    private val _cardPaymentResult = MutableStateFlow<CardPaymentResult?>(_pendingCardPayment.value?.let { CardPaymentResult(it.orderId, null) })
-    val cardPaymentResult = _cardPaymentResult.asStateFlow()
+    private var lastCheckout: LastCheckout? = pendingCardPaymentStore.load()
+    private val _cardPaymentResult = MutableStateFlow<CardPaymentResult?>(null)
+
+    private enum class ReconcileOutcome { PAID, CLEARED, NO_MARKER }
+
+    private suspend fun reconcileLastCheckout(): ReconcileOutcome {
+        val checkout = lastCheckout ?: pendingCardPaymentStore.load()?.also { lastCheckout = it } ?: return ReconcileOutcome.NO_MARKER
+        var order = cartStore.lookupOrderStatus(checkout.orderId, checkout.orderKey)
+        var attempts = 0
+        while (true) {
+            val status = order.status.lowercase()
+            val definitelyPaid = order.paid
+            val definitelyUnpaid = !order.paid && (order.terminal || status == "cancelled" || status == "failed" || status == "refunded")
+            when {
+                definitelyPaid -> {
+                    val confirmedOrderId = if (order.id > 0) order.id else checkout.orderId
+                    pendingCardPaymentStore.clear()
+                    lastCheckout = null
+                    _paymentRedirect.value = null
+                    _cardPaymentResult.value = CardPaymentResult(confirmedOrderId, true)
+                    _checkoutPhase.value = CheckoutPhase.ORDER_CREATED
+                    cartStore.clearAfterConfirmedPayment()
+                    return ReconcileOutcome.PAID
+                }
+                definitelyUnpaid -> {
+                    pendingCardPaymentStore.clear()
+                    lastCheckout = null
+                    _paymentRedirect.value = null
+                    return ReconcileOutcome.CLEARED
+                }
+                attempts >= 10 -> {
+                    pendingCardPaymentStore.clear()
+                    lastCheckout = null
+                    _paymentRedirect.value = null
+                    return ReconcileOutcome.CLEARED
+                }
+                else -> {
+                    delay(1500)
+                    order = cartStore.lookupOrderStatus(checkout.orderId, checkout.orderKey)
+                    attempts++
+                }
+            }
+        }
+    }
+
+    private fun reconcileAfterProcessDeath() {
+        if (lastCheckout == null) return
+        viewModelScope.launch {
+            runCatching { reconcileLastCheckout() }
+                .onFailure {
+                    pendingCardPaymentStore.clear()
+                    lastCheckout = null
+                }
+        }
+    }
 
     fun createOrder(address: CustomerAddress, paymentMethod: String, shippingRateId: String?) {
-        if (_pendingCardPayment.value != null || pendingCardPaymentStore.load() != null) {
-            if (_pendingCardPayment.value == null) _pendingCardPayment.value = pendingCardPaymentStore.load()
-            _checkoutError.value = "Tienes un pago pendiente. Continúa ese pago o comprueba su estado antes de crear otro pedido."
-            _checkoutPhase.value = CheckoutPhase.FAILED
-            return
-        }
         val generation = checkoutGeneration
         viewModelScope.launch {
+            val reconciliation = runCatching { reconcileLastCheckout() }.getOrDefault(ReconcileOutcome.CLEARED)
+            if (reconciliation == ReconcileOutcome.PAID) return@launch
             val quote = _checkout.value
             if (shippingRateId.isNullOrBlank() || paymentMethod.isNullOrBlank()) { _checkoutError.value = "Selecciona una tarifa y un método de pago válidos."; return@launch }
             _checkoutLoading.value = true; _checkoutPhase.value = CheckoutPhase.CREATING_ORDER; _checkoutError.value = null
@@ -332,11 +383,11 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 if (isNativeBizum) { cartStore.consumeConfirmedOrder(); _bizumOrderId.value = response.orderId } else {
                     val orderKey = response.orderKey?.takeIf { it.isNotBlank() } ?: throw CartException("La tienda no ha devuelto la clave del pedido.")
                     val paymentUrl = response.paymentRedirectUrl() ?: throw CartException("La tienda no ha devuelto la URL de pago.")
-                    val pending = PendingCardPayment(response.orderId, orderKey, address.email.trim(), paymentUrl)
+                    val pending = LastCheckout(response.orderId, orderKey)
                     if (!pendingCardPaymentStore.save(pending)) {
-                        throw CartException("No se ha podido guardar de forma segura el pago pendiente. No se abrirá la pasarela.")
+                        throw CartException("No se ha podido guardar el último checkout. No se abrirá la pasarela.")
                     }
-                    _pendingCardPayment.value = pending
+                    lastCheckout = pending
                     _checkoutPhase.value = CheckoutPhase.OPENING_PAYMENT
                     _paymentRedirect.value = PaymentRedirect(generation, response.orderId, paymentUrl)
                 }
@@ -346,71 +397,21 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     }
 
     fun handleCardPaymentCancelled(orderId: Int) {
-        if (_pendingCardPayment.value == null) _pendingCardPayment.value = pendingCardPaymentStore.load()
-        if (_pendingCardPayment.value?.orderId != orderId) return
+        if (lastCheckout?.orderId != orderId) return
         verifyCardPaymentReturn()
     }
 
-    fun resumePendingPayment() {
-        val pending = _pendingCardPayment.value ?: pendingCardPaymentStore.load() ?: return
-        _pendingCardPayment.value = pending
-        _checkoutPhase.value = CheckoutPhase.OPENING_PAYMENT
-        _paymentRedirect.value = PaymentRedirect(checkoutGeneration, pending.orderId, pending.paymentUrl)
-    }
-
     fun verifyCardPaymentReturn() {
-        if (_checkoutLoading.value) return
-        val pending = _pendingCardPayment.value ?: pendingCardPaymentStore.load()
-        if (pending == null) {
-            _checkoutError.value = "No hemos podido comprobar el estado del pago."
-            return
-        }
-        _pendingCardPayment.value = pending
-        _pendingCardPayment.value = pending
+        if (_checkoutLoading.value || lastCheckout == null) return
         viewModelScope.launch {
             _checkoutLoading.value = true
             try {
-                var order = cartStore.lookupOrderStatus(pending.orderId, pending.orderKey, pending.billingEmail)
-                var attempts = 0
-                while (true) {
-                    val status = order.status.lowercase()
-                    val definitelyPaid = order.paid
-                    val definitelyUnpaid = !order.paid && (order.terminal || status == "cancelled" || status == "failed" || status == "refunded")
-                    when {
-                        definitelyPaid -> {
-                            val confirmedOrderId = if (order.id > 0) order.id else pending.orderId
-                            pendingCardPaymentStore.clear()
-                            _pendingCardPayment.value = null
-                            _paymentRedirect.value = null
-                            _cardPaymentResult.value = CardPaymentResult(confirmedOrderId, true)
-                            _checkoutPhase.value = CheckoutPhase.ORDER_CREATED
-                            cartStore.clearAfterConfirmedPayment()
-                            break
-                        }
-                        definitelyUnpaid -> {
-                            cartStore.restoreRemoteAfterUnpaidCheckout()
-                            pendingCardPaymentStore.clear()
-                            _pendingCardPayment.value = null
-                            _pendingCardPayment.value = null
-                            _paymentRedirect.value = null
-                            invalidateCheckout()
-                            _cardPaymentResult.value = CardPaymentResult(pending.orderId, false)
-                            break
-                        }
-                        attempts >= 10 -> {
-                            _cardPaymentResult.value = CardPaymentResult(pending.orderId, null)
-                            break
-                        }
-                        else -> {
-                            kotlinx.coroutines.delay(1500)
-                            order = cartStore.lookupOrderStatus(pending.orderId, pending.orderKey, pending.billingEmail)
-                            attempts++
-                        }
-                    }
-                }
+                reconcileLastCheckout()
             } catch (exception: Exception) {
-                _cardPaymentResult.value = CardPaymentResult(pending.orderId, null)
-                _checkoutError.value = "No hemos podido comprobar el pago. No realices otro pago hasta volver a comprobarlo."
+                pendingCardPaymentStore.clear()
+                lastCheckout = null
+                _paymentRedirect.value = null
+                _checkoutError.value = "No hemos podido comprobar el pago."
             } finally {
                 _checkoutLoading.value = false
             }

@@ -13,62 +13,40 @@ class PendingCardPaymentStoreTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     @Test
-    fun processDeathRecovery_restoresSameOrderWithoutCreatingAnother() {
+    fun processDeathRecovery_restoresOnlyOrderIdAndOrderKey() {
         val prefs = context.getSharedPreferences("h2-process-death", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
-        val original = PendingCardPayment(13001, "wc_order_key_13001", "test@example.com", "https://payment.example/13001")
-        assertEquals(true, PendingCardPaymentStore(prefs).save(original))
-
+        val store = PendingCardPaymentStore(prefs)
+        val original = LastCheckout(13001, "wc_order_key_13001")
+        assertEquals(true, store.save(original))
         val recreatedStore = PendingCardPaymentStore(prefs)
         assertEquals(original, recreatedStore.load())
-        assertEquals(original.orderId, recreatedStore.load()?.orderId)
-        assertEquals(original.orderKey, recreatedStore.load()?.orderKey)
-        assertEquals(original.billingEmail, recreatedStore.load()?.billingEmail)
-        assertEquals(original.paymentUrl, recreatedStore.load()?.paymentUrl)
+        assertNull(prefs.getString("billing_email", null))
+        assertNull(prefs.getString("payment_url", null))
     }
 
     @Test
-    fun pendingState_isRetainedUntilExplicitTerminalClear() {
-        val prefs = context.getSharedPreferences("h2-terminal", Context.MODE_PRIVATE)
+    fun save_rejectsInvalidMarker() {
+        val prefs = context.getSharedPreferences("h2-invalid", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
         val store = PendingCardPaymentStore(prefs)
-        val payment = PendingCardPayment(13002, "wc_order_key_13002", "test@example.com", "https://payment.example/13002")
-        assertEquals(true, store.save(payment))
-
-        assertEquals(payment, store.load())
-        assertEquals(payment, store.load())
-        assertEquals(payment, store.load())
-
-        assertEquals(true, store.clear())
+        assertEquals(false, store.save(LastCheckout(0, "key")))
+        assertEquals(false, store.save(LastCheckout(13003, "")))
         assertNull(store.load())
     }
-    @Test
-    fun clear_removesAllPendingPaymentFields() {
-        val prefs = context.getSharedPreferences("h2-clear-all", Context.MODE_PRIVATE)
-        prefs.edit().clear().commit()
-        val store = PendingCardPaymentStore(prefs)
-        val payment = PendingCardPayment(13004, "wc_order_key_13004", "test@example.com", "https://payment.example/13004")
 
-        assertEquals(true, store.save(payment))
+    @Test
+    fun clear_removesOnlyCheckoutMarker() {
+        val prefs = context.getSharedPreferences("h2-clear", Context.MODE_PRIVATE)
+        prefs.edit().clear().putString("unrelated", "keep").commit()
+        val store = PendingCardPaymentStore(prefs)
+        assertEquals(true, store.save(LastCheckout(13004, "wc_order_key_13004")))
         assertEquals(true, store.clear())
         assertNull(store.load())
         assertEquals(0, prefs.getInt("order_id", 0))
         assertNull(prefs.getString("order_key", null))
         assertNull(prefs.getString("billing_email", null))
         assertNull(prefs.getString("payment_url", null))
+        assertEquals("keep", prefs.getString("unrelated", null))
     }
-
-    @Test
-    fun save_rejectsMissingPaymentUrl() {
-        val prefs = context.getSharedPreferences("h2-invalid", Context.MODE_PRIVATE)
-        prefs.edit().clear().commit()
-        val store = PendingCardPaymentStore(prefs)
-        val payment = PendingCardPayment(13003, "wc_order_key_13003", "test@example.com", "")
-
-        assertEquals(false, store.save(payment))
-        assertNull(store.load())
-    }
-
 }
-
-

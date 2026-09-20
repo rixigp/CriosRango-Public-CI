@@ -5,28 +5,31 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
-data class PendingCardPayment(val orderId: Int, val orderKey: String, val billingEmail: String, val paymentUrl: String)
+data class LastCheckout(val orderId: Int, val orderKey: String)
 
 class PendingCardPaymentStore internal constructor(private val preferences: SharedPreferences) {
-    fun save(payment: PendingCardPayment): Boolean =
-        if (payment.orderId <= 0 || payment.orderKey.isBlank() || payment.billingEmail.isBlank() || payment.paymentUrl.isBlank()) false
+    fun save(checkout: LastCheckout): Boolean =
+        if (checkout.orderId <= 0 || checkout.orderKey.isBlank()) false
         else preferences.edit()
-            .putInt(KEY_ORDER_ID, payment.orderId)
-            .putString(KEY_ORDER_KEY, payment.orderKey)
-            .putString(KEY_BILLING_EMAIL, payment.billingEmail)
-            .putString(KEY_PAYMENT_URL, payment.paymentUrl)
+            .putInt(KEY_ORDER_ID, checkout.orderId)
+            .putString(KEY_ORDER_KEY, checkout.orderKey)
+            .remove(KEY_BILLING_EMAIL)
+            .remove(KEY_PAYMENT_URL)
             .commit()
 
-    fun load(): PendingCardPayment? {
+    fun load(): LastCheckout? {
         val orderId = preferences.getInt(KEY_ORDER_ID, 0)
         val orderKey = preferences.getString(KEY_ORDER_KEY, null).orEmpty()
-        val billingEmail = preferences.getString(KEY_BILLING_EMAIL, null).orEmpty()
-        val paymentUrl = preferences.getString(KEY_PAYMENT_URL, null).orEmpty()
-        if (orderId <= 0 || orderKey.isBlank() || billingEmail.isBlank() || paymentUrl.isBlank()) return null
-        return PendingCardPayment(orderId, orderKey, billingEmail, paymentUrl)
+        if (orderId <= 0 || orderKey.isBlank()) return null
+        return LastCheckout(orderId, orderKey)
     }
 
-    fun clear(): Boolean = preferences.edit().clear().commit()
+    fun clear(): Boolean = preferences.edit()
+        .remove(KEY_ORDER_ID)
+        .remove(KEY_ORDER_KEY)
+        .remove(KEY_BILLING_EMAIL)
+        .remove(KEY_PAYMENT_URL)
+        .commit()
 
     companion object {
         private const val FILE_NAME = "criosrango_pending_card_payment"

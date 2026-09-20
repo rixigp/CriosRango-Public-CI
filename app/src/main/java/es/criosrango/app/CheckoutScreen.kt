@@ -50,9 +50,6 @@ fun RedesignedCheckoutScreen(
     selectShipping: (Int, String) -> Unit,
     createOrder: (CustomerAddress, String, String?) -> Unit,
     deliveryAddressStore: DeliveryAddressStore,
-    hasPendingCardPayment: Boolean,
-    resumePendingPayment: () -> Unit,
-    verifyPendingPayment: () -> Unit
 ) {
     val saved = remember { deliveryAddressStore.load() }
     var firstName by remember { mutableStateOf(saved?.firstName.orEmpty()) }
@@ -83,7 +80,6 @@ fun RedesignedCheckoutScreen(
     }
     val paymentOptions = remember(paymentGatewayIds) { normalizePaymentGatewayIds(paymentGatewayIds) }
     val paymentMethods = paymentOptions.map { it.gatewayId }
-    val canStartNewOrder = !hasPendingCardPayment
     val visibleShipping = cart.visibleShippingRatesForDestination()
     val shippingOptions = visibleShipping.flatMap { it.rates }
 
@@ -293,24 +289,8 @@ fun RedesignedCheckoutScreen(
                 }
             }
             item {
-                if (hasPendingCardPayment) {
-                    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = Color(0xFFFFF3E0)) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Tienes un pago pendiente", fontWeight = FontWeight.SemiBold)
-                            Text("Continúa el mismo pago o comprueba su estado. No se creará otro pedido.")
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(onClick = resumePendingPayment, modifier = Modifier.weight(1f)) { Text("Continuar pago") }
-                                OutlinedButton(onClick = verifyPendingPayment, modifier = Modifier.weight(1f)) { Text("Comprobar pago") }
-                            }
-                        }
-                    }
-                }
-            }
-            if (!hasPendingCardPayment) {
-                item {
-                    Button(onClick = { if (canPay) createOrder(lastValidAddress!!, selectedPayment, selectedShipping) }, enabled = canPay, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(30.dp), colors = ButtonDefaults.buttonColors(containerColor = CheckoutUiGreen)) {
-                        Text(if (loading) "Procesando..." else if (ready) "Pagar ${formatMinorUnits(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)}" else "Pagar", fontWeight = FontWeight.SemiBold)
-                    }
+                Button(onClick = { if (canPay) createOrder(lastValidAddress!!, selectedPayment, selectedShipping) }, enabled = canPay, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(30.dp), colors = ButtonDefaults.buttonColors(containerColor = CheckoutUiGreen)) {
+                    Text(if (loading) "Procesando..." else if (ready) "Pagar ${formatMinorUnits(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)}" else "Pagar", fontWeight = FontWeight.SemiBold)
                 }
             }
             item { Spacer(Modifier.height(24.dp)) }
