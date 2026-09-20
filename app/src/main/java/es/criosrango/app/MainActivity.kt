@@ -137,7 +137,7 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
     LaunchedEffect(checkout?.orderId, checkout?.orderKey) {
         val orderId = checkout?.orderId ?: return@LaunchedEffect
         val orderKey = checkout?.orderKey?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        if (accountUser != null) accountViewModel.claimOrder(orderId, orderKey)
+        accountViewModel.prepareClaimOrder(orderId, orderKey)
     }
     val context = LocalContext.current
     val cartItems = remoteCart.items.map { line -> CartItem(lineKey = line.key, productId = line.parentProductId ?: line.id, name = line.name.cleanWooText(), imageUrl = line.images.firstOrNull()?.src.orEmpty(), unitPrice = line.prices.price, variationId = line.id, quantity = line.quantity) }
