@@ -34,9 +34,10 @@ fun AccountOrderDetailScreenV2(
     val context = LocalContext.current
     var showReturnProductPicker by remember(order.id) { mutableStateOf(false) }
 
-    val date = order.dateCreated?.take(10)?.split("-")?.let {
-        if (it.size == 3) "${it[2]}-${it[1]}-${it[0]}" else order.dateCreated.take(10)
-    }.orEmpty()
+    val dateCreated = order.dateCreated.orEmpty()
+    val date = dateCreated.take(10).split("-").let {
+        if (it.size == 3) "${it[2]}-${it[1]}-${it[0]}" else dateCreated.take(10)
+    }
 
     val province = SPANISH_PROVINCES
         .firstOrNull { it.code.equals(order.shippingAddress.state, true) }
