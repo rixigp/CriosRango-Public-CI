@@ -76,6 +76,13 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --location \
+            -D "$RUNNER_TEMP/cart.headers" \
+            "https://criosrango.es/wp-json/wc/store/v1/cart" \
+            -o "$RUNNER_TEMP/cart.json"
+          CART_TOKEN="$(awk 'BEGIN{IGNORECASE=1} /^Cart-Token:/ {gsub("\r","",$2); print $2}' "$RUNNER_TEMP/cart.headers")"
+          test -n "$CART_TOKEN"
+          curl --fail --silent --show-error --location \
+            -H "Cart-Token: $CART_TOKEN" \
             "https://criosrango.es/wp-json/wc/store/v1/checkout" \
             -o "$RUNNER_TEMP/checkout.json"
           python3 - "$RUNNER_TEMP/checkout.json" <<'PY'
@@ -87,7 +94,6 @@ jobs:
           methods.extend((data.get("__experimentalCart") or {}).get("payment_methods") or [])
           print("CHECKOUT_GATEWAYS_RAW=" + ",".join(dict.fromkeys(str(x).strip() for x in methods if str(x).strip())))
           PY
-
 
       - name: Compile Android app
         run: ./gradlew :app:compileDebugKotlin --stacktrace
