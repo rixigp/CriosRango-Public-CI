@@ -228,6 +228,7 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
     LaunchedEffect(paymentReturnUri) {
         val uri = paymentReturnUri ?: return@LaunchedEffect
         viewModel.handlePaymentReturnUrl(uri.toString())
+        val host = uri.host.orEmpty().lowercase()
         val isProductLink = (uri.scheme == "https" || uri.scheme == "http") && (host == "criosrango.es" || host == "www.criosrango.es") && uri.pathSegments.firstOrNull()?.equals("producto", ignoreCase = true) == true
         if (isProductLink) uri.pathSegments.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(viewModel::openProductBySlug)
         paymentReturnUriState.value = null
