@@ -299,15 +299,14 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         }
     }
 
-    private var pendingCardPayment: PendingCardPayment? = pendingCardPaymentStore.load()
-    private val _pendingCardPayment = MutableStateFlow(pendingCardPayment)
+    private val _pendingCardPayment = MutableStateFlow<PendingCardPayment?>(pendingCardPaymentStore.load())
     val pendingCardPayment: StateFlow<PendingCardPayment?> = _pendingCardPayment.asStateFlow()
-    private val _cardPaymentResult = MutableStateFlow<CardPaymentResult?>(pendingCardPayment?.let { CardPaymentResult(it.orderId, null) })
+    private val _cardPaymentResult = MutableStateFlow<CardPaymentResult?>(_pendingCardPayment.value?.let { CardPaymentResult(it.orderId, null) })
     val cardPaymentResult = _cardPaymentResult.asStateFlow()
 
     fun createOrder(address: CustomerAddress, paymentMethod: String, shippingRateId: String?) {
-        if (pendingCardPayment != null || pendingCardPaymentStore.load() != null) {
-            pendingCardPayment = pendingCardPayment ?: pendingCardPaymentStore.load()
+        if (_pendingCardPayment.value != null || pendingCardPaymentStore.load() != null) {
+            if (_pendingCardPayment.value == null) _pendingCardPayment.value = pendingCardPaymentStore.load()
             _checkoutError.value = "Tienes un pago pendiente. Continúa ese pago o comprueba su estado antes de crear otro pedido."
             _checkoutPhase.value = CheckoutPhase.FAILED
             return
@@ -332,7 +331,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                     if (!pendingCardPaymentStore.save(pending)) {
                         throw CartException("No se ha podido guardar de forma segura el pago pendiente. No se abrirá la pasarela.")
                     }
-                    pendingCardPayment = pending
+                    _pendingCardPayment.value = pending
                     _pendingCardPayment.value = pending
                     _checkoutPhase.value = CheckoutPhase.OPENING_PAYMENT
                     _paymentRedirect.value = PaymentRedirect(generation, response.orderId, paymentUrl)
@@ -343,14 +342,14 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     }
 
     fun handleCardPaymentCancelled(orderId: Int) {
-        if (pendingCardPayment == null) pendingCardPayment = pendingCardPaymentStore.load()
-        if (pendingCardPayment?.orderId != orderId) return
+        if (_pendingCardPayment.value == null) _pendingCardPayment.value = pendingCardPaymentStore.load()
+        if (_pendingCardPayment.value?.orderId != orderId) return
         verifyCardPaymentReturn()
     }
 
     fun resumePendingPayment() {
-        val pending = pendingCardPayment ?: pendingCardPaymentStore.load() ?: return
-        pendingCardPayment = pending
+        val pending = _pendingCardPayment.value ?: pendingCardPaymentStore.load() ?: return
+        _pendingCardPayment.value = pending
         _pendingCardPayment.value = pending
         _checkoutPhase.value = CheckoutPhase.OPENING_PAYMENT
         _paymentRedirect.value = PaymentRedirect(checkoutGeneration, pending.orderId, pending.paymentUrl)
@@ -358,12 +357,12 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
 
     fun verifyCardPaymentReturn() {
         if (_checkoutLoading.value) return
-        val pending = pendingCardPayment ?: pendingCardPaymentStore.load()
+        val pending = _pendingCardPayment.value ?: pendingCardPaymentStore.load()
         if (pending == null) {
             _checkoutError.value = "No hemos podido comprobar el estado del pago."
             return
         }
-        pendingCardPayment = pending
+        _pendingCardPayment.value = pending
         _pendingCardPayment.value = pending
         viewModelScope.launch {
             _checkoutLoading.value = true
@@ -378,7 +377,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                         definitelyPaid -> {
                             val confirmedOrderId = if (order.id > 0) order.id else pending.orderId
                             pendingCardPaymentStore.clear()
-                            pendingCardPayment = null
+                            _pendingCardPayment.value = null
                             _pendingCardPayment.value = null
                             _paymentRedirect.value = null
                             _cardPaymentResult.value = CardPaymentResult(confirmedOrderId, true)
@@ -389,7 +388,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                         definitelyUnpaid -> {
                             cartStore.restoreRemoteAfterUnpaidCheckout()
                             pendingCardPaymentStore.clear()
-                            pendingCardPayment = null
+                            _pendingCardPayment.value = null
                             _pendingCardPayment.value = null
                             _paymentRedirect.value = null
                             invalidateCheckout()
