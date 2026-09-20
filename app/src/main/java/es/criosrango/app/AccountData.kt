@@ -4,110 +4,19 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.gson.annotations.SerializedName
+import es.criosrango.shared.AndroidClaimOrderStore
+import es.criosrango.shared.account.AccountClaimOrderResponse
+import es.criosrango.shared.account.AccountCustomerAddress
+import es.criosrango.shared.account.AccountOrderItem
+import es.criosrango.shared.account.AccountOrderShippingAddress
+import es.criosrango.shared.account.AccountOrderSummary
+import es.criosrango.shared.account.AccountOrderVariation
 import es.criosrango.shared.account.AccountRepository as SharedAccountRepository
 import es.criosrango.shared.account.AccountTokenStore
 import es.criosrango.shared.account.AccountUser
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
-import retrofit2.HttpException
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.Body
-import retrofit2.http.GET
-import retrofit2.http.Header
-import retrofit2.http.POST
-import retrofit2.http.Query
-import java.util.concurrent.TimeUnit
-
-data class AccountCustomerAddress(
-    @SerializedName("first_name") val firstName: String = "",
-    @SerializedName("last_name") val lastName: String = "",
-    val email: String = "",
-    val phone: String = "",
-    @SerializedName("address_1") val address1: String = "",
-    @SerializedName("address_2") val address2: String = "",
-    val postcode: String = "",
-    val city: String = "",
-    val state: String = "",
-    val country: String = "ES"
-)
-
-data class AccountClaimOrderRequest(
-    @SerializedName("order_id") val orderId: Int,
-    @SerializedName("order_key") val orderKey: String
-)
-
-data class AccountClaimOrderResponse(
-    val success: Boolean,
-    @SerializedName("order_id") val orderId: Int,
-    @SerializedName("customer_id") val customerId: Int
-)
-
-data class AccountOrderVariation(
-    val name: String = "",
-    val value: String = ""
-)
-
-data class AccountOrderItem(
-    val name: String = "",
-    val quantity: Int = 0,
-    val variations: List<AccountOrderVariation> = emptyList()
-)
-
-data class AccountOrderShippingAddress(
-    @SerializedName("address_1") val address1: String = "",
-    val city: String = "",
-    val state: String = "",
-    val postcode: String = "",
-    val country: String = ""
-)
-
-data class AccountOrderSummary(
-    val id: Int,
-    val number: String,
-    val status: String,
-    @SerializedName("status_label") val statusLabel: String = "",
-    @SerializedName("date_created") val dateCreated: String? = null,
-    val total: String = "",
-    val currency: String = "EUR",
-    @SerializedName("payment_method_title") val paymentMethodTitle: String = "",
-    val items: List<AccountOrderItem> = emptyList(),
-    val subtotal: String = "",
-    @SerializedName("shipping_total") val shippingTotal: String = "",
-    @SerializedName("shipping_method") val shippingMethod: String = "",
-    @SerializedName("shipping_address") val shippingAddress: AccountOrderShippingAddress = AccountOrderShippingAddress()
-)
-
-data class AccountOrdersResponse(
-    val orders: List<AccountOrderSummary> = emptyList(),
-    val total: Int = 0
-)
-
-interface AccountApi {
-    @GET("wp-json/criosrango/v1/customer-address")
-    suspend fun customerAddress(@Header("Authorization") authorization: String): AccountCustomerAddress
-
-    @POST("wp-json/criosrango/v1/customer-address-save")
-    suspend fun saveCustomerAddress(
-        @Header("Authorization") authorization: String,
-        @Body address: AccountCustomerAddress
-    )
-
-    @GET("wp-json/criosrango/v1/orders-detailed")
-    suspend fun orders(
-        @Header("Authorization") authorization: String,
-        @Query("per_page") perPage: Int = 20
-    ): AccountOrdersResponse
-
-    @POST("wp-json/criosrango/v1/claim-order")
-    suspend fun claimOrder(
-        @Header("Authorization") authorization: String,
-        @Body request: AccountClaimOrderRequest
-    ): AccountClaimOrderResponse
-}
 
 class AccountSessionStore(context: Context) : AccountTokenStore {
     private companion object {
@@ -169,28 +78,14 @@ class AccountSessionStore(context: Context) : AccountTokenStore {
 
 class AccountRepository(context: Context) {
     private val session = AccountSessionStore(context.applicationContext)
-    private val sharedAccountRepository = SharedAccountRepository(session)
-
-    private val api: AccountApi = Retrofit.Builder()
-        .baseUrl("https://criosrango.es/")
-        .client(
-            OkHttpClient.Builder()
-                .connectTimeout(12, TimeUnit.SECONDS)
-                .readTimeout(15, TimeUnit.SECONDS)
-                .writeTimeout(15, TimeUnit.SECONDS)
-                .build()
-        )
-        .addConverterFactory(GsonConverterFactory.create())
-        .build()
-        .create(AccountApi::class.java)
+    private val claimOrderStore = AndroidClaimOrderStore(context.applicationContext)
+    private val sharedAccountRepository = SharedAccountRepository(
+        tokenStore = session,
+        claimOrderStore = claimOrderStore
+    )
 
     val hasSession: Boolean
         get() = sharedAccountRepository.hasSession
-
-    private fun authorization(): String {
-        val token = session.load() ?: throw IllegalStateException("No hay ninguna sesión iniciada.")
-        return "Bearer $token"
-    }
 
     suspend fun login(login: String, password: String): AccountUser =
         sharedAccountRepository.login(login, password)
@@ -210,18 +105,17 @@ class AccountRepository(context: Context) {
     suspend fun me(): AccountUser =
         sharedAccountRepository.me()
 
-    suspend fun saveCustomerAddress(address: AccountCustomerAddress) {
-        api.saveCustomerAddress(authorization(), address)
-    }
+    suspend fun customerAddress(): AccountCustomerAddress =
+        sharedAccountRepository.customerAddress()
 
-    suspend fun customerAddress(): AccountCustomerAddress = api.customerAddress(authorization())
+    suspend fun saveCustomerAddress(address: AccountCustomerAddress) {
+        sharedAccountRepository.saveCustomerAddress(address)
+    }
 
     suspend fun updateAccountDetails(firstName: String, lastName: String) {
         val currentAddress = runCatching { customerAddress() }.getOrNull()
             ?: AccountCustomerAddress()
-
-        api.saveCustomerAddress(
-            authorization(),
+        saveCustomerAddress(
             currentAddress.copy(
                 firstName = firstName,
                 lastName = lastName
@@ -229,14 +123,20 @@ class AccountRepository(context: Context) {
         )
     }
 
-    suspend fun orders(): List<AccountOrderSummary> = api.orders(authorization(), 20).orders
+    suspend fun orders(): List<AccountOrderSummary> =
+        sharedAccountRepository.orders(20).orders
 
-    suspend fun claimOrder(orderId: Int, orderKey: String) {
-        api.claimOrder(
-            authorization(),
-            AccountClaimOrderRequest(orderId, orderKey)
-        )
-    }
+    fun prepareClaimOrder(orderId: Int, orderKey: String): Boolean =
+        sharedAccountRepository.prepareClaimOrder(orderId, orderKey)
+
+    fun pendingClaimOrder() =
+        sharedAccountRepository.pendingClaimOrder()
+
+    suspend fun claimOrder(orderId: Int, orderKey: String): AccountClaimOrderResponse =
+        sharedAccountRepository.claimOrder(orderId, orderKey)
+
+    suspend fun claimPendingOrder(): AccountClaimOrderResponse? =
+        sharedAccountRepository.claimPendingOrder()
 
     suspend fun logout() {
         sharedAccountRepository.logout()
