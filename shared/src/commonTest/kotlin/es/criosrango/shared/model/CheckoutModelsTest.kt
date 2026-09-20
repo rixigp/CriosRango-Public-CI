@@ -56,6 +56,34 @@ class CheckoutModelsTest {
     }
 
     @Test
+    fun legacyCartPaymentMethodsAreNormalizedBeforeCheckoutUi() {
+        val cart = WooCart(paymentMethods = listOf("cecabank_gateway", "cheque", "redsys"))
+        val checkout: CheckoutResponse? = null
+        val raw = checkout?.paymentMethods.orEmpty() +
+            checkout?.experimentalCart?.paymentMethods.orEmpty() +
+            cart.paymentMethods
+        val options = normalizePaymentGatewayIds(raw)
+        assertEquals(2, options.size)
+        assertEquals(listOf(CheckoutPaymentKind.CARD, CheckoutPaymentKind.BIZUM), options.map { it.kind })
+        assertEquals(listOf("cecabank_gateway", "cheque"), options.map { it.gatewayId })
+    }
+
+    @Test
+    fun freshCheckoutAndLegacyCartStillDeduplicateSupportedPaymentKinds() {
+        val checkout = CheckoutResponse(
+            paymentMethods = listOf("cecabank_gateway", "cheque")
+        )
+        val legacyCart = WooCart(paymentMethods = listOf("cecabank_gateway", "cheque", "redsys", "cod", "bacs"))
+        val raw = checkout.paymentMethods +
+            checkout.experimentalCart?.paymentMethods.orEmpty() +
+            legacyCart.paymentMethods
+        val options = normalizePaymentGatewayIds(raw)
+        assertEquals(2, options.size)
+        assertEquals(listOf(CheckoutPaymentKind.CARD, CheckoutPaymentKind.BIZUM), options.map { it.kind })
+        assertEquals(listOf("cecabank_gateway", "cheque"), options.map { it.gatewayId })
+    }
+
+    @Test
     fun createOrderSerializesExpectedWooCheckoutPayload() {
         val address = CustomerAddress(firstName = "Ana", lastName = "Ruiz", email = "ana@example.test", country = "ES")
         val request = CreateOrderRequest(
