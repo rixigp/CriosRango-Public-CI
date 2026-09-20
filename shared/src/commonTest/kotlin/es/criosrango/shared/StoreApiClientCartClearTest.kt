@@ -22,10 +22,10 @@ class StoreApiClientCartClearTest {
         val engine = MockEngine { req ->
             requests += req
             when {
-                req.method == HttpMethod.Delete && req.url.encodedPath.endsWith("/cart/items") -> respond(cartJson(emptyList()), headers = jsonHeaders())
-                req.method == HttpMethod.Get && req.url.encodedPath.endsWith("/cart") -> respond(cartJson(emptyList()), headers = jsonHeaders())
-                req.method == HttpMethod.Post && req.url.encodedPath.endsWith("/cart/add-item") -> respond(cartJson(listOf(itemJson("B", 2))), headers = jsonHeaders())
-                else -> error("Unexpected request")
+                req.method == HttpMethod.Delete && req.url.encodedPath.contains("/cart/items") -> respond(cartJson(emptyList()), headers = jsonHeaders())
+                req.method == HttpMethod.Get && req.url.encodedPath.contains("/cart") -> respond(cartJson(emptyList()), headers = jsonHeaders())
+                req.method == HttpMethod.Post && req.url.encodedPath.contains("/cart/add-item") -> respond(cartJson(listOf(itemJson("B", 2))), headers = jsonHeaders())
+                else -> error("Unexpected request: " + req.method + " " + req.url)
             }
         }
         val client = StoreApiClient(client = HttpClient(engine), session = session)
