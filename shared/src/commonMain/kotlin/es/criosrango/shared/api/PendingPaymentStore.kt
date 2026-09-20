@@ -6,3 +6,5 @@ interface PendingPaymentStore {
     fun load(): PendingPayment?
     fun save(payment: PendingPayment)
     fun clear()
+
+}
