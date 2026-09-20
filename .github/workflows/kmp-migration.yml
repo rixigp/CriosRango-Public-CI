@@ -95,6 +95,65 @@ jobs:
           print("CHECKOUT_GATEWAYS_RAW=" + ",".join(dict.fromkeys(str(x).strip() for x in methods if str(x).strip())))
           PY
 
+      - name: Live cart add-clear-add smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          HEADERS="$RUNNER_TEMP/live-cart.headers"
+          CART="$RUNNER_TEMP/live-cart.json"
+          PRODUCTS="$RUNNER_TEMP/live-products.json"
+          curl --fail --silent --show-error --location -D "$HEADERS" \
+            "https://criosrango.es/wp-json/wc/store/v1/cart" -o "$CART"
+          CART_TOKEN="$(awk 'BEGIN{IGNORECASE=1} /^Cart-Token:/ {gsub("\r","",$2); print $2}' "$HEADERS")"
+          NONCE="$(awk 'BEGIN{IGNORECASE=1} /^Nonce:/ {gsub("\r","",$2); print $2}' "$HEADERS")"
+          COOKIE="$(awk 'BEGIN{IGNORECASE=1} /^Set-Cookie:/ {gsub("\r","",$0); sub(/^[^:]*:[[:space:]]*/,""); sub(/;.*/,""); print}' "$HEADERS" | paste -sd ';' -)"
+          test -n "$CART_TOKEN"
+          curl --fail --silent --show-error --location \
+            -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
+            "https://criosrango.es/wp-json/wc/store/v1/products?per_page=20" -o "$PRODUCTS"
+          PRODUCT_ID="$(python3 - "$PRODUCTS" <<'PY'
+          import json, sys
+          for p in json.load(open(sys.argv[1])):
+              if p.get("id") and p.get("is_purchasable", True):
+                  print(p["id"]); break
+          else:
+              raise SystemExit("No purchasable product found for isolated live cart smoke test")
+          PY
+          )"
+          test -n "$PRODUCT_ID"
+          curl --fail --silent --show-error --location \
+            -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
+            -H "Content-Type: application/json" --data "{\"id\":$PRODUCT_ID,\"quantity\":1}" \
+            "https://criosrango.es/wp-json/wc/store/v1/cart/add-item" -o "$RUNNER_TEMP/live-add-1.json"
+          python3 - "$RUNNER_TEMP/live-add-1.json" "$PRODUCT_ID" <<'PY'
+          import json, sys
+          d=json.load(open(sys.argv[1])); pid=int(sys.argv[2])
+          assert any(int(x.get("id",0)) == pid and int(x.get("quantity",0)) == 1 for x in d.get("items",[])), d
+          PY
+          curl --fail --silent --show-error --location -X DELETE \
+            -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
+            "https://criosrango.es/wp-json/wc/store/v1/cart/items" -o "$RUNNER_TEMP/live-clear.json"
+          curl --fail --silent --show-error --location \
+            -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
+            "https://criosrango.es/wp-json/wc/store/v1/cart" -o "$RUNNER_TEMP/live-after-clear.json"
+          python3 - "$RUNNER_TEMP/live-after-clear.json" <<'PY'
+          import json, sys
+          d=json.load(open(sys.argv[1])); assert d.get("items") == [], d
+          PY
+          curl --fail --silent --show-error --location \
+            -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
+            -H "Content-Type: application/json" --data "{\"id\":$PRODUCT_ID,\"quantity\":1}" \
+            "https://criosrango.es/wp-json/wc/store/v1/cart/add-item" -o "$RUNNER_TEMP/live-add-2.json"
+          curl --fail --silent --show-error --location \
+            -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
+            "https://criosrango.es/wp-json/wc/store/v1/cart" -o "$RUNNER_TEMP/live-after-add-2.json"
+          python3 - "$RUNNER_TEMP/live-after-add-2.json" "$PRODUCT_ID" <<'PY'
+          import json, sys
+          d=json.load(open(sys.argv[1])); pid=int(sys.argv[2]); items=d.get("items",[])
+          assert len(items) == 1 and int(items[0].get("id",0)) == pid and int(items[0].get("quantity",0)) == 1, d
+          print(f"LIVE_CART_ADD_CLEAR_ADD_PASS product={pid} quantity=1")
+          PY
+
       - name: Compile Android app
         run: ./gradlew :app:compileDebugKotlin --stacktrace
 
