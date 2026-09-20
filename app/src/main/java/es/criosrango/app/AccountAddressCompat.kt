@@ -1,5 +1,7 @@
 package es.criosrango.app
 
+import es.criosrango.shared.account.AccountCustomerAddress
+
 /**
  * Keeps checkout compatibility with the account address editor while both
  * features continue to use their existing address models.
@@ -19,4 +21,3 @@ fun AccountViewModel.saveAddress(address: CustomerAddress) {
         )
     )
 }
-import es.criosrango.shared.account.AccountCustomerAddress
