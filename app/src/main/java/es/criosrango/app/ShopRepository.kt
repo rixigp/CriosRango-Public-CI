@@ -475,10 +475,11 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
             return false
         }
         return execute("POST /cart/add-item") { api.addCartItem(request) }.also {
-        if (it) {
-            persistParentIds(parentProductId)
-            confirmedCart = confirmedCart.withParentIds()
-            _cart.value = confirmedCart
+            if (it) {
+                persistParentIds(parentProductId)
+                confirmedCart = confirmedCart.withParentIds()
+                _cart.value = confirmedCart
+            }
         }
     }
     suspend fun update(line: CartLine, quantity: Int): Boolean = lineLocks.getOrPut(line.key) { Mutex() }.withLock {
