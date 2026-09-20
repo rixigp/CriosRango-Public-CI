@@ -19,3 +19,4 @@ fun AccountViewModel.saveAddress(address: CustomerAddress) {
         )
     )
 }
+import es.criosrango.shared.account.AccountCustomerAddress
