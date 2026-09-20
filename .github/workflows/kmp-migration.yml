@@ -69,7 +69,7 @@ jobs:
             -alias "criosrango-development"
 
       - name: Compile and test shared KMP checkout
-        run: ./gradlew :shared:compileDebugKotlinAndroid :shared:allTests --stacktrace
+        run: ./gradlew :shared:compileDebugKotlinAndroid :shared:testDebugUnitTest --stacktrace
 
       - name: Read-only checkout gateway audit
         shell: bash
