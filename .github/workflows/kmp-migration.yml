@@ -135,9 +135,20 @@ jobs:
           d=json.load(open(sys.argv[1])); pid=int(sys.argv[2])
           assert any(int(x.get("id",0)) == pid and int(x.get("quantity",0)) == 1 for x in d.get("items",[])), d
           PY
-          curl --fail --silent --show-error --location -X DELETE \
+          LINE_KEY="$(python3 - "$RUNNER_TEMP/live-add-1.json" "$PRODUCT_ID" <<'PY'
+          import json, sys
+          d=json.load(open(sys.argv[1])); pid=int(sys.argv[2])
+          matches=[x.get("key") for x in d.get("items",[]) if int(x.get("id",0)) == pid and int(x.get("quantity",0)) == 1]
+          assert matches and matches[0], d
+          print(matches[0])
+          PY
+          )"
+          echo "LIVE_CART_TEST_LINE_KEY=$LINE_KEY"
+          ENCODED_KEY="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$LINE_KEY")"
+          curl --fail --silent --show-error --location --request POST \
             -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
-            "https://criosrango.es/wp-json/wc/store/v1/cart/items" -o "$RUNNER_TEMP/live-clear.json"
+            "https://criosrango.es/wp-json/wc/store/v1/cart/remove-item?key=$ENCODED_KEY" \
+            -o "$RUNNER_TEMP/live-remove.json"
           curl --fail --silent --show-error --location \
             -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
             "https://criosrango.es/wp-json/wc/store/v1/cart" -o "$RUNNER_TEMP/live-after-clear.json"

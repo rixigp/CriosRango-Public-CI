@@ -14,7 +14,6 @@ import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
-import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -124,8 +123,6 @@ class StoreApiClient(
             }
         }
 
-    suspend fun clearCartItems(): es.criosrango.shared.model.StoreCart =
-        executeCart { client.delete(baseUrl + "cart/items") { sessionHeaders() } }
 
     suspend fun checkout(): CheckoutResponse =
         executeCart { client.get(baseUrl + "checkout") { sessionHeaders() } }

@@ -18,7 +18,6 @@ import java.net.SocketTimeoutException
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import retrofit2.http.DELETE
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.POST
@@ -69,8 +68,6 @@ interface StoreApi {
     @POST("cart/remove-item")
     suspend fun removeCartItem(@Query("key") key: String): WooCart
 
-    @DELETE("cart/items")
-    suspend fun clearCartItems(): WooCart
 
     @GET("checkout")
     suspend fun checkout(): CheckoutResponse
@@ -526,35 +523,35 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
         } else remote
     }
 
-    suspend fun clearRemoteCartAfterPaid() {
-        var lastError: Exception? = null
-        repeat(3) { attempt ->
-            try {
-                val deleted = withTimeout(18_000) { api.clearCartItems() }
-                val verified = withTimeout(18_000) { api.cart() }
-                if (deleted.items.isEmpty() && verified.items.isEmpty()) {
-                    confirmedCart = WooCart()
-                    _cart.value = confirmedCart
-                    preferences.edit().remove("cart_snapshot").remove("cart_line_parents").remove(cleanupPendingPreference).apply()
-                    _postPurchaseCartCleanupPending.value = false
-                    _state.value = CartLoadState.SUCCESS_EMPTY
-                    _error.value = null
-                    return
-                }
-                lastError = CartException("WooCommerce no ha confirmado el vaciado del carrito remoto.")
-            } catch (exception: Exception) {
-                lastError = exception
+    suspend fun clearAfterConfirmedPayment(): Boolean {
+        val items = _cart.value.items.toList()
+        for (item in items) {
+            if (!remove(item)) {
+                preferences.edit().putBoolean(cleanupPendingPreference, true).apply()
+                _postPurchaseCartCleanupPending.value = true
+                _error.value = "Pedido pagado. Estamos actualizando tu carrito antes de permitir otra compra."
+                return false
             }
-            if (attempt < 2) kotlinx.coroutines.delay(500)
         }
+
+        if (_cart.value.items.isEmpty()) {
+            confirmedCart = WooCart()
+            _cart.value = confirmedCart
+            preferences.edit().remove("cart_snapshot").remove("cart_line_parents").remove(cleanupPendingPreference).apply()
+            _postPurchaseCartCleanupPending.value = false
+            _state.value = CartLoadState.SUCCESS_EMPTY
+            _error.value = null
+            return true
+        }
+
         preferences.edit().putBoolean(cleanupPendingPreference, true).apply()
         _postPurchaseCartCleanupPending.value = true
         _error.value = "Pedido pagado. Estamos actualizando tu carrito antes de permitir otra compra."
-        Log.w("CriosRangoStore", "Post-payment cart cleanup pending after retries", lastError)
+        return false
     }
 
     suspend fun retryPostPurchaseCartCleanup() {
-        if (_postPurchaseCartCleanupPending.value) clearRemoteCartAfterPaid()
+        if (_postPurchaseCartCleanupPending.value) clearAfterConfirmedPayment()
     }
 
     suspend fun consumeConfirmedOrder() {
