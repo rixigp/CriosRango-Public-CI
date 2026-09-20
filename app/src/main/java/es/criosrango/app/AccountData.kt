@@ -14,6 +14,7 @@ import es.criosrango.shared.account.AccountOrderVariation
 import es.criosrango.shared.account.AccountRepository as SharedAccountRepository
 import es.criosrango.shared.account.AccountTokenStore
 import es.criosrango.shared.account.AccountUser
+import retrofit2.HttpException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
