@@ -153,10 +153,16 @@ jobs:
           )"
           echo "LIVE_CART_TEST_LINE_KEY=$LINE_KEY"
           ENCODED_KEY="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$LINE_KEY")"
-          curl --fail --silent --show-error --location --request POST \
+          REMOVE_STATUS="$(curl --silent --show-error --location --request POST \
             -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
-            "https://criosrango.es/wp-json/wc/store/v1/cart/remove-item?key=$ENCODED_KEY" \
-            -o "$RUNNER_TEMP/live-remove.json"
+            -H "Origin: https://criosrango.es" -H "Referer: https://criosrango.es/" \
+            -o "$RUNNER_TEMP/live-remove.json" -w "%{http_code}" \
+            "https://criosrango.es/wp-json/wc/store/v1/cart/remove-item?key=$ENCODED_KEY")"
+          echo "LIVE_CART_REMOVE_STATUS=$REMOVE_STATUS"
+          if [ "$REMOVE_STATUS" != "200" ]; then
+            cat "$RUNNER_TEMP/live-remove.json"
+            exit 1
+          fi
           curl --fail --silent --show-error --location \
             -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
             "https://criosrango.es/wp-json/wc/store/v1/cart" -o "$RUNNER_TEMP/live-after-clear.json"
