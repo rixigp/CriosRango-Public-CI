@@ -76,12 +76,6 @@ interface StoreApi {
     @POST("checkout")
     suspend fun createCheckout(@Body request: CreateOrderRequest): CheckoutResponse
 
-    @retrofit2.http.GET("/wp-json/criosrango/v1/payment-status")
-    suspend fun getOrderStatus(
-        @retrofit2.http.Query("order_id") orderId: Int,
-        @retrofit2.http.Query("key") orderKey: String
-    ): OrderStatusResponse
-
     @POST("cart/select-shipping-rate")
     suspend fun selectShippingRate(@Body request: SelectShippingRateRequest): WooCart
 
@@ -495,14 +489,6 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
 
     fun replace(response: WooCart) {
         accept(response)
-    }
-
-    suspend fun lookupOrderStatus(
-        orderId: Int,
-        orderKey: String,
-        billingEmail: String
-    ): OrderStatusResponse = withTimeout(18_000) {
-        api.getOrderStatus(orderId, orderKey)
     }
 
     suspend fun restoreRemoteAfterUnpaidCheckout() {
