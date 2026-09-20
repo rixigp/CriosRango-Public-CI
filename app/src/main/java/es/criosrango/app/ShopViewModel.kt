@@ -304,6 +304,12 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     val cardPaymentResult = _cardPaymentResult.asStateFlow()
 
     fun createOrder(address: CustomerAddress, paymentMethod: String, shippingRateId: String?) {
+        if (pendingCardPayment != null || pendingCardPaymentStore.load() != null) {
+            pendingCardPayment = pendingCardPayment ?: pendingCardPaymentStore.load()
+            _checkoutError.value = "Tienes un pago pendiente. Continúa ese pago o comprueba su estado antes de crear otro pedido."
+            _checkoutPhase.value = CheckoutPhase.FAILED
+            return
+        }
         val generation = checkoutGeneration
         viewModelScope.launch {
             val quote = _checkout.value
@@ -319,12 +325,14 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 val isNativeBizum = paymentMethod.equals("bizum", ignoreCase = true) || paymentMethod.equals("cheque", ignoreCase = true)
                 if (isNativeBizum) { cartStore.consumeConfirmedOrder(); _bizumOrderId.value = response.orderId } else {
                     val orderKey = response.orderKey?.takeIf { it.isNotBlank() } ?: throw CartException("La tienda no ha devuelto la clave del pedido.")
-                    val pending = PendingCardPayment(response.orderId, orderKey, address.email.trim())
+                    val paymentUrl = response.paymentRedirectUrl() ?: throw CartException("La tienda no ha devuelto la URL de pago.")
+                    val pending = PendingCardPayment(response.orderId, orderKey, address.email.trim(), paymentUrl)
                     if (!pendingCardPaymentStore.save(pending)) {
                         throw CartException("No se ha podido guardar de forma segura el pago pendiente. No se abrirá la pasarela.")
                     }
                     pendingCardPayment = pending
-                    response.paymentRedirectUrl()?.let { url -> _checkoutPhase.value = CheckoutPhase.OPENING_PAYMENT; _paymentRedirect.value = PaymentRedirect(generation, response.orderId, url) }
+                    _checkoutPhase.value = CheckoutPhase.OPENING_PAYMENT
+                    _paymentRedirect.value = PaymentRedirect(generation, response.orderId, paymentUrl)
                 }
             } catch (exception: Exception) { if (generation != checkoutGeneration) return@launch; _checkoutError.value = exception.toStoreUiError().message; _checkoutPhase.value = CheckoutPhase.FAILED }
             finally { if (generation == checkoutGeneration) _checkoutLoading.value = false }
@@ -335,6 +343,13 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         if (pendingCardPayment == null) pendingCardPayment = pendingCardPaymentStore.load()
         if (pendingCardPayment?.orderId != orderId) return
         verifyCardPaymentReturn()
+    }
+
+    fun resumePendingPayment() {
+        val pending = pendingCardPayment ?: pendingCardPaymentStore.load() ?: return
+        pendingCardPayment = pending
+        _checkoutPhase.value = CheckoutPhase.OPENING_PAYMENT
+        _paymentRedirect.value = PaymentRedirect(checkoutGeneration, pending.orderId, pending.paymentUrl)
     }
 
     fun verifyCardPaymentReturn() {
