@@ -95,12 +95,13 @@ class MainActivity : ComponentActivity() {
         val sharedCatalogClient = es.criosrango.shared.api.StoreApiClient(session = sharedSession)
         val catalogApi = SharedCatalogStoreApiAdapter(retrofitApi, sharedCatalogClient)
         val cartStore = CartStore(catalogApi, session, preferences)
+        val pendingPaymentStore = es.criosrango.shared.AndroidPendingPaymentStore(applicationContext)
         val categoryDatabase = CategoryProductCacheDatabase.create(applicationContext)
         val categoryCache = CategoryCatalogCache(categoryDatabase)
         val cachedApi = CategoryCacheStoreApi(catalogApi, categoryCache)
         val repository = StoreRepository(cachedApi)
         categoryCache.bindRepository(repository)
-        val shopViewModel = androidx.lifecycle.ViewModelProvider(this, ShopViewModel.Factory(repository, cartStore, DeliveryAddressStore(preferences)))[ShopViewModel::class.java]
+        val shopViewModel = androidx.lifecycle.ViewModelProvider(this, ShopViewModel.Factory(repository, cartStore, DeliveryAddressStore(preferences), sharedCatalogClient, pendingPaymentStore))[ShopViewModel::class.java]
         setContent { CriosRangoApp(shopViewModel, categoryCache) }
     }
     override fun onNewIntent(intent: android.content.Intent) {
@@ -133,6 +134,7 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
     val cardPaymentResult by viewModel.cardPaymentResult.collectAsStateWithLifecycle()
     val paymentReturnUri = paymentReturnUriState.value
     val bizumOrderId by viewModel.bizumOrderId.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { if (viewModel.hasPendingPayment()) viewModel.verifyCardPaymentReturn() }
     LaunchedEffect(checkout?.orderId, checkout?.orderKey) {
         val orderId = checkout?.orderId ?: return@LaunchedEffect
         val orderKey = checkout?.orderKey?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -225,14 +227,7 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
     }
     LaunchedEffect(paymentReturnUri) {
         val uri = paymentReturnUri ?: return@LaunchedEffect
-        val host = uri.host.orEmpty().lowercase()
-        val httpsReturn = uri.scheme == "https" && (host == "criosrango.es" || host == "www.criosrango.es") && uri.path.orEmpty().startsWith("/app-payment-return")
-        val customReturn = uri.scheme == "criosrango" && host == "payment-return"
-        if (httpsReturn || customReturn) {
-            val result = uri.getQueryParameter("result")
-            val orderId = uri.getQueryParameter("order_id")?.toIntOrNull()
-            when (result) { "cancel" -> { if (orderId != null) viewModel.handleCardPaymentCancelled(orderId) }; "ok" -> viewModel.verifyCardPaymentReturn() }
-        }
+        viewModel.handlePaymentReturnUrl(uri.toString())
         val isProductLink = (uri.scheme == "https" || uri.scheme == "http") && (host == "criosrango.es" || host == "www.criosrango.es") && uri.pathSegments.firstOrNull()?.equals("producto", ignoreCase = true) == true
         if (isProductLink) uri.pathSegments.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(viewModel::openProductBySlug)
         paymentReturnUriState.value = null
