@@ -437,6 +437,16 @@ class StoreRepository(private val api: StoreApi) {
 
 enum class CartLoadState { LOADING, SUCCESS_ITEMS, SUCCESS_EMPTY, ERROR }
 
+internal suspend fun clearConfirmedPaymentLines(
+    items: List<CartLine>,
+    removeLine: suspend (CartLine) -> Boolean
+): Boolean {
+    for (item in items.toList()) {
+        if (!removeLine(item)) return false
+    }
+    return true
+}
+
 class CartStore(private val api: StoreApi, private val session: StoreSession, private val preferences: android.content.SharedPreferences) {
     private val _cart = MutableStateFlow(WooCart())
     val cart: StateFlow<WooCart> = _cart.asStateFlow()
@@ -525,13 +535,11 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
 
     suspend fun clearAfterConfirmedPayment(): Boolean {
         val items = _cart.value.items.toList()
-        for (item in items) {
-            if (!remove(item)) {
-                preferences.edit().putBoolean(cleanupPendingPreference, true).apply()
-                _postPurchaseCartCleanupPending.value = true
-                _error.value = "Pedido pagado. Estamos actualizando tu carrito antes de permitir otra compra."
-                return false
-            }
+        if (!clearConfirmedPaymentLines(items, ::remove)) {
+            preferences.edit().putBoolean(cleanupPendingPreference, true).apply()
+            _postPurchaseCartCleanupPending.value = true
+            _error.value = "Pedido pagado. Estamos actualizando tu carrito antes de permitir otra compra."
+            return false
         }
 
         if (_cart.value.items.isEmpty()) {
