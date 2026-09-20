@@ -69,12 +69,17 @@ class CheckoutModelsTest {
         )
         val encoded = json.encodeToString(request)
         val root = Json.parseToJsonElement(encoded).jsonObject
+        assertTrue(root.containsKey("payment_method"), encoded)
         assertEquals("cecabank_gateway", root["payment_method"]!!.jsonPrimitive.content)
         assertTrue(root["billing_address"]!!.jsonObject.containsKey("first_name"))
         assertTrue(root["shipping_address"]!!.jsonObject.containsKey("first_name"))
+        assertTrue(root.containsKey("shipping_rate"), encoded)
         assertEquals("flat_rate:1", root["shipping_rate"]!!.jsonPrimitive.content)
+        assertTrue(root.containsKey("expected_total"), encoded)
         assertEquals("10900", root["expected_total"]!!.jsonPrimitive.content)
+        assertTrue(root.containsKey("payment_data"), encoded)
         assertEquals("test-token", root["payment_data"]!!.jsonObject["token"]!!.jsonPrimitive.content)
+        assertTrue(root.containsKey("customer_note"), encoded)
         assertEquals("Entregar por la tarde", root["customer_note"]!!.jsonPrimitive.content)
     }
 }
