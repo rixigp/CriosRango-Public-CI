@@ -4,7 +4,12 @@ import io.ktor.http.Headers
 import es.criosrango.shared.createStoreHttpClient
 import es.criosrango.shared.model.StoreCart
 import es.criosrango.shared.model.StoreCartApiError
-import es.criosrango.shared.model.StoreCartRequest\nimport es.criosrango.shared.model.CustomerAddress\nimport es.criosrango.shared.model.UpdateCustomerRequest\nimport es.criosrango.shared.model.SelectShippingRateRequest\nimport es.criosrango.shared.model.CheckoutResponse\nimport es.criosrango.shared.model.CreateOrderRequest
+import es.criosrango.shared.model.StoreCartRequest
+import es.criosrango.shared.model.CustomerAddress
+import es.criosrango.shared.model.UpdateCustomerRequest
+import es.criosrango.shared.model.SelectShippingRateRequest
+import es.criosrango.shared.model.CheckoutResponse
+import es.criosrango.shared.model.CreateOrderRequest
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
 import io.ktor.client.HttpClient
