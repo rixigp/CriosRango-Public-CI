@@ -51,6 +51,7 @@ class AccountRepositoryTest {
         return AccountClient(
             baseUrl = "https://test.invalid/wp-json/criosrango/v1/",
             client = HttpClient(engine) {
+                expectSuccess = true
                 install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
             }
         )
@@ -102,7 +103,10 @@ class AccountRepositoryTest {
         val store = FakeAccountTokenStore("account-token")
         val repo = AccountRepository(
             store,
-            AccountClient("https://test.invalid/wp-json/criosrango/v1/", HttpClient(engine))
+            AccountClient("https://test.invalid/wp-json/criosrango/v1/", HttpClient(engine) {
+                expectSuccess = true
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            })
         )
         assertFailsWith<Exception> { repo.me() }
         assertEquals("Bearer account-token", authorization)
