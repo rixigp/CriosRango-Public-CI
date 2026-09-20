@@ -140,6 +140,26 @@ class SharedCatalogStoreApiAdapter(
         }
     }
 
+    override suspend fun checkout(): CheckoutResponse {
+        Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=GET")
+        return try { sharedClient.checkout().toAndroid() } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
+    }
+
+    override suspend fun updateCustomer(request: UpdateCustomerRequest): WooCart {
+        Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=UPDATE_CUSTOMER")
+        return try { sharedClient.updateCustomer(request.toShared()).toAndroid() } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
+    }
+
+    override suspend fun selectShippingRate(request: SelectShippingRateRequest): WooCart {
+        Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=SELECT_SHIPPING")
+        return try { sharedClient.selectShippingRate(request.toShared()).toAndroid() } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
+    }
+
+    override suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse {
+        Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=CREATE_ORDER")
+        return try { sharedClient.createCheckout(request.toShared()).toAndroid() } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
+    }
+
     override suspend fun categories(perPage: Int): List<ProductCategory> {
         Log.d("CriosRangoSharedCatalog", "CATEGORIES source=shared StoreApiClient perPage=$perPage")
         return try {
@@ -338,4 +358,65 @@ private fun StoreCart.toAndroid(): WooCart = WooCart(
     shippingPackages = null,
     itemsCount = itemsCount,
     errors = errors.map { CartError(it.code, it.message) }
+)
+
+private fun CustomerAddress.toShared(): SharedCustomerAddress = SharedCustomerAddress(
+    firstName = firstName, lastName = lastName, email = email, phone = phone,
+    address1 = address1, postcode = postcode, city = city, state = state, country = country
+)
+
+private fun UpdateCustomerRequest.toShared(): SharedUpdateCustomerRequest =
+    SharedUpdateCustomerRequest(billingAddress = billingAddress.toShared(), shippingAddress = shippingAddress.toShared())
+
+private fun SelectShippingRateRequest.toShared(): SharedSelectShippingRateRequest =
+    SharedSelectShippingRateRequest(packageId = packageId, rateId = rateId)
+
+private fun CreateOrderRequest.toShared(): SharedCreateOrderRequest =
+    SharedCreateOrderRequest(
+        paymentMethod = paymentMethod,
+        billingAddress = billing_address.toShared(),
+        shippingAddress = shipping_address.toShared(),
+        shippingRate = shippingRate,
+        expectedTotal = expectedTotal,
+        paymentData = paymentData,
+        customerNote = customerNote
+    )
+
+private fun SharedCheckoutResponse.toAndroid(): CheckoutResponse = CheckoutResponse(
+    orderId = orderId,
+    orderKey = orderKey,
+    orderNumber = orderNumber,
+    status = status,
+    paymentMethod = paymentMethod,
+    paymentMethods = paymentMethods,
+    paymentRequirements = paymentRequirements,
+    redirectUrl = redirectUrl,
+    paymentResult = paymentResult?.let { PaymentResult(
+        paymentStatus = it.paymentStatus,
+        redirectUrl = it.redirectUrl,
+        paymentUrl = it.paymentUrl,
+        paymentDetails = it.paymentDetails.map { detail -> PaymentDetail(detail.key, detail.value) }
+    ) },
+    experimentalCart = experimentalCart?.let { cart -> ExperimentalCart(
+        paymentMethods = cart.paymentMethods,
+        paymentRequirements = cart.paymentRequirements,
+        totals = cart.totals.toAndroid()
+    ) },
+    totals = totals.toAndroid(),
+    errors = errors.map { CartError(it.code, it.message) }
+)
+
+private fun es.criosrango.shared.model.StoreCartTotals.toAndroid(): CartTotals = CartTotals(
+    totalItems = totalItems,
+    totalItemsTax = totalItemsTax,
+    totalFees = totalFees,
+    totalFeesTax = totalFeesTax,
+    totalDiscount = totalDiscount,
+    totalDiscountTax = totalDiscountTax,
+    totalShipping = totalShipping,
+    totalShippingTax = totalShippingTax,
+    totalPrice = totalPrice,
+    totalTax = totalTax,
+    currencySymbol = currencySymbol,
+    currencyMinorUnit = currencyMinorUnit
 )
