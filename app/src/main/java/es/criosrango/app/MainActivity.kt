@@ -215,8 +215,8 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
     var cardPaymentDialogDismissed by remember { mutableStateOf(false) }
     LaunchedEffect(cardPaymentResult?.orderId, cardPaymentResult?.paid) { cardPaymentDialogDismissed = false }
     cardPaymentResult?.let { result -> if (!cardPaymentDialogDismissed) {
-        val title = if (result.paid) "Pedido recibido" else "Pago no completado"
-        val message = if (result.paid) "Tu pedido #${result.orderId} se ha pagado correctamente." else "El pago no se ha completado."
+        val title = if (result.paid == true) "Pedido recibido" else "Pago no completado"
+        val message = if (result.paid == true) "Tu pedido #${result.orderId} se ha pagado correctamente." else "El pago no se ha completado."
         AlertDialog(
             onDismissRequest = { cardPaymentDialogDismissed = true },
             title = { Text(title) },
@@ -224,8 +224,8 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.consumeCardPaymentResult()
-                    if (result.paid) { checkoutOpen = false; tab = AppTab.HOME }
-                }) { Text(if (result.paid) "Seguir comprando" else "Volver al carrito") }
+                    if (result.paid == true) { checkoutOpen = false; tab = AppTab.HOME }
+                }) { Text(if (result.paid == true) "Seguir comprando" else "Volver al carrito") }
             }
         )
     } }
