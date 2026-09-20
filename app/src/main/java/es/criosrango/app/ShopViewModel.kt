@@ -354,6 +354,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 }
             }
         }
+        error("Payment reconciliation loop exited unexpectedly")
     }
 
     private fun reconcileAfterProcessDeath() {
