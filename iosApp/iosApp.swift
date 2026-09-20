@@ -9,7 +9,7 @@ final class CriosRangoIOSApp: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil
     ) -> Bool {
-        MainViewControllerKt.VerifyIosPendingPayment()
+        IosPaymentRuntimeKt.verifyIosPendingPayment()
         let window = UIWindow(frame: UIScreen.main.bounds)
         window.rootViewController = MainViewControllerKt.MainViewController()
         self.window = window
@@ -18,7 +18,7 @@ final class CriosRangoIOSApp: UIResponder, UIApplicationDelegate {
     }
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
-        MainViewControllerKt.HandleIosPaymentCallback(rawUrl: url.absoluteString)
+        IosPaymentRuntimeKt.handleIosPaymentCallback(rawUrl: url.absoluteString)
         return true
     }
 
