@@ -126,7 +126,7 @@ jobs:
           VARIATION_JSON="${PRODUCT_DATA#*|}"
           test -n "$PRODUCT_ID"
           echo "LIVE_CART_TEST_PRODUCT_ID=$PRODUCT_ID"
-          curl --silent --show-error --location \
+          curl --silent --show-error --location -D "$RUNNER_TEMP/live-add-1.headers" \
             -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
             -H "Content-Type: application/json" --data "{\"id\":$PRODUCT_ID,\"quantity\":1,\"variation\":$VARIATION_JSON}" \
             "https://criosrango.es/wp-json/wc/store/v1/cart/add-item" -o "$RUNNER_TEMP/live-add-1.json" || { cat "$RUNNER_TEMP/live-add-1.json" 2>/dev/null || true; exit 1; }
@@ -135,6 +135,11 @@ jobs:
           d=json.load(open(sys.argv[1])); pid=int(sys.argv[2])
           assert any(int(x.get("id",0)) == pid and int(x.get("quantity",0)) == 1 for x in d.get("items",[])), d
           PY
+          CART_TOKEN="$(awk 'BEGIN{IGNORECASE=1} /^Cart-Token:/ {gsub("\r","",$2); print $2}' "$RUNNER_TEMP/live-add-1.headers")"
+          NONCE="$(awk 'BEGIN{IGNORECASE=1} /^Nonce:/ {gsub("\r","",$2); print $2}' "$RUNNER_TEMP/live-add-1.headers")"
+          COOKIE="$(awk 'BEGIN{IGNORECASE=1} /^Set-Cookie:/ {gsub("\r","",$0); sub(/^[^:]*:[[:space:]]*/,""); sub(/;.*/,""); print}' "$RUNNER_TEMP/live-add-1.headers" | paste -sd ';' -)"
+          test -n "$CART_TOKEN"
+          test -n "$NONCE"
           LINE_KEY="$(python3 - "$RUNNER_TEMP/live-add-1.json" "$PRODUCT_ID" <<'PY'
           import json, sys
           d=json.load(open(sys.argv[1])); pid=int(sys.argv[2])
