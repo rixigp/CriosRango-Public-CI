@@ -408,14 +408,6 @@ data class UpdateCustomerRequest(
     @SerializedName("shipping_address") val shippingAddress: CustomerAddress = billingAddress
 )
 
-data class OrderStatusResponse(
-    @SerializedName("order_id") val id: Int = 0,
-    @SerializedName("status") val status: String = "",
-    @SerializedName("paid") val paid: Boolean = false,
-    @SerializedName("needs_payment") val needsPayment: Boolean = true,
-    @SerializedName("terminal") val terminal: Boolean = false
-)
-
 data class CheckoutResponse(
     @SerializedName("order_id") val orderId: Int? = null,
     @SerializedName("order_key") val orderKey: String? = null,
