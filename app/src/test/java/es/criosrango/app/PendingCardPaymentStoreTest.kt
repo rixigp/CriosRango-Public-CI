@@ -43,6 +43,22 @@ class PendingCardPaymentStoreTest {
         assertNull(store.load())
     }
     @Test
+    fun clear_removesAllPendingPaymentFields() {
+        val prefs = context.getSharedPreferences("h2-clear-all", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        val store = PendingCardPaymentStore(prefs)
+        val payment = PendingCardPayment(13004, "wc_order_key_13004", "test@example.com", "https://payment.example/13004")
+
+        assertEquals(true, store.save(payment))
+        assertEquals(true, store.clear())
+        assertNull(store.load())
+        assertEquals(0, prefs.getInt("order_id", 0))
+        assertNull(prefs.getString("order_key", null))
+        assertNull(prefs.getString("billing_email", null))
+        assertNull(prefs.getString("payment_url", null))
+    }
+
+    @Test
     fun save_rejectsMissingPaymentUrl() {
         val prefs = context.getSharedPreferences("h2-invalid", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
