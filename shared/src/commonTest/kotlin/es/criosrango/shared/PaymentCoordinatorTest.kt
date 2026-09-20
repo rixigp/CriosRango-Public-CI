@@ -25,6 +25,26 @@ class PaymentCoordinatorTest {
         assertEquals(null, fixture.store.load())
     }
 
+    @Test fun paidThenAddDifferentProductNeverResurrectsPurchasedProduct() = runTest {
+        val fixture = Fixture(this, listOf(OrderStatusResponse(42, "processing", true, false, false)))
+        fixture.remoteCart += "A"
+        fixture.coordinator.begin(42, "key", "https://criosrango.es/pay")
+        fixture.coordinator.verify()
+        fixture.awaitTerminal()
+        fixture.addRemote("B")
+        assertEquals(listOf("B"), fixture.remoteCart)
+    }
+
+    @Test fun paidThenAddSameProductNeverDoublesPurchasedProduct() = runTest {
+        val fixture = Fixture(this, listOf(OrderStatusResponse(42, "processing", true, false, false)))
+        fixture.remoteCart += "A"
+        fixture.coordinator.begin(42, "key", "https://criosrango.es/pay")
+        fixture.coordinator.verify()
+        fixture.awaitTerminal()
+        fixture.addRemote("A")
+        assertEquals(listOf("A"), fixture.remoteCart)
+    }
+
     @Test fun failedRestoresCartAndClearsPending() = runTest {
         val fixture = Fixture(this, listOf(OrderStatusResponse(42, "failed", false, true, true)))
         fixture.coordinator.begin(42, "key", "https://criosrango.es/pay")
@@ -68,6 +88,7 @@ class PaymentCoordinatorTest {
 
     private class Fixture(private val scope: kotlinx.coroutines.test.TestScope, statuses: List<OrderStatusResponse>, private val maxAttempts: Int = 10) {
         val store = FakeStore()
+        val remoteCart = mutableListOf<String>()
         var consumed = 0
         var restored = 0
         var calls = 0
@@ -79,11 +100,12 @@ class PaymentCoordinatorTest {
             }
         }
         private val actions = object : PaymentCartActions {
-            override suspend fun consumeConfirmedOrder() { consumed++ }
+            override suspend fun consumeConfirmedOrder() { remoteCart.clear(); consumed++ }
             override suspend fun restoreRemoteAfterUnpaidCheckout() { restored++ }
         }
         val coordinator = PaymentCoordinator(provider, store, actions, scope, maxAttempts, 1)
         suspend fun awaitTerminal() { delay(20); scope.advanceUntilIdle() }
+        fun addRemote(product: String) { remoteCart += product }
     }
 }
 private typealias PaymentCoordinatorTestScope = kotlinx.coroutines.test.TestScope

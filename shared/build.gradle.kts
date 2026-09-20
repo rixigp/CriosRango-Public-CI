@@ -23,7 +23,7 @@ kotlin {
             implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.12")
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
         }
-        commonTest.dependencies { implementation(kotlin("test")); implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1") }
+        commonTest.dependencies { implementation(kotlin("test")); implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1"); implementation("io.ktor:ktor-client-mock:2.3.12") }
         androidMain.dependencies { implementation("io.ktor:ktor-client-okhttp:2.3.12"); implementation("androidx.security:security-crypto:1.1.0") }
         iosMain.dependencies { implementation("io.ktor:ktor-client-darwin:2.3.12") }
     }

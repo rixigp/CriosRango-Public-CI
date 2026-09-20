@@ -69,6 +69,9 @@ interface StoreApi {
     @POST("cart/remove-item")
     suspend fun removeCartItem(@Query("key") key: String): WooCart
 
+    @DELETE("cart/items")
+    suspend fun clearCart(): WooCart
+
     @GET("checkout")
     suspend fun checkout(): CheckoutResponse
 
@@ -501,11 +504,11 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
     }
 
     suspend fun consumeConfirmedOrder() {
+        withTimeout(18_000) { api.clearCart() }
         confirmedCart = WooCart()
         _cart.value = confirmedCart
         preferences.edit().remove("cart_snapshot").remove("cart_line_parents").apply()
         _state.value = CartLoadState.SUCCESS_EMPTY
-        runCatching { api.cart() }
     }
 
     private suspend fun execute(endpoint: String, operation: suspend () -> WooCart): Boolean {

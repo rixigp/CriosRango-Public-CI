@@ -16,6 +16,7 @@ import es.criosrango.shared.model.StoreProduct
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
+import io.ktor.client.request.delete
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.parameter
@@ -124,6 +125,13 @@ class StoreApiClient(
                 url { parameter("key", key) }
             }
         }
+
+    suspend fun clearCart(): es.criosrango.shared.model.StoreCart {
+        executeCart<es.criosrango.shared.model.StoreCart> { client.delete(baseUrl + "cart/items") { sessionHeaders() } }
+        val verified = cart()
+        check(verified.items.isEmpty()) { "Store API cart was not empty after DELETE /cart/items" }
+        return verified
+    }
 
     suspend fun checkout(): CheckoutResponse =
         executeCart { client.get(baseUrl + "checkout") { sessionHeaders() } }
