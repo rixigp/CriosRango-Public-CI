@@ -20,7 +20,7 @@ data class CustomerAddress(
 @Serializable
 data class UpdateCustomerRequest(
     @SerialName("billing_address") val billingAddress: CustomerAddress,
-    @SerialName("shipping_address") val shippingAddress: CustomerAddress = billingAddress
+    @SerialName("shipping_address") val shippingAddress: CustomerAddress
 )
 
 @Serializable
