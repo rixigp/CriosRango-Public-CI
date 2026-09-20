@@ -312,9 +312,10 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private val _cardPaymentResult = MutableStateFlow<CardPaymentResult?>(null)
 
     private enum class ReconcileOutcome { PAID, CLEARED, NO_MARKER }
+    private val reconciliationMutex = kotlinx.coroutines.sync.Mutex()
 
-    private suspend fun reconcileLastCheckout(): ReconcileOutcome {
-        val checkout = lastCheckout ?: pendingCardPaymentStore.load()?.also { lastCheckout = it } ?: return ReconcileOutcome.NO_MARKER
+    private suspend fun reconcileLastCheckout(publishPaidResult: Boolean = true): ReconcileOutcome = reconciliationMutex.withLock {
+        val checkout = lastCheckout ?: pendingCardPaymentStore.load()?.also { lastCheckout = it } ?: return@withLock ReconcileOutcome.NO_MARKER
         var order = cartStore.lookupOrderStatus(checkout.orderId, checkout.orderKey)
         var attempts = 0
         while (true) {
@@ -327,16 +328,16 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                     pendingCardPaymentStore.clear()
                     lastCheckout = null
                     _paymentRedirect.value = null
-                    _cardPaymentResult.value = CardPaymentResult(confirmedOrderId, true)
+                    if (publishPaidResult) _cardPaymentResult.value = CardPaymentResult(confirmedOrderId, true)
                     _checkoutPhase.value = CheckoutPhase.ORDER_CREATED
                     cartStore.clearAfterConfirmedPayment()
-                    return ReconcileOutcome.PAID
+                    return@withLock ReconcileOutcome.PAID
                 }
                 definitelyUnpaid -> {
                     pendingCardPaymentStore.clear()
                     lastCheckout = null
                     _paymentRedirect.value = null
-                    return ReconcileOutcome.CLEARED
+                    return@withLock ReconcileOutcome.CLEARED
                 }
                 attempts >= 10 -> {
                     pendingCardPaymentStore.clear()
@@ -356,7 +357,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private fun reconcileAfterProcessDeath() {
         if (lastCheckout == null) return
         viewModelScope.launch {
-            runCatching { reconcileLastCheckout() }
+            runCatching { reconcileLastCheckout(publishPaidResult = false) }
                 .onFailure {
                     pendingCardPaymentStore.clear()
                     lastCheckout = null
@@ -367,7 +368,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     fun createOrder(address: CustomerAddress, paymentMethod: String, shippingRateId: String?) {
         val generation = checkoutGeneration
         viewModelScope.launch {
-            val reconciliation = runCatching { reconcileLastCheckout() }.getOrDefault(ReconcileOutcome.CLEARED)
+            val reconciliation = runCatching { reconcileLastCheckout() }.getOrElse { pendingCardPaymentStore.clear(); lastCheckout = null; ReconcileOutcome.CLEARED }
             if (reconciliation == ReconcileOutcome.PAID) return@launch
             val quote = _checkout.value
             if (shippingRateId.isNullOrBlank() || paymentMethod.isNullOrBlank()) { _checkoutError.value = "Selecciona una tarifa y un método de pago válidos."; return@launch }
