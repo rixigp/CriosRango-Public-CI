@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -21,10 +22,7 @@ import kotlin.test.assertTrue
 private class FakeClaimOrderStore(initial: PendingClaimOrder? = null) : ClaimOrderStore {
     private var value = initial
     override fun load(): PendingClaimOrder? = value
-    override fun save(order: PendingClaimOrder): Boolean {
-        value = order
-        return true
-    }
+    override fun save(order: PendingClaimOrder): Boolean { value = order; return true }
     override fun clear() { value = null }
 }
 
@@ -35,44 +33,55 @@ private class FakeI2TokenStore(private var value: String? = null) : AccountToken
 }
 
 class AccountI2RepositoryTest {
-    private fun client(handler: suspend (HttpRequestData) -> io.ktor.client.engine.mock.MockHttpResponseData): AccountClient =
-        AccountClient(
+    private fun client(
+        body: String,
+        status: HttpStatusCode = HttpStatusCode.OK,
+        capture: ((HttpRequestData) -> Unit)? = null
+    ): AccountClient {
+        val engine = MockEngine { request ->
+            capture?.invoke(request)
+            respond(
+                content = body,
+                status = status,
+                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            )
+        }
+        return AccountClient(
             baseUrl = "https://test.invalid/wp-json/criosrango/v1/",
-            client = HttpClient(MockEngine { request -> handler(request) }) {
+            client = HttpClient(engine) {
                 expectSuccess = true
                 install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
             }
         )
+    }
 
     @Test
     fun customerAddress_getUsesBearer() = runBlocking {
         var authorization: String? = null
-        val store = FakeI2TokenStore("tok")
         val repo = AccountRepository(
-            store,
-            client = client { request ->
-                authorization = request.headers[HttpHeaders.Authorization]
-                respond(
-                    """{"first_name":"Ana","last_name":"Test","address_1":"Calle 1","postcode":"28001","city":"Madrid","state":"M","country":"ES"}""",
-                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-                )
-            }
+            FakeI2TokenStore("tok"),
+            client = client(
+                """{"first_name":"Ana","last_name":"Test","address_1":"Calle 1","postcode":"28001","city":"Madrid","state":"M","country":"ES"}""",
+                capture = { authorization = it.headers[HttpHeaders.Authorization] }
+            )
         )
         assertEquals("Madrid", repo.customerAddress().city)
         assertEquals("Bearer tok", authorization)
     }
 
     @Test
-    fun customerAddressSave_sendsBearerAndAddress() = runBlocking {
+    fun customerAddressSave_sendsBearerAndCorrectEndpoint() = runBlocking {
         var authorization: String? = null
         var requestPath: String? = null
         val repo = AccountRepository(
             FakeI2TokenStore("tok"),
-            client = client { request ->
-                authorization = request.headers[HttpHeaders.Authorization]
-                requestPath = request.url.encodedPath
-                respond("", headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
-            }
+            client = client(
+                "",
+                capture = {
+                    authorization = it.headers[HttpHeaders.Authorization]
+                    requestPath = it.url.encodedPath
+                }
+            )
         )
         repo.saveCustomerAddress(AccountCustomerAddress(firstName = "Ana", city = "Madrid"))
         assertEquals("Bearer tok", authorization)
@@ -84,12 +93,9 @@ class AccountI2RepositoryTest {
         val store = FakeI2TokenStore("tok")
         val repo = AccountRepository(
             store,
-            client = client {
-                respond("""{"message":"unauthorized"}""", HttpStatusCode.Unauthorized,
-                    headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
-            }
+            client = client("""{"message":"unauthorized"}""", HttpStatusCode.Unauthorized)
         )
-        kotlin.test.assertFailsWith<Exception> { repo.customerAddress() }
+        assertFailsWith<Exception> { repo.customerAddress() }
         assertNull(store.load())
     }
 
@@ -97,12 +103,9 @@ class AccountI2RepositoryTest {
     fun ordersDetailed_parsesStatusAmountsProductsVariationsShippingAndPayment() = runBlocking {
         val repo = AccountRepository(
             FakeI2TokenStore("tok"),
-            client = client {
-                respond(
-                    """{"orders":[{"id":42,"number":"1042","status":"processing","status_label":"Procesando","date_created":"2026-09-20T10:00:00","total":"59.90","currency":"EUR","payment_method":"bizum","payment_method_title":"Bizum","subtotal":"49.90","shipping_total":"10.00","shipping_method":"Envío 24/48h","shipping_address":{"address_1":"Calle 1","address_2":"","city":"Madrid","state":"M","postcode":"28001","country":"ES"},"items":[{"name":"Vestido","quantity":2,"variations":[{"name":"Tallas","value":"4A"},{"name":"Color","value":"Azul"}]}]}],"total":1}""",
-                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-                )
-            }
+            client = client(
+                """{"orders":[{"id":42,"number":"1042","status":"processing","status_label":"Procesando","date_created":"2026-09-20T10:00:00","total":"59.90","currency":"EUR","payment_method":"bizum","payment_method_title":"Bizum","subtotal":"49.90","shipping_total":"10.00","shipping_method":"Envío 24/48h","shipping_address":{"address_1":"Calle 1","address_2":"","city":"Madrid","state":"M","postcode":"28001","country":"ES"},"items":[{"name":"Vestido","quantity":2,"variations":[{"name":"Tallas","value":"4A"},{"name":"Color","value":"Azul"}]}]}],"total":1}"""
+            )
         )
         val order = repo.orders().orders.single()
         assertEquals("processing", order.status)
@@ -115,36 +118,41 @@ class AccountI2RepositoryTest {
 
     @Test
     fun claimSuccess_usesOrderIdAndOrderKey() = runBlocking {
-        var requestBody: String? = null
+        var requestPath: String? = null
         var authorization: String? = null
         val repo = AccountRepository(
             FakeI2TokenStore("tok"),
-            client = client { request ->
-                authorization = request.headers[HttpHeaders.Authorization]
-                requestBody = request.body.toString()
-                respond(
-                    """{"success":true,"order_id":42,"customer_id":7}""",
-                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-                )
-            }
+            client = client(
+                """{"success":true,"order_id":42,"customer_id":7}""",
+                capture = {
+                    requestPath = it.url.encodedPath
+                    authorization = it.headers[HttpHeaders.Authorization]
+                }
+            )
         )
         val result = repo.claimOrder(42, "wc_order_key")
         assertTrue(result.success)
+        assertEquals("/wp-json/criosrango/v1/claim-order", requestPath)
         assertEquals("Bearer tok", authorization)
-        assertTrue(requestBody!!.contains("42"))
-        assertTrue(requestBody!!.contains("wc_order_key"))
     }
 
     @Test
     fun claimTransportFailure_keepsPendingClaim() = runBlocking {
         val pending = FakeClaimOrderStore()
+        val engine = MockEngine { throw io.ktor.utils.io.errors.IOException("network") }
         val repo = AccountRepository(
             FakeI2TokenStore("tok"),
-            client = client { throw io.ktor.utils.io.errors.IOException("network") },
-            claimOrderStore = pending
+            AccountClient(
+                "https://test.invalid/wp-json/criosrango/v1/",
+                HttpClient(engine) {
+                    expectSuccess = true
+                    install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+                }
+            ),
+            pending
         )
-        repo.prepareClaimOrder(42, "key")
-        kotlin.test.assertFailsWith<Exception> { repo.claimPendingOrder() }
+        assertTrue(repo.prepareClaimOrder(42, "key"))
+        assertFailsWith<Exception> { repo.claimPendingOrder() }
         assertEquals(PendingClaimOrder(42, "key"), pending.load())
     }
 
@@ -154,13 +162,10 @@ class AccountI2RepositoryTest {
         val pending = FakeClaimOrderStore(PendingClaimOrder(42, "key"))
         val repo = AccountRepository(
             FakeI2TokenStore("tok"),
-            client = client {
-                claimCalls++
-                respond(
-                    """{"success":true,"order_id":42,"customer_id":7}""",
-                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-                )
-            },
+            client = client(
+                """{"success":true,"order_id":42,"customer_id":7}""",
+                capture = { claimCalls++ }
+            ),
             claimOrderStore = pending
         )
         repo.claimPendingOrder()
@@ -176,11 +181,10 @@ class AccountI2RepositoryTest {
         val pending = FakeClaimOrderStore(PendingClaimOrder(42, "key"))
         val repo = AccountRepository(
             FakeI2TokenStore("tok"),
-            client = client {
-                claimCalls++
-                respond("""{"success":true,"order_id":42,"customer_id":7}""",
-                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
-            },
+            client = client(
+                """{"success":true,"order_id":42,"customer_id":7}""",
+                capture = { claimCalls++ }
+            ),
             claimOrderStore = pending
         )
         repo.logout()
@@ -192,17 +196,20 @@ class AccountI2RepositoryTest {
     fun processDeath_restoresPendingClaimWithoutSecondOrderOrPayment() = runBlocking {
         val tokenStore = FakeI2TokenStore("tok")
         val pending = FakeClaimOrderStore()
-        val first = AccountRepository(tokenStore, client = client { respond("{}") }, claimOrderStore = pending)
+        val first = AccountRepository(
+            tokenStore,
+            client = client("{}"),
+            claimOrderStore = pending
+        )
         assertTrue(first.prepareClaimOrder(42, "key"))
 
         var claimCalls = 0
         val recreated = AccountRepository(
             tokenStore,
-            client = client {
-                claimCalls++
-                respond("""{"success":true,"order_id":42,"customer_id":7}""",
-                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
-            },
+            client = client(
+                """{"success":true,"order_id":42,"customer_id":7}""",
+                capture = { claimCalls++ }
+            ),
             claimOrderStore = pending
         )
         val result = recreated.claimPendingOrder()
@@ -216,22 +223,32 @@ class AccountI2RepositoryTest {
         val tokenStore = FakeI2TokenStore()
         val pending = FakeClaimOrderStore()
         var claimCalls = 0
-        val repo = AccountRepository(
-            tokenStore,
-            client = client { request ->
-                when (request.url.encodedPath.substringAfterLast('/')) {
-                    "login" -> respond(
-                        """{"token":"tok","user":{"id":7,"email":"u@b.es"}}""",
+        val engine = MockEngine { request ->
+            when (request.url.encodedPath.substringAfterLast('/')) {
+                "login" -> respond(
+                    """{"token":"tok","user":{"id":7,"email":"u@b.es"}}""",
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                )
+                "claim-order" -> {
+                    claimCalls++
+                    respond(
+                        """{"success":true,"order_id":42,"customer_id":7}""",
                         headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
                     )
-                    else -> {
-                        claimCalls++
-                        respond("""{"success":true,"order_id":42,"customer_id":7}""",
-                            headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
-                    }
                 }
-            },
-            claimOrderStore = pending
+                else -> respond("{}", headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+            }
+        }
+        val repo = AccountRepository(
+            tokenStore,
+            AccountClient(
+                "https://test.invalid/wp-json/criosrango/v1/",
+                HttpClient(engine) {
+                    expectSuccess = true
+                    install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+                }
+            ),
+            pending
         )
         assertTrue(repo.prepareClaimOrder(42, "key"))
         repo.login("u@b.es", "pw")
@@ -239,5 +256,4 @@ class AccountI2RepositoryTest {
         assertEquals(1, claimCalls)
         assertNull(pending.load())
     }
-
 }
