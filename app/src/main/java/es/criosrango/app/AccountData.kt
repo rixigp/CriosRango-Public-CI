@@ -450,7 +450,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 }
             } catch (exception: Exception) {
                 if (generation != accountGeneration) return@launch
-                if (exception is HttpException && exception.code() == 401) {
+                if ((exception is HttpException && exception.code() == 401) || !repository.hasSession) {
                     invalidateSession()
                 } else {
                     // Keep the stored token and remain in CHECKING: the UI offers a retry
