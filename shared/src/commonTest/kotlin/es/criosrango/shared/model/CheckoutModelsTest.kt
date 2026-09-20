@@ -30,7 +30,7 @@ class CheckoutModelsTest {
     @Test
     fun updateCustomerSerializesBillingAndShippingAddresses() {
         val address = CustomerAddress(firstName = "Ana", lastName = "Ruiz", email = "ana@example.test")
-        val encoded = json.encodeToString(UpdateCustomerRequest(address))
+        val encoded = json.encodeToString(UpdateCustomerRequest(address, address))
         val root = Json.parseToJsonElement(encoded).jsonObject
         assertTrue(root["billing_address"]!!.jsonObject.containsKey("first_name"))
         assertTrue(root["shipping_address"]!!.jsonObject.containsKey("first_name"))
