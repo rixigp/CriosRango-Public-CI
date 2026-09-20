@@ -5,6 +5,7 @@ import com.google.gson.JsonElement
 import androidx.core.text.HtmlCompat
 import java.text.Normalizer
 import java.util.Locale
+import es.criosrango.shared.model.normalizePaymentGatewayIds
 
 const val STORE_API_BASE_URL = "https://criosrango.es/wp-json/wc/store/v1/"
 
@@ -460,11 +461,8 @@ data class CreateOrderRequest(
 
 /** Gateways are a property of the current checkout quote, never of a stale cart. */
 fun CheckoutResponse.availablePaymentMethods(): List<String> =
-    (paymentMethods + experimentalCart?.paymentMethods.orEmpty())
-        .map(String::trim)
-        .filter(String::isNotBlank)
-        .filterNot { it == "cod" }
-        .distinct()
+    normalizePaymentGatewayIds(paymentMethods + experimentalCart?.paymentMethods.orEmpty())
+        .map { it.gatewayId }
 
 fun CheckoutResponse.availablePaymentRequirements(): List<String> =
     paymentRequirements.ifEmpty { experimentalCart?.paymentRequirements.orEmpty() }
@@ -478,7 +476,6 @@ fun String.toPaymentMethodLabel(): String = when (this) {
     "cheque" -> "Bizum"
     "cod" -> "Contra reembolso"
     "bacs" -> "Transferencia bancaria"
-    "redsys" -> "Pago con tarjeta"
     else -> this.replace("_", " ").replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
 }
 
