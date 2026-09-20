@@ -306,9 +306,11 @@ fun RedesignedCheckoutScreen(
                     }
                 }
             }
-            item {
-                Button(onClick = { if (canPay && canStartNewOrder) createOrder(lastValidAddress!!, selectedPayment, selectedShipping) }, enabled = canPay && canStartNewOrder, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(30.dp), colors = ButtonDefaults.buttonColors(containerColor = CheckoutUiGreen)) {
-                    Text(if (loading) "Procesando..." else if (ready) "Pagar ${formatMinorUnits(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)}" else "Pagar", fontWeight = FontWeight.SemiBold)
+            if (!hasPendingCardPayment) {
+                item {
+                    Button(onClick = { if (canPay) createOrder(lastValidAddress!!, selectedPayment, selectedShipping) }, enabled = canPay, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(30.dp), colors = ButtonDefaults.buttonColors(containerColor = CheckoutUiGreen)) {
+                        Text(if (loading) "Procesando..." else if (ready) "Pagar ${formatMinorUnits(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)}" else "Pagar", fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
             item { Spacer(Modifier.height(24.dp)) }
