@@ -5,6 +5,9 @@ import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.annotations.SerializedName
+import es.criosrango.shared.account.AccountRepository as SharedAccountRepository
+import es.criosrango.shared.account.AccountTokenStore
+import es.criosrango.shared.account.AccountUser
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -18,45 +21,6 @@ import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
-
-data class AccountLoginRequest(
-    val login: String,
-    val password: String
-)
-
-data class AccountUser(
-    val id: Int,
-    val email: String,
-    @SerializedName("display_name") val displayName: String = "",
-    @SerializedName("first_name") val firstName: String = "",
-    @SerializedName("last_name") val lastName: String = ""
-)
-
-data class AccountRegisterRequest(
-    val email: String,
-    val password: String,
-    @SerializedName("first_name") val firstName: String,
-    @SerializedName("last_name") val lastName: String,
-    val phone: String = ""
-)
-
-data class AccountForgotPasswordRequest(
-    val login: String
-)
-
-data class AccountMessageResponse(
-    val success: Boolean = false,
-    val message: String = ""
-)
-
-data class AccountLoginResponse(
-    val token: String,
-    val user: AccountUser
-)
-
-data class AccountMeResponse(
-    val user: AccountUser
-)
 
 data class AccountCustomerAddress(
     @SerializedName("first_name") val firstName: String = "",
@@ -123,18 +87,6 @@ data class AccountOrdersResponse(
 )
 
 interface AccountApi {
-    @POST("wp-json/criosrango/v1/register")
-    suspend fun register(@Body request: AccountRegisterRequest): AccountLoginResponse
-
-    @POST("wp-json/criosrango/v1/forgot-password")
-    suspend fun forgotPassword(@Body request: AccountForgotPasswordRequest): AccountMessageResponse
-
-    @POST("wp-json/criosrango/v1/login")
-    suspend fun login(@Body body: AccountLoginRequest): AccountLoginResponse
-
-    @GET("wp-json/criosrango/v1/me")
-    suspend fun me(@Header("Authorization") authorization: String): AccountMeResponse
-
     @GET("wp-json/criosrango/v1/customer-address")
     suspend fun customerAddress(@Header("Authorization") authorization: String): AccountCustomerAddress
 
@@ -155,12 +107,9 @@ interface AccountApi {
         @Header("Authorization") authorization: String,
         @Body request: AccountClaimOrderRequest
     ): AccountClaimOrderResponse
-
-    @POST("wp-json/criosrango/v1/logout")
-    suspend fun logout(@Header("Authorization") authorization: String)
 }
 
-class AccountSessionStore(context: Context) {
+class AccountSessionStore(context: Context) : AccountTokenStore {
     private companion object {
         const val TOKEN = "account_token"
         const val PREFS = "criosrango_account_session_v2"
@@ -197,7 +146,7 @@ class AccountSessionStore(context: Context) {
         }
     }
 
-    var token: String?
+    private var token: String?
         get() = preferences.getString(TOKEN, null)
         private set(value) {
             preferences.edit().apply {
@@ -205,17 +154,22 @@ class AccountSessionStore(context: Context) {
             }.apply()
         }
 
-    fun save(token: String) {
+    override fun load(): String? = token
+
+    override fun save(token: String): Boolean {
+        if (token.isBlank()) return false
         this.token = token
+        return this.token == token
     }
 
-    fun clear() {
+    override fun clear() {
         token = null
     }
 }
 
 class AccountRepository(context: Context) {
     private val session = AccountSessionStore(context.applicationContext)
+    private val sharedAccountRepository = SharedAccountRepository(session)
 
     private val api: AccountApi = Retrofit.Builder()
         .baseUrl("https://criosrango.es/")
@@ -231,18 +185,15 @@ class AccountRepository(context: Context) {
         .create(AccountApi::class.java)
 
     val hasSession: Boolean
-        get() = !session.token.isNullOrBlank()
+        get() = sharedAccountRepository.hasSession
 
     private fun authorization(): String {
-        val token = session.token ?: throw IllegalStateException("No hay ninguna sesión iniciada.")
+        val token = session.load() ?: throw IllegalStateException("No hay ninguna sesión iniciada.")
         return "Bearer $token"
     }
 
-    suspend fun login(login: String, password: String): AccountUser {
-        val response = api.login(AccountLoginRequest(login.trim(), password))
-        session.save(response.token)
-        return response.user
-    }
+    suspend fun login(login: String, password: String): AccountUser =
+        sharedAccountRepository.login(login, password)
 
     suspend fun registerAccount(
         email: String,
@@ -250,24 +201,14 @@ class AccountRepository(context: Context) {
         firstName: String,
         lastName: String,
         phone: String
-    ): AccountUser {
-        val response = api.register(
-            AccountRegisterRequest(
-                email = email.trim(),
-                password = password,
-                firstName = firstName.trim(),
-                lastName = lastName.trim(),
-                phone = phone.trim()
-            )
-        )
-        session.save(response.token)
-        return response.user
-    }
+    ): AccountUser =
+        sharedAccountRepository.register(email, password, firstName, lastName, phone)
 
     suspend fun forgotPassword(login: String): String =
-        api.forgotPassword(AccountForgotPasswordRequest(login.trim())).message
+        sharedAccountRepository.forgotPassword(login)
 
-    suspend fun me(): AccountUser = api.me(authorization()).user
+    suspend fun me(): AccountUser =
+        sharedAccountRepository.me()
 
     suspend fun saveCustomerAddress(address: AccountCustomerAddress) {
         api.saveCustomerAddress(authorization(), address)
@@ -298,15 +239,11 @@ class AccountRepository(context: Context) {
     }
 
     suspend fun logout() {
-        try {
-            if (hasSession) api.logout(authorization())
-        } finally {
-            session.clear()
-        }
+        sharedAccountRepository.logout()
     }
 
     fun clearLocalSession() {
-        session.clear()
+        sharedAccountRepository.clearLocalSession()
     }
 }
 
