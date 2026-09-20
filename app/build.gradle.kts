@@ -41,8 +41,8 @@ android {
         applicationId = "es.criosrango.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 128
-        versionName = "1.0.128"
+        versionCode = 129
+        versionName = "1.0.129"
     }
     signingConfigs {
         getByName("debug") {
@@ -82,6 +82,8 @@ dependencies {
     implementation("com.google.code.gson:gson:2.11.0")
     implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
     implementation("com.google.firebase:firebase-crashlytics")
+    testImplementation(kotlin("test"))
+    testImplementation("junit:junit:4.13.2")
 
     val roomVersion = "2.8.5"
     implementation("androidx.room:room-runtime:$roomVersion")

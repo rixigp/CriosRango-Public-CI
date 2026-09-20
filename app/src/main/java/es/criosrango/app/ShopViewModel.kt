@@ -341,7 +341,16 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 while (true) {
                     val status = order.status.lowercase(); val definitelyPaid = order.paid; val definitelyUnpaid = !order.paid && (order.terminal || status == "cancelled" || status == "failed" || status == "refunded")
                     when {
-                        definitelyPaid -> { cartStore.consumeConfirmedOrder(); pendingCardOrderKey = null; pendingCardBillingEmail = null; _paymentRedirect.value = null; _cardPaymentResult.value = CardPaymentResult(if (order.id > 0) order.id else redirect.orderId, true); _checkoutPhase.value = CheckoutPhase.ORDER_CREATED; break }
+                        definitelyPaid -> {
+                            val confirmedOrderId = if (order.id > 0) order.id else redirect.orderId
+                            pendingCardOrderKey = null
+                            pendingCardBillingEmail = null
+                            _paymentRedirect.value = null
+                            _cardPaymentResult.value = CardPaymentResult(confirmedOrderId, true)
+                            _checkoutPhase.value = CheckoutPhase.ORDER_CREATED
+                            cartStore.clearRemoteCartAfterPaid()
+                            break
+                        }
                         definitelyUnpaid -> { cartStore.restoreRemoteAfterUnpaidCheckout(); pendingCardOrderKey = null; pendingCardBillingEmail = null; _paymentRedirect.value = null; invalidateCheckout(); _cardPaymentResult.value = CardPaymentResult(redirect.orderId, false); break }
                         attempts >= 10 -> { _cardPaymentResult.value = CardPaymentResult(redirect.orderId, null); break }
                         else -> { kotlinx.coroutines.delay(1500); order = cartStore.lookupOrderStatus(redirect.orderId, key, email); attempts++ }
