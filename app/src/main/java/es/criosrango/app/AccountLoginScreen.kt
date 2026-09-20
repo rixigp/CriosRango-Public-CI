@@ -1,5 +1,7 @@
 package es.criosrango.app
 
+import es.criosrango.shared.account.AccountCustomerAddress
+import es.criosrango.shared.account.AccountOrderSummary
 import es.criosrango.shared.account.AccountUser
 
 import android.content.Intent
