@@ -17,6 +17,8 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.serialization.kotlinx.json.json
 
 private class FakeAccountTokenStore(private var value: String? = null) : AccountTokenStore {
     override fun load(): String? = value
@@ -48,7 +50,9 @@ class AccountRepositoryTest {
         }
         return AccountClient(
             baseUrl = "https://test.invalid/wp-json/criosrango/v1/",
-            client = HttpClient(engine)
+            client = HttpClient(engine) {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            }
         )
     }
 
