@@ -15,6 +15,10 @@ import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.CancellationException
 import android.util.Log
+import java.io.IOException
+import java.net.SocketTimeoutException
+import kotlinx.coroutines.TimeoutCancellationException
+import retrofit2.HttpException
 
 enum class CheckoutPhase { IDLE, QUOTING, READY, CREATING_ORDER, ORDER_CREATED, OPENING_PAYMENT, FAILED }
 data class PaymentRedirect(val generation: Long, val orderId: Int, val url: String)
@@ -313,58 +317,59 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private val _cardPaymentResult = MutableStateFlow<CardPaymentResult?>(null)
     val cardPaymentResult: StateFlow<CardPaymentResult?> = _cardPaymentResult.asStateFlow()
 
-    private enum class ReconcileOutcome { PAID, CLEARED, NO_MARKER }
+    private enum class ReconcileOutcome { PAID, CLEARED, PENDING, NO_MARKER }
     private val reconciliationMutex = kotlinx.coroutines.sync.Mutex()
 
-    private suspend fun reconcileLastCheckout(publishPaidResult: Boolean = true): ReconcileOutcome = reconciliationMutex.withLock {
+    private suspend fun reconcileLastCheckout(publishPaidResult: Boolean = true, preserveMarkerOnExhaustion: Boolean = false): ReconcileOutcome = reconciliationMutex.withLock {
         val checkout = lastCheckout ?: pendingCardPaymentStore.load()?.also { lastCheckout = it } ?: return@withLock ReconcileOutcome.NO_MARKER
-        var order = cartStore.lookupOrderStatus(checkout.orderId, checkout.orderKey)
-        var attempts = 0
-        while (true) {
-            val status = order.status.lowercase()
-            val definitelyPaid = order.paid
-            val definitelyUnpaid = !order.paid && (order.terminal || status == "cancelled" || status == "failed" || status == "refunded")
-            when {
-                definitelyPaid -> {
-                    val confirmedOrderId = if (order.id > 0) order.id else checkout.orderId
+        when (val result = reconcilePaymentStatus(
+            maxRetries = PAYMENT_RECONCILIATION_MAX_RETRIES,
+            delayMs = PAYMENT_RECONCILIATION_DELAY_MS
+        ) {
+            cartStore.lookupOrderStatus(checkout.orderId, checkout.orderKey)
+        }) {
+            is PaymentReconciliationResult.PAID -> {
+                val confirmedOrderId = if (result.order.id > 0) result.order.id else checkout.orderId
+                pendingCardPaymentStore.clear()
+                lastCheckout = null
+                _paymentRedirect.value = null
+                if (publishPaidResult) _cardPaymentResult.value = CardPaymentResult(confirmedOrderId, true)
+                _checkoutPhase.value = CheckoutPhase.ORDER_CREATED
+                cartStore.clearAfterConfirmedPayment()
+                ReconcileOutcome.PAID
+            }
+            PaymentReconciliationResult.TERMINAL_UNPAID -> {
+                pendingCardPaymentStore.clear()
+                lastCheckout = null
+                _paymentRedirect.value = null
+                ReconcileOutcome.CLEARED
+            }
+            PaymentReconciliationResult.EXHAUSTED -> {
+                if (!preserveMarkerOnExhaustion) {
                     pendingCardPaymentStore.clear()
                     lastCheckout = null
                     _paymentRedirect.value = null
-                    if (publishPaidResult) _cardPaymentResult.value = CardPaymentResult(confirmedOrderId, true)
-                    _checkoutPhase.value = CheckoutPhase.ORDER_CREATED
-                    cartStore.clearAfterConfirmedPayment()
-                    return@withLock ReconcileOutcome.PAID
                 }
-                definitelyUnpaid -> {
-                    pendingCardPaymentStore.clear()
-                    lastCheckout = null
-                    _paymentRedirect.value = null
-                    return@withLock ReconcileOutcome.CLEARED
-                }
-                attempts >= 10 -> {
-                    pendingCardPaymentStore.clear()
-                    lastCheckout = null
-                    _paymentRedirect.value = null
-                    return@withLock ReconcileOutcome.CLEARED
-                }
-                else -> {
-                    delay(1500)
-                    order = cartStore.lookupOrderStatus(checkout.orderId, checkout.orderKey)
-                    attempts++
-                }
+                ReconcileOutcome.PENDING
             }
         }
-        error("Payment reconciliation loop exited unexpectedly")
     }
 
     private fun reconcileAfterProcessDeath() {
         if (lastCheckout == null) return
         viewModelScope.launch {
-            runCatching { reconcileLastCheckout(publishPaidResult = false) }
-                .onFailure {
+            runCatching {
+                reconcileLastCheckout(
+                    publishPaidResult = false,
+                    preserveMarkerOnExhaustion = true
+                )
+            }.onFailure { exception ->
+                if (exception is CancellationException) throw exception
+                if (!isTransientPaymentStatusException(exception)) {
                     pendingCardPaymentStore.clear()
                     lastCheckout = null
                 }
+            }
         }
     }
 
@@ -411,16 +416,76 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
             _checkoutLoading.value = true
             try {
                 reconcileLastCheckout()
+            } catch (exception: CancellationException) {
+                throw exception
             } catch (exception: Exception) {
-                pendingCardPaymentStore.clear()
-                lastCheckout = null
-                _paymentRedirect.value = null
-                _checkoutError.value = "No hemos podido comprobar el pago."
+                if (!isTransientPaymentStatusException(exception)) {
+                    pendingCardPaymentStore.clear()
+                    lastCheckout = null
+                    _paymentRedirect.value = null
+                    _checkoutError.value = "No hemos podido comprobar el pago."
+                }
             } finally {
                 _checkoutLoading.value = false
             }
         }
     }
+
+internal const val PAYMENT_RECONCILIATION_MAX_RETRIES = 10
+internal const val PAYMENT_RECONCILIATION_DELAY_MS = 1500L
+
+internal sealed interface PaymentReconciliationResult {
+    data class PAID(val order: OrderStatusResponse) : PaymentReconciliationResult
+    data object TERMINAL_UNPAID : PaymentReconciliationResult
+    data object EXHAUSTED : PaymentReconciliationResult
+}
+
+internal fun isPaymentConfirmed(order: OrderStatusResponse): Boolean {
+    val status = order.status.trim().lowercase()
+    return order.paid || status == "processing" || status == "completed"
+}
+
+internal fun isTerminalUnpaid(order: OrderStatusResponse): Boolean {
+    val status = order.status.trim().lowercase()
+    return !isPaymentConfirmed(order) &&
+        (order.terminal || status == "failed" || status == "cancelled" || status == "refunded")
+}
+
+internal fun isTransientPaymentStatusException(exception: Throwable): Boolean {
+    return exception is IOException ||
+        exception is SocketTimeoutException ||
+        exception is TimeoutCancellationException ||
+        (exception is HttpException && (exception.code() == 429 || exception.code() in 500..599))
+}
+
+internal suspend fun reconcilePaymentStatus(
+    maxRetries: Int = PAYMENT_RECONCILIATION_MAX_RETRIES,
+    delayMs: Long = PAYMENT_RECONCILIATION_DELAY_MS,
+    lookup: suspend () -> OrderStatusResponse
+): PaymentReconciliationResult {
+    var retries = 0
+    while (true) {
+        val order = try {
+            lookup()
+        } catch (exception: Exception) {
+            if (!isTransientPaymentStatusException(exception)) throw exception
+            if (retries >= maxRetries) return PaymentReconciliationResult.EXHAUSTED
+            retries++
+            delay(delayMs)
+            continue
+        }
+
+        when {
+            isPaymentConfirmed(order) -> return PaymentReconciliationResult.PAID(order)
+            isTerminalUnpaid(order) -> return PaymentReconciliationResult.TERMINAL_UNPAID
+            retries >= maxRetries -> return PaymentReconciliationResult.EXHAUSTED
+            else -> {
+                retries++
+                delay(delayMs)
+            }
+        }
+    }
+}
 
     fun consumeCardPaymentResult() { _cardPaymentResult.value = null }
     fun consumePaymentRedirect(redirect: PaymentRedirect) { if (_paymentRedirect.value == redirect && redirect.generation == checkoutGeneration) _paymentRedirect.value = null }
