@@ -155,7 +155,7 @@ jobs:
           ENCODED_KEY="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$LINE_KEY")"
           REMOVE_STATUS="$(curl --silent --show-error --location --request POST \
             -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
-            -H "Origin: https://criosrango.es" -H "Referer: https://criosrango.es/" \
+            -H "Origin: https://criosrango.es" -H "Referer: https://criosrango.es/" -H "Accept: application/json" -H "User-Agent: okhttp/4.12.0" \
             -o "$RUNNER_TEMP/live-remove.json" -w "%{http_code}" \
             "https://criosrango.es/wp-json/wc/store/v1/cart/remove-item?key=$ENCODED_KEY")"
           echo "LIVE_CART_REMOVE_STATUS=$REMOVE_STATUS"
