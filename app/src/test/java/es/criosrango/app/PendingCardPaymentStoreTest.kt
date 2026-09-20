@@ -42,6 +42,17 @@ class PendingCardPaymentStoreTest {
         assertEquals(true, store.clear())
         assertNull(store.load())
     }
+    @Test
+    fun save_rejectsMissingPaymentUrl() {
+        val prefs = context.getSharedPreferences("h2-invalid", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        val store = PendingCardPaymentStore(prefs)
+        val payment = PendingCardPayment(13003, "wc_order_key_13003", "test@example.com", "")
+
+        assertEquals(false, store.save(payment))
+        assertNull(store.load())
+    }
+
 }
 
 
