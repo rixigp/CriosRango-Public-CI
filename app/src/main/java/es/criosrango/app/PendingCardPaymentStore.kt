@@ -9,7 +9,7 @@ data class PendingCardPayment(val orderId: Int, val orderKey: String, val billin
 
 class PendingCardPaymentStore internal constructor(private val preferences: SharedPreferences) {
     fun save(payment: PendingCardPayment): Boolean =
-        if (payment.orderId <= 0 || payment.orderKey.isBlank() || payment.billingEmail.isBlank()) false
+        if (payment.orderId <= 0 || payment.orderKey.isBlank() || payment.billingEmail.isBlank() || payment.paymentUrl.isBlank()) false
         else preferences.edit()
             .putInt(KEY_ORDER_ID, payment.orderId)
             .putString(KEY_ORDER_KEY, payment.orderKey)
