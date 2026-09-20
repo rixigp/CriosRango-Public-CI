@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
-data class PendingCardPayment(val orderId: Int, val orderKey: String, val billingEmail: String)
+data class PendingCardPayment(val orderId: Int, val orderKey: String, val billingEmail: String, val paymentUrl: String)
 
 class PendingCardPaymentStore internal constructor(private val preferences: SharedPreferences) {
     fun save(payment: PendingCardPayment): Boolean =
@@ -14,14 +14,16 @@ class PendingCardPaymentStore internal constructor(private val preferences: Shar
             .putInt(KEY_ORDER_ID, payment.orderId)
             .putString(KEY_ORDER_KEY, payment.orderKey)
             .putString(KEY_BILLING_EMAIL, payment.billingEmail)
+            .putString(KEY_PAYMENT_URL, payment.paymentUrl)
             .commit()
 
     fun load(): PendingCardPayment? {
         val orderId = preferences.getInt(KEY_ORDER_ID, 0)
         val orderKey = preferences.getString(KEY_ORDER_KEY, null).orEmpty()
         val billingEmail = preferences.getString(KEY_BILLING_EMAIL, null).orEmpty()
-        if (orderId <= 0 || orderKey.isBlank() || billingEmail.isBlank()) return null
-        return PendingCardPayment(orderId, orderKey, billingEmail)
+        val paymentUrl = preferences.getString(KEY_PAYMENT_URL, null).orEmpty()
+        if (orderId <= 0 || orderKey.isBlank() || billingEmail.isBlank() || paymentUrl.isBlank()) return null
+        return PendingCardPayment(orderId, orderKey, billingEmail, paymentUrl)
     }
 
     fun clear(): Boolean = preferences.edit().clear().commit()
@@ -31,6 +33,7 @@ class PendingCardPaymentStore internal constructor(private val preferences: Shar
         private const val KEY_ORDER_ID = "order_id"
         private const val KEY_ORDER_KEY = "order_key"
         private const val KEY_BILLING_EMAIL = "billing_email"
+        private const val KEY_PAYMENT_URL = "payment_url"
 
         fun create(context: Context): PendingCardPaymentStore {
             val masterKey = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
