@@ -99,12 +99,12 @@ fun CheckoutResponse.rawPaymentGatewayIds(): List<String> =
 fun normalizePaymentGatewayIds(raw: List<String>): List<CheckoutPaymentOption> {
     val gateways = raw.map(String::trim).filter(String::isNotBlank).distinct()
     val result = mutableListOf<CheckoutPaymentOption>()
-    if ("cecabank_gateway" in raw) {
+    if ("cecabank_gateway" in gateways) {
         result += CheckoutPaymentOption(CheckoutPaymentKind.CARD, "cecabank_gateway")
     }
     val bizumGateway = when {
-        "bizum" in raw -> "bizum"
-        "cheque" in raw -> "cheque"
+        "bizum" in gateways -> "bizum"
+        "cheque" in gateways -> "cheque"
         else -> null
     }
     if (bizumGateway != null) {
