@@ -390,6 +390,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                             cartStore.restoreRemoteAfterUnpaidCheckout()
                             pendingCardPaymentStore.clear()
                             pendingCardPayment = null
+                            _pendingCardPayment.value = null
                             _paymentRedirect.value = null
                             invalidateCheckout()
                             _cardPaymentResult.value = CardPaymentResult(pending.orderId, false)
