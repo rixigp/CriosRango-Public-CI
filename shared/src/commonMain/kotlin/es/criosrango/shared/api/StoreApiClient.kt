@@ -10,6 +10,7 @@ import es.criosrango.shared.model.UpdateCustomerRequest
 import es.criosrango.shared.model.SelectShippingRateRequest
 import es.criosrango.shared.model.CheckoutResponse
 import es.criosrango.shared.model.CreateOrderRequest
+import es.criosrango.shared.model.OrderStatusResponse
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
 import io.ktor.client.HttpClient
@@ -68,8 +69,9 @@ class StoreApiException(
 class StoreApiClient(
     private val baseUrl: String = "https://criosrango.es/wp-json/wc/store/v1/",
     private val client: HttpClient = createStoreHttpClient(),
-    private val session: StoreSessionStore = InMemoryStoreSessionStore()
-) {
+    private val session: StoreSessionStore = InMemoryStoreSessionStore(),
+    private val paymentStatusBaseUrl: String = "https://criosrango.es/wp-json/criosrango/v1/"
+) : PaymentStatusProvider {
     private suspend inline fun <reified T> executeCart(
         request: suspend () -> io.ktor.client.statement.HttpResponse
     ): T {
@@ -143,6 +145,12 @@ class StoreApiClient(
                 setBody(request)
             }
         }
+
+    override suspend fun paymentStatus(orderId: Int, orderKey: String): OrderStatusResponse {
+        val response = client.get(paymentStatusBaseUrl + "payment-status") { parameter("order_id", orderId); parameter("key", orderKey) }
+        if (!response.status.isSuccess()) throw StoreApiException(response.status.value, null, "Payment status request failed")
+        return Json { ignoreUnknownKeys = true }.decodeFromString(response.bodyAsText())
+    }
 
     suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse =
         executeCart {
