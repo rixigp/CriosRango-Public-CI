@@ -31,6 +31,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.math.BigDecimal
 import kotlinx.coroutines.launch
+import es.criosrango.shared.model.CheckoutPaymentKind
+import es.criosrango.shared.model.normalizePaymentGatewayIds
 
 private val CheckoutUiGreen = Color(0xFF183B35)
 private val CheckoutUiSoftGreen = Color(0xFFE5F1ED)
@@ -70,7 +72,14 @@ fun RedesignedCheckoutScreen(
     val scope = rememberCoroutineScope()
     val accountVm: AccountViewModel = viewModel()
     val accountAddress by accountVm.address.collectAsStateWithLifecycle()
-    val paymentMethods = remember(checkout, cart.paymentMethods) { (checkout?.availablePaymentMethods().orEmpty() + cart.paymentMethods.orEmpty()).distinct() }
+    val paymentGatewayIds = remember(checkout, cart.paymentMethods) {
+        (checkout?.paymentMethods.orEmpty() + checkout?.experimentalCart?.paymentMethods.orEmpty() + cart.paymentMethods.orEmpty())
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinct()
+    }
+    val paymentOptions = remember(paymentGatewayIds) { normalizePaymentGatewayIds(paymentGatewayIds) }
+    val paymentMethods = paymentOptions.map { it.gatewayId }
     val visibleShipping = cart.visibleShippingRatesForDestination()
     val shippingOptions = visibleShipping.flatMap { it.rates }
 
@@ -265,9 +274,10 @@ fun RedesignedCheckoutScreen(
             item { CheckoutSection(4, "Pago") }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    paymentMethods.forEach { method ->
+                    paymentOptions.forEach { option ->
+                        val method = option.gatewayId
                         val selected = selectedPayment == method
-                        val bizum = method.toPaymentMethodLabel().contains("bizum", true)
+                        val bizum = option.kind == CheckoutPaymentKind.BIZUM
                         CheckoutPaymentOption(
                             selected = selected,
                             title = if (bizum) "Bizum" else "Pago con tarjeta",
