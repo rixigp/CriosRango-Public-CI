@@ -57,7 +57,7 @@ class CheckoutModelsTest {
 
     @Test
     fun legacyCartPaymentMethodsAreNormalizedBeforeCheckoutUi() {
-        val cart = WooCart(paymentMethods = listOf("cecabank_gateway", "cheque", "redsys"))
+        val cart = StoreCart(paymentMethods = listOf("cecabank_gateway", "cheque", "redsys"))
         val checkout: CheckoutResponse? = null
         val raw = checkout?.paymentMethods.orEmpty() +
             checkout?.experimentalCart?.paymentMethods.orEmpty() +
@@ -73,7 +73,7 @@ class CheckoutModelsTest {
         val checkout = CheckoutResponse(
             paymentMethods = listOf("cecabank_gateway", "cheque")
         )
-        val legacyCart = WooCart(paymentMethods = listOf("cecabank_gateway", "cheque", "redsys", "cod", "bacs"))
+        val legacyCart = StoreCart(paymentMethods = listOf("cecabank_gateway", "cheque", "redsys", "cod", "bacs"))
         val raw = checkout.paymentMethods +
             checkout.experimentalCart?.paymentMethods.orEmpty() +
             legacyCart.paymentMethods
