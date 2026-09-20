@@ -12,7 +12,7 @@ class IosPendingPaymentStore : PendingPaymentStore {
         return if (id > 0 && !key.isNullOrBlank()) PendingPayment(id, key) else null
     }
     override fun save(payment: PendingPayment) {
-        defaults.setInteger(payment.orderId.toLong(), forKey = "criosrango.payment.order_id")
+        defaults.setInteger(payment.orderId, forKey = "criosrango.payment.order_id")
         defaults.setObject(payment.orderKey, forKey = "criosrango.payment.order_key")
     }
     override fun clear() {
