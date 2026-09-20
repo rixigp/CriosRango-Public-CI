@@ -96,8 +96,8 @@ fun CheckoutResponse.rawPaymentGatewayIds(): List<String> =
  * Bizum/cheque are historical aliases for the same manual Bizum flow; when both
  * are returned, bizum is preferred as the canonical gateway id.
  */
-fun CheckoutResponse.supportedPaymentOptions(): List<CheckoutPaymentOption> {
-    val raw = rawPaymentGatewayIds()
+fun normalizePaymentGatewayIds(raw: List<String>): List<CheckoutPaymentOption> {
+    val gateways = raw.map(String::trim).filter(String::isNotBlank).distinct()
     val result = mutableListOf<CheckoutPaymentOption>()
     if ("cecabank_gateway" in raw) {
         result += CheckoutPaymentOption(CheckoutPaymentKind.CARD, "cecabank_gateway")
@@ -113,5 +113,5 @@ fun CheckoutResponse.supportedPaymentOptions(): List<CheckoutPaymentOption> {
     return result
 }
 
-fun CheckoutResponse.selectedShippingRates(): List<Pair<Int, String>> =
-    experimentalCart?.let { emptyList() } ?: emptyList()
+fun CheckoutResponse.supportedPaymentOptions(): List<CheckoutPaymentOption> =
+    normalizePaymentGatewayIds(rawPaymentGatewayIds())
