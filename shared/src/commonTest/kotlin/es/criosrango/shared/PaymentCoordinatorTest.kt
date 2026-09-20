@@ -15,7 +15,7 @@ import kotlin.test.assertEquals
 
 class PaymentCoordinatorTest {
     @Test fun paidConsumesCartAndClearsPending() = runTest {
-        val fixture = Fixture(listOf(OrderStatusResponse(42, "processing", true, false, false)))
+        val fixture = Fixture(this, listOf(OrderStatusResponse(42, "processing", true, false, false)))
         fixture.coordinator.begin(42, "key", "https://criosrango.es/pay")
         fixture.coordinator.verify()
         fixture.awaitTerminal()
@@ -25,7 +25,7 @@ class PaymentCoordinatorTest {
     }
 
     @Test fun failedRestoresCartAndClearsPending() = runTest {
-        val fixture = Fixture(listOf(OrderStatusResponse(42, "failed", false, true, true)))
+        val fixture = Fixture(this, listOf(OrderStatusResponse(42, "failed", false, true, true)))
         fixture.coordinator.begin(42, "key", "https://criosrango.es/pay")
         fixture.coordinator.verify()
         fixture.awaitTerminal()
@@ -35,7 +35,7 @@ class PaymentCoordinatorTest {
     }
 
     @Test fun pendingTimeoutDoesNotRestoreOrConsume() = runTest {
-        val fixture = Fixture(listOf(OrderStatusResponse(42, "pending", false, true, false)), maxAttempts = 2)
+        val fixture = Fixture(this, listOf(OrderStatusResponse(42, "pending", false, true, false)), maxAttempts = 2)
         fixture.coordinator.begin(42, "key", "https://criosrango.es/pay")
         fixture.coordinator.verify()
         fixture.awaitTerminal()
@@ -46,7 +46,7 @@ class PaymentCoordinatorTest {
     }
 
     @Test fun concurrentVerifyUsesSinglePollingJob() = runTest {
-        val fixture = Fixture(listOf(OrderStatusResponse(42, "processing", true, false, false)))
+        val fixture = Fixture(this, listOf(OrderStatusResponse(42, "processing", true, false, false)))
         fixture.coordinator.begin(42, "key", "https://criosrango.es/pay")
         fixture.coordinator.verify()
         fixture.coordinator.verify()
@@ -56,7 +56,7 @@ class PaymentCoordinatorTest {
     }
 
     @Test fun cancelledReturnRestoresCart() = runTest {
-        val fixture = Fixture(emptyList())
+        val fixture = Fixture(this, emptyList())
         fixture.coordinator.begin(42, "key", "https://criosrango.es/pay")
         fixture.coordinator.handleReturn(es.criosrango.shared.model.PaymentReturn.Cancelled(42))
         advanceUntilIdle()
@@ -65,7 +65,7 @@ class PaymentCoordinatorTest {
         assertEquals(null, fixture.store.load())
     }
 
-    private class Fixture(statuses: List<OrderStatusResponse>, private val maxAttempts: Int = 10) {
+    private class Fixture(private val scope: kotlinx.coroutines.test.TestScope, statuses: List<OrderStatusResponse>, private val maxAttempts: Int = 10) {
         val store = FakeStore()
         var consumed = 0
         var restored = 0
@@ -81,7 +81,7 @@ class PaymentCoordinatorTest {
             override suspend fun consumeConfirmedOrder() { consumed++ }
             override suspend fun restoreRemoteAfterUnpaidCheckout() { restored++ }
         }
-        val coordinator = PaymentCoordinator(provider, store, actions, this@PaymentCoordinatorTestScope, maxAttempts, 1)
+        val coordinator = PaymentCoordinator(provider, store, actions, scope, maxAttempts, 1)
         suspend fun awaitTerminal() { delay(20); kotlinx.coroutines.test.runCurrent(); kotlinx.coroutines.test.advanceUntilIdle() }
     }
 }
