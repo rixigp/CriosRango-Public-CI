@@ -68,8 +68,26 @@ jobs:
             -storepass "$STOREPASS" \
             -alias "criosrango-development"
 
-      - name: Compile shared Android
-        run: ./gradlew :shared:compileDebugKotlinAndroid --stacktrace
+      - name: Compile and test shared KMP checkout
+        run: ./gradlew :shared:compileDebugKotlinAndroid :shared:allTests --stacktrace
+
+      - name: Read-only checkout gateway audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            "https://criosrango.es/wp-json/wc/store/v1/checkout" \
+            -o "$RUNNER_TEMP/checkout.json"
+          python3 - "$RUNNER_TEMP/checkout.json" <<'PY'
+          import json, sys
+          from pathlib import Path
+          data=json.loads(Path(sys.argv[1]).read_text())
+          methods=[]
+          methods.extend(data.get("payment_methods") or [])
+          methods.extend((data.get("__experimentalCart") or {}).get("payment_methods") or [])
+          print("CHECKOUT_GATEWAYS_RAW=" + ",".join(dict.fromkeys(str(x).strip() for x in methods if str(x).strip())))
+          PY
+
 
       - name: Compile Android app
         run: ./gradlew :app:compileDebugKotlin --stacktrace
