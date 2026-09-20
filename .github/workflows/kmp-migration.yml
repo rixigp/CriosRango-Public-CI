@@ -109,7 +109,7 @@ jobs:
           COOKIE="$(awk 'BEGIN{IGNORECASE=1} /^Set-Cookie:/ {gsub("\r","",$0); sub(/^[^:]*:[[:space:]]*/,""); sub(/;.*/,""); print}' "$HEADERS" | paste -sd ';' -)"
           test -n "$CART_TOKEN"
           curl --fail --silent --show-error --location \
-            -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
+            -H "Cart-Token: $CART_TOKEN" \
             "https://criosrango.es/wp-json/wc/store/v1/products?type=variation&per_page=20" -o "$PRODUCTS"
           PRODUCT_DATA="$(python3 - "$PRODUCTS" <<'PY'
           import json, sys
@@ -127,7 +127,7 @@ jobs:
           test -n "$PRODUCT_ID"
           echo "LIVE_CART_TEST_PRODUCT_ID=$PRODUCT_ID"
           curl --silent --show-error --location -D "$RUNNER_TEMP/live-add-1.headers" \
-            -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
+            -H "Cart-Token: $CART_TOKEN" \
             -H "Content-Type: application/json" --data "{\"id\":$PRODUCT_ID,\"quantity\":1,\"variation\":$VARIATION_JSON}" \
             "https://criosrango.es/wp-json/wc/store/v1/cart/add-item" -o "$RUNNER_TEMP/live-add-1.json" || { cat "$RUNNER_TEMP/live-add-1.json" 2>/dev/null || true; exit 1; }
           python3 - "$RUNNER_TEMP/live-add-1.json" "$PRODUCT_ID" <<'PY'
@@ -154,8 +154,8 @@ jobs:
           echo "LIVE_CART_TEST_LINE_KEY=$LINE_KEY"
           ENCODED_KEY="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$LINE_KEY")"
           REMOVE_STATUS="$(curl --silent --show-error --location --request POST \
-            -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
-            -H "Origin: https://criosrango.es" -H "Referer: https://criosrango.es/" -H "Accept: application/json" -H "User-Agent: okhttp/4.12.0" \
+            -H "Cart-Token: $CART_TOKEN" \
+            -H "Accept: application/json" -H "User-Agent: okhttp/4.12.0" \
             -o "$RUNNER_TEMP/live-remove.json" -w "%{http_code}" \
             "https://criosrango.es/wp-json/wc/store/v1/cart/remove-item?key=$ENCODED_KEY")"
           echo "LIVE_CART_REMOVE_STATUS=$REMOVE_STATUS"
@@ -164,18 +164,18 @@ jobs:
             exit 1
           fi
           curl --fail --silent --show-error --location \
-            -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
+            -H "Cart-Token: $CART_TOKEN" \
             "https://criosrango.es/wp-json/wc/store/v1/cart" -o "$RUNNER_TEMP/live-after-clear.json"
           python3 - "$RUNNER_TEMP/live-after-clear.json" <<'PY'
           import json, sys
           d=json.load(open(sys.argv[1])); assert d.get("items") == [], d
           PY
           curl --fail --silent --show-error --location \
-            -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
+            -H "Cart-Token: $CART_TOKEN" \
             -H "Content-Type: application/json" --data "{\"id\":$PRODUCT_ID,\"quantity\":1}" \
             "https://criosrango.es/wp-json/wc/store/v1/cart/add-item" -o "$RUNNER_TEMP/live-add-2.json"
           curl --fail --silent --show-error --location \
-            -H "Cart-Token: $CART_TOKEN" -H "Nonce: $NONCE" -H "Cookie: $COOKIE" \
+            -H "Cart-Token: $CART_TOKEN" \
             "https://criosrango.es/wp-json/wc/store/v1/cart" -o "$RUNNER_TEMP/live-after-add-2.json"
           python3 - "$RUNNER_TEMP/live-after-add-2.json" "$PRODUCT_ID" <<'PY'
           import json, sys
