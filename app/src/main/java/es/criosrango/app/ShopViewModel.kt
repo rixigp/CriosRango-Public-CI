@@ -310,6 +310,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
 
     private var lastCheckout: LastCheckout? = pendingCardPaymentStore.load()
     private val _cardPaymentResult = MutableStateFlow<CardPaymentResult?>(null)
+    val cardPaymentResult: StateFlow<CardPaymentResult?> = _cardPaymentResult.asStateFlow()
 
     private enum class ReconcileOutcome { PAID, CLEARED, NO_MARKER }
     private val reconciliationMutex = kotlinx.coroutines.sync.Mutex()
@@ -343,7 +344,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                     pendingCardPaymentStore.clear()
                     lastCheckout = null
                     _paymentRedirect.value = null
-                    return ReconcileOutcome.CLEARED
+                    return@withLock ReconcileOutcome.CLEARED
                 }
                 else -> {
                     delay(1500)
