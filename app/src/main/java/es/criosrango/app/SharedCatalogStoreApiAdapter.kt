@@ -66,7 +66,7 @@ class SharedCatalogStoreApiAdapter(
         return try { sharedClient.removeCartItem(key).toAndroid() } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
     }
 
-    suspend fun clearCartItems(): WooCart {
+    override suspend fun clearCartItems(): WooCart {
         Log.d("CriosRangoSharedCatalog", "CART source=shared operation=CLEAR")
         return try { sharedClient.clearCartItems().toAndroid() } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
     }
