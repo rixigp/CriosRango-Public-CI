@@ -82,7 +82,7 @@ class PaymentCoordinatorTest {
             override suspend fun restoreRemoteAfterUnpaidCheckout() { restored++ }
         }
         val coordinator = PaymentCoordinator(provider, store, actions, scope, maxAttempts, 1)
-        suspend fun awaitTerminal() { delay(20); kotlinx.coroutines.test.runCurrent(); kotlinx.coroutines.test.advanceUntilIdle() }
+        suspend fun awaitTerminal() { delay(20); scope.advanceUntilIdle() }
     }
 }
 private typealias PaymentCoordinatorTestScope = kotlinx.coroutines.test.TestScope
