@@ -1,5 +1,7 @@
 package es.criosrango.app
 
+import es.criosrango.shared.account.AccountUser
+
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
