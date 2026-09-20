@@ -81,14 +81,14 @@ class AccountI2RepositoryTest {
 
     @Test
     fun customerAddress401_clearsOnlyAccountToken() = runBlocking {
+        val store = FakeI2TokenStore("tok")
         val repo = AccountRepository(
-            FakeI2TokenStore("tok"),
+            store,
             client = client {
                 respond("""{"message":"unauthorized"}""", HttpStatusCode.Unauthorized,
                     headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
             }
         )
-        val store = repoTokenStore(repo)
         kotlin.test.assertFailsWith<Exception> { repo.customerAddress() }
         assertNull(store.load())
     }
