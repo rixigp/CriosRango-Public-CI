@@ -95,12 +95,13 @@ class MainActivity : ComponentActivity() {
         val sharedCatalogClient = es.criosrango.shared.api.StoreApiClient(session = sharedSession)
         val catalogApi = SharedCatalogStoreApiAdapter(retrofitApi, sharedCatalogClient)
         val cartStore = CartStore(catalogApi, session, preferences)
+        val pendingCardPaymentStore = PendingCardPaymentStore.create(applicationContext)
         val categoryDatabase = CategoryProductCacheDatabase.create(applicationContext)
         val categoryCache = CategoryCatalogCache(categoryDatabase)
         val cachedApi = CategoryCacheStoreApi(catalogApi, categoryCache)
         val repository = StoreRepository(cachedApi)
         categoryCache.bindRepository(repository)
-        val shopViewModel = androidx.lifecycle.ViewModelProvider(this, ShopViewModel.Factory(repository, cartStore, DeliveryAddressStore(preferences)))[ShopViewModel::class.java]
+        val shopViewModel = androidx.lifecycle.ViewModelProvider(this, ShopViewModel.Factory(repository, cartStore, DeliveryAddressStore(preferences), pendingCardPaymentStore))[ShopViewModel::class.java]
         setContent { CriosRangoApp(shopViewModel, categoryCache) }
     }
     override fun onNewIntent(intent: android.content.Intent) {
@@ -215,9 +216,9 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
     LaunchedEffect(cardPaymentResult?.orderId, cardPaymentResult?.paid) { cardPaymentDialogDismissed = false }
     cardPaymentResult?.let { result -> if (!cardPaymentDialogDismissed) {
         val title = when (result.paid) { true -> "Pedido recibido"; false -> "Pago no completado"; null -> "Pago pendiente de confirmación" }
-        val message = when (result.paid) { true -> "Tu pedido #${result.orderId} se ha pagado correctamente."; false -> "El pago no se ha completado. Tu carrito sigue guardado y puedes intentarlo de nuevo."; null -> "La pasarela de pago ha devuelto el control, pero todavía estamos esperando la confirmación definitiva del pago. No vuelvas a pagar el pedido." }
+        val message = when (result.paid) { true -> "Tu pedido #${result.orderId} se ha pagado correctamente."; false -> "El pago no se ha completado."; null -> "El pedido #${result.orderId} sigue pendiente de confirmación. No vuelvas a pagar ni crees otro pedido. Comprueba el estado del pago cuando quieras." }
         val button = when (result.paid) { true -> "Seguir comprando"; false -> "Volver al carrito"; null -> "Comprobar" }
-        AlertDialog(onDismissRequest = { if (result.paid == null) cardPaymentDialogDismissed = true }, title = { Text(title) }, text = { Text(message) }, confirmButton = { TextButton(onClick = { when (result.paid) { true -> { viewModel.consumeCardPaymentResult(); checkoutOpen = false; tab = AppTab.HOME }; false -> viewModel.consumeCardPaymentResult(); null -> { viewModel.consumeCardPaymentResult(); viewModel.verifyCardPaymentReturn() } } }) { Text(button) } }, dismissButton = { if (result.paid == null) TextButton(onClick = { cardPaymentDialogDismissed = true }) { Text("Cancelar") } })
+        AlertDialog(onDismissRequest = { if (result.paid != null) cardPaymentDialogDismissed = true }, title = { Text(title) }, text = { Text(message) }, confirmButton = { TextButton(onClick = { when (result.paid) { true -> { viewModel.consumeCardPaymentResult(); checkoutOpen = false; tab = AppTab.HOME }; false -> viewModel.consumeCardPaymentResult(); null -> { viewModel.consumeCardPaymentResult(); viewModel.verifyCardPaymentReturn() } } }) { Text(button) } })
     } }
     bizumOrderId?.let { orderId ->
         val closeBizumConfirmation = { viewModel.consumeBizumOrder(); checkoutOpen = false; tab = AppTab.HOME; viewModel.refreshCart() }
