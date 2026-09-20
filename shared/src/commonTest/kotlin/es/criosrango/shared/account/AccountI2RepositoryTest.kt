@@ -47,8 +47,9 @@ class AccountI2RepositoryTest {
     @Test
     fun customerAddress_getUsesBearer() = runBlocking {
         var authorization: String? = null
+        val store = FakeI2TokenStore("tok")
         val repo = AccountRepository(
-            FakeI2TokenStore("tok"),
+            store,
             client = client { request ->
                 authorization = request.headers[HttpHeaders.Authorization]
                 respond(
@@ -239,10 +240,4 @@ class AccountI2RepositoryTest {
         assertNull(pending.load())
     }
 
-    private fun repoTokenStore(repo: AccountRepository): AccountTokenStore {
-        return repo.javaClass.getDeclaredField("tokenStore").let {
-            it.isAccessible = true
-            it.get(repo) as AccountTokenStore
-        }
-    }
 }
