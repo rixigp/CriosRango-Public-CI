@@ -105,8 +105,6 @@ jobs:
           curl --fail --silent --show-error --location -D "$HEADERS" \
             "https://criosrango.es/wp-json/wc/store/v1/cart" -o "$CART"
           CART_TOKEN="$(awk 'BEGIN{IGNORECASE=1} /^Cart-Token:/ {gsub("\r","",$2); print $2}' "$HEADERS")"
-          NONCE="$(awk 'BEGIN{IGNORECASE=1} /^Nonce:/ {gsub("\r","",$2); print $2}' "$HEADERS")"
-          COOKIE="$(awk 'BEGIN{IGNORECASE=1} /^Set-Cookie:/ {gsub("\r","",$0); sub(/^[^:]*:[[:space:]]*/,""); sub(/;.*/,""); print}' "$HEADERS" | paste -sd ';' -)"
           test -n "$CART_TOKEN"
           curl --fail --silent --show-error --location \
             -H "Cart-Token: $CART_TOKEN" \
@@ -136,13 +134,8 @@ jobs:
           assert any(int(x.get("id",0)) == pid and int(x.get("quantity",0)) == 1 for x in d.get("items",[])), d
           PY
           NEW_CART_TOKEN="$(awk 'BEGIN{IGNORECASE=1} /^Cart-Token:/ {gsub("\r","",$2); print $2}' "$RUNNER_TEMP/live-add-1.headers")"
-          NEW_NONCE="$(awk 'BEGIN{IGNORECASE=1} /^Nonce:/ {gsub("\r","",$2); print $2}' "$RUNNER_TEMP/live-add-1.headers")"
-          NEW_COOKIE="$(awk 'BEGIN{IGNORECASE=1} /^Set-Cookie:/ {gsub("\r","",$0); sub(/^[^:]*:[[:space:]]*/,""); sub(/;.*/,""); print}' "$RUNNER_TEMP/live-add-1.headers" | paste -sd ';' -)"
           [ -z "$NEW_CART_TOKEN" ] || CART_TOKEN="$NEW_CART_TOKEN"
-          [ -z "$NEW_NONCE" ] || NONCE="$NEW_NONCE"
-          [ -z "$NEW_COOKIE" ] || COOKIE="$NEW_COOKIE"
           test -n "$CART_TOKEN"
-          test -n "$NONCE"
           LINE_KEY="$(python3 - "$RUNNER_TEMP/live-add-1.json" "$PRODUCT_ID" <<'PY'
           import json, sys
           d=json.load(open(sys.argv[1])); pid=int(sys.argv[2])
@@ -155,7 +148,7 @@ jobs:
           ENCODED_KEY="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$LINE_KEY")"
           REMOVE_STATUS="$(curl --silent --show-error --location --request POST \
             -H "Cart-Token: $CART_TOKEN" \
-            -H "Accept: application/json" -H "User-Agent: okhttp/4.12.0" \
+            \
             -o "$RUNNER_TEMP/live-remove.json" -w "%{http_code}" \
             "https://criosrango.es/wp-json/wc/store/v1/cart/remove-item?key=$ENCODED_KEY")"
           echo "LIVE_CART_REMOVE_STATUS=$REMOVE_STATUS"
