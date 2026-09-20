@@ -16,7 +16,7 @@ class PendingCardPaymentStoreTest {
     fun processDeathRecovery_restoresSameOrderWithoutCreatingAnother() {
         val prefs = context.getSharedPreferences("h2-process-death", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
-        val original = PendingCardPayment(13001, "wc_order_key_13001", "test@example.com")
+        val original = PendingCardPayment(13001, "wc_order_key_13001", "test@example.com", "https://payment.example/13001")
         assertEquals(true, PendingCardPaymentStore(prefs).save(original))
 
         val recreatedStore = PendingCardPaymentStore(prefs)
@@ -24,6 +24,7 @@ class PendingCardPaymentStoreTest {
         assertEquals(original.orderId, recreatedStore.load()?.orderId)
         assertEquals(original.orderKey, recreatedStore.load()?.orderKey)
         assertEquals(original.billingEmail, recreatedStore.load()?.billingEmail)
+        assertEquals(original.paymentUrl, recreatedStore.load()?.paymentUrl)
     }
 
     @Test
@@ -31,7 +32,7 @@ class PendingCardPaymentStoreTest {
         val prefs = context.getSharedPreferences("h2-terminal", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
         val store = PendingCardPaymentStore(prefs)
-        val payment = PendingCardPayment(13002, "wc_order_key_13002", "test@example.com")
+        val payment = PendingCardPayment(13002, "wc_order_key_13002", "test@example.com", "https://payment.example/13002")
         assertEquals(true, store.save(payment))
 
         assertEquals(payment, store.load())
@@ -42,3 +43,5 @@ class PendingCardPaymentStoreTest {
         assertNull(store.load())
     }
 }
+
+
