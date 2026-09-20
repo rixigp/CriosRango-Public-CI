@@ -431,8 +431,10 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         }
     }
 
-internal const val PAYMENT_RECONCILIATION_MAX_RETRIES = 10
-internal const val PAYMENT_RECONCILIATION_DELAY_MS = 1500L
+    private companion object {
+        const val PAYMENT_RECONCILIATION_MAX_RETRIES = 10
+        const val PAYMENT_RECONCILIATION_DELAY_MS = 1500L
+    }
 
 internal sealed interface PaymentReconciliationResult {
     data class PAID(val order: OrderStatusResponse) : PaymentReconciliationResult
