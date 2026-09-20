@@ -18,10 +18,10 @@ class CheckoutModelsTest {
             city = "Madrid", state = "M", country = "ES"
         )
         val encoded = json.encodeToString(address)
-        assertTrue(encoded.contains(""first_name":"Ana""))
-        assertTrue(encoded.contains(""last_name":"Ruiz""))
-        assertTrue(encoded.contains(""address_1":"Calle Mayor 1""))
-        assertTrue(encoded.contains(""postcode":"28001""))
+        assertTrue(encoded.contains("""first_name":"Ana"""))
+        assertTrue(encoded.contains("""last_name":"Ruiz"""))
+        assertTrue(encoded.contains("""address_1":"Calle Mayor 1"""))
+        assertTrue(encoded.contains("""postcode":"28001"""))
         assertFalse(encoded.contains("firstName"))
     }
 
@@ -29,9 +29,9 @@ class CheckoutModelsTest {
     fun updateCustomerSerializesBillingAndShippingAddresses() {
         val address = CustomerAddress(firstName = "Ana", lastName = "Ruiz", email = "ana@example.test")
         val encoded = json.encodeToString(UpdateCustomerRequest(address))
-        assertTrue(encoded.contains(""billing_address""))
-        assertTrue(encoded.contains(""shipping_address""))
-        assertTrue(encoded.contains(""first_name":"Ana""))
+        assertTrue(encoded.contains("billing_address"))
+        assertTrue(encoded.contains("shipping_address"))
+        assertTrue(encoded.contains("""first_name":"Ana"""))
     }
 
     @Test
@@ -65,12 +65,12 @@ class CheckoutModelsTest {
             customerNote = "Entregar por la tarde"
         )
         val encoded = json.encodeToString(request)
-        assertTrue(encoded.contains(""payment_method":"cecabank_gateway""))
-        assertTrue(encoded.contains(""billing_address""))
-        assertTrue(encoded.contains(""shipping_address""))
-        assertTrue(encoded.contains(""shipping_rate":"flat_rate:1""))
-        assertTrue(encoded.contains(""expected_total":"10900""))
-        assertTrue(encoded.contains(""payment_data":{"token":"test-token"}"))
-        assertTrue(encoded.contains(""customer_note":"Entregar por la tarde""))
+        assertTrue(encoded.contains("""payment_method":"cecabank_gateway"""))
+        assertTrue(encoded.contains("billing_address"))
+        assertTrue(encoded.contains("shipping_address"))
+        assertTrue(encoded.contains("""shipping_rate":"flat_rate:1"""))
+        assertTrue(encoded.contains("""expected_total":"10900"""))
+        assertTrue(encoded.contains("""payment_data":{"token":"test-token"}"""))
+        assertTrue(encoded.contains("""customer_note":"Entregar por la tarde"""))
     }
 }
