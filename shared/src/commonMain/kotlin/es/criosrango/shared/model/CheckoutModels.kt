@@ -70,7 +70,7 @@ data class ExperimentalCart(
 data class CreateOrderRequest(
     @SerialName("payment_method") val paymentMethod: String,
     @SerialName("billing_address") val billingAddress: CustomerAddress,
-    @SerialName("shipping_address") val shippingAddress: CustomerAddress = billingAddress,
+    @SerialName("shipping_address") val shippingAddress: CustomerAddress,
     @SerialName("shipping_rate") val shippingRate: String? = null,
     @SerialName("expected_total") val expectedTotal: String? = null,
     @SerialName("payment_data") val paymentData: Map<String, String> = emptyMap(),
