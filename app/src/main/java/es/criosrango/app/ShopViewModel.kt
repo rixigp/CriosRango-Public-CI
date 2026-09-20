@@ -27,7 +27,7 @@ fun StoreProduct.hasBrand(brand: BrandTerm): Boolean = tags.any { tag -> tag.slu
 
 data class CategoryProductsState(val products: List<StoreProduct> = emptyList(), val loading: Boolean = false, val loaded: Boolean = false, val error: StoreUiError? = null, val requestVersion: Int = 0)
 
-class ShopViewModel(private val repository: StoreRepository, val cartStore: CartStore, val deliveryAddressStore: DeliveryAddressStore) : ViewModel() {
+class ShopViewModel(private val repository: StoreRepository, val cartStore: CartStore, val deliveryAddressStore: DeliveryAddressStore, private val pendingCardPaymentStore: PendingCardPaymentStore) : ViewModel() {
     private val _checkout = MutableStateFlow<CheckoutResponse?>(null)
     val checkout: StateFlow<CheckoutResponse?> = _checkout.asStateFlow()
     private val _checkoutError = MutableStateFlow<String?>(null)
@@ -299,9 +299,8 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         }
     }
 
-    private var pendingCardOrderKey: String? = null
-    private var pendingCardBillingEmail: String? = null
-    private val _cardPaymentResult = MutableStateFlow<CardPaymentResult?>(null)
+    private var pendingCardPayment: PendingCardPayment? = pendingCardPaymentStore.load()
+    private val _cardPaymentResult = MutableStateFlow<CardPaymentResult?>(pendingCardPayment?.let { CardPaymentResult(it.orderId, null) })
     val cardPaymentResult = _cardPaymentResult.asStateFlow()
 
     fun createOrder(address: CustomerAddress, paymentMethod: String, shippingRateId: String?) {
@@ -320,7 +319,11 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 val isNativeBizum = paymentMethod.equals("bizum", ignoreCase = true) || paymentMethod.equals("cheque", ignoreCase = true)
                 if (isNativeBizum) { cartStore.consumeConfirmedOrder(); _bizumOrderId.value = response.orderId } else {
                     val orderKey = response.orderKey?.takeIf { it.isNotBlank() } ?: throw CartException("La tienda no ha devuelto la clave del pedido.")
-                    pendingCardOrderKey = orderKey; pendingCardBillingEmail = address.email.trim()
+                    val pending = PendingCardPayment(response.orderId, orderKey, address.email.trim())
+                    if (!pendingCardPaymentStore.save(pending)) {
+                        throw CartException("No se ha podido guardar de forma segura el pago pendiente. No se abrirá la pasarela.")
+                    }
+                    pendingCardPayment = pending
                     response.paymentRedirectUrl()?.let { url -> _checkoutPhase.value = CheckoutPhase.OPENING_PAYMENT; _paymentRedirect.value = PaymentRedirect(generation, response.orderId, url) }
                 }
             } catch (exception: Exception) { if (generation != checkoutGeneration) return@launch; _checkoutError.value = exception.toStoreUiError().message; _checkoutPhase.value = CheckoutPhase.FAILED }
@@ -328,36 +331,66 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         }
     }
 
-    fun handleCardPaymentCancelled(orderId: Int) { _checkoutError.value = null; invalidateCheckout(); _cardPaymentResult.value = CardPaymentResult(orderId, false); viewModelScope.launch { runCatching { cartStore.restoreRemoteAfterUnpaidCheckout() } } }
+    fun handleCardPaymentCancelled(orderId: Int) {
+        if (pendingCardPayment == null) pendingCardPayment = pendingCardPaymentStore.load()
+        if (pendingCardPayment?.orderId != orderId) return
+        verifyCardPaymentReturn()
+    }
 
     fun verifyCardPaymentReturn() {
         if (_checkoutLoading.value) return
-        val redirect = _paymentRedirect.value ?: return; val key = pendingCardOrderKey.orEmpty(); val email = pendingCardBillingEmail.orEmpty()
-        if (key.isBlank() || email.isBlank()) { _checkoutError.value = "No hemos podido comprobar el estado del pago."; return }
+        val pending = pendingCardPayment ?: pendingCardPaymentStore.load()
+        if (pending == null) {
+            _checkoutError.value = "No hemos podido comprobar el estado del pago."
+            return
+        }
+        pendingCardPayment = pending
         viewModelScope.launch {
             _checkoutLoading.value = true
             try {
-                var order = cartStore.lookupOrderStatus(redirect.orderId, key, email); var attempts = 0
+                var order = cartStore.lookupOrderStatus(pending.orderId, pending.orderKey, pending.billingEmail)
+                var attempts = 0
                 while (true) {
-                    val status = order.status.lowercase(); val definitelyPaid = order.paid; val definitelyUnpaid = !order.paid && (order.terminal || status == "cancelled" || status == "failed" || status == "refunded")
+                    val status = order.status.lowercase()
+                    val definitelyPaid = order.paid
+                    val definitelyUnpaid = !order.paid && (order.terminal || status == "cancelled" || status == "failed" || status == "refunded")
                     when {
                         definitelyPaid -> {
-                            val confirmedOrderId = if (order.id > 0) order.id else redirect.orderId
-                            pendingCardOrderKey = null
-                            pendingCardBillingEmail = null
+                            val confirmedOrderId = if (order.id > 0) order.id else pending.orderId
+                            pendingCardPaymentStore.clear()
+                            pendingCardPayment = null
                             _paymentRedirect.value = null
                             _cardPaymentResult.value = CardPaymentResult(confirmedOrderId, true)
                             _checkoutPhase.value = CheckoutPhase.ORDER_CREATED
                             cartStore.clearAfterConfirmedPayment()
                             break
                         }
-                        definitelyUnpaid -> { cartStore.restoreRemoteAfterUnpaidCheckout(); pendingCardOrderKey = null; pendingCardBillingEmail = null; _paymentRedirect.value = null; invalidateCheckout(); _cardPaymentResult.value = CardPaymentResult(redirect.orderId, false); break }
-                        attempts >= 10 -> { _cardPaymentResult.value = CardPaymentResult(redirect.orderId, null); break }
-                        else -> { kotlinx.coroutines.delay(1500); order = cartStore.lookupOrderStatus(redirect.orderId, key, email); attempts++ }
+                        definitelyUnpaid -> {
+                            cartStore.restoreRemoteAfterUnpaidCheckout()
+                            pendingCardPaymentStore.clear()
+                            pendingCardPayment = null
+                            _paymentRedirect.value = null
+                            invalidateCheckout()
+                            _cardPaymentResult.value = CardPaymentResult(pending.orderId, false)
+                            break
+                        }
+                        attempts >= 10 -> {
+                            _cardPaymentResult.value = CardPaymentResult(pending.orderId, null)
+                            break
+                        }
+                        else -> {
+                            kotlinx.coroutines.delay(1500)
+                            order = cartStore.lookupOrderStatus(pending.orderId, pending.orderKey, pending.billingEmail)
+                            attempts++
+                        }
                     }
                 }
-            } catch (exception: Exception) { _cardPaymentResult.value = CardPaymentResult(redirect.orderId, null); _checkoutError.value = "No hemos podido comprobar el pago. No realices otro pago hasta volver a comprobarlo." }
-            finally { _checkoutLoading.value = false }
+            } catch (exception: Exception) {
+                _cardPaymentResult.value = CardPaymentResult(pending.orderId, null)
+                _checkoutError.value = "No hemos podido comprobar el pago. No realices otro pago hasta volver a comprobarlo."
+            } finally {
+                _checkoutLoading.value = false
+            }
         }
     }
 
@@ -371,8 +404,8 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     fun clearError() { _error.value = null }
     private fun logShippingResponse(cart: WooCart) { cart.shippingRates.forEach { packageRate -> packageRate.rates.forEach { rate -> Log.d("CriosRangoShipping", "package=${packageRate.packageId} method=${rate.methodId} rate=${rate.rateId} selected=${rate.selected} price=${rate.price} taxes=${rate.taxes}") } }; Log.d("CriosRangoShipping", "totals shipping=${cart.totals.totalShipping} shippingTax=${cart.totals.totalShippingTax} total=${cart.totals.totalPrice}") }
 
-    class Factory(private val repository: StoreRepository, private val cartStore: CartStore, private val deliveryAddressStore: DeliveryAddressStore) : ViewModelProvider.Factory {
+    class Factory(private val repository: StoreRepository, private val cartStore: CartStore, private val deliveryAddressStore: DeliveryAddressStore, private val pendingCardPaymentStore: PendingCardPaymentStore) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T = ShopViewModel(repository, cartStore, deliveryAddressStore) as T
+        override fun <T : ViewModel> create(modelClass: Class<T>): T = ShopViewModel(repository, cartStore, deliveryAddressStore, pendingCardPaymentStore) as T
     }
 }
