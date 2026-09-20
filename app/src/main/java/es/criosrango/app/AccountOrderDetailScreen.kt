@@ -1,5 +1,7 @@
 package es.criosrango.app
 
+import es.criosrango.shared.account.AccountOrderItem
+import es.criosrango.shared.account.AccountOrderSummary
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
