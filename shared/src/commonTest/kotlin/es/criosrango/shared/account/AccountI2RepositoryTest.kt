@@ -183,7 +183,9 @@ class AccountI2RepositoryTest {
             FakeI2TokenStore("tok"),
             client = client(
                 """{"success":true,"order_id":42,"customer_id":7}""",
-                capture = { claimCalls++ }
+                capture = {
+                    if (it.url.encodedPath.endsWith("/claim-order")) claimCalls++
+                }
             ),
             claimOrderStore = pending
         )
