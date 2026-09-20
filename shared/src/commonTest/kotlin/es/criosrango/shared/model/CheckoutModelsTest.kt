@@ -2,6 +2,8 @@ package es.criosrango.shared.model
 
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -29,9 +31,10 @@ class CheckoutModelsTest {
     fun updateCustomerSerializesBillingAndShippingAddresses() {
         val address = CustomerAddress(firstName = "Ana", lastName = "Ruiz", email = "ana@example.test")
         val encoded = json.encodeToString(UpdateCustomerRequest(address))
-        assertTrue(encoded.contains("billing_address"))
-        assertTrue(encoded.contains("shipping_address"))
-        assertTrue(encoded.contains("""first_name":"Ana"""))
+        val root = Json.parseToJsonElement(encoded).jsonObject
+        assertTrue(root["billing_address"]!!.jsonObject.containsKey("first_name"))
+        assertTrue(root["shipping_address"]!!.jsonObject.containsKey("first_name"))
+        assertEquals("Ana", root["billing_address"]!!.jsonObject["first_name"]!!.jsonPrimitive.content)
     }
 
     @Test
@@ -65,12 +68,13 @@ class CheckoutModelsTest {
             customerNote = "Entregar por la tarde"
         )
         val encoded = json.encodeToString(request)
-        assertTrue(encoded.contains("""payment_method":"cecabank_gateway"""))
-        assertTrue(encoded.contains("billing_address"))
-        assertTrue(encoded.contains("shipping_address"))
-        assertTrue(encoded.contains("""shipping_rate":"flat_rate:1"""))
-        assertTrue(encoded.contains("""expected_total":"10900"""))
-        assertTrue(encoded.contains("""payment_data":{"token":"test-token"}"""))
-        assertTrue(encoded.contains("""customer_note":"Entregar por la tarde"""))
+        val root = Json.parseToJsonElement(encoded).jsonObject
+        assertEquals("cecabank_gateway", root["payment_method"]!!.jsonPrimitive.content)
+        assertTrue(root["billing_address"]!!.jsonObject.containsKey("first_name"))
+        assertTrue(root["shipping_address"]!!.jsonObject.containsKey("first_name"))
+        assertEquals("flat_rate:1", root["shipping_rate"]!!.jsonPrimitive.content)
+        assertEquals("10900", root["expected_total"]!!.jsonPrimitive.content)
+        assertEquals("test-token", root["payment_data"]!!.jsonObject["token"]!!.jsonPrimitive.content)
+        assertEquals("Entregar por la tarde", root["customer_note"]!!.jsonPrimitive.content)
     }
 }
