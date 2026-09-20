@@ -122,6 +122,37 @@ class StoreApiClient(
             }
         }
 
+    suspend fun checkout(): CheckoutResponse =
+        executeCart { client.get(baseUrl + "checkout") { sessionHeaders() } }
+
+    suspend fun updateCustomer(request: UpdateCustomerRequest): StoreCart =
+        executeCart {
+            client.post(baseUrl + "cart/update-customer") {
+                sessionHeaders()
+                contentType(ContentType.Application.Json)
+                setBody(request)
+            }
+        }
+
+    suspend fun selectShippingRate(request: SelectShippingRateRequest): StoreCart =
+        executeCart {
+            client.post(baseUrl + "cart/select-shipping-rate") {
+                sessionHeaders()
+                contentType(ContentType.Application.Json)
+                setBody(request)
+            }
+        }
+
+    suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse =
+        executeCart {
+            client.post(baseUrl + "checkout") {
+                sessionHeaders()
+                header("X-CriosRango-App", "1")
+                contentType(ContentType.Application.Json)
+                setBody(request)
+            }
+        }
+
     suspend fun product(id: Int): StoreProduct =
         client.get(baseUrl + "products/" + id).body()
 
