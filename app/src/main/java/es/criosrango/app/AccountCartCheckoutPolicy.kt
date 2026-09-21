@@ -12,9 +12,6 @@ internal object AccountCartCheckoutPolicy {
     fun showGuestLoginCta(accountUserId: Int?, cartItemCount: Int): Boolean =
         accountUserId == null && cartItemCount > 0
 
-    fun canStartNewCheckout(hasPendingCardPayment: Boolean): Boolean =
-        true
-
     fun shouldPrefillAccountAddress(
         existingCheckoutAddress: CustomerAddress?,
         accountAddress: AccountCustomerAddress?
