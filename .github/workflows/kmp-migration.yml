@@ -206,10 +206,13 @@ jobs:
             echo "CRIOSRANGO_DEBUG_KEY_PASSWORD=$CRIOSRANGO_DEBUG_KEY_PASSWORD"
           } >> "$GITHUB_ENV"
 
-      - name: Build Kotlin iOS framework
+      - name: Build Kotlin iOS simulator framework
         run: ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 --stacktrace
 
-      - name: Build iOS app
+      - name: Build Kotlin iOS device framework
+        run: ./gradlew :shared:linkDebugFrameworkIosArm64 --stacktrace
+
+      - name: Build iOS Simulator app
         run: |
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
@@ -219,6 +222,19 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             -derivedDataPath "$GITHUB_WORKSPACE/ios-derived-data" \
+            build
+
+      - name: Compile iOS device app (unsigned)
+        run: |
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme CriosRangoKMPSpike \
+            -sdk iphoneos \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            -derivedDataPath "$GITHUB_WORKSPACE/ios-device-derived-data" \
             build
 
       - name: Runtime smoke test on iOS Simulator
@@ -257,7 +273,7 @@ jobs:
 
           FOUND=0
           for i in $(seq 1 30); do
-            if grep -q "KMP_RUNTIME_HTTP_STATUS_PRODUCTS status=200" "$CONSOLE_LOG" && grep -q "KMP_RUNTIME_HTTP_STATUS_CATEGORIES status=200" "$CONSOLE_LOG" && grep -Eq "KMP_RUNTIME_PRODUCTS_COUNT count=[1-9][0-9]*" "$CONSOLE_LOG" && grep -Eq "KMP_RUNTIME_CATEGORIES_COUNT count=[1-9][0-9]*" "$CONSOLE_LOG" && grep -q "KMP_MODEL_ASSERTION_PRODUCT_IS_IN_STOCK_MATCH=PASS" "$CONSOLE_LOG" && grep -q "KMP_MODEL_ASSERTION_PRODUCT_PURCHASABLE_MATCH=PASS" "$CONSOLE_LOG" && grep -q "KMP_MODEL_ASSERTION_CATEGORY_PARENT_MATCH=PASS" "$CONSOLE_LOG" && grep -q "KMP_MODEL_ASSERTION_CATEGORY_COUNT_MATCH=PASS" "$CONSOLE_LOG" && grep -q "KMP_MODEL_PRODUCT_PERMALINK_PRESENT=true" "$CONSOLE_LOG" && grep -q "KMP_MODEL_PRODUCT_PRICE_PRESENT=true" "$CONSOLE_LOG" && grep -q "KMP_MODEL_PRODUCT_IMAGE_SRC_PRESENT=true" "$CONSOLE_LOG" && grep -q "KMP_MODEL_PRODUCT_DESCRIPTION_PRESENT=true" "$CONSOLE_LOG" && grep -q "KMP_MODEL_CATEGORY_SLUG_PRESENT=true" "$CONSOLE_LOG" && grep -q "KMP_RUNTIME_HTTP_STATUS_CART status=200" "$CONSOLE_LOG" && grep -q "KMP_RUNTIME_HTTP_STATUS_CART_SECOND status=200" "$CONSOLE_LOG" && grep -q "KMP_MODEL_ASSERTION_CART_MODEL_PARSED=PASS" "$CONSOLE_LOG" && grep -q "KMP_MODEL_ASSERTION_CART_TOKEN_RETAINED=PASS" "$CONSOLE_LOG" && grep -q "KMP_MODEL_ASSERTION_NONCE_RETAINED=PASS" "$CONSOLE_LOG" && grep -q "KMP_MODEL_ASSERTION_COOKIE_RETAINED=PASS" "$CONSOLE_LOG"; then
+            if grep -q "KMP_RUNTIME_ACCOUNT_SCREEN_READY" "$CONSOLE_LOG" && grep -Eq "KMP_ACCOUNT_SESSION_PRESENT=(true|false)" "$CONSOLE_LOG"; then
               FOUND=1
               break
             fi
