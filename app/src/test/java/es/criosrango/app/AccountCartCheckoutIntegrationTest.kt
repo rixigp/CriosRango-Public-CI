@@ -75,9 +75,6 @@ class AccountCartCheckoutIntegrationTest {
         assertTrue(AccountCartCheckoutPolicy.isAddressVisibleToAccount(null, 2))
         assertTrue(AccountCartCheckoutPolicy.isAddressVisibleToAccount(2, 2))
         assertFalse(AccountCartCheckoutPolicy.isAddressVisibleToAccount(1, 2))
-        assertNull(
-            null as CustomerAddress?
-        )
     }
 
     @Test
