@@ -94,7 +94,7 @@ internal fun CartScreen(
     openLine: (CartLine) -> Unit,
     retry: () -> Unit,
     onCheckout: () -> Unit,
-    showGuestLoginCta: Boolean,
+    accountUserId: Int?,
     onLogin: () -> Unit,
     hasPendingCardPayment: Boolean
 ) {
@@ -172,7 +172,7 @@ internal fun CartScreen(
             }
             Text("Total: ${formatMinorUnits(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)}", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             if (cart.totals.totalDiscount != "0") Text("Descuentos: -${formatMinorUnits(cart.totals.totalDiscount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)}", color = Color(0xFF183B35), style = MaterialTheme.typography.bodySmall)
-            if (AccountCartCheckoutPolicy.showGuestLoginCta(if (showGuestLoginCta) null else 1, cart.items.size)) {
+            if (AccountCartCheckoutPolicy.showGuestLoginCta(accountUserId, cart.items.size)) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
