@@ -403,7 +403,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 if (isNativeBizum) { cartStore.consumeConfirmedOrder(); _bizumOrderId.value = response.orderId } else {
                     val orderKey = response.orderKey?.takeIf { it.isNotBlank() } ?: throw CartException("La tienda no ha devuelto la clave del pedido.")
                     val paymentUrl = response.paymentRedirectUrl() ?: throw CartException("La tienda no ha devuelto la URL de pago.")
-                    val pending = LastCheckout(response.orderId, orderKey)
+                    val pending = LastCheckout(response.orderId, orderKey, paymentUrl)
                     if (!pendingCardPaymentStore.save(pending)) {
                         throw CartException("No se ha podido guardar el último checkout. No se abrirá la pasarela.")
                     }
@@ -415,6 +415,13 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
             } catch (exception: Exception) { if (generation != checkoutGeneration) return@launch; _checkoutError.value = exception.toStoreUiError().message; _checkoutPhase.value = CheckoutPhase.FAILED }
             finally { if (generation == checkoutGeneration) _checkoutLoading.value = false }
         }
+    }
+
+    fun continuePendingCardPayment(): Boolean {
+        val checkout = lastCheckout ?: pendingCardPaymentStore.load()?.also { lastCheckout = it } ?: return false
+        _paymentRedirect.value = PaymentRedirect(checkoutGeneration, checkout.orderId, checkout.paymentUrl)
+        _checkoutPhase.value = CheckoutPhase.OPENING_PAYMENT
+        return true
     }
 
     fun handleCardPaymentCancelled(orderId: Int) {
