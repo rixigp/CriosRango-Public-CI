@@ -84,36 +84,36 @@ data class AccountOrderVariation(
 
 @Serializable
 data class AccountOrderItem(
-    val name: String = "",
+    @Serializable(with = OrderStringSerializer::class) val name: String = "",
     val quantity: Int = 0,
     val variations: List<AccountOrderVariation> = emptyList()
 )
 
 @Serializable
 data class AccountOrderShippingAddress(
-    @SerialName("address_1") val address1: String = "",
-    @SerialName("address_2") val address2: String = "",
-    val city: String = "",
-    val state: String = "",
-    val postcode: String = "",
-    val country: String = ""
+    @SerialName("address_1") @Serializable(with = OrderStringSerializer::class) val address1: String = "",
+    @SerialName("address_2") @Serializable(with = OrderStringSerializer::class) val address2: String = "",
+    @Serializable(with = OrderStringSerializer::class) val city: String = "",
+    @Serializable(with = OrderStringSerializer::class) val state: String = "",
+    @Serializable(with = OrderStringSerializer::class) val postcode: String = "",
+    @Serializable(with = OrderStringSerializer::class) val country: String = ""
 )
 
 @Serializable
 data class AccountOrderSummary(
     val id: Int,
-    val number: String,
-    val status: String,
-    @SerialName("status_label") val statusLabel: String = "",
-    @SerialName("date_created") val dateCreated: String? = null,
-    val total: String = "",
-    val currency: String = "EUR",
-    @SerialName("payment_method") val paymentMethod: String = "",
-    @SerialName("payment_method_title") val paymentMethodTitle: String = "",
+    @Serializable(with = OrderStringSerializer::class) val number: String,
+    @Serializable(with = OrderStringSerializer::class) val status: String,
+    @SerialName("status_label") @Serializable(with = OrderStringSerializer::class) val statusLabel: String = "",
+    @SerialName("date_created") @Serializable(with = OrderStringSerializer::class) val dateCreated: String? = null,
+    @Serializable(with = OrderStringSerializer::class) val total: String = "",
+    @Serializable(with = OrderStringSerializer::class) val currency: String = "EUR",
+    @SerialName("payment_method") @Serializable(with = OrderStringSerializer::class) val paymentMethod: String = "",
+    @SerialName("payment_method_title") @Serializable(with = OrderStringSerializer::class) val paymentMethodTitle: String = "",
     val items: List<AccountOrderItem> = emptyList(),
-    val subtotal: String = "",
-    @SerialName("shipping_total") val shippingTotal: String = "",
-    @SerialName("shipping_method") val shippingMethod: String = "",
+    @Serializable(with = OrderStringSerializer::class) val subtotal: String = "",
+    @SerialName("shipping_total") @Serializable(with = OrderStringSerializer::class) val shippingTotal: String = "",
+    @SerialName("shipping_method") @Serializable(with = OrderStringSerializer::class) val shippingMethod: String = "",
     @SerialName("shipping_address") val shippingAddress: AccountOrderShippingAddress = AccountOrderShippingAddress()
 )
 
