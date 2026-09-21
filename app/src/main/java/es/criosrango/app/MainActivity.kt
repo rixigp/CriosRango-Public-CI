@@ -132,7 +132,6 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
     val checkoutPhase by viewModel.checkoutPhase.collectAsStateWithLifecycle()
     val paymentRedirect by viewModel.paymentRedirect.collectAsStateWithLifecycle()
     val cardPaymentResult by viewModel.cardPaymentResult.collectAsStateWithLifecycle()
-    val hasPendingCardPayment by viewModel.hasPendingCardPayment.collectAsStateWithLifecycle()
     val paymentReturnUri = paymentReturnUriState.value
     val bizumOrderId by viewModel.bizumOrderId.collectAsStateWithLifecycle()
     LaunchedEffect(checkout?.orderId, checkout?.orderKey) {
@@ -240,13 +239,6 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
                             returnToCartAfterLogin = true
                             tab = AppTab.ACCOUNT
                         },
-                        hasPendingCardPayment = hasPendingCardPayment,
-                        onContinuePendingPayment = {
-                            viewModel.continuePendingCardPayment()
-                        },
-                        onCheckPendingPayment = {
-                            viewModel.verifyCardPaymentReturn()
-                        }
                     )
                 }
             }
