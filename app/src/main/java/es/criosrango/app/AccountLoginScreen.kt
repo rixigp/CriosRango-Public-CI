@@ -42,7 +42,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
-fun AccountLoginScreen(padding: PaddingValues, vm: AccountViewModel = viewModel()) {
+fun AccountLoginScreen(
+    padding: PaddingValues,
+    vm: AccountViewModel = viewModel(),
+    onAuthenticated: (() -> Unit)? = null
+) {
     val authState by vm.authState.collectAsStateWithLifecycle()
     val user by vm.user.collectAsStateWithLifecycle()
     val orders by vm.orders.collectAsStateWithLifecycle()
@@ -66,6 +70,7 @@ fun AccountLoginScreen(padding: PaddingValues, vm: AccountViewModel = viewModel(
         if (currentUser != null) {
             showLogin = false
             vm.refreshOrders()
+            onAuthenticated?.invoke()
         }
     }
 
