@@ -91,8 +91,8 @@ class AccountClient(
         println(
             "[CriosRangoAccount][orders-detailed] " +
                 "endpoint=/wp-json/criosrango/v1/orders-detailed " +
-                "status=\${status ?: "unknown"} " +
-                "exceptionChain=$\{chain}"
+                "status=${status ?: "unknown"} " +
+                "exceptionChain=${chain}"
         )
     }
 
