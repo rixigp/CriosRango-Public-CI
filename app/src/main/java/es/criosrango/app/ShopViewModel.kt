@@ -409,8 +409,10 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         val generation = checkoutGeneration
         viewModelScope.launch {
             processDeathReconciliationJob?.join()
-            if (processDeathPaidOrderId != null) return@launch
-            val quote = _checkout.value
+            if (processDeathPaidOrderId != null) {
+                checkoutSubmissionGate.release()
+                return@launch
+            }
             if (shippingRateId.isNullOrBlank() || paymentMethod.isNullOrBlank()) {
                 _checkoutError.value = "Selecciona una tarifa y un método de pago válidos."
                 checkoutSubmissionGate.release()
@@ -419,7 +421,31 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
             _checkoutLoading.value = true; _checkoutPhase.value = CheckoutPhase.CREATING_ORDER; _checkoutError.value = null
             try {
                 val currentCart = cartStore.cart.value
-                val request = CreateOrderRequest(paymentMethod = paymentMethod, billing_address = address, shipping_address = address, shippingRate = shippingRateId, expectedTotal = currentCart.totals.totalPrice, paymentData = emptyMap())
+                val selectedPackage = currentCart.visibleShippingRatesForDestination()
+                    .firstOrNull { packageRate -> packageRate.rates.any { it.rateId == shippingRateId } }
+
+                if (selectedPackage != null && selectedPackage.rates.none { it.rateId == shippingRateId && it.selected }) {
+                    _checkoutPhase.value = CheckoutPhase.QUOTING
+                    val revalidatedCart = repository.selectShippingRate(
+                        SelectShippingRateRequest(selectedPackage.packageId, shippingRateId)
+                    )
+                    if (revalidatedCart.errors.isNotEmpty()) {
+                        throw CartException(revalidatedCart.errors.joinToString("\n") { it.message })
+                    }
+                    if (generation != checkoutGeneration) return@launch
+                    logShippingResponse(revalidatedCart)
+                    cartStore.replace(revalidatedCart)
+                    val revalidatedCheckout = repository.checkout()
+                    if (revalidatedCheckout.errors.isNotEmpty()) {
+                        throw CartException(revalidatedCheckout.errors.joinToString("\n") { it.message })
+                    }
+                    if (generation != checkoutGeneration) return@launch
+                    _checkout.value = revalidatedCheckout
+                    _checkoutPhase.value = CheckoutPhase.READY
+                }
+
+                val finalCart = cartStore.cart.value
+                val request = CreateOrderRequest(paymentMethod = paymentMethod, billing_address = address, shipping_address = address, shippingRate = shippingRateId, expectedTotal = finalCart.totals.totalPrice, paymentData = emptyMap())
                 val response = repository.createCheckout(request); if (generation != checkoutGeneration) return@launch
                 if (response.errors.isNotEmpty()) throw CartException(response.errors.joinToString("\n") { it.message })
                 if (response.orderId == null) throw CartException("La tienda no ha confirmado la creación del pedido.")
