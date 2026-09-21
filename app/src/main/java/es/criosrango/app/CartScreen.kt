@@ -96,7 +96,9 @@ internal fun CartScreen(
     onCheckout: () -> Unit,
     accountUserId: Int?,
     onLogin: () -> Unit,
-    hasPendingCardPayment: Boolean
+    hasPendingCardPayment: Boolean,
+    onContinuePendingPayment: () -> Unit,
+    onCheckPendingPayment: () -> Unit
 ) {
     var clearCartConfirm by remember {
         mutableStateOf(false)
@@ -195,11 +197,32 @@ internal fun CartScreen(
                     shape = RoundedCornerShape(12.dp),
                     color = Color(0xFFFFF4E5)
                 ) {
-                    Text(
-                        "Hay un pago pendiente. Espera a que se confirme antes de iniciar una nueva compra.",
-                        modifier = Modifier.padding(12.dp),
-                        color = Color(0xFF7A4E00)
-                    )
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "Hay un pago pendiente. Espera a que se confirme antes de iniciar una nueva compra.",
+                            color = Color(0xFF7A4E00)
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = onContinuePendingPayment,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Continuar pago")
+                            }
+                            OutlinedButton(
+                                onClick = onCheckPendingPayment,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Comprobar pago")
+                            }
+                        }
+                    }
                 }
             }
             Button(
