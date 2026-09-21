@@ -314,8 +314,8 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     }
 
     private var lastCheckout: LastCheckout? = pendingCardPaymentStore.load()
-    private val _hasPendingCardPayment = MutableStateFlow(lastCheckout != null)
-    val hasPendingCardPayment: StateFlow<Boolean> = _hasPendingCardPayment.asStateFlow()
+    private var processDeathReconciliationJob: Job? = null
+    private var processDeathPaidOrderId: Int? = null
     private val _cardPaymentResult = MutableStateFlow<CardPaymentResult?>(null)
     val cardPaymentResult: StateFlow<CardPaymentResult?> = _cardPaymentResult.asStateFlow()
 
@@ -334,7 +334,6 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 val confirmedOrderId = if (result.order.id > 0) result.order.id else checkout.orderId
                 pendingCardPaymentStore.clear()
                 lastCheckout = null
-                _hasPendingCardPayment.value = false
                 _paymentRedirect.value = null
                 if (publishPaidResult) _cardPaymentResult.value = CardPaymentResult(confirmedOrderId, true)
                 _checkoutPhase.value = CheckoutPhase.ORDER_CREATED
@@ -352,7 +351,6 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 if (!preserveMarkerOnExhaustion) {
                     pendingCardPaymentStore.clear()
                     lastCheckout = null
-                    _hasPendingCardPayment.value = false
                     _paymentRedirect.value = null
                 }
                 ReconcileOutcome.PENDING
@@ -362,19 +360,19 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
 
     private fun reconcileAfterProcessDeath() {
         if (lastCheckout == null) return
-        viewModelScope.launch {
+        processDeathReconciliationJob = viewModelScope.launch {
             runCatching {
                 reconcileLastCheckout(
                     publishPaidResult = false,
-                    preserveMarkerOnExhaustion = true
+                    preserveMarkerOnExhaustion = false
                 )
-            }.onFailure { exception ->
-                if (exception is CancellationException) throw exception
-                if (!isTransientPaymentStatusException(exception)) {
-                    pendingCardPaymentStore.clear()
-                    lastCheckout = null
-                    _hasPendingCardPayment.value = false
-                }
+            }.onFailure {
+                pendingCardPaymentStore.clear()
+                lastCheckout = null
+                _paymentRedirect.value = null
+            }
+            if (lastCheckout == null && _checkoutPhase.value == CheckoutPhase.ORDER_CREATED) {
+                processDeathPaidOrderId = _cardPaymentResult.value?.orderId
             }
         }
     }
@@ -382,25 +380,8 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     fun createOrder(address: CustomerAddress, paymentMethod: String, shippingRateId: String?) {
         val generation = checkoutGeneration
         viewModelScope.launch {
-            val hasPendingMarker = lastCheckout != null || pendingCardPaymentStore.load() != null
-            val reconciliation = if (hasPendingMarker) {
-                runCatching {
-                    reconcileLastCheckout(preserveMarkerOnExhaustion = true)
-                }.getOrElse {
-                    if (isTransientPaymentStatusException(it)) {
-                        ReconcileOutcome.PENDING
-                    } else {
-                        pendingCardPaymentStore.clear()
-                        lastCheckout = null
-                        _hasPendingCardPayment.value = false
-                        _paymentRedirect.value = null
-                        ReconcileOutcome.CLEARED
-                    }
-                }
-            } else {
-                ReconcileOutcome.NO_MARKER
-            }
-            if (reconciliation != ReconcileOutcome.CLEARED && reconciliation != ReconcileOutcome.NO_MARKER) return@launch
+            processDeathReconciliationJob?.join()
+            if (processDeathPaidOrderId != null) return@launch
             val quote = _checkout.value
             if (shippingRateId.isNullOrBlank() || paymentMethod.isNullOrBlank()) { _checkoutError.value = "Selecciona una tarifa y un método de pago válidos."; return@launch }
             _checkoutLoading.value = true; _checkoutPhase.value = CheckoutPhase.CREATING_ORDER; _checkoutError.value = null
