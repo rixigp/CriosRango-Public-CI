@@ -21,41 +21,52 @@ import com.google.gson.reflect.TypeToken
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.POST
-import retrofit2.http.PUT
 import retrofit2.http.GET
 import retrofit2.http.Query
-import retrofit2.http.Path
 import retrofit2.http.Body
 
 interface StoreApi {
-    @GET("products")
     suspend fun products(
-        @Query("per_page") perPage: Int = 24,
-        @Query("page") page: Int = 1,
-        @Query("search") search: String? = null,
-        @Query("category") category: Int? = null,
-        @Query("orderby") orderBy: String? = null,
-        @Query("order") order: String? = null,
-        @Query("after") after: String? = null,
-        @Query("featured") featured: Boolean? = null
+        perPage: Int = 24,
+        page: Int = 1,
+        search: String? = null,
+        category: Int? = null,
+        orderBy: String? = null,
+        order: String? = null,
+        after: String? = null,
+        featured: Boolean? = null
     ): List<StoreProduct>
 
-    @GET("products")
     suspend fun productsByTag(
-        @Query("per_page") perPage: Int = 100,
-        @Query("page") page: Int = 1,
-        @Query("tag") tag: String
+        perPage: Int = 100,
+        page: Int = 1,
+        tag: String
     ): List<StoreProduct>
 
-    @GET("products/{id}")
-    suspend fun product(@Path("id") id: Int): StoreProduct
+    suspend fun product(id: Int): StoreProduct
 
-    /** Public catalog operation; SharedCatalogStoreApiAdapter routes this to KMP. */
     suspend fun productWithVariationAvailability(id: Int): StoreProduct
 
-    @GET("products/categories")
-    suspend fun categories(@Query("per_page") perPage: Int = 100): List<ProductCategory>
+    suspend fun categories(perPage: Int = 100): List<ProductCategory>
 
+    suspend fun cart(): WooCart
+    suspend fun addCartItem(request: AddCartRequest): WooCart
+    suspend fun updateCartItem(key: String, quantity: Int): WooCart
+    suspend fun removeCartItem(key: String): WooCart
+    suspend fun checkout(): CheckoutResponse
+    suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse
+    suspend fun getOrderStatus(orderId: Int, orderKey: String): OrderStatusResponse
+    suspend fun selectShippingRate(request: SelectShippingRateRequest): WooCart
+    suspend fun updateCustomer(request: UpdateCustomerRequest): WooCart
+}
+
+/**
+ * Android commercial Retrofit transport.
+ *
+ * Catalog endpoints deliberately do not live here: Android catalog runtime is
+ * provided by the shared KMP client through SharedCatalogStoreApiAdapter.
+ */
+interface RetrofitStoreApi {
     @GET("cart")
     suspend fun cart(): WooCart
 
@@ -67,7 +78,6 @@ interface StoreApi {
 
     @POST("cart/remove-item")
     suspend fun removeCartItem(@Query("key") key: String): WooCart
-
 
     @GET("checkout")
     suspend fun checkout(): CheckoutResponse
@@ -170,7 +180,7 @@ object StoreApiFactory {
     private var activeClient: OkHttpClient? = null
     private var activeSession: StoreSession? = null
 
-    fun create(session: StoreSession): StoreApi {
+    fun create(session: StoreSession): RetrofitStoreApi {
         val cookieJar = object : CookieJar {
             private val cookies = mutableListOf<Cookie>()
 
@@ -221,7 +231,7 @@ object StoreApiFactory {
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
-            .create(StoreApi::class.java)
+            .create(RetrofitStoreApi::class.java)
     }
 
     fun diagnosticNormalClient(url: HttpUrl): DiagnosticNormalClient {
@@ -430,8 +440,6 @@ class StoreRepository(private val api: StoreApi) {
             .distinctBy { it.id }
             .take(homeProductCount)
     }
-    suspend fun featuredProducts() = api.products(perPage = 8, featured = true)
-    suspend fun categoryProducts(category: Int) = api.products(perPage = 8, category = category)
     suspend fun categories() = api.categories()
     suspend fun product(id: Int) = api.product(id)
     suspend fun checkout() = api.checkout()
