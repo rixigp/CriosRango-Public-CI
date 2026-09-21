@@ -314,6 +314,8 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     }
 
     private var lastCheckout: LastCheckout? = pendingCardPaymentStore.load()
+    private val _hasPendingCardPayment = MutableStateFlow(lastCheckout != null)
+    val hasPendingCardPayment: StateFlow<Boolean> = _hasPendingCardPayment.asStateFlow()
     private val _cardPaymentResult = MutableStateFlow<CardPaymentResult?>(null)
     val cardPaymentResult: StateFlow<CardPaymentResult?> = _cardPaymentResult.asStateFlow()
 
@@ -332,6 +334,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 val confirmedOrderId = if (result.order.id > 0) result.order.id else checkout.orderId
                 pendingCardPaymentStore.clear()
                 lastCheckout = null
+                _hasPendingCardPayment.value = false
                 _paymentRedirect.value = null
                 if (publishPaidResult) _cardPaymentResult.value = CardPaymentResult(confirmedOrderId, true)
                 _checkoutPhase.value = CheckoutPhase.ORDER_CREATED
@@ -341,6 +344,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
             PaymentReconciliationResult.TERMINAL_UNPAID -> {
                 pendingCardPaymentStore.clear()
                 lastCheckout = null
+                _hasPendingCardPayment.value = false
                 _paymentRedirect.value = null
                 ReconcileOutcome.CLEARED
             }
@@ -348,6 +352,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 if (!preserveMarkerOnExhaustion) {
                     pendingCardPaymentStore.clear()
                     lastCheckout = null
+                    _hasPendingCardPayment.value = false
                     _paymentRedirect.value = null
                 }
                 ReconcileOutcome.PENDING
@@ -376,7 +381,12 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     fun createOrder(address: CustomerAddress, paymentMethod: String, shippingRateId: String?) {
         val generation = checkoutGeneration
         viewModelScope.launch {
-            val reconciliation = runCatching { reconcileLastCheckout() }.getOrElse { pendingCardPaymentStore.clear(); lastCheckout = null; ReconcileOutcome.CLEARED }
+            val reconciliation = runCatching { reconcileLastCheckout() }.getOrElse {
+                pendingCardPaymentStore.clear()
+                lastCheckout = null
+                _hasPendingCardPayment.value = false
+                ReconcileOutcome.CLEARED
+            }
             if (reconciliation == ReconcileOutcome.PAID) return@launch
             val quote = _checkout.value
             if (shippingRateId.isNullOrBlank() || paymentMethod.isNullOrBlank()) { _checkoutError.value = "Selecciona una tarifa y un método de pago válidos."; return@launch }
@@ -397,6 +407,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                         throw CartException("No se ha podido guardar el último checkout. No se abrirá la pasarela.")
                     }
                     lastCheckout = pending
+                    _hasPendingCardPayment.value = true
                     _checkoutPhase.value = CheckoutPhase.OPENING_PAYMENT
                     _paymentRedirect.value = PaymentRedirect(generation, response.orderId, paymentUrl)
                 }
@@ -422,6 +433,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 if (!isTransientPaymentStatusException(exception)) {
                     pendingCardPaymentStore.clear()
                     lastCheckout = null
+                    _hasPendingCardPayment.value = false
                     _paymentRedirect.value = null
                     _checkoutError.value = "No hemos podido comprobar el pago."
                 }
