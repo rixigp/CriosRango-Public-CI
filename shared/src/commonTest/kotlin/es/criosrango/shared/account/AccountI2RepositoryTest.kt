@@ -53,7 +53,6 @@ class AccountI2RepositoryTest {
                 install(ContentNegotiation) { json(Json {
                     ignoreUnknownKeys = true
                     coerceInputValues = true
-                    exceptionsWithDebugInfo = false
                 }) }
             }
         )
