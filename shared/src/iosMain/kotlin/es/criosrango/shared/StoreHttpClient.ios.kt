@@ -15,6 +15,5 @@ actual fun createStoreHttpClient(): HttpClient = HttpClient(Darwin) {
     install(ContentNegotiation) { json(Json {
         ignoreUnknownKeys = true
         coerceInputValues = true
-        exceptionsWithDebugInfo = false
     }) }
 }
