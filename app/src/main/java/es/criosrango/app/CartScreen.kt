@@ -81,7 +81,23 @@ import compose.icons.tablericons.Tag
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun CartScreen(cart: WooCart, state: CartLoadState, error: String?, padding: PaddingValues, updateQuantity: (CartLine, Int) -> Unit, canIncrease: (CartLine) -> Boolean, increment: (CartLine) -> Int, removeLine: (CartLine) -> Unit, clearCart: () -> Unit, openLine: (CartLine) -> Unit, retry: () -> Unit, onCheckout: () -> Unit) {
+internal fun CartScreen(
+    cart: WooCart,
+    state: CartLoadState,
+    error: String?,
+    padding: PaddingValues,
+    updateQuantity: (CartLine, Int) -> Unit,
+    canIncrease: (CartLine) -> Boolean,
+    increment: (CartLine) -> Int,
+    removeLine: (CartLine) -> Unit,
+    clearCart: () -> Unit,
+    openLine: (CartLine) -> Unit,
+    retry: () -> Unit,
+    onCheckout: () -> Unit,
+    showGuestLoginCta: Boolean,
+    onLogin: () -> Unit,
+    hasPendingCardPayment: Boolean
+) {
     var clearCartConfirm by remember {
         mutableStateOf(false)
     }
@@ -156,8 +172,43 @@ internal fun CartScreen(cart: WooCart, state: CartLoadState, error: String?, pad
             }
             Text("Total: ${formatMinorUnits(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)}", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             if (cart.totals.totalDiscount != "0") Text("Descuentos: -${formatMinorUnits(cart.totals.totalDiscount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)}", color = Color(0xFF183B35), style = MaterialTheme.typography.bodySmall)
-            Button(onCheckout, enabled = state == CartLoadState.SUCCESS_ITEMS, modifier = Modifier.fillMaxWidth().padding(top = 10.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))) {
-                Text("Continuar compra")
+            if (showGuestLoginCta) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        "¿Ya tienes cuenta? Inicia sesión para acceder a tus datos y pedidos.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    OutlinedButton(
+                        onClick = onLogin,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Iniciar sesión")
+                    }
+                }
+            }
+            if (hasPendingCardPayment) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFFFF4E5)
+                ) {
+                    Text(
+                        "Hay un pago pendiente. Espera a que se confirme antes de iniciar una nueva compra.",
+                        modifier = Modifier.padding(12.dp),
+                        color = Color(0xFF7A4E00)
+                    )
+                }
+            }
+            Button(
+                onClick = onCheckout,
+                enabled = state == CartLoadState.SUCCESS_ITEMS && !hasPendingCardPayment,
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))
+            ) {
+                Text("Finalizar compra")
             }
         }
     }
