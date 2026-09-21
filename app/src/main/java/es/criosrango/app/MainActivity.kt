@@ -240,7 +240,13 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
                             returnToCartAfterLogin = true
                             tab = AppTab.ACCOUNT
                         },
-                        hasPendingCardPayment = hasPendingCardPayment
+                        hasPendingCardPayment = hasPendingCardPayment,
+                        onContinuePendingPayment = {
+                            viewModel.continuePendingCardPayment()
+                        },
+                        onCheckPendingPayment = {
+                            viewModel.verifyCardPaymentReturn()
+                        }
                     )
                 }
             }
