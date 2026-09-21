@@ -51,7 +51,10 @@ fun RedesignedCheckoutScreen(
     createOrder: (CustomerAddress, String, String?) -> Unit,
     deliveryAddressStore: DeliveryAddressStore,
 ) {
-    val saved = remember { deliveryAddressStore.load() }
+    val accountVm: AccountViewModel = viewModel()
+    val accountUser by accountVm.user.collectAsStateWithLifecycle()
+    val accountUserId = accountUser?.id
+    val saved = remember(accountUserId) { deliveryAddressStore.load(accountUserId) }
     var firstName by remember { mutableStateOf(saved?.firstName.orEmpty()) }
     var lastName by remember { mutableStateOf(saved?.lastName.orEmpty()) }
     var email by remember { mutableStateOf(saved?.email.orEmpty()) }
@@ -70,7 +73,6 @@ fun RedesignedCheckoutScreen(
     var selectedShipping by remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    val accountVm: AccountViewModel = viewModel()
     val accountAddress by accountVm.address.collectAsStateWithLifecycle()
     val paymentGatewayIds = remember(checkout, cart.paymentMethods) {
         (checkout?.paymentMethods.orEmpty() + checkout?.experimentalCart?.paymentMethods.orEmpty() + cart.paymentMethods.orEmpty())
@@ -83,12 +85,21 @@ fun RedesignedCheckoutScreen(
     val visibleShipping = cart.visibleShippingRatesForDestination()
     val shippingOptions = visibleShipping.flatMap { it.rates }
 
-    LaunchedEffect(accountAddress) {
-        accountAddress?.let { a ->
-            firstName = a.firstName; lastName = a.lastName; email = a.email; phone = a.phone
-            address = a.address1; postcode = a.postcode; city = a.city
-            province = SPANISH_PROVINCES.firstOrNull { it.code.equals(a.state, true) }
-            country = a.country.ifBlank { "ES" }
+    LaunchedEffect(accountUserId) {
+        if (accountUserId == null && deliveryAddressStore.load(null) == null) {
+            firstName = ""; lastName = ""; email = ""; phone = ""
+            address = ""; postcode = ""; city = ""
+            province = null; country = "ES"
+        }
+    }
+    LaunchedEffect(accountUserId, accountAddress) {
+        if (accountUserId != null && saved == null) {
+            accountAddress?.let { a ->
+                firstName = a.firstName; lastName = a.lastName; email = a.email; phone = a.phone
+                address = a.address1; postcode = a.postcode; city = a.city
+                province = SPANISH_PROVINCES.firstOrNull { it.code.equals(a.state, true) }
+                country = a.country.ifBlank { "ES" }
+            }
         }
     }
     LaunchedEffect(paymentMethods) { if (selectedPayment !in paymentMethods) selectedPayment = paymentMethods.firstOrNull().orEmpty() }
@@ -99,8 +110,11 @@ fun RedesignedCheckoutScreen(
             visibleShipping.firstOrNull { p -> p.rates.any { it.rateId == chosen.rateId } }?.let { selectShipping(it.packageId, chosen.rateId) }
         }
     }
-    LaunchedEffect(firstName, lastName, email, phone, address, postcode, city, province?.code, country) {
-        deliveryAddressStore.save(CustomerAddress(firstName, lastName, email, phone, address, postcode, city, province?.code.orEmpty(), country))
+    LaunchedEffect(accountUserId, firstName, lastName, email, phone, address, postcode, city, province?.code, country) {
+        deliveryAddressStore.save(
+            CustomerAddress(firstName, lastName, email, phone, address, postcode, city, province?.code.orEmpty(), country),
+            accountUserId
+        )
     }
 
     val addressMatchesQuote = lastValidAddress?.let { a ->
