@@ -363,7 +363,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
             val previousOrderId = lastCheckout?.orderId
             val outcome = runCatching {
                 reconcileLastCheckout(
-                    publishPaidResult = false,
+                    publishPaidResult = true,
                     preserveMarkerOnExhaustion = false
                 )
             }.getOrElse {
@@ -408,13 +408,6 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
             } catch (exception: Exception) { if (generation != checkoutGeneration) return@launch; _checkoutError.value = exception.toStoreUiError().message; _checkoutPhase.value = CheckoutPhase.FAILED }
             finally { if (generation == checkoutGeneration) _checkoutLoading.value = false }
         }
-    }
-
-    fun continuePendingCardPayment(): Boolean {
-        val checkout = lastCheckout ?: pendingCardPaymentStore.load()?.also { lastCheckout = it } ?: return false
-        _paymentRedirect.value = PaymentRedirect(checkoutGeneration, checkout.orderId, checkout.paymentUrl)
-        _checkoutPhase.value = CheckoutPhase.OPENING_PAYMENT
-        return true
     }
 
     fun handleCardPaymentCancelled(orderId: Int) {
