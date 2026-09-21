@@ -48,6 +48,8 @@ fun CriosRangoIOSAccountScreen(repository: AccountRepository) {
     var selectedOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
 
     LaunchedEffect(Unit) {
+        println("KMP_RUNTIME_ACCOUNT_SCREEN_READY")
+        println("KMP_ACCOUNT_SESSION_PRESENT=" + repository.hasSession)
         if (repository.hasSession) {
             runCatching { repository.me() }
                 .onSuccess { user = it }
