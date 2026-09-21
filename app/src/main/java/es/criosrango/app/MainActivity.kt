@@ -235,7 +235,7 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
                         openLine = viewModel::openCartLine,
                         retry = viewModel::refreshCart,
                         onCheckout = { checkoutOpen = true },
-                        showGuestLoginCta = accountUser == null && remoteCart.items.isNotEmpty(),
+                        accountUserId = accountUser?.id,
                         onLogin = {
                             returnToCartAfterLogin = true
                             tab = AppTab.ACCOUNT
