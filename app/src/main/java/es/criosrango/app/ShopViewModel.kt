@@ -382,13 +382,25 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     fun createOrder(address: CustomerAddress, paymentMethod: String, shippingRateId: String?) {
         val generation = checkoutGeneration
         viewModelScope.launch {
-            val reconciliation = runCatching { reconcileLastCheckout() }.getOrElse {
-                pendingCardPaymentStore.clear()
-                lastCheckout = null
-                _hasPendingCardPayment.value = false
-                ReconcileOutcome.CLEARED
+            val hasPendingMarker = lastCheckout != null || pendingCardPaymentStore.load() != null
+            val reconciliation = if (hasPendingMarker) {
+                runCatching {
+                    reconcileLastCheckout(preserveMarkerOnExhaustion = true)
+                }.getOrElse {
+                    if (isTransientPaymentStatusException(it)) {
+                        ReconcileOutcome.PENDING
+                    } else {
+                        pendingCardPaymentStore.clear()
+                        lastCheckout = null
+                        _hasPendingCardPayment.value = false
+                        _paymentRedirect.value = null
+                        ReconcileOutcome.CLEARED
+                    }
+                }
+            } else {
+                ReconcileOutcome.NO_MARKER
             }
-            if (reconciliation == ReconcileOutcome.PAID) return@launch
+            if (reconciliation != ReconcileOutcome.CLEARED && reconciliation != ReconcileOutcome.NO_MARKER) return@launch
             val quote = _checkout.value
             if (shippingRateId.isNullOrBlank() || paymentMethod.isNullOrBlank()) { _checkoutError.value = "Selecciona una tarifa y un método de pago válidos."; return@launch }
             _checkoutLoading.value = true; _checkoutPhase.value = CheckoutPhase.CREATING_ORDER; _checkoutError.value = null
