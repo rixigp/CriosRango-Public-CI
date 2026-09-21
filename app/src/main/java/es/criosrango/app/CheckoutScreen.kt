@@ -105,10 +105,7 @@ fun RedesignedCheckoutScreen(
     LaunchedEffect(paymentMethods) { if (selectedPayment !in paymentMethods) selectedPayment = paymentMethods.firstOrNull().orEmpty() }
     LaunchedEffect(shippingOptions.map { it.rateId to it.selected }) {
         val chosen = shippingOptions.firstOrNull { it.selected } ?: shippingOptions.firstOrNull()
-        selectedShipping = chosen?.rateId
-        if (chosen != null && shippingOptions.none { it.selected }) {
-            visibleShipping.firstOrNull { p -> p.rates.any { it.rateId == chosen.rateId } }?.let { selectShipping(it.packageId, chosen.rateId) }
-        }
+        if (chosen != null) selectedShipping = chosen.rateId
     }
     LaunchedEffect(accountUserId, firstName, lastName, email, phone, address, postcode, city, province?.code, country) {
         deliveryAddressStore.save(
