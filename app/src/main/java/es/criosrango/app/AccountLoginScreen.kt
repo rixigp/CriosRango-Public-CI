@@ -117,10 +117,14 @@ fun AccountLoginScreen(
         }
     }
     BackHandler(enabled = currentUser == null && showLogin && selectedOrder == null) {
-        showLogin = false
-        showRegister = false
-        showForgot = false
-        vm.clearAccountMessages()
+        if (onBackFromLogin != null) {
+            onBackFromLogin.invoke()
+        } else {
+            showLogin = false
+            showRegister = false
+            showForgot = false
+            vm.clearAccountMessages()
+        }
     }
 
     if (currentUser != null && selectedOrder != null) {
