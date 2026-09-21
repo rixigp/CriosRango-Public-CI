@@ -48,6 +48,10 @@ interface StoreApi {
     suspend fun productWithVariationAvailability(id: Int): StoreProduct
 
     suspend fun categories(perPage: Int = 100): List<ProductCategory>
+    suspend fun cart(): WooCart
+    suspend fun addCartItem(request: AddCartRequest): WooCart
+    suspend fun updateCartItem(key: String, quantity: Int): WooCart
+    suspend fun removeCartItem(key: String): WooCart
 
     suspend fun checkout(): CheckoutResponse
     suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse
