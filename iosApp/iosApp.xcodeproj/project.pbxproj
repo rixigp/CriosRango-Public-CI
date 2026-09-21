@@ -131,7 +131,7 @@
             buildSettings = {
                 INFOPLIST_FILE = Info.plist;
                 IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-                FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/../shared/build/bin/iosSimulatorArm64/debugFramework" "$(SRCROOT)/../shared/build/bin/iosArm64/debugFramework";
+                FRAMEWORK_SEARCH_PATHS = ("$(SRCROOT)/../shared/build/bin/iosSimulatorArm64/debugFramework", "$(SRCROOT)/../shared/build/bin/iosArm64/debugFramework");
                 OTHER_LDFLAGS = "-framework Shared";
                 PRODUCT_BUNDLE_IDENTIFIER = es.criosrango.kmpspike;
                 ARCHS = arm64;
