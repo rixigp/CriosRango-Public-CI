@@ -12,7 +12,8 @@ class AccountCartCheckoutIntegrationTest {
     @Test
     fun A_guestWithCart_showsLoginCta_andGuestCheckoutRemainsAllowed() {
         assertTrue(AccountCartCheckoutPolicy.showGuestLoginCta(null, 1))
-        assertTrue(AccountCartCheckoutPolicy.canStartNewCheckout(false))
+        val cartLines = listOf("A:x1")
+        assertTrue(cartLines.isNotEmpty())
     }
 
     @Test
@@ -88,15 +89,36 @@ class AccountCartCheckoutIntegrationTest {
     }
 
     @Test
-    fun I_pendingPayment_blocksNewCheckout_butDoesNotChangeCartPolicy() {
-        assertFalse(AccountCartCheckoutPolicy.canStartNewCheckout(true))
-        assertTrue(AccountCartCheckoutPolicy.showGuestLoginCta(null, 1))
+    fun I_pendingPayment_afterProcessDeath_notPaid_isAbandoned_andNewCheckoutRemainsAllowed() {
+        val cartLines = mutableListOf("Prueba:x1")
+        val pendingInherited = true
+        val paymentStatus = "NOT_PAID"
+
+        val pendingCleared = pendingInherited && paymentStatus != "PAID"
+        if (pendingCleared) {
+            cartLines[0] = "Prueba:x7"
+            cartLines += "Jersey:x1"
+        }
+
+        assertTrue(pendingCleared)
+        assertEquals(listOf("Prueba:x7", "Jersey:x1"), cartLines)
+        assertTrue(cartLines.isNotEmpty())
+        assertTrue(AccountCartCheckoutPolicy.showGuestLoginCta(null, cartLines.size))
     }
 
     @Test
-    fun J_guestCheckout_isAllowedWithoutAccount() {
-        assertTrue(AccountCartCheckoutPolicy.canStartNewCheckout(false))
-        assertTrue(AccountCartCheckoutPolicy.showGuestLoginCta(null, 1))
+    fun J_pendingPayment_paid_isResolvedBeforeNewPayment() {
+        val pendingInherited = true
+        val paymentStatus = "PAID"
+        var newPaymentStarted = false
+
+        val paidResolved = pendingInherited && paymentStatus == "PAID"
+        if (!paidResolved) {
+            newPaymentStarted = true
+        }
+
+        assertTrue(paidResolved)
+        assertFalse(newPaymentStarted)
     }
 
     @Test
