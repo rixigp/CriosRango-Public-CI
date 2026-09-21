@@ -446,7 +446,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         viewModelScope.launch {
             _checkoutLoading.value = true
             try {
-                reconcileLastCheckout()
+                reconcileLastCheckout(preserveMarkerOnExhaustion = true)
             } catch (exception: CancellationException) {
                 throw exception
             } catch (exception: Exception) {
