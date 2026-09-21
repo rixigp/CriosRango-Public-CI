@@ -195,30 +195,11 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     private val _addressSaveNotice = MutableStateFlow<String?>(null)
     val addressSaveNotice = _addressSaveNotice.asStateFlow()
 
-    private val deliveryAddressStore =
-        DeliveryAddressStore(application.getSharedPreferences("criosrango", Context.MODE_PRIVATE))
-
     private var restoreJob: kotlinx.coroutines.Job? = null
     private var accountGeneration = 0L
 
     init {
         restoreSession()
-    }
-
-    private fun syncCheckoutAddress(address: AccountCustomerAddress) {
-        deliveryAddressStore.save(
-            CustomerAddress(
-                firstName = address.firstName,
-                lastName = address.lastName,
-                email = address.email,
-                phone = address.phone,
-                address1 = address.address1,
-                postcode = address.postcode,
-                city = address.city,
-                state = address.state,
-                country = address.country
-            )
-        )
     }
 
     private fun invalidateSession() {
@@ -282,7 +263,6 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                     val loadedAddress = repository.customerAddress()
                     if (generation == accountGeneration) {
                         _address.value = loadedAddress
-                        syncCheckoutAddress(loadedAddress)
                     }
                 } catch (exception: Exception) {
                     if (generation != accountGeneration) return@launch
@@ -414,7 +394,6 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                     null
                 }
                 _address.value = loadedAddress
-                loadedAddress?.let(::syncCheckoutAddress)
                 _orders.value = try { repository.orders() } catch (exception: Exception) {
                     if (exception is HttpException && exception.code() == 401) {
                         invalidateSession()
@@ -479,7 +458,6 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 _authState.value = AccountAuthState.AUTHENTICATED
                 val loadedAddress = repository.customerAddress()
                 _address.value = loadedAddress
-                syncCheckoutAddress(loadedAddress)
                 _orders.value = repository.orders()
                 claimPendingOrderIfAuthenticated()
             } catch (e: HttpException) {
@@ -582,7 +560,6 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 repository.saveCustomerAddress(clean)
                 if (generation != accountGeneration || _authState.value != AccountAuthState.AUTHENTICATED) return@launch
                 _address.value = clean
-                syncCheckoutAddress(clean)
                 _addressSaveNotice.value = "Dirección actualizada"
             } catch (exception: Exception) {
                 if (handleAuthenticatedHttpError(exception, "No se ha podido guardar la dirección")) return@launch
