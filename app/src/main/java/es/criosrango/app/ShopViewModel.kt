@@ -373,6 +373,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 if (!isTransientPaymentStatusException(exception)) {
                     pendingCardPaymentStore.clear()
                     lastCheckout = null
+                    _hasPendingCardPayment.value = false
                 }
             }
         }
