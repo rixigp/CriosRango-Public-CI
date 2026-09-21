@@ -21,10 +21,8 @@ import com.google.gson.reflect.TypeToken
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.POST
-import retrofit2.http.PUT
 import retrofit2.http.GET
 import retrofit2.http.Query
-import retrofit2.http.Path
 import retrofit2.http.Body
 
 interface StoreApi {
