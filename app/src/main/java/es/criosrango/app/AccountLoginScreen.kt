@@ -45,7 +45,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 fun AccountLoginScreen(
     padding: PaddingValues,
     vm: AccountViewModel = viewModel(),
-    onAuthenticated: (() -> Unit)? = null
+    openLoginOnStart: Boolean = false,
+    onAuthenticated: (() -> Unit)? = null,
+    onBackFromLogin: (() -> Unit)? = null
 ) {
     val authState by vm.authState.collectAsStateWithLifecycle()
     val user by vm.user.collectAsStateWithLifecycle()
@@ -59,7 +61,7 @@ fun AccountLoginScreen(
     var password by remember { mutableStateOf("") }
     var showRegister by remember { mutableStateOf(false) }
     var showForgot by remember { mutableStateOf(false) }
-    var showLogin by remember { mutableStateOf(false) }
+    var showLogin by remember { mutableStateOf(openLoginOnStart) }
     var selectedInfoPage by remember { mutableStateOf<AccountInfoPage?>(null) }
     val currentUser = user
     var accountSection by remember(currentUser?.id) { mutableStateOf(AccountSection.HOME) }
