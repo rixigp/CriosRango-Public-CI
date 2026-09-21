@@ -13,7 +13,7 @@
         A10000100000000000000001 /* iosApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iosApp.swift; sourceTree = "<group>"; };
         A10000110000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
         A10000120000000000000001 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
-        A10000130000000000000001 /* CriosRangoKMPSpike.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CriosRangoKMPSpike.app; sourceTree = BUILT_PRODUCTS_DIR; };
+        A10000130000000000000001 /* CriosRangoKMPSpike.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CriosRangoKMPSpike.app; sourceTree = "BUILT_PRODUCTS_DIR"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -93,7 +93,7 @@
             outputPaths = ();
             runOnlyForDeploymentPostprocessing = 0;
             shellPath = /bin/sh;
-            shellScript = "cd \"$SRCROOT/..\"\n./gradlew :shared:linkDebugFrameworkIosSimulatorArm64\n";
+            shellScript = "cd \"$SRCROOT/..\"\nif [ \"$SDKROOT\" = \"iphonesimulator\" ]; then\n  ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64\nelse\n  ./gradlew :shared:linkDebugFrameworkIosArm64\nfi\n";
         };
 /* End PBXShellScriptBuildPhase section */
 
@@ -130,8 +130,8 @@
             isa = XCBuildConfiguration;
             buildSettings = {
                 INFOPLIST_FILE = Info.plist;
-                IPHONEOS_DEPLOYMENT_TARGET = 12.0;
-                FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/../shared/build/bin/iosSimulatorArm64/debugFramework";
+                IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+                FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/../shared/build/bin/iosSimulatorArm64/debugFramework" "$(SRCROOT)/../shared/build/bin/iosArm64/debugFramework";
                 OTHER_LDFLAGS = "-framework Shared";
                 PRODUCT_BUNDLE_IDENTIFIER = es.criosrango.kmpspike;
                 ARCHS = arm64;
@@ -149,7 +149,7 @@
             isa = XCBuildConfiguration;
             buildSettings = {
                 INFOPLIST_FILE = iosApp/Info.plist;
-                IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+                IPHONEOS_DEPLOYMENT_TARGET = 16.0;
                 FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)";
                 OTHER_LDFLAGS = "-framework Shared";
                 PRODUCT_BUNDLE_IDENTIFIER = es.criosrango.kmpspike;
@@ -165,7 +165,6 @@
         };
 /* End XCBuildConfiguration section */
 
-/* Begin XCConfigurationList section */
         A10000710000000000000001 /* Project configuration list */ = {
             isa = XCConfigurationList;
             buildConfigurations = (A10001000000000000000001 /* Debug */, A10001010000000000000000001 /* Release */);
@@ -178,7 +177,6 @@
             defaultConfigurationIsVisible = 0;
             defaultConfigurationName = Release;
         };
-/* End XCConfigurationList section */
     };
     rootObject = A10000700000000000000001 /* Project object */;
 }
