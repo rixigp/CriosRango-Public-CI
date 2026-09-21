@@ -77,19 +77,17 @@ class StoreApiClientCatalogTest {
         try {
             val api = StoreApiClient(client = client)
 
-            val products = 
-                api.products(
-                    perPage = 24,
-                    page = 2,
-                    search = "vestido",
-                    category = 445,
-                    orderBy = "date",
-                    order = "desc",
-                    after = "2026-01-01T00:00:00Z",
-                    featured = true,
-                    tag = "marca"
-                )
-            }
+            val products = api.products(
+                perPage = 24,
+                page = 2,
+                search = "vestido",
+                category = 445,
+                orderBy = "date",
+                order = "desc",
+                after = "2026-01-01T00:00:00Z",
+                featured = true,
+                tag = "marca"
+            )
 
             assertEquals(1, products.size)
             assertEquals(1, products.single().id)
