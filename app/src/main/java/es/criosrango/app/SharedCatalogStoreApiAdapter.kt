@@ -40,31 +40,22 @@ import retrofit2.Response
  * Everything else deliberately delegates to the existing Retrofit StoreApi.
  */
 class SharedCatalogStoreApiAdapter(
-    private val retrofitApi: StoreApi,
+    private val retrofitApi: RetrofitStoreApi,
     private val sharedClient: StoreApiClient
-) : StoreApi by retrofitApi {
+) : StoreApi {
 
-    override suspend fun cart(): WooCart {
-        Log.d("CriosRangoSharedCatalog", "CART source=shared operation=GET")
-        return try { sharedClient.cart().toAndroid() } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
-    }
-
-    override suspend fun addCartItem(request: AddCartRequest): WooCart {
-        Log.d("CriosRangoSharedCatalog", "CART source=shared operation=ADD")
-        return try {
-            sharedClient.addCartItem(request.toShared()).toAndroid()
-        } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
-    }
-
-    override suspend fun updateCartItem(key: String, quantity: Int): WooCart {
-        Log.d("CriosRangoSharedCatalog", "CART source=shared operation=UPDATE")
-        return try { sharedClient.updateCartItem(key, quantity).toAndroid() } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
-    }
-
-    override suspend fun removeCartItem(key: String): WooCart {
-        Log.d("CriosRangoSharedCatalog", "CART source=shared operation=REMOVE")
-        return try { sharedClient.removeCartItem(key).toAndroid() } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
-    }
+    override suspend fun cart(): WooCart = retrofitApi.cart()
+    override suspend fun addCartItem(request: AddCartRequest): WooCart = retrofitApi.addCartItem(request)
+    override suspend fun updateCartItem(key: String, quantity: Int): WooCart = retrofitApi.updateCartItem(key, quantity)
+    override suspend fun removeCartItem(key: String): WooCart = retrofitApi.removeCartItem(key)
+    override suspend fun checkout(): CheckoutResponse = retrofitApi.checkout()
+    override suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse = retrofitApi.createCheckout(request)
+    override suspend fun getOrderStatus(orderId: Int, orderKey: String): OrderStatusResponse =
+        retrofitApi.getOrderStatus(orderId, orderKey)
+    override suspend fun selectShippingRate(request: SelectShippingRateRequest): WooCart =
+        retrofitApi.selectShippingRate(request)
+    override suspend fun updateCustomer(request: UpdateCustomerRequest): WooCart =
+        retrofitApi.updateCustomer(request)
 
     override suspend fun product(id: Int): StoreProduct {
         Log.d("CriosRangoSharedCatalog", "PRODUCT_DETAIL source=shared id=$id")
@@ -131,26 +122,6 @@ class SharedCatalogStoreApiAdapter(
         } catch (exception: Exception) {
             throw exception.toAndroidCatalogException()
         }
-    }
-
-    override suspend fun checkout(): CheckoutResponse {
-        Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=GET")
-        return try { sharedClient.checkout().toAndroid() } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
-    }
-
-    override suspend fun updateCustomer(request: UpdateCustomerRequest): WooCart {
-        Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=UPDATE_CUSTOMER")
-        return try { sharedClient.updateCustomer(request.toShared()).toAndroid() } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
-    }
-
-    override suspend fun selectShippingRate(request: SelectShippingRateRequest): WooCart {
-        Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=SELECT_SHIPPING")
-        return try { sharedClient.selectShippingRate(request.toShared()).toAndroid() } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
-    }
-
-    override suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse {
-        Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=CREATE_ORDER")
-        return try { sharedClient.createCheckout(request.toShared()).toAndroid() } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
     }
 
     override suspend fun categories(perPage: Int): List<ProductCategory> {
