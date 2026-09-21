@@ -360,6 +360,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private fun reconcileAfterProcessDeath() {
         if (lastCheckout == null) return
         processDeathReconciliationJob = viewModelScope.launch {
+            val previousOrderId = lastCheckout?.orderId
             val outcome = runCatching {
                 reconcileLastCheckout(
                     publishPaidResult = false,
@@ -372,7 +373,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 ReconcileOutcome.CLEARED
             }
             if (outcome == ReconcileOutcome.PAID) {
-                processDeathPaidOrderId = lastCheckout?.orderId
+                processDeathPaidOrderId = previousOrderId
             }
         }
     }
