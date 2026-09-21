@@ -78,8 +78,8 @@ data class AccountClaimOrderResponse(
 
 @Serializable
 data class AccountOrderVariation(
-    val name: String = "",
-    val value: String = ""
+    @Serializable(with = OrderStringSerializer::class) val name: String = "",
+    @Serializable(with = OrderStringSerializer::class) val value: String = ""
 )
 
 @Serializable
