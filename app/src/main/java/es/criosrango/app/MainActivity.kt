@@ -132,6 +132,7 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
     val checkoutPhase by viewModel.checkoutPhase.collectAsStateWithLifecycle()
     val paymentRedirect by viewModel.paymentRedirect.collectAsStateWithLifecycle()
     val cardPaymentResult by viewModel.cardPaymentResult.collectAsStateWithLifecycle()
+    val hasPendingCardPayment by viewModel.hasPendingCardPayment.collectAsStateWithLifecycle()
     val paymentReturnUri = paymentReturnUriState.value
     val bizumOrderId by viewModel.bizumOrderId.collectAsStateWithLifecycle()
     LaunchedEffect(checkout?.orderId, checkout?.orderKey) {
@@ -145,6 +146,7 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
     val activeBrandProducts by viewModel.activeBrandProducts.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(AppTab.HOME) }
+    var returnToCartAfterLogin by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var homeShowAll by remember { mutableStateOf(false) }
     val homeListState = androidx.compose.foundation.lazy.rememberLazyListState()
     var checkoutOpen by remember { mutableStateOf(false) }
@@ -203,8 +205,43 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
                     tab == AppTab.CATEGORIES -> CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = viewModel::openProduct, onRootBack = { categoryPath.clear(); tab = AppTab.HOME }, onOpen = { category: ProductCategory -> categoryPath += category.id }, outletSeasonFilter = null)
                     tab == AppTab.OUTLET -> CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = viewModel::openProduct, onRootBack = { categoryPath.clear(); outletSeasonFilter = null; tab = AppTab.HOME }, onOpen = { category: ProductCategory -> categoryPath += category.id; tab = AppTab.OUTLET }, outletSeasonFilter = outletSeasonFilter, onSingleLevelBack = if (outletSeasonFilter != null) { { outletSeasonFilter = null } } else { { categoryPath.clear(); tab = AppTab.HOME } })
                     tab == AppTab.SEARCH -> SearchScreen(products = products, allProducts = homeProducts, categories = categories, brands = normalizedBrands, padding = padding, search = viewModel::search, onProduct = viewModel::openProduct, onCategory = { category -> categoryPath.clear(); categoryPath += category.id; tab = AppTab.CATEGORIES }, loading = loading)
-                    tab == AppTab.ACCOUNT -> AccountLoginScreen(padding, accountViewModel)
-                    else -> CartScreen(remoteCart, cartState, cartError, padding, viewModel::updateCartQuantity, viewModel::canIncreaseCart, viewModel::cartIncrement, viewModel::removeCartLine, viewModel::clearCart, viewModel::openCartLine, viewModel::refreshCart, { checkoutOpen = true })
+                    tab == AppTab.ACCOUNT -> AccountLoginScreen(
+                        padding = padding,
+                        vm = accountViewModel,
+                        openLoginOnStart = returnToCartAfterLogin,
+                        onAuthenticated = {
+                            if (returnToCartAfterLogin) {
+                                returnToCartAfterLogin = false
+                                tab = AppTab.CART
+                            }
+                        },
+                        onBackFromLogin = {
+                            if (returnToCartAfterLogin) {
+                                returnToCartAfterLogin = false
+                                tab = AppTab.CART
+                            }
+                        }
+                    )
+                    else -> CartScreen(
+                        cart = remoteCart,
+                        state = cartState,
+                        error = cartError,
+                        padding = padding,
+                        updateQuantity = viewModel::updateCartQuantity,
+                        canIncrease = viewModel::canIncreaseCart,
+                        increment = viewModel::cartIncrement,
+                        removeLine = viewModel::removeCartLine,
+                        clearCart = viewModel::clearCart,
+                        openLine = viewModel::openCartLine,
+                        retry = viewModel::refreshCart,
+                        onCheckout = { checkoutOpen = true },
+                        showGuestLoginCta = accountUser == null && remoteCart.items.isNotEmpty(),
+                        onLogin = {
+                            returnToCartAfterLogin = true
+                            tab = AppTab.ACCOUNT
+                        },
+                        hasPendingCardPayment = hasPendingCardPayment
+                    )
                 }
             }
         }
