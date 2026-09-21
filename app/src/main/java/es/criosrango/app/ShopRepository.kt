@@ -49,10 +49,6 @@ interface StoreApi {
 
     suspend fun categories(perPage: Int = 100): List<ProductCategory>
 
-    suspend fun cart(): WooCart
-    suspend fun addCartItem(request: AddCartRequest): WooCart
-    suspend fun updateCartItem(key: String, quantity: Int): WooCart
-    suspend fun removeCartItem(key: String): WooCart
     suspend fun checkout(): CheckoutResponse
     suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse
     suspend fun getOrderStatus(orderId: Int, orderKey: String): OrderStatusResponse
@@ -67,18 +63,6 @@ interface StoreApi {
  * provided by the shared KMP client through SharedCatalogStoreApiAdapter.
  */
 interface RetrofitStoreApi {
-    @GET("cart")
-    suspend fun cart(): WooCart
-
-    @POST("cart/add-item")
-    suspend fun addCartItem(@Body request: AddCartRequest): WooCart
-
-    @POST("cart/update-item")
-    suspend fun updateCartItem(@Query("key") key: String, @Query("quantity") quantity: Int): WooCart
-
-    @POST("cart/remove-item")
-    suspend fun removeCartItem(@Query("key") key: String): WooCart
-
     @GET("checkout")
     suspend fun checkout(): CheckoutResponse
 
