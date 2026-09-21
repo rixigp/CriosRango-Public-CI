@@ -94,21 +94,9 @@ class SharedCatalogStoreApiAdapter(
         after: String?,
         featured: Boolean?
     ): List<StoreProduct> {
-        val isExactlySupported =
-            search == null &&
-                orderBy == null &&
-                order == null &&
-                after == null &&
-                featured == null
-
-        if (!isExactlySupported) {
-            Log.d("CriosRangoSharedCatalog", "PRODUCTS source=retrofit unsupported-parameters")
-            return retrofitApi.products(perPage, page, search, category, orderBy, order, after, featured)
-        }
-
         Log.d(
             "CriosRangoSharedCatalog",
-            "PRODUCTS source=shared StoreApiClient perPage=$perPage page=$page category=$category"
+            "PRODUCTS source=shared StoreApiClient perPage=$perPage page=$page search=${search != null} category=$category orderby=$orderBy order=$order after=${after != null} featured=$featured"
         )
         return try {
             sharedClient.products(
