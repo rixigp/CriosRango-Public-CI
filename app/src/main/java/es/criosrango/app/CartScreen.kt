@@ -202,7 +202,7 @@ internal fun CartScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            "Hay un pago pendiente. Espera a que se confirme antes de iniciar una nueva compra.",
+                            "Hay un pago pendiente de una compra anterior. Puedes continuarlo o comprobarlo, pero también puedes seguir con una compra nueva.",
                             color = Color(0xFF7A4E00)
                         )
                         Row(
