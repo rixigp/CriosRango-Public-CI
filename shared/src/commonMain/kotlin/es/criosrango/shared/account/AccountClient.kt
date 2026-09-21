@@ -7,6 +7,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.plugins.ResponseException
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
@@ -60,11 +61,40 @@ class AccountClient(
         }
     }
 
-    suspend fun ordersDetailed(token: String, perPage: Int = 20): AccountOrdersResponse =
-        client.get(baseUrl + "orders-detailed") {
-            header(HttpHeaders.Authorization, "Bearer $token")
-            url.parameters.append("per_page", perPage.toString())
-        }.body()
+    suspend fun ordersDetailed(token: String, perPage: Int = 20): AccountOrdersResponse {
+        val endpoint = baseUrl + "orders-detailed"
+        val response = try {
+            client.get(endpoint) {
+                header(HttpHeaders.Authorization, "Bearer $token")
+                url.parameters.append("per_page", perPage.toString())
+            }
+        } catch (exception: ResponseException) {
+            logOrdersDetailedFailure(exception, exception.response.status.value)
+            throw exception
+        } catch (exception: Throwable) {
+            logOrdersDetailedFailure(exception, null)
+            throw exception
+        }
+
+        return try {
+            response.body()
+        } catch (exception: Throwable) {
+            logOrdersDetailedFailure(exception, response.status.value)
+            throw exception
+        }
+    }
+
+    private fun logOrdersDetailedFailure(exception: Throwable, status: Int?) {
+        val chain = generateSequence(exception) { it.cause }
+            .take(4)
+            .joinToString(" -> ") { it::class.simpleName ?: "UnknownException" }
+        println(
+            "[CriosRangoAccount][orders-detailed] " +
+                "endpoint=/wp-json/criosrango/v1/orders-detailed " +
+                "status=\${status ?: "unknown"} " +
+                "exceptionChain=$\{chain}"
+        )
+    }
 
     suspend fun claimOrder(
         token: String,
