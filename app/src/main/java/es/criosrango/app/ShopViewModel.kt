@@ -24,6 +24,16 @@ enum class CheckoutPhase { IDLE, QUOTING, READY, CREATING_ORDER, ORDER_CREATED, 
 data class PaymentRedirect(val generation: Long, val orderId: Int, val url: String)
 data class CardPaymentResult(val orderId: Int, val paid: Boolean?)
 
+internal class CheckoutSubmissionGate {
+    private var acquired = false
+    @Synchronized fun tryAcquire(): Boolean {
+        if (acquired) return false
+        acquired = true
+        return true
+    }
+    @Synchronized fun release() { acquired = false }
+}
+
 enum class CategoryLoadState { IDLE, LOADING, LOADED_WITH_RESULTS, LOADED_EMPTY, ERROR }
 data class CategoryLoadStatus(val categoryId: Int? = null, val state: CategoryLoadState = CategoryLoadState.IDLE)
 internal val categoryCatalogLoadStatus = MutableStateFlow(CategoryLoadStatus())
@@ -293,7 +303,22 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 if (response.errors.isNotEmpty()) { response.errors.forEach { Log.d("CriosRangoStore", "WooCommerce code=${it.code} message=${it.message} endpoint=POST /cart/update-customer") }; throw CartException(response.errors.joinToString("\n") { it.message }) }
                 logShippingResponse(response); cartStore.replace(response); val checkoutResponse = repository.checkout(); if (generation != checkoutGeneration) return@launch
                 if (checkoutResponse.errors.isNotEmpty()) throw CartException(checkoutResponse.errors.joinToString("\n") { it.message })
-                _checkout.value = checkoutResponse; _checkoutError.value = null; _checkoutPhase.value = CheckoutPhase.READY
+
+                val visibleRates = response.visibleShippingRatesForDestination()
+                val hasSelectedRate = visibleRates.any { it.rates.any { rate -> rate.selected } }
+                val fallbackRate = visibleRates.firstOrNull { it.rates.isNotEmpty() }?.let { it to it.rates.first() }
+                val finalCheckoutResponse = if (!hasSelectedRate && fallbackRate != null) {
+                    val (packageRate, rate) = fallbackRate
+                    val selectedCart = repository.selectShippingRate(SelectShippingRateRequest(packageRate.packageId, rate.rateId))
+                    if (selectedCart.errors.isNotEmpty()) throw CartException(selectedCart.errors.joinToString("\n") { it.message })
+                    if (generation != checkoutGeneration) return@launch
+                    logShippingResponse(selectedCart); cartStore.replace(selectedCart)
+                    val requotedCheckout = repository.checkout()
+                    if (requotedCheckout.errors.isNotEmpty()) throw CartException(requotedCheckout.errors.joinToString("\n") { it.message })
+                    requotedCheckout
+                } else checkoutResponse
+
+                _checkout.value = finalCheckoutResponse; _checkoutError.value = null; _checkoutPhase.value = CheckoutPhase.READY
             } catch (exception: CancellationException) { throw exception } catch (exception: Exception) { _checkoutError.value = exception.toStoreUiError().message; _checkout.value = null; _checkoutPhase.value = CheckoutPhase.FAILED }
             finally { if (generation == checkoutGeneration) _checkoutLoading.value = false }
         }
@@ -314,6 +339,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     }
 
     private var lastCheckout: LastCheckout? = pendingCardPaymentStore.load()
+    private val checkoutSubmissionGate = CheckoutSubmissionGate()
     private var processDeathReconciliationJob: Job? = null
     private var processDeathPaidOrderId: Int? = null
     private val _cardPaymentResult = MutableStateFlow<CardPaymentResult?>(null)
@@ -379,12 +405,17 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     }
 
     fun createOrder(address: CustomerAddress, paymentMethod: String, shippingRateId: String?) {
+        if (!checkoutSubmissionGate.tryAcquire()) return
         val generation = checkoutGeneration
         viewModelScope.launch {
             processDeathReconciliationJob?.join()
             if (processDeathPaidOrderId != null) return@launch
             val quote = _checkout.value
-            if (shippingRateId.isNullOrBlank() || paymentMethod.isNullOrBlank()) { _checkoutError.value = "Selecciona una tarifa y un método de pago válidos."; return@launch }
+            if (shippingRateId.isNullOrBlank() || paymentMethod.isNullOrBlank()) {
+                _checkoutError.value = "Selecciona una tarifa y un método de pago válidos."
+                checkoutSubmissionGate.release()
+                return@launch
+            }
             _checkoutLoading.value = true; _checkoutPhase.value = CheckoutPhase.CREATING_ORDER; _checkoutError.value = null
             try {
                 val currentCart = cartStore.cart.value
@@ -405,7 +436,12 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                     _checkoutPhase.value = CheckoutPhase.OPENING_PAYMENT
                     _paymentRedirect.value = PaymentRedirect(generation, response.orderId, paymentUrl)
                 }
-            } catch (exception: Exception) { if (generation != checkoutGeneration) return@launch; _checkoutError.value = exception.toStoreUiError().message; _checkoutPhase.value = CheckoutPhase.FAILED }
+            } catch (exception: Exception) {
+                checkoutSubmissionGate.release()
+                if (generation != checkoutGeneration) return@launch
+                _checkoutError.value = exception.toStoreUiError().message
+                _checkoutPhase.value = CheckoutPhase.FAILED
+            }
             finally { if (generation == checkoutGeneration) _checkoutLoading.value = false }
         }
     }
@@ -440,7 +476,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     fun consumePaymentRedirect(redirect: PaymentRedirect) { if (_paymentRedirect.value == redirect && redirect.generation == checkoutGeneration) _paymentRedirect.value = null }
     fun consumeBizumOrder() { _bizumOrderId.value = null }
     fun abandonCheckout() = invalidateCheckout()
-    private fun invalidateCheckout() { ++checkoutGeneration; checkoutJob?.cancel(); clearCheckoutForNewGeneration(); _checkoutLoading.value = false; _checkoutPhase.value = CheckoutPhase.IDLE }
+    private fun invalidateCheckout() { checkoutSubmissionGate.release(); ++checkoutGeneration; checkoutJob?.cancel(); clearCheckoutForNewGeneration(); _checkoutLoading.value = false; _checkoutPhase.value = CheckoutPhase.IDLE }
     private fun clearCheckoutForNewGeneration() { _checkout.value = null; _checkoutError.value = null; _paymentRedirect.value = null; _bizumOrderId.value = null }
     fun openCartLine(item: CartLine) { viewModelScope.launch { val productId = item.parentProductId ?: item.id; _isLoading.value = true; _selectedVariation.value = null; _selectedProduct.value = runCatching { repository.productWithVariationAvailability(productId) }.getOrNull(); _isLoading.value = false } }
     fun clearError() { _error.value = null }
