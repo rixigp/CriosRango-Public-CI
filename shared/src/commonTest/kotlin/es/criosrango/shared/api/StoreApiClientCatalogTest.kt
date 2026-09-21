@@ -6,13 +6,14 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class StoreApiClientCatalogTest {
     @Test
-    fun catalogQueriesUseSharedClientAndPreserveCatalogData() {
+    fun catalogQueriesUseSharedClientAndPreserveCatalogData() = runTest {
         val requests = mutableListOf<String>()
         val engine = MockEngine { request ->
             requests += request.url.toString()
@@ -76,7 +77,7 @@ class StoreApiClientCatalogTest {
         try {
             val api = StoreApiClient(client = client)
 
-            val products = kotlinx.coroutines.runBlocking {
+            val products = 
                 api.products(
                     perPage = 24,
                     page = 2,
@@ -107,11 +108,11 @@ class StoreApiClientCatalogTest {
             assertTrue(query.contains("featured=true"))
             assertTrue(query.contains("tag=marca"))
 
-            val categories = kotlinx.coroutines.runBlocking { api.categories() }
+            val categories = api.categories()
             assertEquals(445, categories.single().id)
             assertEquals("Outlet", categories.single().name)
 
-            val product = kotlinx.coroutines.runBlocking { api.productWithVariationAvailability(10) }
+            val product = api.productWithVariationAvailability(10)
             assertEquals(listOf(41, 42), product.originalCategoryIds)
             assertEquals(11, product.variations.single().id)
             assertEquals("1999", product.variations.single().prices.price)
