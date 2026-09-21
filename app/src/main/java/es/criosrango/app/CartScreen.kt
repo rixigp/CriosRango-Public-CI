@@ -96,9 +96,6 @@ internal fun CartScreen(
     onCheckout: () -> Unit,
     accountUserId: Int?,
     onLogin: () -> Unit,
-    hasPendingCardPayment: Boolean,
-    onContinuePendingPayment: () -> Unit,
-    onCheckPendingPayment: () -> Unit
 ) {
     var clearCartConfirm by remember {
         mutableStateOf(false)
@@ -191,43 +188,9 @@ internal fun CartScreen(
                     }
                 }
             }
-            if (hasPendingCardPayment) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFFFFF4E5)
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            "Hay un pago pendiente de una compra anterior. Puedes continuarlo o comprobarlo, pero también puedes seguir con una compra nueva.",
-                            color = Color(0xFF7A4E00)
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = onContinuePendingPayment,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Continuar pago")
-                            }
-                            OutlinedButton(
-                                onClick = onCheckPendingPayment,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text("Comprobar pago")
-                            }
-                        }
-                    }
-                }
-            }
             Button(
                 onClick = onCheckout,
-                enabled = state == CartLoadState.SUCCESS_ITEMS && AccountCartCheckoutPolicy.canStartNewCheckout(hasPendingCardPayment),
+                enabled = state == CartLoadState.SUCCESS_ITEMS,
                 modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))
             ) {
