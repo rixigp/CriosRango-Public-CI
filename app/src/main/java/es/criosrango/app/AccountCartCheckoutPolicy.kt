@@ -13,7 +13,7 @@ internal object AccountCartCheckoutPolicy {
         accountUserId == null && cartItemCount > 0
 
     fun canStartNewCheckout(hasPendingCardPayment: Boolean): Boolean =
-        !hasPendingCardPayment
+        true
 
     fun shouldPrefillAccountAddress(
         existingCheckoutAddress: CustomerAddress?,
