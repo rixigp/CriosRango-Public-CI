@@ -93,7 +93,7 @@ fun RedesignedCheckoutScreen(
         }
     }
     LaunchedEffect(accountUserId, accountAddress) {
-        if (accountUserId != null && saved == null) {
+        if (accountUserId != null && AccountCartCheckoutPolicy.shouldPrefillAccountAddress(saved, accountAddress)) {
             accountAddress?.let { a ->
                 firstName = a.firstName; lastName = a.lastName; email = a.email; phone = a.phone
                 address = a.address1; postcode = a.postcode; city = a.city
