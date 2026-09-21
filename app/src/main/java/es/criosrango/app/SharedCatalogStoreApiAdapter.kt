@@ -37,7 +37,7 @@ import retrofit2.Response
  * the validated shared KMP catalog client.
  *
  * Only the exact subset represented by StoreApiClient is routed to KMP.
- * Everything else deliberately delegates to the existing Retrofit StoreApi.
+ * Commercial operations deliberately delegate to the dedicated Android Retrofit transport.
  */
 class SharedCatalogStoreApiAdapter(
     private val retrofitApi: RetrofitStoreApi,
