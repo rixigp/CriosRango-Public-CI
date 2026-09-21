@@ -343,7 +343,6 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
             PaymentReconciliationResult.TERMINAL_UNPAID -> {
                 pendingCardPaymentStore.clear()
                 lastCheckout = null
-                _hasPendingCardPayment.value = false
                 _paymentRedirect.value = null
                 ReconcileOutcome.CLEARED
             }
@@ -361,18 +360,19 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private fun reconcileAfterProcessDeath() {
         if (lastCheckout == null) return
         processDeathReconciliationJob = viewModelScope.launch {
-            runCatching {
+            val outcome = runCatching {
                 reconcileLastCheckout(
                     publishPaidResult = false,
                     preserveMarkerOnExhaustion = false
                 )
-            }.onFailure {
+            }.getOrElse {
                 pendingCardPaymentStore.clear()
                 lastCheckout = null
                 _paymentRedirect.value = null
+                ReconcileOutcome.CLEARED
             }
-            if (lastCheckout == null && _checkoutPhase.value == CheckoutPhase.ORDER_CREATED) {
-                processDeathPaidOrderId = _cardPaymentResult.value?.orderId
+            if (outcome == ReconcileOutcome.PAID) {
+                processDeathPaidOrderId = lastCheckout?.orderId
             }
         }
     }
@@ -401,7 +401,6 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                         throw CartException("No se ha podido guardar el último checkout. No se abrirá la pasarela.")
                     }
                     lastCheckout = pending
-                    _hasPendingCardPayment.value = true
                     _checkoutPhase.value = CheckoutPhase.OPENING_PAYMENT
                     _paymentRedirect.value = PaymentRedirect(generation, response.orderId, paymentUrl)
                 }
@@ -434,7 +433,6 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 if (!isTransientPaymentStatusException(exception)) {
                     pendingCardPaymentStore.clear()
                     lastCheckout = null
-                    _hasPendingCardPayment.value = false
                     _paymentRedirect.value = null
                     _checkoutError.value = "No hemos podido comprobar el pago."
                 }
