@@ -50,7 +50,11 @@ class AccountI2RepositoryTest {
             baseUrl = "https://test.invalid/wp-json/criosrango/v1/",
             client = HttpClient(engine) {
                 expectSuccess = true
-                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+                install(ContentNegotiation) { json(Json {
+                    ignoreUnknownKeys = true
+                    coerceInputValues = true
+                    exceptionsWithDebugInfo = false
+                }) }
             }
         )
     }
@@ -114,6 +118,70 @@ class AccountI2RepositoryTest {
         assertEquals("Envío 24/48h", order.shippingMethod)
         assertEquals("4A", order.items.single().variations.first().value)
         assertEquals("Madrid", order.shippingAddress.city)
+    }
+
+    @Test
+    fun ordersDetailed_legacyGsonCompatiblePayloadParsesNullsNumbersPartialAddressAndMultipleOrders() = runBlocking {
+        val repo = AccountRepository(
+            FakeI2TokenStore("tok"),
+            client = client(
+                """{
+                    "orders":[
+                        {
+                            "id":42,
+                            "number":1042,
+                            "status":"processing",
+                            "status_label":null,
+                            "date_created":null,
+                            "total":59.90,
+                            "currency":"EUR",
+                            "payment_method_title":null,
+                            "items":[
+                                {"name":"Vestido","quantity":2,"variations":null},
+                                {"name":"Camiseta","quantity":1,"variations":[{"name":"Talla","value":4}]}
+                            ],
+                            "subtotal":49.90,
+                            "shipping_total":10,
+                            "shipping_method":null,
+                            "shipping_address":{"city":"Madrid","postcode":28001}
+                        },
+                        {
+                            "id":43,
+                            "number":"1043",
+                            "status":"completed",
+                            "status_label":"",
+                            "date_created":"2026-08-01T12:00:00",
+                            "total":"29.90",
+                            "currency":"EUR",
+                            "payment_method_title":"Tarjeta",
+                            "items":[],
+                            "subtotal":"29.90",
+                            "shipping_total":"0",
+                            "shipping_method":"Envío",
+                            "shipping_address":null
+                        }
+                    ],
+                    "total":2
+                }"""
+            )
+        )
+
+        val orders = repo.orders().orders
+
+        assertEquals(2, orders.size)
+        assertEquals("1042", orders[0].number)
+        assertEquals("", orders[0].statusLabel)
+        assertNull(orders[0].dateCreated)
+        assertEquals("59.9", orders[0].total)
+        assertEquals("10", orders[0].shippingTotal)
+        assertEquals("Madrid", orders[0].shippingAddress.city)
+        assertEquals("", orders[0].shippingMethod)
+        assertEquals(2, orders[0].items.size)
+        assertTrue(orders[0].items[0].variations.isEmpty())
+        assertEquals("4", orders[0].items[1].variations.single().value)
+        assertEquals("1043", orders[1].number)
+        assertEquals("Tarjeta", orders[1].paymentMethodTitle)
+        assertEquals("", orders[1].shippingAddress.city)
     }
 
     @Test
