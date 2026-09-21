@@ -135,20 +135,28 @@ class StoreSession(private val preferences: android.content.SharedPreferences) {
 
 /** Persistent delivery data only; payment credentials are never stored. */
 class DeliveryAddressStore(private val preferences: android.content.SharedPreferences) {
-    fun load(): CustomerAddress? = CustomerAddress(
-        preferences.getString("delivery_first_name", "").orEmpty(), preferences.getString("delivery_last_name", "").orEmpty(),
-        preferences.getString("delivery_email", "").orEmpty(), preferences.getString("delivery_phone", "").orEmpty(),
-        preferences.getString("delivery_address", "").orEmpty(), preferences.getString("delivery_postcode", "").orEmpty(),
-        preferences.getString("delivery_city", "").orEmpty(), preferences.getString("delivery_state", "").orEmpty(),
-        preferences.getString("delivery_country", "ES").orEmpty()
-    ).takeIf { it.firstName.isNotBlank() || it.lastName.isNotBlank() || it.address1.isNotBlank() }
+    private val accountOwnerKey = "delivery_account_owner_id"
 
-    fun save(address: CustomerAddress) = preferences.edit()
+    fun load(accountId: Int? = null): CustomerAddress? {
+        val ownerId = preferences.getString(accountOwnerKey, null)?.toIntOrNull()
+        if (ownerId != null && ownerId != accountId) return null
+        return CustomerAddress(
+            preferences.getString("delivery_first_name", "").orEmpty(), preferences.getString("delivery_last_name", "").orEmpty(),
+            preferences.getString("delivery_email", "").orEmpty(), preferences.getString("delivery_phone", "").orEmpty(),
+            preferences.getString("delivery_address", "").orEmpty(), preferences.getString("delivery_postcode", "").orEmpty(),
+            preferences.getString("delivery_city", "").orEmpty(), preferences.getString("delivery_state", "").orEmpty(),
+            preferences.getString("delivery_country", "ES").orEmpty()
+        ).takeIf { it.firstName.isNotBlank() || it.lastName.isNotBlank() || it.address1.isNotBlank() }
+    }
+
+    fun save(address: CustomerAddress, accountId: Int? = null) = preferences.edit()
         .putString("delivery_first_name", address.firstName).putString("delivery_last_name", address.lastName)
         .putString("delivery_email", address.email).putString("delivery_phone", address.phone)
         .putString("delivery_address", address.address1).putString("delivery_postcode", address.postcode)
         .putString("delivery_city", address.city).putString("delivery_state", address.state)
-        .putString("delivery_country", address.country).apply()
+        .putString("delivery_country", address.country)
+        .putString(accountOwnerKey, accountId?.toString())
+        .apply()
 }
 
 data class DiagnosticNormalClient(
