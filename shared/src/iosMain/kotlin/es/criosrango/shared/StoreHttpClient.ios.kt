@@ -12,5 +12,9 @@ actual fun createStoreHttpClient(): HttpClient = HttpClient(Darwin) {
         connectTimeoutMillis = 12_000
         socketTimeoutMillis = 15_000
     }
-    install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+    install(ContentNegotiation) { json(Json {
+        ignoreUnknownKeys = true
+        coerceInputValues = true
+        exceptionsWithDebugInfo = false
+    }) }
 }
