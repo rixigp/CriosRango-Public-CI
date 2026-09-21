@@ -139,7 +139,7 @@ class DeliveryAddressStore(private val preferences: android.content.SharedPrefer
 
     fun load(accountId: Int? = null): CustomerAddress? {
         val ownerId = preferences.getString(accountOwnerKey, null)?.toIntOrNull()
-        if (ownerId != null && ownerId != accountId) return null
+        if (!AccountCartCheckoutPolicy.isAddressVisibleToAccount(ownerId, accountId)) return null
         return CustomerAddress(
             preferences.getString("delivery_first_name", "").orEmpty(), preferences.getString("delivery_last_name", "").orEmpty(),
             preferences.getString("delivery_email", "").orEmpty(), preferences.getString("delivery_phone", "").orEmpty(),
