@@ -171,7 +171,7 @@ class AccountI2RepositoryTest {
         assertEquals("1042", orders[0].number)
         assertEquals("", orders[0].statusLabel)
         assertNull(orders[0].dateCreated)
-        assertEquals("59.9", orders[0].total)
+        assertEquals("59.90", orders[0].total)
         assertEquals("10", orders[0].shippingTotal)
         assertEquals("Madrid", orders[0].shippingAddress.city)
         assertEquals("", orders[0].shippingMethod)
