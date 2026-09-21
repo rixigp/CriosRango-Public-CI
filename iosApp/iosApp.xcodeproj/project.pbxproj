@@ -13,7 +13,7 @@
         A10000100000000000000001 /* iosApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iosApp.swift; sourceTree = "<group>"; };
         A10000110000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
         A10000120000000000000001 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
-        A10000130000000000000001 /* CriosRangoKMPSpike.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CriosRangoKMPSpike.app; sourceTree = "BUILT_PRODUCTS_DIR"; };
+        A10000130000000000000001 /* CriosRangoKMPSpike.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CriosRangoKMPSpike.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -165,6 +165,7 @@
         };
 /* End XCBuildConfiguration section */
 
+/* Begin XCConfigurationList section */
         A10000710000000000000001 /* Project configuration list */ = {
             isa = XCConfigurationList;
             buildConfigurations = (A10001000000000000000001 /* Debug */, A10001010000000000000000001 /* Release */);
@@ -177,6 +178,7 @@
             defaultConfigurationIsVisible = 0;
             defaultConfigurationName = Release;
         };
+/* End XCConfigurationList section */
     };
     rootObject = A10000700000000000000001 /* Project object */;
 }
