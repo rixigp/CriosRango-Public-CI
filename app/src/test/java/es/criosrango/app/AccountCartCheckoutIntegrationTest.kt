@@ -122,6 +122,30 @@ class AccountCartCheckoutIntegrationTest {
     }
 
     @Test
+    fun L_singlePaymentTap_startsExactlyOneCheckout() {
+        val gate = CheckoutSubmissionGate()
+        var createCheckoutCalls = 0
+        if (gate.tryAcquire()) createCheckoutCalls++
+        assertEquals(1, createCheckoutCalls)
+    }
+
+    @Test
+    fun M_fiveRapidPaymentTaps_startOnlyOneCheckout() {
+        val gate = CheckoutSubmissionGate()
+        var createCheckoutCalls = 0
+        repeat(5) { if (gate.tryAcquire()) createCheckoutCalls++ }
+        assertEquals(1, createCheckoutCalls)
+    }
+
+    @Test
+    fun N_failedCheckoutSubmission_releasesPaymentGate() {
+        val gate = CheckoutSubmissionGate()
+        assertTrue(gate.tryAcquire())
+        gate.release()
+        assertTrue(gate.tryAcquire())
+    }
+
+    @Test
     fun K_claim_requiresOrderIdAndOrderKey() {
         assertFalse(AccountCartCheckoutPolicy.hasClaimCredentials(null, "wc_order_key"))
         assertFalse(AccountCartCheckoutPolicy.hasClaimCredentials(123, null))
