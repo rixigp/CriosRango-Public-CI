@@ -237,6 +237,16 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         _savingAddress.value = false
     }
 
+    private fun logOrdersException(exception: Exception) {
+        val chain = generateSequence<Throwable>(exception) { it.cause }
+            .take(4)
+            .joinToString(" -> ") { it::class.simpleName ?: "UnknownException" }
+        android.util.Log.e(
+            "CriosRangoAccount",
+            "orders-detailed failed; endpoint=/wp-json/criosrango/v1/orders-detailed; exceptionChain=$chain"
+        )
+    }
+
     private fun handleAuthenticatedHttpError(exception: Exception, fallback: String): Boolean {
         if (exception is HttpException && exception.code() == 401) {
             invalidateSession()
@@ -284,6 +294,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                     if (generation == accountGeneration) _orders.value = loadedOrders
                 } catch (exception: Exception) {
                     if (generation != accountGeneration) return@launch
+                    logOrdersException(exception)
                     if (handleAuthenticatedHttpError(exception, "No hemos podido cargar tus pedidos.")) return@launch
                 }
                 if (generation == accountGeneration) claimPendingOrderIfAuthenticated()
@@ -595,6 +606,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 if (generation == accountGeneration) _orders.value = loaded
             } catch (exception: Exception) {
                 if (generation == accountGeneration) {
+                    logOrdersException(exception)
                     handleAuthenticatedHttpError(exception, "No hemos podido actualizar tus pedidos.")
                 }
             } finally {
