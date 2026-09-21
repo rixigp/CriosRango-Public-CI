@@ -13,6 +13,7 @@ import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import es.criosrango.shared.model.StoreCartRequest
 
 class StoreApiClientCartSessionTest {
     private val cartJson = """
@@ -41,10 +42,10 @@ class StoreApiClientCartSessionTest {
                 cartJson,
                 HttpStatusCode.OK,
                 headersOf(
-                    HttpHeaders.ContentType, "application/json",
-                    "Cart-Token", "cart-updated",
-                    "Nonce", "nonce-updated",
-                    HttpHeaders.SetCookie, "woocommerce_cart_hash=hash-1; Path=/"
+                    HttpHeaders.ContentType to listOf("application/json"),
+                    "Cart-Token" to listOf("cart-updated"),
+                    "Nonce" to listOf("nonce-updated"),
+                    HttpHeaders.SetCookie to listOf("woocommerce_cart_hash=hash-1; Path=/")
                 )
             )
         }
