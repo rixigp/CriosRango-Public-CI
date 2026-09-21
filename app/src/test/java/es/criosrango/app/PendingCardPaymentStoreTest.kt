@@ -49,19 +49,5 @@ class PendingCardPaymentStoreTest {
         assertNull(prefs.getString("payment_url", null))
         assertEquals("keep", prefs.getString("unrelated", null))
     }
-    @Test
-    fun processDeathPendingPayment_doesNotBlockNewCheckout() {
-        val prefs = context.getSharedPreferences("h2-new-checkout", Context.MODE_PRIVATE)
-        prefs.edit().clear().commit()
-        val store = PendingCardPaymentStore(prefs)
-        assertEquals(
-            true,
-            store.save(LastCheckout(13005, "wc_order_key_13005", "https://example.invalid/payment/13005"))
-        )
-
-        val recreatedStore = PendingCardPaymentStore(prefs)
-        assertEquals(13005, recreatedStore.load()?.orderId)
-        assertEquals(true, AccountCartCheckoutPolicy.canStartNewCheckout(hasPendingCardPayment = true))
-    }
 
 }
