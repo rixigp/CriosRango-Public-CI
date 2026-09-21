@@ -1,5 +1,7 @@
 package es.criosrango.app
 
+import es.criosrango.shared.account.AccountCustomerAddress
+
 /**
  * Pure I.3 account/cart/checkout rules.
  *
