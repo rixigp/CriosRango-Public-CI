@@ -155,6 +155,15 @@ class StoreApiClient(
             }
         }
 
+    suspend fun paymentStatus(orderId: Int, orderKey: String): es.criosrango.shared.model.PaymentStatusResponse =
+        executeCart {
+            client.get("https://criosrango.es/wp-json/criosrango/v1/payment-status") {
+                sessionHeaders()
+                parameter("order_id", orderId)
+                parameter("key", orderKey)
+            }
+        }
+
     suspend fun product(id: Int): StoreProduct =
         client.get(baseUrl + "products/" + id).body()
 
