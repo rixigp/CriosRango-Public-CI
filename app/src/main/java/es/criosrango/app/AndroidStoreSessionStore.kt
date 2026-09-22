@@ -1,22 +1,20 @@
 package es.criosrango.app
 
-import android.content.SharedPreferences
 import es.criosrango.shared.api.StoreSessionStore
 
 class AndroidStoreSessionStore(
-    private val preferences: SharedPreferences
+    private val session: StoreSession
 ) : StoreSessionStore {
-    private val session = StoreSession(preferences)
 
     override var cartToken: String?
         get() = session.cartToken
-        set(value) { if (value != null) preferences.edit().putString("woo_cart_token", value).apply() }
+        set(value) { if (value != null) session.setCartToken(value) }
 
     override var nonce: String?
         get() = session.nonce
-        set(value) { if (value != null) preferences.edit().putString("woo_nonce", value).apply() }
+        set(value) { if (value != null) session.setNonce(value) }
 
     override var cookieHeader: String?
         get() = session.cookieHeader
-        set(value) { if (value != null) preferences.edit().putString("woo_cookie_header", value).apply() }
+        set(value) { if (value != null) session.setCookieHeader(value) }
 }
