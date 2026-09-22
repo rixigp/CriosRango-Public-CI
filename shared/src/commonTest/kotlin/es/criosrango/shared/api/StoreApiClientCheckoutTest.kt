@@ -3,11 +3,11 @@ package es.criosrango.shared.api
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
-import io.ktor.http.ContentType
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.serialization.kotlinx.json.json
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import io.ktor.http.contentType
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -36,8 +36,8 @@ class StoreApiClientCheckoutTest {
                 HttpHeaders.SetCookie to listOf("woocommerce_cart_hash=hash-next; Path=/")
             ))
         }) {
-            install(io.ktor.client.plugins.contentnegotiation.ContentNegotiation) {
-                io.ktor.serialization.kotlinx.json.json(Json { ignoreUnknownKeys = true })
+            install(ContentNegotiation) {
+                json(Json { ignoreUnknownKeys = true })
             }
         }
 
