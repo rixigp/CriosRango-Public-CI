@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -72,12 +73,35 @@ class PaymentStatusExactlyOnceIsolatedTest {
         val pendingStore = PendingCardPaymentStore(preferences)
         check(pendingStore.save(LastCheckout(123, "wc_order_123", "https://criosrango.es/pay/123")))
 
+        // J.5 diagnostic STAGE 1: the persisted marker exists before ViewModel construction.
+        assertNotNull("STAGE 1: pendingStore.load() must not be null", pendingStore.load())
+
         val api = CountingStoreApi()
-        newViewModel(context, api, pendingStore)
+        val viewModel = newViewModel(context, api, pendingStore)
+
+        // J.5 diagnostic STAGE 2: constructor completed with lastCheckout initialized.
+        val lastCheckoutField = ShopViewModel::class.java.getDeclaredField("lastCheckout")
+        lastCheckoutField.isAccessible = true
+        assertNotNull(
+            "STAGE 2: lastCheckout after ViewModel construction must not be null",
+            lastCheckoutField.get(viewModel)
+        )
 
         idleMainLooper()
 
-        assertTrue(api.paymentStatusCalls.get() > 0)
+        // J.5 diagnostic STAGE 3: process-death reconciliation created its Job.
+        val processDeathJobField = ShopViewModel::class.java.getDeclaredField("processDeathReconciliationJob")
+        processDeathJobField.isAccessible = true
+        assertNotNull(
+            "STAGE 3: processDeathReconciliationJob after idle must not be null",
+            processDeathJobField.get(viewModel)
+        )
+
+        // J.5 diagnostic STAGE 4: the reconciliation reached paymentStatus.
+        assertTrue(
+            "STAGE 4: paymentStatusCalls must be > 0",
+            api.paymentStatusCalls.get() > 0
+        )
         assertEquals(1, api.paymentStatusCalls.get())
     }
 
