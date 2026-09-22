@@ -22,6 +22,7 @@ import es.criosrango.shared.model.CustomerAddress as SharedCustomerAddress
 import es.criosrango.shared.model.UpdateCustomerRequest as SharedUpdateCustomerRequest
 import es.criosrango.shared.model.SelectShippingRateRequest as SharedSelectShippingRateRequest
 import es.criosrango.shared.model.CreateOrderRequest as SharedCreateOrderRequest
+import es.criosrango.shared.model.PaymentStatusResponse as SharedPaymentStatusResponse
 import es.criosrango.shared.model.CheckoutResponse as SharedCheckoutResponse
 import es.criosrango.shared.model.OutletOriginExtension as SharedOutletOriginExtension
 import es.criosrango.shared.model.VariationAttribute as SharedVariationAttribute
@@ -36,12 +37,10 @@ import retrofit2.Response
  * Temporary Phase C bridge between the stable Android StoreApi contract and
  * the validated shared KMP catalog client.
  *
- * Android catalog/cart/checkout operations are routed through the shared KMP StoreApiClient.
- * Payment-status remains on the legacy Android transport until the dedicated later phase.
+ * Android catalog/cart/checkout/payment-status operations are routed through the shared KMP StoreApiClient.
  */
 class SharedCatalogStoreApiAdapter(
-    private val sharedClient: StoreApiClient,
-    private val paymentStatusApi: RetrofitStoreApi
+    private val sharedClient: StoreApiClient
 ) : StoreApi {
 
     override suspend fun cart(): WooCart {
@@ -89,8 +88,10 @@ class SharedCatalogStoreApiAdapter(
         sharedClient.createCheckout(request.toShared()).toAndroid()
     } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
 
-    override suspend fun getOrderStatus(orderId: Int, orderKey: String): OrderStatusResponse =
-        paymentStatusApi.getOrderStatus(orderId, orderKey)
+    override suspend fun getOrderStatus(orderId: Int, orderKey: String): OrderStatusResponse {
+        Log.d("CriosRangoSharedPayment", "PAYMENT_STATUS source=shared operation=GET orderId=$orderId")
+        return sharedClient.paymentStatus(orderId, orderKey).toAndroid()
+    }
 
     override suspend fun selectShippingRate(request: SelectShippingRateRequest): WooCart = try {
         Log.d("CriosRangoSharedShipping", "SHIPPING source=shared operation=POST")
@@ -428,4 +429,12 @@ private fun es.criosrango.shared.model.StoreCartTotals.toAndroid(): CartTotals =
     totalTax = totalTax,
     currencySymbol = currencySymbol,
     currencyMinorUnit = currencyMinorUnit
+)
+
+private fun SharedPaymentStatusResponse.toAndroid(): OrderStatusResponse = OrderStatusResponse(
+    id = id,
+    status = status,
+    paid = paid,
+    needsPayment = needsPayment,
+    terminal = terminal
 )
