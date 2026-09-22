@@ -178,21 +178,13 @@ jobs:
             --clobber
 
       - name: Cleanup Google Services
-        if: ${{ matrix.platform == 'android' }}
-        if: always()
+        if: always() && matrix.platform == 'android'
         run: rm -f app/google-services.json
 
       - name: Cleanup signing material
-        if: ${{ matrix.platform == 'android' }}
-        if: always()
+        if: always() && matrix.platform == 'android'
         run: rm -f "$RUNNER_TEMP/criosrango-debug.jks"
 
-
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: "17"
       - name: Prepare Google Services
         if: ${{ matrix.platform == 'ios' }}
         env:
@@ -330,11 +322,9 @@ jobs:
           fi
 
       - name: Cleanup signing material
-        if: ${{ matrix.platform == 'ios' }}
-        if: always()
+        if: always() && matrix.platform == 'ios'
         run: rm -f "$RUNNER_TEMP/criosrango-debug.jks"
 
       - name: Cleanup Google Services
-        if: ${{ matrix.platform == 'ios' }}
-        if: always()
+        if: always() && matrix.platform == 'ios'
         run: rm -f app/google-services.json
