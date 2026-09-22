@@ -29,7 +29,7 @@ jobs:
           while true; do
             jobs_json="$(gh api --silent "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" 2>/dev/null || true)"
             if [ -n "$jobs_json" ]; then
-              other_job="$(python3 - "$WATCH_JOB" <<'PY' <<<"$jobs_json"
+              other_job="$(python3 -c '
           import json, sys
           watch = sys.argv[1]
           data = json.load(sys.stdin)
@@ -44,8 +44,7 @@ jobs:
                   break
           else:
               print("")
-          PY
-          )"
+          ' "$WATCH_JOB" <<<"$jobs_json")"
               if [ "$other_job" = "failure" ]; then
                 echo "Fail-fast: sibling job failed; cancelling workflow run $GITHUB_RUN_ID"
                 gh api --silent --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/cancel" || true
@@ -210,6 +209,47 @@ jobs:
     name: iOS simulator build
     runs-on: macos-14
     steps:
+      - name: Start fail-fast watcher
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WATCH_JOB: ios
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >"$RUNNER_TEMP/fail-fast-watcher.sh" <<'BASH'
+          #!/usr/bin/env bash
+          set -u
+          while true; do
+            jobs_json="$(gh api --silent "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" 2>/dev/null || true)"
+            if [ -n "$jobs_json" ]; then
+              other_job="$(python3 -c '
+          import json, sys
+          watch = sys.argv[1]
+          data = json.load(sys.stdin)
+          names = {"android": "Android validation", "ios": "iOS simulator build"}
+          for job in data.get("jobs", []):
+              if job.get("name") == names.get(watch):
+                  continue
+              if job.get("name") not in names.values():
+                  continue
+              if job.get("conclusion") == "failure":
+                  print("failure")
+                  break
+          else:
+              print("")
+          ' "$WATCH_JOB" <<<"$jobs_json")"
+              if [ "$other_job" = "failure" ]; then
+                echo "Fail-fast: sibling job failed; cancelling workflow run $GITHUB_RUN_ID"
+                gh api --silent --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/cancel" || true
+                exit 0
+              fi
+            fi
+            sleep 5
+          done
+          BASH
+          chmod +x "$RUNNER_TEMP/fail-fast-watcher.sh"
+          nohup "$RUNNER_TEMP/fail-fast-watcher.sh" >"$RUNNER_TEMP/fail-fast-watcher.log" 2>&1 </dev/null &
+          echo $! >"$RUNNER_TEMP/fail-fast-watcher.pid"
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
         with:
