@@ -514,7 +514,7 @@ private fun CategoryTelemetryDialog(
                         backendResult = null
                         backendDialogOpen = true
                         scope.launch {
-                            backendResult = BackendDiagnosticRunner().run(categoryId)
+                            backendResult = BackendDiagnosticRunner(StoreSession(context.getSharedPreferences("criosrango", android.content.Context.MODE_PRIVATE))).run(categoryId)
                             backendRunning = false
                         }
                         }
