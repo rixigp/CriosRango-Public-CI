@@ -486,7 +486,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         viewModelScope.launch {
             runCatching { cartStore.restoreRemoteAfterUnpaidCheckout() }
                 .onFailure { exception ->
-                    _checkoutError.value = exception.toStoreUiError().message
+                    _checkoutError.value = exception.message
                 }
         }
     }
