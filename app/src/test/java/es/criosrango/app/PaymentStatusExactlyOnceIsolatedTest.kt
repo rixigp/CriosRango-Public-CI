@@ -76,7 +76,11 @@ class PaymentStatusExactlyOnceIsolatedTest {
 
         idleMainLooper()
 
-        assertEquals(1, api.paymentStatusCalls.get())
+        assertEquals(
+            "PROCESS DEATH: expected paymentStatusCalls=1; actual paymentStatusCalls=" + api.paymentStatusCalls.get(),
+            1,
+            api.paymentStatusCalls.get()
+        )
     }
 
     @Test
@@ -103,7 +107,11 @@ class PaymentStatusExactlyOnceIsolatedTest {
             viewModel.verifyCardPaymentReturn()
         }
 
-        assertEquals(1, api.paymentStatusCalls.get())
+        assertEquals(
+            "LIFECYCLE: expected paymentStatusCalls=1; actual paymentStatusCalls=" + api.paymentStatusCalls.get(),
+            1,
+            api.paymentStatusCalls.get()
+        )
 
         api.releasePaymentStatus.complete(Unit)
         idleMainLooper()
