@@ -12,57 +12,28 @@ permissions:
   actions: write
 
 jobs:
-  android:
-    name: Android validation
-    runs-on: ubuntu-24.04
+  validation:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      max-parallel: 2
+      matrix:
+        include:
+          - name: Android validation
+            platform: android
+            runner: ubuntu-24.04
+          - name: iOS simulator build
+            platform: ios
+            runner: macos-14
     steps:
-      - name: Start fail-fast watcher
-        env:
-          GH_TOKEN: ${{ github.token }}
-          WATCH_JOB: android
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat >"$RUNNER_TEMP/fail-fast-watcher.sh" <<'BASH'
-          #!/usr/bin/env bash
-          set -u
-          while true; do
-            jobs_json="$(gh api --silent "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" 2>/dev/null || true)"
-            if [ -n "$jobs_json" ]; then
-              other_job="$(python3 -c '
-          import json, sys
-          watch = sys.argv[1]
-          data = json.load(sys.stdin)
-          names = {"android": "Android validation", "ios": "iOS simulator build"}
-          for job in data.get("jobs", []):
-              if job.get("name") == names.get(watch):
-                  continue
-              if job.get("name") not in names.values():
-                  continue
-              if job.get("conclusion") == "failure":
-                  print("failure")
-                  break
-          else:
-              print("")
-          ' "$WATCH_JOB" <<<"$jobs_json")"
-              if [ "$other_job" = "failure" ]; then
-                echo "Fail-fast: sibling job failed; cancelling workflow run $GITHUB_RUN_ID"
-                gh api --silent --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/cancel" || true
-                exit 0
-              fi
-            fi
-            sleep 5
-          done
-          BASH
-          chmod +x "$RUNNER_TEMP/fail-fast-watcher.sh"
-          nohup "$RUNNER_TEMP/fail-fast-watcher.sh" >"$RUNNER_TEMP/fail-fast-watcher.log" 2>&1 </dev/null &
-          echo $! >"$RUNNER_TEMP/fail-fast-watcher.pid"
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
       - name: Prepare Google Services
+        if: ${{ matrix.platform == 'android' }}
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
         run: |
@@ -72,6 +43,7 @@ jobs:
           test -s app/google-services.json
 
       - name: Prepare permanent debug keystore
+        if: ${{ matrix.platform == 'android' }}
         env:
           CRIOSRANGO_DEBUG_KEYSTORE_BASE64: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_BASE64 }}
           CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD }}
@@ -96,6 +68,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Verify permanent signing certificate
+        if: ${{ matrix.platform == 'android' }}
         env:
           CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD }}
         run: |
@@ -110,9 +83,11 @@ jobs:
             -alias "criosrango-development"
 
       - name: Compile and test shared KMP checkout
+        if: ${{ matrix.platform == 'android' }}
         run: ./gradlew :shared:compileDebugKotlinAndroid :shared:testDebugUnitTest :app:testDebugUnitTest --stacktrace
 
       - name: Read-only checkout gateway audit
+        if: ${{ matrix.platform == 'android' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -137,12 +112,15 @@ jobs:
           PY
 
       - name: Compile Android app
+        if: ${{ matrix.platform == 'android' }}
         run: ./gradlew :app:compileDebugKotlin --stacktrace
 
       - name: Assemble Android debug APK
+        if: ${{ matrix.platform == 'android' }}
         run: ./gradlew :app:assembleDebug --stacktrace
 
       - name: Prepare named APKs
+        if: ${{ matrix.platform == 'android' }}
         id: apk
         shell: bash
         run: |
@@ -158,6 +136,7 @@ jobs:
           ls -lh "$VERSIONED_APK" CriosRango-latest.apk
 
       - name: Upload APK artifact
+        if: ${{ matrix.platform == 'android' }}
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
@@ -168,6 +147,7 @@ jobs:
             CriosRango-latest.apk
 
       - name: Publish latest development APK
+        if: ${{ matrix.platform == 'android' }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -198,64 +178,23 @@ jobs:
             --clobber
 
       - name: Cleanup Google Services
+        if: ${{ matrix.platform == 'android' }}
         if: always()
         run: rm -f app/google-services.json
 
       - name: Cleanup signing material
+        if: ${{ matrix.platform == 'android' }}
         if: always()
         run: rm -f "$RUNNER_TEMP/criosrango-debug.jks"
 
-  ios:
-    name: iOS simulator build
-    runs-on: macos-14
-    steps:
-      - name: Start fail-fast watcher
-        env:
-          GH_TOKEN: ${{ github.token }}
-          WATCH_JOB: ios
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat >"$RUNNER_TEMP/fail-fast-watcher.sh" <<'BASH'
-          #!/usr/bin/env bash
-          set -u
-          while true; do
-            jobs_json="$(gh api --silent "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" 2>/dev/null || true)"
-            if [ -n "$jobs_json" ]; then
-              other_job="$(python3 -c '
-          import json, sys
-          watch = sys.argv[1]
-          data = json.load(sys.stdin)
-          names = {"android": "Android validation", "ios": "iOS simulator build"}
-          for job in data.get("jobs", []):
-              if job.get("name") == names.get(watch):
-                  continue
-              if job.get("name") not in names.values():
-                  continue
-              if job.get("conclusion") == "failure":
-                  print("failure")
-                  break
-          else:
-              print("")
-          ' "$WATCH_JOB" <<<"$jobs_json")"
-              if [ "$other_job" = "failure" ]; then
-                echo "Fail-fast: sibling job failed; cancelling workflow run $GITHUB_RUN_ID"
-                gh api --silent --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/cancel" || true
-                exit 0
-              fi
-            fi
-            sleep 5
-          done
-          BASH
-          chmod +x "$RUNNER_TEMP/fail-fast-watcher.sh"
-          nohup "$RUNNER_TEMP/fail-fast-watcher.sh" >"$RUNNER_TEMP/fail-fast-watcher.log" 2>&1 </dev/null &
-          echo $! >"$RUNNER_TEMP/fail-fast-watcher.pid"
+
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
       - name: Prepare Google Services
+        if: ${{ matrix.platform == 'ios' }}
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
         run: |
@@ -265,6 +204,7 @@ jobs:
           test -s app/google-services.json
 
       - name: Prepare permanent debug keystore
+        if: ${{ matrix.platform == 'ios' }}
         env:
           CRIOSRANGO_DEBUG_KEYSTORE_BASE64: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_BASE64 }}
           CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD }}
@@ -289,12 +229,15 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Build Kotlin iOS simulator framework
+        if: ${{ matrix.platform == 'ios' }}
         run: ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 --stacktrace
 
       - name: Build Kotlin iOS device framework
+        if: ${{ matrix.platform == 'ios' }}
         run: ./gradlew :shared:linkDebugFrameworkIosArm64 --stacktrace
 
       - name: Build iOS Simulator app
+        if: ${{ matrix.platform == 'ios' }}
         run: |
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
@@ -307,6 +250,7 @@ jobs:
             build
 
       - name: Compile iOS device app (unsigned)
+        if: ${{ matrix.platform == 'ios' }}
         run: |
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
@@ -320,6 +264,7 @@ jobs:
             build
 
       - name: Runtime smoke test on iOS Simulator
+        if: ${{ matrix.platform == 'ios' }}
         run: |
           set -euo pipefail
           echo "Available iOS Simulator devices:"
@@ -385,9 +330,11 @@ jobs:
           fi
 
       - name: Cleanup signing material
+        if: ${{ matrix.platform == 'ios' }}
         if: always()
         run: rm -f "$RUNNER_TEMP/criosrango-debug.jks"
 
       - name: Cleanup Google Services
+        if: ${{ matrix.platform == 'ios' }}
         if: always()
         run: rm -f app/google-services.json
