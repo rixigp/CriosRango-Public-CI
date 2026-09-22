@@ -36,12 +36,12 @@ import retrofit2.Response
  * Temporary Phase C bridge between the stable Android StoreApi contract and
  * the validated shared KMP catalog client.
  *
- * Only the exact subset represented by StoreApiClient is routed to KMP.
- * Commercial operations deliberately delegate to the dedicated Android Retrofit transport.
+ * Android catalog/cart/checkout operations are routed through the shared KMP StoreApiClient.
+ * Payment-status remains on the legacy Android transport until the dedicated later phase.
  */
 class SharedCatalogStoreApiAdapter(
-    private val retrofitApi: RetrofitStoreApi,
-    private val sharedClient: StoreApiClient
+    private val sharedClient: StoreApiClient,
+    private val paymentStatusApi: RetrofitStoreApi
 ) : StoreApi {
 
     override suspend fun cart(): WooCart {
@@ -79,14 +79,28 @@ class SharedCatalogStoreApiAdapter(
             throw exception.toAndroidCatalogException()
         }
     }
-    override suspend fun checkout(): CheckoutResponse = retrofitApi.checkout()
-    override suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse = retrofitApi.createCheckout(request)
+    override suspend fun checkout(): CheckoutResponse = try {
+        Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=GET")
+        sharedClient.checkout().toAndroid()
+    } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
+
+    override suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse = try {
+        Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=POST")
+        sharedClient.createCheckout(request.toShared()).toAndroid()
+    } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
+
     override suspend fun getOrderStatus(orderId: Int, orderKey: String): OrderStatusResponse =
-        retrofitApi.getOrderStatus(orderId, orderKey)
-    override suspend fun selectShippingRate(request: SelectShippingRateRequest): WooCart =
-        retrofitApi.selectShippingRate(request)
-    override suspend fun updateCustomer(request: UpdateCustomerRequest): WooCart =
-        retrofitApi.updateCustomer(request)
+        paymentStatusApi.getOrderStatus(orderId, orderKey)
+
+    override suspend fun selectShippingRate(request: SelectShippingRateRequest): WooCart = try {
+        Log.d("CriosRangoSharedShipping", "SHIPPING source=shared operation=POST")
+        sharedClient.selectShippingRate(request.toShared()).toAndroid()
+    } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
+
+    override suspend fun updateCustomer(request: UpdateCustomerRequest): WooCart = try {
+        Log.d("CriosRangoSharedCheckout", "CUSTOMER source=shared operation=POST")
+        sharedClient.updateCustomer(request.toShared()).toAndroid()
+    } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
 
     override suspend fun product(id: Int): StoreProduct {
         Log.d("CriosRangoSharedCatalog", "PRODUCT_DETAIL source=shared id=$id")
