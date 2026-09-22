@@ -67,24 +67,12 @@ interface StoreApi {
  * provided by the shared KMP client through SharedCatalogStoreApiAdapter.
  */
 interface RetrofitStoreApi {
-    @GET("checkout")
-    suspend fun checkout(): CheckoutResponse
-
-    @retrofit2.http.Headers("X-CriosRango-App: 1")
-    @POST("checkout")
-    suspend fun createCheckout(@Body request: CreateOrderRequest): CheckoutResponse
-
     @retrofit2.http.GET("/wp-json/criosrango/v1/payment-status")
     suspend fun getOrderStatus(
         @retrofit2.http.Query("order_id") orderId: Int,
         @retrofit2.http.Query("key") orderKey: String
     ): OrderStatusResponse
 
-    @POST("cart/select-shipping-rate")
-    suspend fun selectShippingRate(@Body request: SelectShippingRateRequest): WooCart
-
-    @POST("cart/update-customer")
-    suspend fun updateCustomer(@Body request: UpdateCustomerRequest): WooCart
 }
 
 class StoreSession(private val preferences: android.content.SharedPreferences) {
