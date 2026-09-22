@@ -97,13 +97,6 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private val _bizumOrderId = MutableStateFlow<Int?>(null)
     val bizumOrderId = _bizumOrderId
     val paymentRedirect: StateFlow<PaymentRedirect?> = _paymentRedirect.asStateFlow()
-    init {
-        refreshHome()
-        viewModelScope.launch {
-            cartStore.refresh()
-            reconcileAfterProcessDeath()
-        }
-    }
     private var productsRequestVersion = 0
     private val searchResultCache = mutableMapOf<String, List<StoreProduct>>()
 
@@ -346,6 +339,14 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
 
     private enum class ReconcileOutcome { PAID, CLEARED, PENDING, NO_MARKER }
     private val reconciliationMutex = kotlinx.coroutines.sync.Mutex()
+    init {
+        refreshHome()
+        viewModelScope.launch {
+            cartStore.refresh()
+            reconcileAfterProcessDeath()
+        }
+    }
+
 
     private suspend fun reconcileLastCheckout(publishPaidResult: Boolean = true, preserveMarkerOnExhaustion: Boolean = false): ReconcileOutcome = reconciliationMutex.withLock {
         val checkout = lastCheckout ?: pendingCardPaymentStore.load()?.also { lastCheckout = it } ?: return@withLock ReconcileOutcome.NO_MARKER
