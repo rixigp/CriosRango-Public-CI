@@ -78,77 +78,66 @@ class PaymentStatusExactlyOnceIsolatedTest {
         val pendingStore = PendingCardPaymentStore(preferences)
         check(pendingStore.save(LastCheckout(123, "wc_order_123", "https://criosrango.es/pay/123")))
 
-        // J.5 diagnostic STAGE 1: the persisted marker exists before ViewModel construction.
-        assertNotNull("STAGE 1: pendingStore.load() must not be null", pendingStore.load())
+        assertNotNull("PROCESS-DEATH: pendingStore.load() before ViewModel must not be null", pendingStore.load())
 
         val api = CountingStoreApi()
+        api.blockPaymentStatus = true
         val viewModel = newViewModel(context, api, pendingStore)
 
-        // J.5 diagnostic STAGE 2: constructor completed with lastCheckout initialized.
-        val lastCheckoutField = ShopViewModel::class.java.getDeclaredField("lastCheckout")
-        lastCheckoutField.isAccessible = true
-        assertNotNull(
-            "STAGE 2: lastCheckout after ViewModel construction must not be null",
-            lastCheckoutField.get(viewModel)
+        idleMainLooperImmediate()
+
+        assertTrue(
+            "PROCESS-DEATH: paymentStatusStarted must be completed",
+            api.paymentStatusStarted.isCompleted
+        )
+        assertEquals(
+            "PROCESS-DEATH: paymentStatusCalls must equal 1 while paymentStatus is blocked",
+            1,
+            api.paymentStatusCalls.get()
         )
 
-        idleMainLooper()
+        repeat(5) {
+            idleMainLooperImmediate()
+        }
 
-        // J.5 diagnostic STAGE 3: process-death reconciliation created its Job.
-        val processDeathJobField = ShopViewModel::class.java.getDeclaredField("processDeathReconciliationJob")
-        processDeathJobField.isAccessible = true
-        assertNotNull(
-            "STAGE 3: processDeathReconciliationJob after idle must not be null",
-            processDeathJobField.get(viewModel)
+        assertEquals(
+            "PROCESS-DEATH: paymentStatusCalls must remain 1 while paymentStatus is blocked",
+            1,
+            api.paymentStatusCalls.get()
         )
 
-        // J.5 diagnostic: the init coroutine can create the reconciliation Job
-        // before its child coroutine has reached paymentStatus().
-        idleMainLooper()
+        api.releasePaymentStatus.complete(Unit)
+        idleMainLooperImmediate()
 
-        val job = processDeathJobField.get(viewModel) as Job
-
-        // J.5 diagnostic STAGE 4A: lastCheckout remains present after the second idle.
-        assertNotNull(
-            "STAGE 4A: lastCheckout after second idle must not be null",
-            lastCheckoutField.get(viewModel)
+        assertEquals(
+            "PROCESS-DEATH: paymentStatusCalls must equal 1 after terminal unpaid cleanup",
+            1,
+            api.paymentStatusCalls.get()
         )
-
-        // J.5 diagnostic STAGE 4B: persisted marker remains present after the second idle.
-        assertNotNull(
-            "STAGE 4B: pendingStore.load() after second idle must not be null",
+        assertEquals(
+            "PROCESS-DEATH: pendingStore.load() must be null after TERMINAL_UNPAID",
+            null,
             pendingStore.load()
         )
 
-        // J.5 diagnostic STAGE 4C: reconciliation Job is not cancelled.
-        assertTrue(
-            "STAGE 4C: processDeathReconciliationJob must not be cancelled",
-            !job.isCancelled
-        )
-
-        // J.5 diagnostic STAGE 4D: reconciliation Job is still incomplete.
-        assertTrue(
-            "STAGE 4D: processDeathReconciliationJob must not be completed",
-            !job.isCompleted
-        )
-
-        // J.5 diagnostic STAGE 4E: reconciliation Job is active.
-        assertTrue(
-            "STAGE 4E: processDeathReconciliationJob must be active",
-            job.isActive
-        )
-
-        // J.5 diagnostic STAGE 4F: reconciliation reached paymentStatus.
-        assertTrue(
-            "STAGE 4F: paymentStatusCalls must be > 0",
-            api.paymentStatusCalls.get() > 0
-        )
-
-        // J.5 diagnostic STAGE 4G: reconciliation reached paymentStatus exactly once.
+        val lastCheckoutField = ShopViewModel::class.java.getDeclaredField("lastCheckout")
+        lastCheckoutField.isAccessible = true
         assertEquals(
-            "STAGE 4G: paymentStatusCalls must equal 1",
-            1,
-            api.paymentStatusCalls.get()
+            "PROCESS-DEATH: lastCheckout must be null after TERMINAL_UNPAID",
+            null,
+            lastCheckoutField.get(viewModel)
+        )
+
+        val processDeathJobField = ShopViewModel::class.java.getDeclaredField("processDeathReconciliationJob")
+        processDeathJobField.isAccessible = true
+        val job = processDeathJobField.get(viewModel) as Job
+        assertTrue(
+            "PROCESS-DEATH: reconciliation Job must be completed",
+            job.isCompleted
+        )
+        assertTrue(
+            "PROCESS-DEATH: reconciliation Job must not be cancelled",
+            !job.isCancelled
         )
     }
 
