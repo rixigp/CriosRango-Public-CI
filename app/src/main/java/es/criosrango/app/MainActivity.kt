@@ -276,7 +276,16 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
         if (httpsReturn || customReturn) {
             val result = uri.getQueryParameter("result")
             val orderId = uri.getQueryParameter("order_id")?.toIntOrNull()
-            when (result) { "cancel" -> { if (orderId != null) viewModel.handleCardPaymentCancelled(orderId) }; "ok" -> viewModel.verifyCardPaymentReturn() }
+            when (result) {
+                "cancel" -> {
+                    if (orderId != null) {
+                        viewModel.handleCardPaymentCancelled(orderId)
+                        checkoutOpen = false
+                        tab = AppTab.CART
+                    }
+                }
+                "ok" -> viewModel.verifyCardPaymentReturn()
+            }
         }
         val isProductLink = (uri.scheme == "https" || uri.scheme == "http") && (host == "criosrango.es" || host == "www.criosrango.es") && uri.pathSegments.firstOrNull()?.equals("producto", ignoreCase = true) == true
         if (isProductLink) uri.pathSegments.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(viewModel::openProductBySlug)
