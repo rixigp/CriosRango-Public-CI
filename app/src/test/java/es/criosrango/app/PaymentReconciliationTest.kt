@@ -2,6 +2,7 @@ package es.criosrango.app
 
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
+import es.criosrango.shared.api.StoreApiException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -12,6 +13,16 @@ import kotlinx.coroutines.withTimeout
 class PaymentReconciliationTest {
     private fun order(status: String, paid: Boolean = false, terminal: Boolean = false) =
         OrderStatusResponse(id = 55841, status = status, paid = paid, terminal = terminal)
+
+    @Test fun sharedPaymentStatusServerErrorIsRetried() = runBlocking {
+        val calls = AtomicInteger(0)
+        val result = reconcilePaymentStatus(maxRetries = 1, delayMs = 0) {
+            if (calls.getAndIncrement() == 0) throw StoreApiException(500, "temporary", "temporary")
+            order("processing")
+        }
+        assertTrue(result is PaymentReconciliationResult.PAID)
+        assertEquals(2, calls.get())
+    }
 
     @Test fun firstIOExceptionThenProcessingConfirmsPayment() = runBlocking {
         val calls = AtomicInteger(0)
