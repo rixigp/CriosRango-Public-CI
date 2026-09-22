@@ -4,12 +4,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CompletableDeferred
-import okhttp3.OkHttpClient
-import okhttp3.Cookie
-import okhttp3.CookieJar
-import okhttp3.HttpUrl
-import okhttp3.logging.HttpLoggingInterceptor
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -17,13 +11,6 @@ import java.io.IOException
 import java.net.SocketTimeoutException
 import android.util.Log
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.POST
-import retrofit2.http.GET
-import retrofit2.http.Query
-import retrofit2.http.Body
 
 interface StoreApi {
     suspend fun products(
@@ -66,60 +53,6 @@ interface StoreApi {
  * Catalog endpoints deliberately do not live here: Android catalog runtime is
  * provided by the shared KMP client through SharedCatalogStoreApiAdapter.
  */
-interface RetrofitStoreApi {
-    @retrofit2.http.GET("/wp-json/criosrango/v1/payment-status")
-    suspend fun getOrderStatus(
-        @retrofit2.http.Query("order_id") orderId: Int,
-        @retrofit2.http.Query("key") orderKey: String
-    ): OrderStatusResponse
-
-}
-
-class StoreSession(private val preferences: android.content.SharedPreferences) {
-    private companion object {
-        const val CART_TOKEN = "woo_cart_token"
-        const val NONCE = "woo_nonce"
-        const val COOKIE_HEADER = "woo_cookie_header"
-    }
-
-    var cartToken: String?
-        get() = preferences.getString(CART_TOKEN, null)
-        set(value) { preferences.edit().putString(CART_TOKEN, value).apply() }
-
-    var nonce: String?
-        get() = preferences.getString(NONCE, null)
-        set(value) { preferences.edit().putString(NONCE, value).apply() }
-
-    var cookieHeader: String?
-        get() = preferences.getString(COOKIE_HEADER, null)
-        set(value) { preferences.edit().putString(COOKIE_HEADER, value).apply() }
-
-    @Synchronized
-    fun update(headers: okhttp3.Headers) {
-        headers["Cart-Token"]?.takeIf { it.isNotBlank() }?.let { cartToken = it }
-        headers["Nonce"]?.takeIf { it.isNotBlank() }?.let { nonce = it }
-        headers.values("Set-Cookie").forEach { raw ->
-            val pair = raw.substringBefore(";").trim()
-            val name = pair.substringBefore("=", "")
-            if (name.isNotBlank() && pair.contains("=")) {
-                val current = cookieHeader.orEmpty()
-                    .split(";")
-                    .map { it.trim() }
-                    .filter { it.isNotBlank() }
-                    .associate { it.substringBefore("=") to it }
-                    .toMutableMap()
-                current[name] = pair
-                cookieHeader = current.values.joinToString("; ")
-            }
-        }
-    }
-
-
-    fun clear() {
-        preferences.edit().remove(CART_TOKEN).remove(NONCE).remove(COOKIE_HEADER).apply()
-    }
-}
-
 /** Persistent delivery data only; payment credentials are never stored. */
 class DeliveryAddressStore(private val preferences: android.content.SharedPreferences) {
     private val accountOwnerKey = "delivery_account_owner_id"
