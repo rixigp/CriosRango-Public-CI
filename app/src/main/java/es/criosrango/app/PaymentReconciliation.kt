@@ -4,7 +4,7 @@ import java.io.IOException
 import java.net.SocketTimeoutException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
-import retrofit2.HttpException
+import es.criosrango.shared.api.StoreApiException
 
 internal const val PAYMENT_RECONCILIATION_MAX_RETRIES = 10
 internal const val PAYMENT_RECONCILIATION_DELAY_MS = 1500L
@@ -30,7 +30,7 @@ internal fun isTransientPaymentStatusException(exception: Throwable): Boolean {
     return exception is IOException ||
         exception is SocketTimeoutException ||
         exception is TimeoutCancellationException ||
-        (exception is HttpException && (exception.code() == 429 || exception.code() in 500..599))
+        (exception is StoreApiException && (exception.statusCode == 429 || exception.statusCode in 500..599))
 }
 
 internal suspend fun reconcilePaymentStatus(
