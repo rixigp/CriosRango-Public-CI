@@ -161,7 +161,6 @@ internal class BackendDiagnosticRunner(private val session: StoreSession) {
         } finally {
             anonymousClient.connectionPool.evictAll()
             anonymousClient.dispatcher.executorService.shutdown()
-            normalClientCleanup()
         }
     }
 
@@ -199,8 +198,6 @@ internal class BackendDiagnosticRunner(private val session: StoreSession) {
         appendLine("CF-Cache-Status = " + (result.cfCacheStatus ?: "N/A"))
         appendLine("CACHE EQUIVALENT = " + (result.cacheEquivalent ?: "N/A"))
     }
-
-    private fun normalClientCleanup() = Unit
 
     private fun measure(
         client: OkHttpClient,
