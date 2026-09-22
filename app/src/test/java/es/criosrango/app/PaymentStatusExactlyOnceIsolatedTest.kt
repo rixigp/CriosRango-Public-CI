@@ -97,6 +97,10 @@ class PaymentStatusExactlyOnceIsolatedTest {
             processDeathJobField.get(viewModel)
         )
 
+        // J.5 diagnostic: the init coroutine can create the reconciliation Job
+        // before its child coroutine has reached paymentStatus().
+        idleMainLooper()
+
         // J.5 diagnostic STAGE 4: the reconciliation reached paymentStatus.
         assertTrue(
             "STAGE 4: paymentStatusCalls must be > 0",
@@ -113,14 +117,17 @@ class PaymentStatusExactlyOnceIsolatedTest {
         )
         val pendingStore = PendingCardPaymentStore(preferences)
         val api = CountingStoreApi()
-        api.blockPaymentStatus = true
 
+        // J.5 diagnostic: let the empty-marker init path finish before
+        // injecting the lifecycle test marker.
         val viewModel = newViewModel(context, api, pendingStore)
+        idleMainLooper()
 
         val field = ShopViewModel::class.java.getDeclaredField("lastCheckout")
         field.isAccessible = true
         field.set(viewModel, LastCheckout(123, "wc_order_123", "https://criosrango.es/pay/123"))
 
+        api.blockPaymentStatus = true
         viewModel.verifyCardPaymentReturn()
         idleMainLooper()
         check(api.paymentStatusStarted.isCompleted)
