@@ -114,6 +114,10 @@ class StoreSession(private val preferences: android.content.SharedPreferences) {
         }
     }
 
+    fun setCartToken(value: String) { cartToken = value }
+    fun setNonce(value: String) { nonce = value }
+    fun setCookieHeader(value: String) { cookieHeader = value }
+
     fun clear() {
         preferences.edit().remove(CART_TOKEN).remove(NONCE).remove(COOKIE_HEADER).apply()
     }
