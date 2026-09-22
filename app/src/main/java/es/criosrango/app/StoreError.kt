@@ -6,7 +6,7 @@ import java.net.NoRouteToHostException
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
-import retrofit2.HttpException
+import es.criosrango.shared.api.StoreApiException
 import kotlinx.coroutines.TimeoutCancellationException
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -52,9 +52,9 @@ data class StoreUiError(val type: StoreErrorType) {
 fun Exception.toStoreUiError(authenticated: Boolean = false): StoreUiError = when (this) {
     is SocketTimeoutException, is TimeoutCancellationException -> StoreUiError(StoreErrorType.TIMEOUT)
     is UnknownHostException, is ConnectException, is NoRouteToHostException, is SocketException, is IOException -> StoreUiError(StoreErrorType.NO_INTERNET)
-    is HttpException -> when {
-        code() in 500..599 -> StoreUiError(StoreErrorType.SERVER_UNAVAILABLE)
-        authenticated && code() in 401..403 -> StoreUiError(StoreErrorType.SESSION_EXPIRED)
+    is StoreApiException -> when {
+        statusCode in 500..599 -> StoreUiError(StoreErrorType.SERVER_UNAVAILABLE)
+        authenticated && statusCode in 401..403 -> StoreUiError(StoreErrorType.SESSION_EXPIRED)
         else -> StoreUiError(StoreErrorType.UNEXPECTED)
     }
     else -> StoreUiError(StoreErrorType.UNEXPECTED)
