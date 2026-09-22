@@ -27,7 +27,7 @@ class StoreApiClientCheckoutTest {
         HttpClient(MockEngine { request ->
             requests += request
             val body = when {
-                request.url.encodedPath.endsWith("/checkout") && request.method.value == "GET" -> checkoutJson
+                request.url.encodedPath.endsWith("/checkout") -> checkoutJson
                 else -> cartJson
             }
             respond(body, HttpStatusCode.OK, headersOf(
