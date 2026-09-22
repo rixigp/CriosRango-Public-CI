@@ -84,15 +84,15 @@ class StoreSession(private val preferences: android.content.SharedPreferences) {
 
     var cartToken: String?
         get() = preferences.getString(CART_TOKEN, null)
-        private set(value) { preferences.edit().putString(CART_TOKEN, value).apply() }
+        set(value) { preferences.edit().putString(CART_TOKEN, value).apply() }
 
     var nonce: String?
         get() = preferences.getString(NONCE, null)
-        private set(value) { preferences.edit().putString(NONCE, value).apply() }
+        set(value) { preferences.edit().putString(NONCE, value).apply() }
 
     var cookieHeader: String?
         get() = preferences.getString(COOKIE_HEADER, null)
-        private set(value) { preferences.edit().putString(COOKIE_HEADER, value).apply() }
+        set(value) { preferences.edit().putString(COOKIE_HEADER, value).apply() }
 
     @Synchronized
     fun update(headers: okhttp3.Headers) {
@@ -114,9 +114,6 @@ class StoreSession(private val preferences: android.content.SharedPreferences) {
         }
     }
 
-    fun setCartToken(value: String) { cartToken = value }
-    fun setNonce(value: String) { nonce = value }
-    fun setCookieHeader(value: String) { cookieHeader = value }
 
     fun clear() {
         preferences.edit().remove(CART_TOKEN).remove(NONCE).remove(COOKIE_HEADER).apply()
