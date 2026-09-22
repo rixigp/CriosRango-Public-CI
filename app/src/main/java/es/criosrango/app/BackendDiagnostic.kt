@@ -4,7 +4,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.CookieJar
 import okhttp3.EventListener
-import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -102,7 +101,7 @@ internal class BackendNetworkEventListener : EventListener() {
     override fun callEnd(call: okhttp3.Call) { callEndNs = now() }
 }
 
-internal class BackendDiagnosticRunner {
+internal class BackendDiagnosticRunner(private val session: StoreSession) {
 
     suspend fun run(categoryId: Int): String = withContext(Dispatchers.IO) {
         val categoryUrl = STORE_API_BASE_URL + "products?per_page=24&page=1&category=" + categoryId
@@ -122,14 +121,26 @@ internal class BackendDiagnosticRunner {
                 measure(anonymousClient, categoryUrl, "ANÓNIMA #3")
             )
 
-            val normalInfo = StoreApiFactory.diagnosticNormalClient(categoryUrl.toHttpUrl())
+            val normalClient = OkHttpClient.Builder()
+                .cookieJar(CookieJar.NO_COOKIES)
+                .connectTimeout(12, TimeUnit.SECONDS)
+                .readTimeout(15, TimeUnit.SECONDS)
+                .writeTimeout(15, TimeUnit.SECONDS)
+                .addInterceptor { chain ->
+                    val builder = chain.request().newBuilder()
+                    session.cartToken?.let { builder.header("Cart-Token", it) }
+                    session.nonce?.let { builder.header("Nonce", it) }
+                    session.cookieHeader?.let { builder.header("Cookie", it) }
+                    chain.proceed(builder.build())
+                }
+                .build()
             val normal = measure(
-                normalInfo.client,
+                normalClient,
                 categoryUrl,
                 "SESIÓN APP",
-                normalInfo.cookieSent,
-                normalInfo.cartTokenSent,
-                normalInfo.nonceSent
+                !session.cookieHeader.isNullOrBlank(),
+                !session.cartToken.isNullOrBlank(),
+                !session.nonce.isNullOrBlank()
             )
 
             val noCategory = measure(anonymousClient, allProductsUrl, "SIN CATEGORY")
@@ -150,6 +161,7 @@ internal class BackendDiagnosticRunner {
         } finally {
             anonymousClient.connectionPool.evictAll()
             anonymousClient.dispatcher.executorService.shutdown()
+            normalClientCleanup()
         }
     }
 
@@ -187,6 +199,8 @@ internal class BackendDiagnosticRunner {
         appendLine("CF-Cache-Status = " + (result.cfCacheStatus ?: "N/A"))
         appendLine("CACHE EQUIVALENT = " + (result.cacheEquivalent ?: "N/A"))
     }
+
+    private fun normalClientCleanup() = Unit
 
     private fun measure(
         client: OkHttpClient,
