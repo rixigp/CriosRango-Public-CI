@@ -8,13 +8,13 @@ class AndroidStoreSessionStore(
 
     override var cartToken: String?
         get() = session.cartToken
-        set(value) { if (value != null) session.setCartToken(value) }
+        set(value) { session.cartToken = value }
 
     override var nonce: String?
         get() = session.nonce
-        set(value) { if (value != null) session.setNonce(value) }
+        set(value) { session.nonce = value }
 
     override var cookieHeader: String?
         get() = session.cookieHeader
-        set(value) { if (value != null) session.setCookieHeader(value) }
+        set(value) { session.cookieHeader = value }
 }
