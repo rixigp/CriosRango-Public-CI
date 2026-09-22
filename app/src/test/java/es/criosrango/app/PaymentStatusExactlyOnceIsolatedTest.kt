@@ -5,6 +5,7 @@ import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -64,6 +65,10 @@ class PaymentStatusExactlyOnceIsolatedTest {
         shadow.runToEndOfTasks()
     }
 
+    private fun idleMainLooperImmediate() {
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
+    }
+
     @Test
     fun processDeathWithPendingPayment_callsPaymentStatusExactlyOnce() {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -101,12 +106,50 @@ class PaymentStatusExactlyOnceIsolatedTest {
         // before its child coroutine has reached paymentStatus().
         idleMainLooper()
 
-        // J.5 diagnostic STAGE 4: the reconciliation reached paymentStatus.
+        val job = processDeathJobField.get(viewModel) as Job
+
+        // J.5 diagnostic STAGE 4A: lastCheckout remains present after the second idle.
+        assertNotNull(
+            "STAGE 4A: lastCheckout after second idle must not be null",
+            lastCheckoutField.get(viewModel)
+        )
+
+        // J.5 diagnostic STAGE 4B: persisted marker remains present after the second idle.
+        assertNotNull(
+            "STAGE 4B: pendingStore.load() after second idle must not be null",
+            pendingStore.load()
+        )
+
+        // J.5 diagnostic STAGE 4C: reconciliation Job is not cancelled.
         assertTrue(
-            "STAGE 4: paymentStatusCalls must be > 0",
+            "STAGE 4C: processDeathReconciliationJob must not be cancelled",
+            !job.isCancelled
+        )
+
+        // J.5 diagnostic STAGE 4D: reconciliation Job is still incomplete.
+        assertTrue(
+            "STAGE 4D: processDeathReconciliationJob must not be completed",
+            !job.isCompleted
+        )
+
+        // J.5 diagnostic STAGE 4E: reconciliation Job is active.
+        assertTrue(
+            "STAGE 4E: processDeathReconciliationJob must be active",
+            job.isActive
+        )
+
+        // J.5 diagnostic STAGE 4F: reconciliation reached paymentStatus.
+        assertTrue(
+            "STAGE 4F: paymentStatusCalls must be > 0",
             api.paymentStatusCalls.get() > 0
         )
-        assertEquals(1, api.paymentStatusCalls.get())
+
+        // J.5 diagnostic STAGE 4G: reconciliation reached paymentStatus exactly once.
+        assertEquals(
+            "STAGE 4G: paymentStatusCalls must equal 1",
+            1,
+            api.paymentStatusCalls.get()
+        )
     }
 
     @Test
@@ -121,7 +164,7 @@ class PaymentStatusExactlyOnceIsolatedTest {
         // J.5 diagnostic: let the empty-marker init path finish before
         // injecting the lifecycle test marker.
         val viewModel = newViewModel(context, api, pendingStore)
-        idleMainLooper()
+        idleMainLooperImmediate()
 
         val field = ShopViewModel::class.java.getDeclaredField("lastCheckout")
         field.isAccessible = true
@@ -129,19 +172,42 @@ class PaymentStatusExactlyOnceIsolatedTest {
 
         api.blockPaymentStatus = true
         viewModel.verifyCardPaymentReturn()
-        idleMainLooper()
-        check(api.paymentStatusStarted.isCompleted)
+        idleMainLooperImmediate()
+        assertTrue(
+            "LIFECYCLE: paymentStatusStarted must be completed",
+            api.paymentStatusStarted.isCompleted
+        )
+        assertTrue(
+            "LIFECYCLE: checkoutLoading must remain true while paymentStatus is blocked",
+            viewModel.checkoutLoading.value
+        )
+        assertEquals(
+            "LIFECYCLE: paymentStatusCalls must equal 1 before resumes",
+            1,
+            api.paymentStatusCalls.get()
+        )
 
         repeat(5) {
             viewModel.verifyCardPaymentReturn()
         }
 
-        assertTrue(api.paymentStatusCalls.get() > 0)
-        assertEquals(1, api.paymentStatusCalls.get())
+        assertEquals(
+            "LIFECYCLE: paymentStatusCalls must remain 1 after resumes",
+            1,
+            api.paymentStatusCalls.get()
+        )
+        assertTrue(
+            "LIFECYCLE: checkoutLoading must remain true before release",
+            viewModel.checkoutLoading.value
+        )
 
         api.releasePaymentStatus.complete(Unit)
-        idleMainLooper()
+        idleMainLooperImmediate()
 
-        assertEquals(1, api.paymentStatusCalls.get())
+        assertEquals(
+            "LIFECYCLE: paymentStatusCalls must equal 1 after release",
+            1,
+            api.paymentStatusCalls.get()
+        )
     }
 }
