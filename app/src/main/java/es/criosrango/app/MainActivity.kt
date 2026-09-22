@@ -90,10 +90,9 @@ class MainActivity : ComponentActivity() {
         paymentReturnUriState.value = intent?.data
         val preferences = getSharedPreferences("criosrango", MODE_PRIVATE)
         val session = StoreSession(preferences)
-        val retrofitApi = StoreApiFactory.create(session)
         val sharedSession = AndroidStoreSessionStore(session)
         val sharedCatalogClient = es.criosrango.shared.api.StoreApiClient(session = sharedSession)
-        val catalogApi = SharedCatalogStoreApiAdapter(sharedCatalogClient, retrofitApi)
+        val catalogApi = SharedCatalogStoreApiAdapter(sharedCatalogClient)
         val cartStore = CartStore(catalogApi, session, preferences)
         val pendingCardPaymentStore = PendingCardPaymentStore.create(applicationContext)
         val categoryDatabase = CategoryProductCacheDatabase.create(applicationContext)
