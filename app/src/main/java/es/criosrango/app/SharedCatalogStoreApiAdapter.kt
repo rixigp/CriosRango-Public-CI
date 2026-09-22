@@ -29,9 +29,6 @@ import es.criosrango.shared.model.VariationAttribute as SharedVariationAttribute
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.ResponseException
 import java.net.SocketTimeoutException
-import okhttp3.ResponseBody.Companion.toResponseBody
-import retrofit2.HttpException
-import retrofit2.Response
 
 /**
  * Temporary Phase C bridge between the stable Android StoreApi contract and
@@ -293,10 +290,11 @@ private fun SharedAddToCart.toAndroid(): AddToCart = AddToCart(
 private fun Exception.toAndroidCatalogException(): Exception = when (this) {
     is StoreApiException -> CartException(message)
     is HttpRequestTimeoutException -> SocketTimeoutException(message).also { it.initCause(this) }
-    is ResponseException -> {
-        val code = response.status.value
-        HttpException(Response.error<Any>(code, "".toResponseBody(null)))
-    }
+    is ResponseException -> StoreApiException(
+        statusCode = response.status.value,
+        apiCode = null,
+        message = response.status.description
+    )
     else -> this
 }
 
