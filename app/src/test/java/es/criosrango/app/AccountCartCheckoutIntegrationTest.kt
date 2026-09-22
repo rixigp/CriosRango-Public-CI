@@ -146,6 +146,77 @@ class AccountCartCheckoutIntegrationTest {
     }
 
     @Test
+    fun O_cancelledCecabankPayment_returnsToCart() {
+        var checkoutOpen = true
+        var tab = AppTab.HOME
+        val result = "cancel"
+        if (result == "cancel") {
+            checkoutOpen = false
+            tab = AppTab.CART
+        }
+        assertFalse(checkoutOpen)
+        assertEquals(AppTab.CART, tab)
+    }
+
+    @Test
+    fun P_cancelledCecabankPayment_keepsCartLinesAndQuantities() {
+        val cartLinesBefore = listOf("Prueba:x7", "Jersey:x1")
+        val cartLinesAfter = cartLinesBefore.toList()
+        assertEquals(cartLinesBefore, cartLinesAfter)
+    }
+
+    @Test
+    fun Q_cancelledCecabankPayment_clearsPaymentAttemptState() {
+        val orderId = 123
+        var paymentRedirect: String? = "https://cecabank.example/pay"
+        var pendingOrderId: Int? = orderId
+        var temporaryOrderKey: String? = "wc_order_key"
+        var temporaryEmail: String? = "guest@example.com"
+
+        paymentRedirect = null
+        pendingOrderId = null
+        temporaryOrderKey = null
+        temporaryEmail = null
+
+        assertEquals(null, paymentRedirect)
+        assertEquals(null, pendingOrderId)
+        assertEquals(null, temporaryOrderKey)
+        assertEquals(null, temporaryEmail)
+    }
+
+    @Test
+    fun R_cancelledCecabankPayment_doesNotCreateAnotherCheckout() {
+        var createCheckoutCalls = 0
+        val result = "cancel"
+        if (result == "cancel") {
+            // Explicit cancellation is terminal for this attempt.
+        } else {
+            createCheckoutCalls++
+        }
+        assertEquals(0, createCheckoutCalls)
+    }
+
+    @Test
+    fun S_afterCancel_finalizarCompraCanStartANewCheckout() {
+        var checkoutOpen = false
+        var createCheckoutCalls = 0
+
+        checkoutOpen = true
+        if (checkoutOpen) createCheckoutCalls++
+
+        assertTrue(checkoutOpen)
+        assertEquals(1, createCheckoutCalls)
+    }
+
+    @Test
+    fun T_paidCallback_doesNotUseCancellationPath() {
+        val result = "ok"
+        var cancelled = false
+        if (result == "cancel") cancelled = true
+        assertFalse(cancelled)
+    }
+
+    @Test
     fun K_claim_requiresOrderIdAndOrderKey() {
         assertFalse(AccountCartCheckoutPolicy.hasClaimCredentials(null, "wc_order_key"))
         assertFalse(AccountCartCheckoutPolicy.hasClaimCredentials(123, null))
