@@ -47,12 +47,6 @@ interface StoreApi {
     suspend fun updateCustomer(request: UpdateCustomerRequest): WooCart
 }
 
-/**
- * Android commercial Retrofit transport.
- *
- * Catalog endpoints deliberately do not live here: Android catalog runtime is
- * provided by the shared KMP client through SharedCatalogStoreApiAdapter.
- */
 /** Persistent delivery data only; payment credentials are never stored. */
 class DeliveryAddressStore(private val preferences: android.content.SharedPreferences) {
     private val accountOwnerKey = "delivery_account_owner_id"
