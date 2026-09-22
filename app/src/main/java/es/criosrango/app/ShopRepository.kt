@@ -12,6 +12,7 @@ import java.net.SocketTimeoutException
 import android.util.Log
 import okhttp3.OkHttpClient
 import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 
 interface StoreApi {
     suspend fun products(
