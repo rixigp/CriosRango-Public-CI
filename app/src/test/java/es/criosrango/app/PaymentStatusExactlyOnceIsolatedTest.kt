@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -76,11 +77,8 @@ class PaymentStatusExactlyOnceIsolatedTest {
 
         idleMainLooper()
 
-        assertEquals(
-            "PROCESS DEATH: expected paymentStatusCalls=1; actual paymentStatusCalls=" + api.paymentStatusCalls.get(),
-            1,
-            api.paymentStatusCalls.get()
-        )
+        assertTrue(api.paymentStatusCalls.get() > 0)
+        assertEquals(1, api.paymentStatusCalls.get())
     }
 
     @Test
@@ -107,11 +105,8 @@ class PaymentStatusExactlyOnceIsolatedTest {
             viewModel.verifyCardPaymentReturn()
         }
 
-        assertEquals(
-            "LIFECYCLE: expected paymentStatusCalls=1; actual paymentStatusCalls=" + api.paymentStatusCalls.get(),
-            1,
-            api.paymentStatusCalls.get()
-        )
+        assertTrue(api.paymentStatusCalls.get() > 0)
+        assertEquals(1, api.paymentStatusCalls.get())
 
         api.releasePaymentStatus.complete(Unit)
         idleMainLooper()
