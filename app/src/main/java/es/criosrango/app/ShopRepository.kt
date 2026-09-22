@@ -10,6 +10,7 @@ import kotlinx.coroutines.sync.withLock
 import java.io.IOException
 import java.net.SocketTimeoutException
 import android.util.Log
+import okhttp3.OkHttpClient
 import com.google.gson.Gson
 
 interface StoreApi {
