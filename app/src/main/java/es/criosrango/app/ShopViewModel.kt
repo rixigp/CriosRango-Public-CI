@@ -319,7 +319,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 } else checkoutResponse
 
                 _checkout.value = finalCheckoutResponse; _checkoutError.value = null; _checkoutPhase.value = CheckoutPhase.READY
-            } catch (exception: CancellationException) { throw exception } catch (exception: Exception) { _checkoutError.value = (exception as? Exception)?.toStoreUiError()?.message ?: exception.message; _checkout.value = null; _checkoutPhase.value = CheckoutPhase.FAILED }
+            } catch (exception: CancellationException) { throw exception } catch (exception: Exception) { _checkoutError.value = exception.message; _checkout.value = null; _checkoutPhase.value = CheckoutPhase.FAILED }
             finally { if (generation == checkoutGeneration) _checkoutLoading.value = false }
         }
     }
