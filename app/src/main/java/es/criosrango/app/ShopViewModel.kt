@@ -474,7 +474,21 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
 
     fun handleCardPaymentCancelled(orderId: Int) {
         if (lastCheckout?.orderId != orderId) return
-        verifyCardPaymentReturn()
+
+        // An explicit Cecabank cancellation is terminal for this payment attempt.
+        // Do not reconcile it as a normal return: the customer must go back to the cart.
+        pendingCardPaymentStore.clear()
+        lastCheckout = null
+        _paymentRedirect.value = null
+        _cardPaymentResult.value = CardPaymentResult(orderId, false)
+        invalidateCheckout()
+
+        viewModelScope.launch {
+            runCatching { cartStore.restoreRemoteAfterUnpaidCheckout() }
+                .onFailure { exception ->
+                    _checkoutError.value = exception.toStoreUiError().message
+                }
+        }
     }
 
     fun verifyCardPaymentReturn() {
