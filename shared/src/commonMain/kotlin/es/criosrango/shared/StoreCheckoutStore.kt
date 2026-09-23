@@ -150,8 +150,9 @@ class StoreCheckoutStore(
                     if (response.orderId == null) {
                         throw IllegalStateException("La tienda no ha confirmado la creación del pedido.")
                     }
-                    _checkout.value = response
-                    _createdOrder.value = response
+                    val effectiveResponse = response.copy(paymentMethod = response.paymentMethod ?: paymentMethod)
+                    _checkout.value = effectiveResponse
+                    _createdOrder.value = effectiveResponse
                     if (paymentMethod.equals("bizum", ignoreCase = true) || paymentMethod.equals("cheque", ignoreCase = true)) {
                         cartStore.clearAfterConfirmedPayment()
                     }
