@@ -292,7 +292,7 @@ jobs:
 
           FOUND=0
           for i in $(seq 1 30); do
-            if grep -q "KMP_RUNTIME_ACCOUNT_SCREEN_READY" "$CONSOLE_LOG" && grep -Eq "KMP_ACCOUNT_SESSION_PRESENT=(true|false)" "$CONSOLE_LOG"; then
+            if grep -q "KMP_RUNTIME_ROOT_SCREEN_READY" "$CONSOLE_LOG" && grep -q "KMP_RUNTIME_HOME_READY" "$CONSOLE_LOG"; then
               FOUND=1
               break
             fi
@@ -313,7 +313,7 @@ jobs:
           xcrun simctl spawn "$UDID" pgrep -f "es.criosrango.kmpspike" 2>&1 || true
 
           if [ "$FOUND" -ne 1 ]; then
-            echo "Runtime smoke markers were not all captured from direct app console."
+            echo "Runtime smoke markers were not all captured from direct app console (root + home)."
             echo "Crash indicators:"
             grep -Ei "crash|exception|fatal|abort|terminated|killed" "$CONSOLE_LOG" || true
             echo "First likely error:"
