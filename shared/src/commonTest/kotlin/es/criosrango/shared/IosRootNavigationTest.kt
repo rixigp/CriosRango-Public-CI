@@ -12,7 +12,7 @@ class IosRootNavigationTest {
     @Test
     fun mainSectionsAreHomeCategoriesAccount() {
         assertEquals(
-            listOf(IosRootSection.HOME, IosRootSection.CATEGORIES, IosRootSection.ACCOUNT),
+            listOf(IosRootSection.HOME, IosRootSection.CATEGORIES, IosRootSection.CART, IosRootSection.ACCOUNT),
             IosRootSection.entries.toList()
         )
     }
