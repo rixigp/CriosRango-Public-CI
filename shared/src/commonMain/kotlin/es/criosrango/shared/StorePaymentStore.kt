@@ -44,7 +44,10 @@ class StorePaymentStore(
         if (!checkout.paymentMethod.equals("cecabank_gateway", ignoreCase = true)) return null
         val orderId = checkout.orderId ?: return fail("La tienda no ha devuelto el identificador del pedido.")
         val orderKey = checkout.orderKey?.takeIf { it.isNotBlank() } ?: return fail("La tienda no ha devuelto la clave del pedido.")
-        val paymentUrl = checkout.paymentRedirectUrl() ?: return fail("La tienda no ha devuelto la URL de pago.")
+        val paymentUrl = checkout.redirectUrl
+            ?: checkout.paymentResult?.redirectUrl
+            ?: checkout.paymentResult?.paymentUrl
+            ?: return fail("La tienda no ha devuelto la URL de pago.")
         val pending = StorePendingCardPayment(orderId, orderKey, paymentUrl)
         if (!pendingStore.save(pending)) return fail("No se ha podido guardar el intento de pago.")
         attemptActive = true

@@ -198,7 +198,8 @@ fun IosCheckoutScreen(
             }
         }
 
-        createdOrder?.let { order ->
+        if (createdOrder != null) {
+            val order = createdOrder!!
             val isBizum = order.paymentMethod.equals("bizum", ignoreCase = true) || order.paymentMethod.equals("cheque", ignoreCase = true)
             if (isBizum) item {
                 Text("Pedido recibido", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
@@ -206,8 +207,10 @@ fun IosCheckoutScreen(
                 Text("Realiza el pago por Bizum al 679 97 28 88 y utiliza el número de pedido como referencia de pago.")
                 Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Seguir comprando") }
             } else if (paymentState == StoreCardPaymentState.OPENING || paymentState == StoreCardPaymentState.WAITING_RETURN || paymentState == StoreCardPaymentState.RECONCILING) {
-                Text("Pasarela de pago", style = MaterialTheme.typography.titleLarge)
-                Text(if (paymentState == StoreCardPaymentState.RECONCILING) "Comprobando el pago…" else "Abriendo Cecabank…")
+                item {
+                    Text("Pasarela de pago", style = MaterialTheme.typography.titleLarge)
+                    Text(if (paymentState == StoreCardPaymentState.RECONCILING) "Comprobando el pago…" else "Abriendo Cecabank…")
+                }
             }
         }
 
