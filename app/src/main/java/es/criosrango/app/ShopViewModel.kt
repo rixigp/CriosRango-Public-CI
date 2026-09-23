@@ -18,6 +18,7 @@ import android.util.Log
 import java.io.IOException
 import java.net.SocketTimeoutException
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 
 enum class CheckoutPhase { IDLE, QUOTING, READY, CREATING_ORDER, ORDER_CREATED, OPENING_PAYMENT, FAILED }
 data class PaymentRedirect(val generation: Long, val orderId: Int, val url: String)
