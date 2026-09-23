@@ -179,7 +179,13 @@ fun IosCheckoutScreen(
         }
         if (paymentState == StoreCardPaymentState.NOT_PAID) item {
             Text("El pago no se ha completado.", color = MaterialTheme.colorScheme.error)
-            Button(onClick = { paymentStore.clearForNewProcess() }, modifier = Modifier.fillMaxWidth()) { Text("Volver a intentarlo") }
+            Button(
+                onClick = {
+                    checkoutStore.clearCreatedOrder()
+                    paymentStore.clearForNewProcess()
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Volver a intentarlo") }
         }
         if (!error.isNullOrBlank()) item {
             Text(error!!, color = MaterialTheme.colorScheme.error)

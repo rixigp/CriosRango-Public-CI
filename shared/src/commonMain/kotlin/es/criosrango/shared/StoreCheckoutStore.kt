@@ -152,6 +152,9 @@ class StoreCheckoutStore(
                     }
                     _checkout.value = response
                     _createdOrder.value = response
+                    if (paymentMethod.equals("bizum", ignoreCase = true) || paymentMethod.equals("cheque", ignoreCase = true)) {
+                        cartStore.clearAfterConfirmedPayment()
+                    }
                     _phase.value = StoreCheckoutPhase.ORDER_CREATED
                 }
             } catch (t: Throwable) {
