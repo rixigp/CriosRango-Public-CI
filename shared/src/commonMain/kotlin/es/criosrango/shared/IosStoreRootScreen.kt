@@ -304,8 +304,7 @@ private fun IosCatalogScreen(
     cartStore: StoreCartStore,
     onOpenCategory: (StoreCategory) -> Unit,
     onOpenProduct: (StoreProduct) -> Unit,
-    onBack: () -> Unit,
-    cartStore: StoreCartStore
+    onBack: () -> Unit
 ) {
     when (page) {
         IosCatalogPage.Root -> IosCategoryRoot(storeApi, padding, onOpenCategory)
@@ -356,7 +355,8 @@ private fun IosCategoryProducts(
     padding: PaddingValues,
     category: StoreCategory,
     onOpenProduct: (StoreProduct) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    cartStore: StoreCartStore
 ) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
