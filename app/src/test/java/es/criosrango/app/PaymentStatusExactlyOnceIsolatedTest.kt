@@ -20,12 +20,15 @@ class PaymentStatusExactlyOnceIsolatedTest {
         private val orderStatus: OrderStatusResponse = OrderStatusResponse(
             id = 123, status = "cancelled", paid = false, needsPayment = false, terminal = true
         ),
-        private val checkoutResponse: CheckoutResponse = CheckoutResponse()
+        private val checkoutResponse: CheckoutResponse = CheckoutResponse(),
+        private val holdCheckout: Boolean = false
     ) : StoreApi {
         val paymentStatusCalls = AtomicInteger(0)
         val createCheckoutCalls = AtomicInteger(0)
         val cartCalls = AtomicInteger(0)
         val paymentStatusStarted = CompletableDeferred<Unit>()
+        val checkoutStarted = CompletableDeferred<Unit>()
+        val checkoutRelease = CompletableDeferred<Unit>()
 
         override suspend fun getOrderStatus(orderId: Int, orderKey: String): OrderStatusResponse {
             paymentStatusCalls.incrementAndGet()
@@ -48,6 +51,8 @@ class PaymentStatusExactlyOnceIsolatedTest {
         override suspend fun checkout() = CheckoutResponse()
         override suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse {
             createCheckoutCalls.incrementAndGet()
+            checkoutStarted.complete(Unit)
+            if (holdCheckout) checkoutRelease.await()
             return checkoutResponse
         }
         override suspend fun selectShippingRate(request: SelectShippingRateRequest) = WooCart()
@@ -114,7 +119,8 @@ class PaymentStatusExactlyOnceIsolatedTest {
                 orderId = 456,
                 orderKey = "wc_order_456",
                 redirectUrl = "https://criosrango.es/pay/456"
-            )
+            ),
+            holdCheckout = true
         )
         val viewModel = newViewModel(context, api, pendingStore)
         idleMainLooper()
@@ -131,6 +137,10 @@ class PaymentStatusExactlyOnceIsolatedTest {
 
         assertEquals(1, api.createCheckoutCalls.get())
         assertEquals(0, api.paymentStatusCalls.get())
+        assertTrue(viewModel.checkoutLoading.value)
+
+        api.checkoutRelease.complete(Unit)
+        idleMainLooper()
         assertFalse(viewModel.checkoutLoading.value)
     }
 
@@ -155,6 +165,9 @@ class PaymentStatusExactlyOnceIsolatedTest {
         idleMainLooper()
 
         assertEquals(1, api.createCheckoutCalls.get())
+        api.checkoutRelease.complete(Unit)
+        idleMainLooper()
+        assertFalse(viewModel.checkoutLoading.value)
     }
 
     @Test
