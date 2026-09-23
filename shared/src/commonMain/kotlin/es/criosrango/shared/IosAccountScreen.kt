@@ -1,5 +1,6 @@
 package es.criosrango.shared
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -13,7 +14,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -21,6 +25,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,16 +45,22 @@ import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.account.AccountUser
 import kotlinx.coroutines.launch
 
-private enum class IosAccountPage { HOME, LOGIN, REGISTER, FORGOT, PROFILE, ADDRESS, ORDERS, INFO, HELP, ORDER_DETAIL }
+private enum class IosAccountPage { HOME, LOGIN, REGISTER, FORGOT, PROFILE, DATA, ADDRESS, ORDERS, INFO, HELP, ORDER_DETAIL }
 
 @Composable
-fun CriosRangoIOSAccountScreen(repository: AccountRepository, modifier: Modifier = Modifier) {
+fun CriosRangoIOSAccountScreen(
+    repository: AccountRepository,
+    modifier: Modifier = Modifier,
+    onOpenExternalUrl: (String) -> Unit
+) {
     var page by remember { mutableStateOf(IosAccountPage.HOME) }
     var user by remember { mutableStateOf<AccountUser?>(null) }
     var startup by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var selectedOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
     var selectedInfoPage by remember { mutableStateOf<AccountInfoPage?>(null) }
+    var forgotReturnPage by remember { mutableStateOf(IosAccountPage.LOGIN) }
+    var addressReturnPage by remember { mutableStateOf(IosAccountPage.HOME) }
     val scope = rememberCoroutineScope()
 
     fun finishAuthentication(authenticatedUser: AccountUser) {
@@ -86,7 +99,7 @@ fun CriosRangoIOSAccountScreen(repository: AccountRepository, modifier: Modifier
                     onLogin = { error = null; page = IosAccountPage.LOGIN },
                     onRegister = { error = null; page = IosAccountPage.REGISTER },
                     onProfile = { error = null; page = IosAccountPage.PROFILE },
-                    onAddress = { error = null; page = IosAccountPage.ADDRESS },
+                    onAddress = { error = null; addressReturnPage = IosAccountPage.HOME; page = IosAccountPage.ADDRESS },
                     onOrders = { error = null; page = IosAccountPage.ORDERS },
                     onInfoPage = { selectedInfoPage = it; error = null; page = IosAccountPage.INFO },
                     onHelp = { error = null; page = IosAccountPage.HELP },
@@ -97,7 +110,7 @@ fun CriosRangoIOSAccountScreen(repository: AccountRepository, modifier: Modifier
                     repository,
                     onAuthenticated = ::finishAuthentication,
                     onRegister = { page = IosAccountPage.REGISTER },
-                    onForgot = { page = IosAccountPage.FORGOT },
+                    onForgot = { forgotReturnPage = IosAccountPage.LOGIN; page = IosAccountPage.FORGOT },
                     onBack = { page = IosAccountPage.HOME }
                 )
                 IosAccountPage.REGISTER -> IosRegisterScreen(
@@ -106,9 +119,24 @@ fun CriosRangoIOSAccountScreen(repository: AccountRepository, modifier: Modifier
                     onLogin = { page = IosAccountPage.LOGIN },
                     onBack = { page = IosAccountPage.HOME }
                 )
-                IosAccountPage.FORGOT -> IosForgotPasswordScreen(repository) { page = IosAccountPage.LOGIN }
-                IosAccountPage.PROFILE -> IosProfileScreen(repository, user, { user = it }) { page = IosAccountPage.HOME }
-                IosAccountPage.ADDRESS -> IosAddressScreen(repository) { page = IosAccountPage.HOME }
+                IosAccountPage.FORGOT -> IosForgotPasswordScreen(repository) { page = forgotReturnPage }
+                IosAccountPage.PROFILE -> IosProfileMenuScreen(
+                    onPersonalData = { page = IosAccountPage.DATA },
+                    onAddress = { addressReturnPage = IosAccountPage.PROFILE; page = IosAccountPage.ADDRESS },
+                    onPassword = { forgotReturnPage = IosAccountPage.PROFILE; page = IosAccountPage.FORGOT },
+                    onDeleteAccount = { onOpenExternalUrl(AccountDeletion.URL) },
+                    onLogout = {
+                        scope.launch {
+                            runCatching { repository.logout() }
+                            user = null
+                            error = null
+                            page = IosAccountPage.HOME
+                        }
+                    },
+                    onBack = { page = IosAccountPage.HOME }
+                )
+                IosAccountPage.DATA -> IosProfileScreen(repository, user, { user = it }) { page = IosAccountPage.PROFILE }
+                IosAccountPage.ADDRESS -> IosAddressScreen(repository) { page = addressReturnPage }
                 IosAccountPage.ORDERS -> IosOrdersScreen(repository, { selectedOrder = it; page = IosAccountPage.ORDER_DETAIL }) { page = IosAccountPage.HOME }
                 IosAccountPage.INFO -> selectedInfoPage?.let { infoPage -> IosInformationPageScreen(infoPage) { page = IosAccountPage.HOME } }
                 IosAccountPage.HELP -> IosHelpScreen { page = IosAccountPage.HOME }
@@ -343,6 +371,88 @@ private fun IosForgotPasswordScreen(repository: AccountRepository, onBack: () ->
             },
             modifier = Modifier.fillMaxWidth()
         ) { Text(if (busy) "Enviando…" else "Enviar recuperación") }
+    }
+}
+
+@Composable
+@Composable
+private fun IosProfileMenuScreen(
+    onPersonalData: () -> Unit,
+    onAddress: () -> Unit,
+    onPassword: () -> Unit,
+    onDeleteAccount: () -> Unit,
+    onLogout: () -> Unit,
+    onBack: () -> Unit
+) {
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            TextButton(onClick = onBack) { Text("Atrás") }
+            Text("Mi perfil", style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(10.dp))
+            IosProfileActionRow("Datos personales", "👤", onPersonalData)
+            IosProfileActionRow("Dirección de entrega", "⌖", onAddress)
+            IosProfileActionRow("Cambiar contraseña", "🔒", onPassword)
+            IosProfileActionRow(
+                AccountDeletion.TITLE,
+                "🗑",
+                { showDeleteConfirmation = true },
+                containerColor = AccountDeletion.background,
+                contentColor = AccountDeletion.accent
+            )
+            IosProfileActionRow(
+                "Cerrar sesión",
+                "↪",
+                onLogout,
+                containerColor = Color(0xFFFFECEF),
+                contentColor = Color(0xFFC73B4C)
+            )
+        }
+    }
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text(AccountDeletion.TITLE) },
+            text = { Text(AccountDeletion.MESSAGE) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirmation = false
+                    onDeleteAccount()
+                }) { Text(AccountDeletion.CONTINUE) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) { Text(AccountDeletion.CANCEL) }
+            }
+        )
+    }
+}
+
+@Composable
+private fun IosProfileActionRow(
+    title: String,
+    icon: String,
+    onClick: () -> Unit,
+    containerColor: Color = Color(0xFFF0EDF1),
+    contentColor: Color = MaterialTheme.colorScheme.onSurface
+) {
+    Card(
+        Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(icon, modifier = Modifier.width(28.dp), color = contentColor)
+            Spacer(Modifier.width(14.dp))
+            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = contentColor)
+            Text("›", style = MaterialTheme.typography.titleLarge, color = contentColor)
+        }
     }
 }
 

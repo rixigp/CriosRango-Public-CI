@@ -28,7 +28,8 @@ fun MainViewController() = ComposeUIViewController {
         cartStore = cartStore,
         checkoutStore = StoreCheckoutStore(storeApi, cartStore, accountRepository),
         paymentStore = paymentStore,
-        onOpenPayment = ::openIosPaymentUrl
+        onOpenPayment = ::openIosPaymentUrl,
+        onOpenExternalUrl = ::openIosExternalUrl
     )
 }
 
@@ -52,5 +53,15 @@ private fun openIosPaymentUrl(url: String) {
             if (success) iosPaymentStore?.markPaymentOpened()
             else iosPaymentStore?.handlePaymentOpenFailure()
         }
+    )
+}
+
+
+fun openIosExternalUrl(url: String) {
+    val nsUrl = NSURL(string = url) ?: return
+    UIApplication.sharedApplication.openURL(
+        nsUrl,
+        options = emptyMap<Any?, Any?>(),
+        completionHandler = null
     )
 }

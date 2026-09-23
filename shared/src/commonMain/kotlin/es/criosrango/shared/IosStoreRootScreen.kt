@@ -69,7 +69,8 @@ fun CriosRangoIOSRootScreen(
     cartStore: StoreCartStore,
     checkoutStore: StoreCheckoutStore,
     paymentStore: StorePaymentStore,
-    onOpenPayment: (String) -> Unit
+    onOpenPayment: (String) -> Unit,
+    onOpenExternalUrl: (String) -> Unit
 ) {
     var section by remember { mutableStateOf(IosRootSection.HOME) }
     var checkoutOpen by remember { mutableStateOf(false) }
@@ -142,7 +143,8 @@ fun CriosRangoIOSRootScreen(
                 IosRootSection.CART -> IosCartScreen(cartStore, padding, onCheckout = { checkoutOpen = true }) { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) }
                 IosRootSection.ACCOUNT -> CriosRangoIOSAccountScreen(
                     repository = accountRepository,
-                    modifier = Modifier.padding(padding)
+                    modifier = Modifier.padding(padding),
+                    onOpenExternalUrl = onOpenExternalUrl
                 )
             }
         }

@@ -2,6 +2,7 @@ package es.criosrango.app
 
 import es.criosrango.shared.account.AccountCustomerAddress
 import es.criosrango.shared.account.AccountOrderSummary
+import es.criosrango.shared.AccountDeletion
 import es.criosrango.shared.account.AccountUser
 
 import android.content.Intent
@@ -421,13 +422,78 @@ private fun AccountOrdersContent(orders: List<AccountOrderSummary>, loading: Boo
 
 @Composable
 private fun AccountProfileContent(loading: Boolean, onBack: () -> Unit, onPersonalData: () -> Unit, onAddress: () -> Unit, onPassword: () -> Unit, onLogout: () -> Unit) {
-    AccountSectionHeader("Perfil", onBack); Spacer(Modifier.height(22.dp)); ProfileMenuRow("Datos personales", Icons.Outlined.Person, onPersonalData); Spacer(Modifier.height(12.dp)); ProfileMenuRow("Dirección de entrega", Icons.Outlined.LocationOn, onAddress); Spacer(Modifier.height(12.dp)); ProfileMenuRow("Cambiar contraseña", Icons.Outlined.Lock, onPassword); Spacer(Modifier.height(22.dp))
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    AccountSectionHeader("Perfil", onBack)
+    Spacer(Modifier.height(22.dp))
+    ProfileMenuRow("Datos personales", Icons.Outlined.Person, onPersonalData)
+    Spacer(Modifier.height(12.dp))
+    ProfileMenuRow("Dirección de entrega", Icons.Outlined.LocationOn, onAddress)
+    Spacer(Modifier.height(12.dp))
+    ProfileMenuRow("Cambiar contraseña", Icons.Outlined.Lock, onPassword)
+    Spacer(Modifier.height(12.dp))
+    ProfileMenuRow(
+        AccountDeletion.TITLE,
+        Icons.Outlined.Delete,
+        onClick = { showDeleteConfirmation = true },
+        containerColor = AccountDeletion.background,
+        contentColor = AccountDeletion.accent
+    )
+    Spacer(Modifier.height(22.dp))
     Card(Modifier.fillMaxWidth().clickable(enabled = !loading, onClick = onLogout), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFECEF))) { Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.AutoMirrored.Outlined.Logout, null, tint = Color(0xFFC73B4C)); Spacer(Modifier.width(14.dp)); Text("Cerrar sesión", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = Color(0xFFC73B4C)) } }
+
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text(AccountDeletion.TITLE) },
+            text = { Text(AccountDeletion.MESSAGE) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirmation = false
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(AccountDeletion.URL))
+                    runCatching { context.startActivity(intent) }
+                        .onFailure {
+                            Toast.makeText(
+                                context,
+                                "No se ha podido abrir la página de eliminación.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                }) { Text(AccountDeletion.CONTINUE) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) {
+                    Text(AccountDeletion.CANCEL)
+                }
+            }
+        )
+    }
 }
 
 @Composable
-private fun ProfileMenuRow(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFF0EDF1))) { Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) { Icon(icon, null, modifier = Modifier.size(28.dp)); Spacer(Modifier.width(14.dp)); Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium); Text("›", style = MaterialTheme.typography.titleLarge) } }
+private fun ProfileMenuRow(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    containerColor: Color = Color(0xFFF0EDF1),
+    contentColor: Color = MaterialTheme.colorScheme.onSurface
+) {
+    Card(
+        Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, null, tint = contentColor, modifier = Modifier.size(28.dp))
+            Spacer(Modifier.width(14.dp))
+            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = contentColor)
+            Text("›", style = MaterialTheme.typography.titleLarge, color = contentColor)
+        }
+    }
 }
 
 @Composable
