@@ -18,7 +18,6 @@ import android.util.Log
 import java.io.IOException
 import java.net.SocketTimeoutException
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.withTimeoutOrNull
 
 enum class CheckoutPhase { IDLE, QUOTING, READY, CREATING_ORDER, ORDER_CREATED, OPENING_PAYMENT, FAILED }
 data class PaymentRedirect(val generation: Long, val orderId: Int, val url: String)
@@ -333,8 +332,6 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
 
     private var lastCheckout: LastCheckout? = pendingCardPaymentStore.load()
     private val checkoutSubmissionGate = CheckoutSubmissionGate()
-    private var processDeathReconciliationJob: Job? = null
-    private var processDeathPaidOrderId: Int? = null
     private val _cardPaymentResult = MutableStateFlow<CardPaymentResult?>(null)
     val cardPaymentResult: StateFlow<CardPaymentResult?> = _cardPaymentResult.asStateFlow()
 
@@ -344,7 +341,8 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         refreshHome()
         viewModelScope.launch {
             cartStore.refresh()
-            reconcileAfterProcessDeath()
+            pendingCardPaymentStore.clear()
+            lastCheckout = null
         }
     }
 
@@ -384,27 +382,6 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         }
     }
 
-    private fun reconcileAfterProcessDeath() {
-        if (lastCheckout == null) return
-        processDeathReconciliationJob = viewModelScope.launch {
-            val previousOrderId = lastCheckout?.orderId
-            val outcome = runCatching {
-                reconcileLastCheckout(
-                    publishPaidResult = true,
-                    preserveMarkerOnExhaustion = false
-                )
-            }.getOrElse {
-                pendingCardPaymentStore.clear()
-                lastCheckout = null
-                _paymentRedirect.value = null
-                ReconcileOutcome.CLEARED
-            }
-            if (outcome == ReconcileOutcome.PAID) {
-                processDeathPaidOrderId = previousOrderId
-            }
-        }
-    }
-
     fun createOrder(address: CustomerAddress, paymentMethod: String, shippingRateId: String?) {
         if (!checkoutSubmissionGate.tryAcquire()) return
         val generation = checkoutGeneration
@@ -413,25 +390,6 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         _checkoutError.value = null
         viewModelScope.launch {
             try {
-                val reconciliationJob = processDeathReconciliationJob
-                if (reconciliationJob != null) {
-                    val reconciliationFinished = withTimeoutOrNull(5_000L) {
-                        reconciliationJob.join()
-                        true
-                    } ?: false
-                    if (!reconciliationFinished) {
-                        if (generation == checkoutGeneration) {
-                            _checkoutLoading.value = false
-                            _checkoutPhase.value = CheckoutPhase.READY
-                            _checkoutError.value = "Estamos comprobando el pago anterior. Inténtalo de nuevo en unos segundos."
-                        }
-                        return@launch
-                    }
-                }
-                if (processDeathPaidOrderId != null) {
-                    _checkoutPhase.value = CheckoutPhase.ORDER_CREATED
-                    return@launch
-                }
                 if (shippingRateId.isNullOrBlank() || paymentMethod.isNullOrBlank()) {
                     _checkoutError.value = "Selecciona una tarifa y un método de pago válidos."
                     _checkoutPhase.value = CheckoutPhase.FAILED
