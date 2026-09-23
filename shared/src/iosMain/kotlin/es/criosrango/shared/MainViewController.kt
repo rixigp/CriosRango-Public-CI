@@ -12,9 +12,11 @@ fun MainViewController() = ComposeUIViewController {
         tokenStore = IosAccountTokenStore(),
         claimOrderStore = IosClaimOrderStore()
     )
+    val checkoutStore = StoreCheckoutStore(storeApi, cartStore, accountRepository)
     CriosRangoIOSRootScreen(
         storeApi = storeApi,
         accountRepository = accountRepository,
-        cartStore = cartStore
+        cartStore = cartStore,
+        checkoutStore = checkoutStore
     )
 }
