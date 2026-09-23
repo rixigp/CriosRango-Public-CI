@@ -234,7 +234,9 @@ class PaymentStatusExactlyOnceIsolatedTest {
             api.createCheckoutCalls.get()
         )
 
-        viewModel.createOrder(validAddress(), "cecabank_gateway", "flat_rate:1")
+        repeat(5) {
+            viewModel.createOrder(validAddress(), "cecabank_gateway", "flat_rate:1")
+        }
         assertEquals(
             "REGRESSION-UNPAID: additional taps must not create another order",
             0,
@@ -252,6 +254,77 @@ class PaymentStatusExactlyOnceIsolatedTest {
         assertTrue(
             "REGRESSION-UNPAID: checkoutLoading must eventually clear after creating the order",
             !viewModel.checkoutLoading.value
+        )
+    }
+
+    @Test
+    fun processDeathReconciliationStillBlockedAfterFiveSeconds_doesNotCreateOrderAndReleasesGate() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences(
+            "j5-regression-timeout-" + System.nanoTime(), Context.MODE_PRIVATE
+        )
+        val pendingStore = PendingCardPaymentStore(preferences)
+        check(pendingStore.save(LastCheckout(123, "wc_order_123", "https://criosrango.es/pay/123")))
+
+        val api = CountingStoreApi(
+            checkoutResponse = CheckoutResponse(
+                orderId = 456,
+                orderKey = "wc_order_456",
+                redirectUrl = "https://criosrango.es/pay/456"
+            )
+        )
+        api.blockPaymentStatus = true
+        val viewModel = newViewModel(context, api, pendingStore)
+
+        idleMainLooperImmediate()
+        assertTrue(api.paymentStatusStarted.isCompleted)
+
+        viewModel.createOrder(validAddress(), "cecabank_gateway", "flat_rate:1")
+        assertTrue(
+            "REGRESSION-TIMEOUT: first tap must enter loading immediately",
+            viewModel.checkoutLoading.value
+        )
+
+        Thread.sleep(5_200L)
+        idleMainLooperImmediate()
+
+        assertEquals(
+            "REGRESSION-TIMEOUT: no new order may be created while reconciliation is still unknown",
+            0,
+            api.createCheckoutCalls.get()
+        )
+        assertTrue(
+            "REGRESSION-TIMEOUT: loading must be false after the 5 second visible wait",
+            !viewModel.checkoutLoading.value
+        )
+        assertEquals(
+            "REGRESSION-TIMEOUT: checkout must return to READY",
+            CheckoutPhase.READY,
+            viewModel.checkoutPhase.value
+        )
+        assertEquals(
+            "REGRESSION-TIMEOUT: short retry message must be visible",
+            "Estamos comprobando el pago anterior. Inténtalo de nuevo en unos segundos.",
+            viewModel.checkoutError.value
+        )
+
+        viewModel.createOrder(validAddress(), "cecabank_gateway", "flat_rate:1")
+        assertTrue(
+            "REGRESSION-TIMEOUT: gate must be released after the 5 second timeout",
+            viewModel.checkoutLoading.value
+        )
+        assertEquals(
+            "REGRESSION-TIMEOUT: retry must still wait for the unresolved reconciliation",
+            0,
+            api.createCheckoutCalls.get()
+        )
+
+        api.releasePaymentStatus.complete(Unit)
+        repeat(3) { idleMainLooperImmediate() }
+        assertEquals(
+            "REGRESSION-TIMEOUT: once reconciliation resolves unpaid, exactly one retry order may be created",
+            1,
+            api.createCheckoutCalls.get()
         )
     }
 
