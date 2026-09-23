@@ -2,7 +2,17 @@ package es.criosrango.shared
 
 import androidx.compose.ui.window.ComposeUIViewController
 import es.criosrango.shared.account.AccountRepository
+import es.criosrango.shared.api.StoreApiClient
 
 fun MainViewController() = ComposeUIViewController {
-    CriosRangoIOSAccountScreen(AccountRepository(IosAccountTokenStore()))
+    val storeSession = IosStoreSessionStore()
+    val storeApi = StoreApiClient(session = storeSession)
+    val accountRepository = AccountRepository(
+        tokenStore = IosAccountTokenStore(),
+        claimOrderStore = IosClaimOrderStore()
+    )
+    CriosRangoIOSRootScreen(
+        storeApi = storeApi,
+        accountRepository = accountRepository
+    )
 }
