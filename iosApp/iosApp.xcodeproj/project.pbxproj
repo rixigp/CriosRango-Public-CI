@@ -7,6 +7,7 @@
 
 /* Begin PBXBuildFile section */
         A10000010000000000000001 /* iosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000100000000000000001 /* iosApp.swift */; };
+        A10000020000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000140000000000000001 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -14,6 +15,7 @@
         A10000110000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
         A10000120000000000000001 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
         A10000130000000000000001 /* CriosRango.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CriosRango.app; sourceTree = BUILT_PRODUCTS_DIR; };
+        A10000140000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -28,7 +30,7 @@
         };
         A10000310000000000000001 /* iosApp */ = {
             isa = PBXGroup;
-            children = (A10000100000000000000001 /* iosApp.swift */, A10000110000000000000000001 /* Info.plist */, A10000120000000000000001 /* LaunchScreen.storyboard */);
+            children = (A10000100000000000000001 /* iosApp.swift */, A10000110000000000000000001 /* Info.plist */, A10000120000000000000001 /* LaunchScreen.storyboard */, A10000140000000000000001 /* Assets.xcassets */);
             path = .;
             sourceTree = "<group>";
         };
@@ -79,7 +81,7 @@
         A10000600000000000000001 /* Resources */ = {
             isa = PBXResourcesBuildPhase;
             buildActionMask = 2147483647;
-            files = ();
+            files = (A10000020000000000000001 /* Assets.xcassets in Resources */);
             runOnlyForDeploymentPostprocessing = 0;
         };
 /* End PBXResourcesBuildPhase section */
@@ -141,6 +143,7 @@
                 CURRENT_PROJECT_VERSION = 139;
                 MARKETING_VERSION = 1.0.139;
                 INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone = YES;
+                ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
             };
             name = Debug;
         };
@@ -158,6 +161,7 @@
                 CURRENT_PROJECT_VERSION = 139;
                 MARKETING_VERSION = 1.0.139;
                 INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone = YES;
+                ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
             };
             name = Release;
         };
@@ -172,7 +176,7 @@
         };
         A10000800000000000000001 /* Build configuration list for target */ = {
             isa = XCConfigurationList;
-            buildConfigurations = (A10001100000000000000001 /* Debug */, A10001110000000000000001 /* Release */);
+            buildConfigurations = (A10001100000000000000001 /* Debug */, A10001110000000000000000001 /* Release */);
             defaultConfigurationIsVisible = 0;
             defaultConfigurationName = Release;
         };
