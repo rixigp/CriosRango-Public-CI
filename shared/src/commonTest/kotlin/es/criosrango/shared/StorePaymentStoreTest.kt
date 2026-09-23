@@ -110,18 +110,30 @@ class StorePaymentStoreTest {
         paymentStore.handlePaymentReturn("ok", 123)
         advanceUntilIdle()
 
-        assertEquals(1, paymentStatusCalls, "payment-status call count")
-        assertEquals(StoreCardPaymentState.PAID, paymentStore.state.value, "payment state")
-        assertNull(pendingStore.load(), "pending payment")
+        check(paymentStatusCalls == 1) {
+            "FIRST reconciliation: expected exactly 1 payment-status call, actual=" + paymentStatusCalls
+        }
+        check(paymentStore.state.value == StoreCardPaymentState.PAID) {
+            "FIRST reconciliation: expected PAID, actual=" + paymentStore.state.value
+        }
+        check(pendingStore.load() == null) {
+            "FIRST reconciliation: expected pending payment cleared, actual=" + pendingStore.load()
+        }
 
         paymentStore.onForeground()
         paymentStore.onForeground()
         paymentStore.handlePaymentReturn("ok", 123)
         advanceUntilIdle()
 
-        assertEquals(1, paymentStatusCalls, "payment-status call count")
-        assertEquals(StoreCardPaymentState.PAID, paymentStore.state.value, "payment state")
-        assertNull(pendingStore.load(), "pending payment")
+        check(paymentStatusCalls == 1) {
+            "DUPLICATE events: expected exactly 1 payment-status call total, actual=" + paymentStatusCalls
+        }
+        check(paymentStore.state.value == StoreCardPaymentState.PAID) {
+            "DUPLICATE events: expected PAID, actual=" + paymentStore.state.value
+        }
+        check(pendingStore.load() == null) {
+            "DUPLICATE events: expected pending payment cleared, actual=" + pendingStore.load()
+        }
     }
 
     @Test
