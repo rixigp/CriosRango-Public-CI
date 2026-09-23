@@ -298,6 +298,7 @@ private fun IosCatalogScreen(
     storeApi: es.criosrango.shared.api.StoreApiClient,
     padding: PaddingValues,
     page: IosCatalogPage,
+    cartStore: StoreCartStore,
     onOpenCategory: (StoreCategory) -> Unit,
     onOpenProduct: (StoreProduct) -> Unit,
     onBack: () -> Unit,
