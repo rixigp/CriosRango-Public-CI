@@ -76,6 +76,7 @@ fun CriosRangoIOSRootScreen(
             bottomBar = {
                 IosMainTabBar(
                     selected = section,
+                    cartCount = cartStore.cart.collectAsState().value.itemsCount,
                     onSelected = {
                         section = it
                         if (it == IosRootSection.CATEGORIES) catalogPage = IosCatalogPage.Root
@@ -123,6 +124,7 @@ fun CriosRangoIOSRootScreen(
 @Composable
 private fun IosMainTabBar(
     selected: IosRootSection,
+    cartCount: Int,
     onSelected: (IosRootSection) -> Unit
 ) {
     Surface(shadowElevation = 3.dp) {
@@ -142,8 +144,9 @@ private fun IosMainTabBar(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Text(
-                        text = label,
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                        Text(
+                            text = label,
                         fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
                         color = if (active) Color(0xFF183B35) else MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -221,7 +224,7 @@ private fun IosHomeScreen(
                             horizontalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
                             items(products.take(8), key = { it.id }) { product ->
-                                IosProductCard(product, onProduct)
+                                IosProductCard(product, onProduct, cartStore)
                             }
                         }
                     }
@@ -262,7 +265,7 @@ private fun IosCategoryChip(category: StoreCategory, onClick: (StoreCategory) ->
 }
 
 @Composable
-private fun IosProductCard(product: StoreProduct, onClick: (StoreProduct) -> Unit) {
+private fun IosProductCard(product: StoreProduct, onClick: (StoreProduct) -> Unit, cartStore: StoreCartStore? = null) {
     Column(Modifier.width(158.dp).clickable { onClick(product) }) {
         RemoteStoreImage(
             url = product.images.firstOrNull()?.src,
@@ -277,6 +280,11 @@ private fun IosProductCard(product: StoreProduct, onClick: (StoreProduct) -> Uni
             color = Color(0xFF183B35),
             fontWeight = FontWeight.Bold
         )
+        cartStore?.let { store ->
+            if (product.variations.isEmpty()) {
+                TextButton(onClick = { store.add(product.id) }) { Text("Añadir") }
+            }
+        }
     }
 }
 
@@ -287,11 +295,12 @@ private fun IosCatalogScreen(
     page: IosCatalogPage,
     onOpenCategory: (StoreCategory) -> Unit,
     onOpenProduct: (StoreProduct) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    cartStore: StoreCartStore? = null
 ) {
     when (page) {
         IosCatalogPage.Root -> IosCategoryRoot(storeApi, padding, onOpenCategory)
-        is IosCatalogPage.Category -> IosCategoryProducts(storeApi, padding, page.category, onOpenProduct, onBack)
+        is IosCatalogPage.Category -> IosCategoryProducts(storeApi, padding, page.category, onOpenProduct, onBack, cartStore)
         is IosCatalogPage.Product -> IosProductDetail(storeApi, padding, page.product, onBack, cartStore)
     }
 }
@@ -365,7 +374,7 @@ private fun IosCategoryProducts(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(products, key = { it.id }) { IosProductCard(it, onOpenProduct) }
+                items(products, key = { it.id }) { IosProductCard(it, onOpenProduct, cartStore) }
             }
         }
     }
