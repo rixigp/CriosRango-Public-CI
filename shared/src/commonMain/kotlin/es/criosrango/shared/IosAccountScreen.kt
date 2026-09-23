@@ -38,7 +38,7 @@ import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.account.AccountUser
 import kotlinx.coroutines.launch
 
-private enum class IosAccountPage { HOME, LOGIN, REGISTER, FORGOT, PROFILE, ADDRESS, ORDERS, ORDER_DETAIL }
+private enum class IosAccountPage { HOME, LOGIN, REGISTER, FORGOT, PROFILE, ADDRESS, ORDERS, INFO, HELP, ORDER_DETAIL }
 
 @Composable
 fun CriosRangoIOSAccountScreen(repository: AccountRepository, modifier: Modifier = Modifier) {
@@ -47,13 +47,29 @@ fun CriosRangoIOSAccountScreen(repository: AccountRepository, modifier: Modifier
     var startup by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var selectedOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
+    var selectedInfoPage by remember { mutableStateOf<AccountInfoPage?>(null) }
+    val scope = rememberCoroutineScope()
+
+    fun finishAuthentication(authenticatedUser: AccountUser) {
+        user = authenticatedUser
+        error = null
+        page = IosAccountPage.HOME
+        scope.launch {
+            runCatching { repository.claimPendingOrder() }
+                .onFailure { println("KMP_ACCOUNT_CLAIM_FAILED=${it.message}") }
+        }
+    }
 
     LaunchedEffect(Unit) {
         println("KMP_RUNTIME_ACCOUNT_SCREEN_READY")
         println("KMP_ACCOUNT_SESSION_PRESENT=" + repository.hasSession)
         if (repository.hasSession) {
             runCatching { repository.me() }
-                .onSuccess { user = it }
+                .onSuccess {
+                    user = it
+                    runCatching { repository.claimPendingOrder() }
+                        .onFailure { claimError -> println("KMP_ACCOUNT_CLAIM_FAILED=${claimError.message}") }
+                }
                 .onFailure { error = it.message ?: "No se ha podido recuperar la sesión." }
         }
         startup = false
@@ -72,19 +88,21 @@ fun CriosRangoIOSAccountScreen(repository: AccountRepository, modifier: Modifier
                     onProfile = { error = null; page = IosAccountPage.PROFILE },
                     onAddress = { error = null; page = IosAccountPage.ADDRESS },
                     onOrders = { error = null; page = IosAccountPage.ORDERS },
+                    onInfoPage = { selectedInfoPage = it; error = null; page = IosAccountPage.INFO },
+                    onHelp = { error = null; page = IosAccountPage.HELP },
                     onLogout = { user = null; error = null; page = IosAccountPage.HOME },
                     repository = repository
                 )
                 IosAccountPage.LOGIN -> IosLoginScreen(
                     repository,
-                    onAuthenticated = { user = it; error = null; page = IosAccountPage.HOME },
+                    onAuthenticated = ::finishAuthentication,
                     onRegister = { page = IosAccountPage.REGISTER },
                     onForgot = { page = IosAccountPage.FORGOT },
                     onBack = { page = IosAccountPage.HOME }
                 )
                 IosAccountPage.REGISTER -> IosRegisterScreen(
                     repository,
-                    onAuthenticated = { user = it; error = null; page = IosAccountPage.HOME },
+                    onAuthenticated = ::finishAuthentication,
                     onLogin = { page = IosAccountPage.LOGIN },
                     onBack = { page = IosAccountPage.HOME }
                 )
@@ -92,10 +110,81 @@ fun CriosRangoIOSAccountScreen(repository: AccountRepository, modifier: Modifier
                 IosAccountPage.PROFILE -> IosProfileScreen(repository, user, { user = it }) { page = IosAccountPage.HOME }
                 IosAccountPage.ADDRESS -> IosAddressScreen(repository) { page = IosAccountPage.HOME }
                 IosAccountPage.ORDERS -> IosOrdersScreen(repository, { selectedOrder = it; page = IosAccountPage.ORDER_DETAIL }) { page = IosAccountPage.HOME }
+                IosAccountPage.INFO -> selectedInfoPage?.let { infoPage -> IosInformationPageScreen(infoPage) { page = IosAccountPage.HOME } }
+                IosAccountPage.HELP -> IosHelpScreen { page = IosAccountPage.HOME }
                 IosAccountPage.ORDER_DETAIL -> selectedOrder?.let { IosOrderDetailScreen(it) { page = IosAccountPage.ORDERS } }
             }
         }
         }
+    }
+}
+
+@Composable
+private fun IosInformationPageScreen(page: AccountInfoPage, onBack: () -> Unit) {
+    val client = remember { WordPressPagesClient() }
+    var retryKey by remember { mutableStateOf(0) }
+    var loading by remember(page, retryKey) { mutableStateOf(true) }
+    var result by remember(page, retryKey) { mutableStateOf<WordPressPage?>(null) }
+    var notFound by remember(page, retryKey) { mutableStateOf(false) }
+    var error by remember(page, retryKey) { mutableStateOf<String?>(null) }
+    LaunchedEffect(page, retryKey) {
+        loading = true; result = null; notFound = false; error = null
+        runCatching { client.getPageBySlug(page.slug) }
+            .onSuccess { loaded -> if (loaded == null) notFound = true else result = loaded; loading = false }
+            .onFailure { error = "No se ha podido cargar esta información."; loading = false }
+    }
+    Column(Modifier.fillMaxSize().padding(24.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onBack) { Text("Atrás") }
+            Spacer(Modifier.width(8.dp))
+            Text(page.title, style = MaterialTheme.typography.titleLarge)
+        }
+        Spacer(Modifier.height(16.dp))
+        when {
+            loading -> FullScreenLoading("Cargando información")
+            notFound -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("No se ha encontrado esta información.")
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(onClick = { retryKey++ }) { Text("Reintentar") }
+            }
+            error != null -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(error!!, color = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(onClick = { retryKey++ }) { Text("Reintentar") }
+            }
+            result != null -> {
+                val title = wordpressHtmlToText(result!!.title.rendered).ifBlank { page.title }
+                val content = wordpressHtmlToText(result!!.content.rendered)
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    item { Text(title, style = MaterialTheme.typography.headlineSmall) }
+                    item { if (content.isBlank()) Text("No hay contenido disponible.") else Text(content, style = MaterialTheme.typography.bodyLarge) }
+                }
+            }
+        }
+
+    }
+}
+
+@Composable
+private fun IosHelpScreen(onBack: () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(24.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onBack) { Text("Atrás") }
+            Spacer(Modifier.width(8.dp))
+            Text("Ayuda", style = MaterialTheme.typography.titleLarge)
+        }
+        Spacer(Modifier.height(20.dp))
+        Text("Contacta con nosotros", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(12.dp))
+        Text("WhatsApp: 633 246 788")
+        Text("Teléfono: 969 091 236")
+        Text("Correo electrónico: criosrango@criosrango.es")
+        Spacer(Modifier.height(20.dp))
+        Text("Horario de atención", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(10.dp))
+        Text("Lunes a viernes: 10:00–13:30 · 17:30–21:00")
+        Text("Sábado: 10:00–13:30")
+        Text("Domingo: Cerrado")
     }
 }
 
@@ -108,6 +197,8 @@ private fun IosAccountHome(
     onProfile: () -> Unit,
     onAddress: () -> Unit,
     onOrders: () -> Unit,
+    onInfoPage: (AccountInfoPage) -> Unit,
+    onHelp: () -> Unit,
     onLogout: () -> Unit,
     repository: AccountRepository
 ) {
@@ -121,11 +212,23 @@ private fun IosAccountHome(
             Text("Accede a tu cuenta para consultar tus datos, dirección y pedidos.")
             Button(onClick = onLogin, modifier = Modifier.fillMaxWidth()) { Text("Iniciar sesión") }
             OutlinedButton(onClick = onRegister, modifier = Modifier.fillMaxWidth()) { Text("Crear cuenta") }
+            Button(onClick = { onInfoPage(AccountInfoPage.RETURNS) }, modifier = Modifier.fillMaxWidth()) { Text("Cambios y devoluciones") }
+            Button(onClick = { onInfoPage(AccountInfoPage.TERMS) }, modifier = Modifier.fillMaxWidth()) { Text("Condiciones de contratación") }
+            Button(onClick = { onInfoPage(AccountInfoPage.PRIVACY) }, modifier = Modifier.fillMaxWidth()) { Text("Política de privacidad") }
+            Button(onClick = { onInfoPage(AccountInfoPage.LEGAL) }, modifier = Modifier.fillMaxWidth()) { Text("Aviso legal") }
+            Button(onClick = { onInfoPage(AccountInfoPage.COOKIES) }, modifier = Modifier.fillMaxWidth()) { Text("Política de cookies") }
+            Button(onClick = onHelp, modifier = Modifier.fillMaxWidth()) { Text("Ayuda") }
         } else {
             Text("Hola, " + user.displayName.ifBlank { user.email })
             Button(onClick = onProfile, modifier = Modifier.fillMaxWidth()) { Text("Mi perfil") }
             Button(onClick = onAddress, modifier = Modifier.fillMaxWidth()) { Text("Mi dirección") }
             Button(onClick = onOrders, modifier = Modifier.fillMaxWidth()) { Text("Mis pedidos") }
+            Button(onClick = onHelp, modifier = Modifier.fillMaxWidth()) { Text("Ayuda") }
+            Button(onClick = { onInfoPage(AccountInfoPage.RETURNS) }, modifier = Modifier.fillMaxWidth()) { Text("Cambios y devoluciones") }
+            Button(onClick = { onInfoPage(AccountInfoPage.TERMS) }, modifier = Modifier.fillMaxWidth()) { Text("Condiciones de contratación") }
+            Button(onClick = { onInfoPage(AccountInfoPage.PRIVACY) }, modifier = Modifier.fillMaxWidth()) { Text("Política de privacidad") }
+            Button(onClick = { onInfoPage(AccountInfoPage.LEGAL) }, modifier = Modifier.fillMaxWidth()) { Text("Aviso legal") }
+            Button(onClick = { onInfoPage(AccountInfoPage.COOKIES) }, modifier = Modifier.fillMaxWidth()) { Text("Política de cookies") }
             OutlinedButton(
                 enabled = !loggingOut,
                 onClick = {

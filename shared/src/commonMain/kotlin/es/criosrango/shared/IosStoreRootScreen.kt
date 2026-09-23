@@ -75,6 +75,18 @@ fun CriosRangoIOSRootScreen(
     var checkoutOpen by remember { mutableStateOf(false) }
     var catalogPage by remember { mutableStateOf<IosCatalogPage>(IosCatalogPage.Root) }
 
+    val createdOrder by checkoutStore.createdOrder.collectAsState()
+    LaunchedEffect(createdOrder?.orderId, createdOrder?.orderKey) {
+        val order = createdOrder ?: return@LaunchedEffect
+        val orderId = order.orderId ?: return@LaunchedEffect
+        val orderKey = order.orderKey?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        accountRepository.prepareClaimOrder(orderId, orderKey)
+        if (accountRepository.hasSession) {
+            runCatching { accountRepository.claimPendingOrder() }
+                .onFailure { println("KMP_ACCOUNT_CLAIM_FAILED=${it.message}") }
+        }
+    }
+
     MaterialTheme {
         androidx.compose.runtime.LaunchedEffect(Unit) { println("KMP_RUNTIME_ROOT_SCREEN_READY") }
         Scaffold(
