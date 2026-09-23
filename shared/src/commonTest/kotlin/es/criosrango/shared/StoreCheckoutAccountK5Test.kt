@@ -15,8 +15,8 @@ import io.ktor.http.headersOf
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -54,7 +54,7 @@ class StoreCheckoutAccountK5Test {
                     address = savedAddress
                     respond("", headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
                 }
-                else -> error("Unexpected Account endpoint: ${request.url.encodedPath}")
+                else -> error("Unexpected Account endpoint: " + request.url.encodedPath)
             }
         }
         val accountClient = AccountClient(
@@ -94,7 +94,7 @@ class StoreCheckoutAccountK5Test {
                     storeCheckoutJson,
                     headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
                 )
-                else -> error("Unexpected Store endpoint: ${request.url.encodedPath}")
+                else -> error("Unexpected Store endpoint: " + request.url.encodedPath)
             }
         }
         val scope = CoroutineScope(StandardTestDispatcher(testScheduler))
@@ -110,14 +110,30 @@ class StoreCheckoutAccountK5Test {
         val checkoutStore = StoreCheckoutStore(api, cartStore, repository, scope)
 
         checkoutStore.load()
-        advanceUntilIdle()
+        checkoutStore.accountAddress.first { it?.city == "Madrid" }
+        val firstPhase = checkoutStore.phase.first {
+            it == StoreCheckoutPhase.READY || it == StoreCheckoutPhase.ERROR
+        }
+        assertEquals(
+            StoreCheckoutPhase.READY,
+            firstPhase,
+            "Expected first checkout load to finish READY"
+        )
         assertEquals("Madrid", checkoutStore.accountAddress.value?.city)
 
         val updated = address.copy(city = "Toledo")
         savedAddress = updated
         repository.saveCustomerAddress(updated)
         checkoutStore.load()
-        advanceUntilIdle()
+        checkoutStore.accountAddress.first { it?.city == "Toledo" }
+        val secondPhase = checkoutStore.phase.first {
+            it == StoreCheckoutPhase.READY || it == StoreCheckoutPhase.ERROR
+        }
+        assertEquals(
+            StoreCheckoutPhase.READY,
+            secondPhase,
+            "Expected second checkout load to finish READY"
+        )
         assertEquals("Toledo", checkoutStore.accountAddress.value?.city)
     }
 }
