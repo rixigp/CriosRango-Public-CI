@@ -87,6 +87,7 @@ fun CriosRangoIOSRootScreen(
             when (section) {
                 IosRootSection.HOME -> IosHomeScreen(
                     storeApi = storeApi,
+                    cartStore = cartStore,
                     padding = padding,
                     onCategory = {
                         section = IosRootSection.CATEGORIES
@@ -164,6 +165,7 @@ private fun IosMainTabBar(
 @Composable
 private fun IosHomeScreen(
     storeApi: es.criosrango.shared.api.StoreApiClient,
+    cartStore: StoreCartStore,
     padding: PaddingValues,
     onCategory: (StoreCategory) -> Unit,
     onProduct: (StoreProduct) -> Unit
@@ -301,8 +303,7 @@ private fun IosCatalogScreen(
     cartStore: StoreCartStore,
     onOpenCategory: (StoreCategory) -> Unit,
     onOpenProduct: (StoreProduct) -> Unit,
-    onBack: () -> Unit,
-    cartStore: StoreCartStore? = null
+    onBack: () -> Unit
 ) {
     when (page) {
         IosCatalogPage.Root -> IosCategoryRoot(storeApi, padding, onOpenCategory)
