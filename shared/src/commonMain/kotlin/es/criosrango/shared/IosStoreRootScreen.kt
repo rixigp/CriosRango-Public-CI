@@ -101,6 +101,7 @@ fun CriosRangoIOSRootScreen(
                     storeApi = storeApi,
                     padding = padding,
                     page = catalogPage,
+                    cartStore = cartStore,
                     onOpenCategory = { catalogPage = IosCatalogPage.Category(it) },
                     onOpenProduct = { catalogPage = IosCatalogPage.Product(it) },
                     onBack = {
