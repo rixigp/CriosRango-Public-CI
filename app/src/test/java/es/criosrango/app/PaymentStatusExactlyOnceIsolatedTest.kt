@@ -3,6 +3,7 @@ package es.criosrango.app
 import android.content.Context
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
@@ -285,7 +286,7 @@ class PaymentStatusExactlyOnceIsolatedTest {
             viewModel.checkoutLoading.value
         )
 
-        Thread.sleep(5_200L)
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(5_200L, TimeUnit.MILLISECONDS)
         idleMainLooperImmediate()
 
         assertEquals(
