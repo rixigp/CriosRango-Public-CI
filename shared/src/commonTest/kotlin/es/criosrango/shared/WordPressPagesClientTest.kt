@@ -60,9 +60,6 @@ class WordPressPagesClientTest {
     @Test
     fun htmlNormalizationRemovesWordPressShortcodesAndPreservesStructure() {
         val text = wordpressHtmlToText("""<p>Uno</p><ul><li>Dos</li><li>Tres</li></ul>[vc_row][nectar_cta text="x"]""")
-        assertEquals("Uno
-
-• Dos
-• Tres", text)
+        assertEquals("Uno\n\n• Dos\n• Tres", text)
     }
 }

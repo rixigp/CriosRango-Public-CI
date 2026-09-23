@@ -35,33 +35,24 @@ class WordPressPagesClient(
         require(slug.isNotBlank()) { "El slug no puede estar vacío." }
         return client.get(baseUrl) { parameter("slug", slug) }.body<List<WordPressPage>>().firstOrNull()
     }
+
     fun close() = client.close()
 }
 
 fun wordpressHtmlToText(html: String): String {
     if (html.isBlank()) return ""
     val normalized = html
-        .replace(Regex("""[(?:/)?vc_[^]]*]""", RegexOption.IGNORE_CASE), "")
-        .replace(Regex("""[(?:/)?(?:nectar|salient)_[^]]*]""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\[(?:/)?vc_[^\]]*\]""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\[(?:/)?(?:nectar|salient)_[^\]]*\]""", RegexOption.IGNORE_CASE), "")
         .replace(Regex("""<li[^>]*>""", RegexOption.IGNORE_CASE), "• ")
-        .replace(Regex("""</li>""", RegexOption.IGNORE_CASE), "
-")
-        .replace(Regex("""</(?:p|div|h1|h2|h3|h4|h5|h6|ul|ol)>""", RegexOption.IGNORE_CASE), "
-
-")
+        .replace(Regex("""</li>""", RegexOption.IGNORE_CASE), "\n")
+        .replace(Regex("""</(?:p|div|h1|h2|h3|h4|h5|h6|ul|ol)>""", RegexOption.IGNORE_CASE), "\n\n")
     return platformHtmlToText(normalized)
         .replace(" ", " ")
         .replace("»", "")
-        .replace(Regex("""[ 	]+
-"""), "
-")
-        .replace(Regex("""
-[ 	]+"""), "
-")
-        .replace(Regex("""
-{3,}"""), "
-
-")
+        .replace(Regex("""[ \t]+\n"""), "\n")
+        .replace(Regex("""\n[ \t]+"""), "\n")
+        .replace(Regex("""\n{3,}"""), "\n\n")
         .trim()
 }
 
