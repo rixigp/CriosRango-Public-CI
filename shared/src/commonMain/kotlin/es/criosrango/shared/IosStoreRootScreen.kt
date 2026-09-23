@@ -66,9 +66,11 @@ internal sealed class IosCatalogPage {
 fun CriosRangoIOSRootScreen(
     storeApi: es.criosrango.shared.api.StoreApiClient,
     accountRepository: AccountRepository,
-    cartStore: StoreCartStore
+    cartStore: StoreCartStore,
+    checkoutStore: StoreCheckoutStore
 ) {
     var section by remember { mutableStateOf(IosRootSection.HOME) }
+    var checkoutOpen by remember { mutableStateOf(false) }
     var catalogPage by remember { mutableStateOf<IosCatalogPage>(IosCatalogPage.Root) }
 
     MaterialTheme {
@@ -85,7 +87,9 @@ fun CriosRangoIOSRootScreen(
                 )
             }
         ) { padding ->
-            when (section) {
+            if (checkoutOpen) {
+                IosCheckoutScreen(checkoutStore, accountRepository, padding) { checkoutOpen = false }
+            } else when (section) {
                 IosRootSection.HOME -> IosHomeScreen(
                     storeApi = storeApi,
                     cartStore = cartStore,
@@ -114,7 +118,7 @@ fun CriosRangoIOSRootScreen(
                         }
                     }
                 )
-                IosRootSection.CART -> IosCartScreen(cartStore, padding) { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) }
+                IosRootSection.CART -> IosCartScreen(cartStore, padding, onCheckout = { checkoutOpen = true }) { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) }
                 IosRootSection.ACCOUNT -> CriosRangoIOSAccountScreen(
                     repository = accountRepository,
                     modifier = Modifier.padding(padding)
@@ -449,6 +453,7 @@ private fun IosProductDetail(
 private fun IosCartScreen(
     cartStore: StoreCartStore,
     padding: PaddingValues,
+    onCheckout: () -> Unit,
     onOpenProduct: (StoreProduct) -> Unit
 ) {
     val cart by cartStore.cart.collectAsState()
@@ -477,6 +482,7 @@ private fun IosCartScreen(
             }
         }
         if (cart.items.isNotEmpty()) item {
+            Button(onClick = onCheckout, modifier = Modifier.fillMaxWidth()) { Text("Finalizar compra") }
             HorizontalDivider()
             Text("Total: ${cart.totals.totalPrice} ${cart.totals.currencySymbol}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
