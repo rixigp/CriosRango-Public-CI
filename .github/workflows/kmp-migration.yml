@@ -220,14 +220,6 @@ jobs:
             echo "CRIOSRANGO_DEBUG_KEY_PASSWORD=$CRIOSRANGO_DEBUG_KEY_PASSWORD"
           } >> "$GITHUB_ENV"
 
-      - name: Build Kotlin iOS simulator framework
-        if: ${{ matrix.platform == 'ios' }}
-        run: ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 --stacktrace
-
-      - name: Build Kotlin iOS device framework
-        if: ${{ matrix.platform == 'ios' }}
-        run: ./gradlew :shared:linkDebugFrameworkIosArm64 --stacktrace
-
       - name: Build iOS Simulator app
         if: ${{ matrix.platform == 'ios' }}
         run: |
@@ -268,7 +260,7 @@ jobs:
           trap 'xcrun simctl shutdown "$UDID" >/dev/null 2>&1 || true' EXIT
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
-          APP_PATH="$GITHUB_WORKSPACE/ios-derived-data/Build/Products/Debug-iphonesimulator/CriosRangoKMPSpike.app"
+          APP_PATH="$GITHUB_WORKSPACE/ios-derived-data/Build/Products/Debug-iphonesimulator/CriosRango.app"
           echo "Generated iOS app Info.plist:"
           plutil -p "$APP_PATH/Info.plist"
           /usr/libexec/PlistBuddy -c "Print" "$APP_PATH/Info.plist"
@@ -286,7 +278,7 @@ jobs:
           xcrun simctl install "$UDID" "$APP_PATH"
           CONSOLE_LOG="$GITHUB_WORKSPACE/kmp-runtime-console.log"
           rm -f "$CONSOLE_LOG"
-          xcrun simctl launch --console-pty "$UDID" es.criosrango.kmpspike >"$CONSOLE_LOG" 2>&1 &
+          xcrun simctl launch --console-pty "$UDID" es.criosrango.app >"$CONSOLE_LOG" 2>&1 &
           CONSOLE_PID=$!
           echo "simctl console PID: $CONSOLE_PID"
 
@@ -310,7 +302,7 @@ jobs:
           echo "Runtime console output:"
           cat "$CONSOLE_LOG" || true
           echo "Application PID(s):"
-          xcrun simctl spawn "$UDID" pgrep -f "es.criosrango.kmpspike" 2>&1 || true
+          xcrun simctl spawn "$UDID" pgrep -f "es.criosrango.app" 2>&1 || true
 
           if [ "$FOUND" -ne 1 ]; then
             echo "Runtime smoke markers were not all captured from direct app console (root + home)."
