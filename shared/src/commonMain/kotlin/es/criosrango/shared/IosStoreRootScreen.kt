@@ -376,7 +376,7 @@ private fun IosProductDetail(
     var product by remember(initialProduct.id) { mutableStateOf(initialProduct) }
     var loading by remember(initialProduct.id) { mutableStateOf(true) }
     var error by remember(initialProduct.id) { mutableStateOf<String?>(null) }
-    LaunchedEffect(initialProduct.id) {
+    LaunchedEffect(initialProduct.id, loading) {
         runCatching { storeApi.product(initialProduct.id) }
             .onSuccess { product = it }
             .onFailure { error = it.message ?: "No se ha podido cargar el producto." }
