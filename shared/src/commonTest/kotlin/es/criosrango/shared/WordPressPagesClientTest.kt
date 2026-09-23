@@ -58,8 +58,35 @@ class WordPressPagesClientTest {
     }
 
     @Test
-    fun htmlNormalizationRemovesWordPressShortcodesAndPreservesStructure() {
-        val text = wordpressHtmlToText("""<p>Uno</p><ul><li>Dos</li><li>Tres</li></ul>[vc_row][nectar_cta text="x"]""")
-        assertEquals("Uno\n\n• Dos\n• Tres", text)
+    fun htmlParagraphsBreaksAndLists() {
+        assertEquals("Texto", wordpressHtmlToText("<p>Texto</p>"))
+        assertEquals("Uno\nDos", wordpressHtmlToText("Uno<br>Dos"))
+        assertEquals("• Uno\n• Dos", wordpressHtmlToText("<ul><li>Uno</li><li>Dos</li></ul>"))
+    }
+
+    @Test
+    fun htmlEntitiesDecodeSafely() {
+        assertEquals("& < > \" ' ", wordpressHtmlToText("&amp; &lt; &gt; &quot; &apos; &nbsp;"))
+        assertEquals("–", wordpressHtmlToText("&#8211;"))
+        assertEquals("–", wordpressHtmlToText("&#x2013;"))
+        assertEquals("😀", wordpressHtmlToText("&#x1F600;"))
+        assertEquals("&#x110000; &#xD800; &#bad;", wordpressHtmlToText("&#x110000; &#xD800; &#bad;"))
+    }
+
+    @Test
+    fun shortcodesNestedTagsAndRepeatedBreaks() {
+        val html = """[vc_row][vc_column]<div><p>Uno <strong>dos</strong></p><div><br><span>tres</span></div></div>[/vc_column][/vc_row][nectar_cta text="x"]"""
+        assertEquals("Uno dos\n\ntres", wordpressHtmlToText(html))
+    }
+
+    @Test
+    fun realisticWordPressPayload() {
+        val html = """<div class="vc_row wpb_row"><div class="vc_column"><h2>Cambios &amp; devoluciones</h2><p>Plazo: 14&nbsp;días.</p><ul><li>Artículo &#8211; sin usar</li><li>Embalaje &quot;original&quot;</li></ul><p>Más información &lt;aquí&gt;.</p></div></div>"""
+        assertEquals("Cambios & devoluciones\n\nPlazo: 14 días.\n\n• Artículo – sin usar\n• Embalaje \"original\"\n\nMás información <aquí>.", wordpressHtmlToText(html))
+    }
+
+    @Test
+    fun namedEntitiesOutsideSupportedSetRemainSafe() {
+        assertEquals("&copy;", wordpressHtmlToText("&copy;"))
     }
 }

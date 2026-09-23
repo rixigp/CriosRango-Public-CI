@@ -46,7 +46,7 @@ class StoreCheckoutAccountK5Test {
         val accountEngine = MockEngine { request ->
             when (request.url.encodedPath.substringAfterLast('/')) {
                 "customer-address" -> respond(
-                    Json.encodeToString(address),
+                    Json.encodeToString(AccountCustomerAddress.serializer(), address),
                     headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
                 )
                 "customer-address-save" -> {

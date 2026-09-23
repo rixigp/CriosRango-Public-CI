@@ -39,21 +39,61 @@ class WordPressPagesClient(
     fun close() = client.close()
 }
 
+private val numericEntityRegex = Regex("""&#(?:([0-9]+)|x([0-9a-fA-F]+));""")
+
+private val namedHtmlEntities = mapOf(
+    "amp" to "&",
+    "lt" to "<",
+    "gt" to ">",
+    "quot" to "\"",
+    "apos" to "'",
+    "nbsp" to " "
+)
+
+private fun decodeHtmlEntities(text: String): String {
+    val numericDecoded = text.replace(numericEntityRegex) { match ->
+        val decimal = match.groupValues[1]
+        val hexadecimal = match.groupValues[2]
+        val codePoint = runCatching {
+            if (decimal.isNotEmpty()) decimal.toLong() else hexadecimal.toLong(16)
+        }.getOrNull()
+        codePoint?.let(::codePointToString) ?: match.value
+    }
+
+    return numericDecoded.replace(Regex("""&([A-Za-z][A-Za-z0-9]+);""")) { match ->
+        namedHtmlEntities[match.groupValues[1]] ?: match.value
+    }
+}
+
+private fun codePointToString(codePoint: Long): String? {
+    if (codePoint !in 0L..0x10FFFFL || codePoint in 0xD800L..0xDFFFL) return null
+    val value = codePoint.toInt()
+    if (value <= 0xFFFF) return value.toChar().toString()
+    val adjusted = value - 0x10000
+    val high = (0xD800 + (adjusted ushr 10)).toChar()
+    val low = (0xDC00 + (adjusted and 0x3FF)).toChar()
+    return "$high$low"
+}
+
 fun wordpressHtmlToText(html: String): String {
     if (html.isBlank()) return ""
+
     val normalized = html
         .replace(Regex("""\[(?:/)?vc_[^\]]*\]""", RegexOption.IGNORE_CASE), "")
-        .replace(Regex("""\[(?:/)?(?:nectar|salient)_[^\]]*\]""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\[(?:/)?nectar_[^\]]*\]""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""<br\s*/?>""", RegexOption.IGNORE_CASE), "\n")
         .replace(Regex("""<li[^>]*>""", RegexOption.IGNORE_CASE), "• ")
         .replace(Regex("""</li>""", RegexOption.IGNORE_CASE), "\n")
         .replace(Regex("""</(?:p|div|h1|h2|h3|h4|h5|h6|ul|ol)>""", RegexOption.IGNORE_CASE), "\n\n")
-    return platformHtmlToText(normalized)
-        .replace(" ", " ")
-        .replace("»", "")
+        .replace(Regex("""<[^>]+>""", RegexOption.IGNORE_CASE), "")
+        .replace("\r\n", "\n")
+        .replace('\r', '\n')
+
+    return decodeHtmlEntities(normalized)
+        .replace("\u00A0", " ")
         .replace(Regex("""[ \t]+\n"""), "\n")
         .replace(Regex("""\n[ \t]+"""), "\n")
+        .replace(Regex("""[ \t]{2,}"""), " ")
         .replace(Regex("""\n{3,}"""), "\n\n")
         .trim()
 }
-
-expect fun platformHtmlToText(html: String): String
