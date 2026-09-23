@@ -52,7 +52,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 
-internal enum class IosRootSection { HOME, CATEGORIES, ACCOUNT }
+internal enum class IosRootSection { HOME, CATEGORIES, CART, ACCOUNT }
 internal sealed class IosCatalogPage {
     data object Root : IosCatalogPage()
     data class Category(val category: StoreCategory) : IosCatalogPage()
@@ -62,7 +62,8 @@ internal sealed class IosCatalogPage {
 @Composable
 fun CriosRangoIOSRootScreen(
     storeApi: es.criosrango.shared.api.StoreApiClient,
-    accountRepository: AccountRepository
+    accountRepository: AccountRepository,
+    cartStore: StoreCartStore
 ) {
     var section by remember { mutableStateOf(IosRootSection.HOME) }
     var catalogPage by remember { mutableStateOf<IosCatalogPage>(IosCatalogPage.Root) }
@@ -107,6 +108,7 @@ fun CriosRangoIOSRootScreen(
                         }
                     }
                 )
+                IosRootSection.CART -> IosCartScreen(cartStore, padding) { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) }
                 IosRootSection.ACCOUNT -> CriosRangoIOSAccountScreen(
                     repository = accountRepository,
                     modifier = Modifier.padding(padding)
@@ -129,6 +131,7 @@ private fun IosMainTabBar(
             listOf(
                 IosRootSection.HOME to "Inicio",
                 IosRootSection.CATEGORIES to "Categorías",
+                IosRootSection.CART to "Carrito",
                 IosRootSection.ACCOUNT to "Cuenta"
             ).forEach { (item, label) ->
                 val active = item == selected
@@ -287,7 +290,7 @@ private fun IosCatalogScreen(
     when (page) {
         IosCatalogPage.Root -> IosCategoryRoot(storeApi, padding, onOpenCategory)
         is IosCatalogPage.Category -> IosCategoryProducts(storeApi, padding, page.category, onOpenProduct, onBack)
-        is IosCatalogPage.Product -> IosProductDetail(storeApi, padding, page.product, onBack)
+        is IosCatalogPage.Product -> IosProductDetail(storeApi, padding, page.product, onBack, cartStore)
     }
 }
 
@@ -371,7 +374,8 @@ private fun IosProductDetail(
     storeApi: es.criosrango.shared.api.StoreApiClient,
     padding: PaddingValues,
     initialProduct: StoreProduct,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    cartStore: StoreCartStore? = null
 ) {
     var product by remember(initialProduct.id) { mutableStateOf(initialProduct) }
     var loading by remember(initialProduct.id) { mutableStateOf(true) }
@@ -392,6 +396,24 @@ private fun IosProductDetail(
             )
             Text(product.name, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(20.dp, 12.dp, 20.dp, 4.dp))
             Text(product.prices.price + " " + product.prices.currencySymbol, fontWeight = FontWeight.Bold, color = Color(0xFF183B35), modifier = Modifier.padding(horizontal = 20.dp))
+            cartStore?.let { store ->
+                var selectedVariation by remember(product.id) { mutableStateOf(product.variations.firstOrNull()) }
+                if (product.variations.isNotEmpty()) {
+                    Text("Variantes", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(20.dp, 16.dp, 20.dp, 4.dp))
+                    Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        product.variations.forEach { variation ->
+                            OutlinedButton(onClick = { selectedVariation = variation }, modifier = Modifier.fillMaxWidth()) {
+                                Text(variation.attributes.joinToString(" · ") { it.value }.ifBlank { "Variación " + variation.id })
+                            }
+                        }
+                    }
+                }
+                Button(onClick = {
+                    val variation = selectedVariation
+                    val attrs = variation?.attributes.orEmpty().map { attr -> StoreCartVariation(attr.name.ifBlank { "pa_attribute" }, attr.value) }
+                    store.add(variation?.id ?: product.id, 1, attrs)
+                }, enabled = product.isPurchasable != false && (selectedVariation?.isPurchasable != false), modifier = Modifier.fillMaxWidth().padding(20.dp)) { Text("Añadir al carrito") }
+            }
             if (loading) CircularProgressIndicator(Modifier.padding(20.dp).size(24.dp))
             error?.let { message ->
                 IosStoreError(message) {
@@ -399,6 +421,44 @@ private fun IosProductDetail(
                     loading = true
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun IosCartScreen(
+    cartStore: StoreCartStore,
+    padding: PaddingValues,
+    onOpenProduct: (StoreProduct) -> Unit
+) {
+    val cart by cartStore.cart.collectAsState()
+    val state by cartStore.state.collectAsState()
+    val error by cartStore.error.collectAsState()
+    LaunchedEffect(Unit) { cartStore.refresh() }
+    LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        item { Text("Tu carrito", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+        if (state == StoreCartLoadState.LOADING && cart.items.isEmpty()) item { IosStoreLoading() }
+        if (!error.isNullOrBlank()) item { IosStoreError(error!!, cartStore::refresh) }
+        if (state == StoreCartLoadState.SUCCESS_EMPTY && error == null) item { Text("Tu carrito está vacío") }
+        items(cart.items, key = { it.key }) { line ->
+            Row(Modifier.fillMaxWidth().clickable { onOpenProduct(StoreProduct(id = line.id, name = line.name, images = line.images, prices = line.prices)) }, verticalAlignment = Alignment.CenterVertically) {
+                RemoteStoreImage(line.images.firstOrNull()?.src, line.name, Modifier.size(78.dp), ContentScale.Crop)
+                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                    Text(line.name, fontWeight = FontWeight.SemiBold)
+                    if (line.variation.isNotEmpty()) Text(line.variation.joinToString(" · ") { "${it.attribute.removePrefix("pa_")}: ${it.value}" }, style = MaterialTheme.typography.bodySmall)
+                    Text("${line.prices.price} ${line.prices.currencySymbol} · Subtotal ${line.totals.lineTotal} ${line.prices.currencySymbol}")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton({ cartStore.update(line, line.quantity - 1) }) { Text("−") }
+                        Text(line.quantity.toString(), modifier = Modifier.padding(horizontal = 8.dp))
+                        IconButton({ cartStore.update(line, line.quantity + 1) }) { Text("+") }
+                    }
+                }
+                IconButton({ cartStore.remove(line) }) { Text("×") }
+            }
+        }
+        if (cart.items.isNotEmpty()) item {
+            HorizontalDivider()
+            Text("Total: ${cart.totals.totalPrice} ${cart.totals.currencySymbol}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
     }
 }
