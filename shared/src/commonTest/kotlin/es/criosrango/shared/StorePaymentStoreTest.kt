@@ -75,7 +75,7 @@ class StorePaymentStoreTest {
     fun callbackAndForegroundAreExactlyOnce() = runTest {
         var paymentStatusCalls = 0
         val engine = MockEngine { request ->
-            if (request.url.encodedPath.endsWith("/payment-status")) {
+            if (request.url.encodedPath.contains("/payment-status")) {
                 paymentStatusCalls++
                 respond(
                     content = """{"order_id":123,"status":"processing","paid":true,"terminal":true}""",
@@ -122,7 +122,7 @@ class StorePaymentStoreTest {
     fun processDeathClearsPendingWithoutPaymentStatusAndAllowsNewPayment() = runTest {
         var paymentStatusCalls = 0
         val engine = MockEngine { request ->
-            if (request.url.encodedPath.endsWith("/payment-status")) {
+            if (request.url.encodedPath.contains("/payment-status")) {
                 paymentStatusCalls++
             }
             respond(
