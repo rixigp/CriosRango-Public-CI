@@ -88,8 +88,20 @@ class StoreCartStore(
         _error.value = null
     }
 
+    fun clearAfterConfirmedPayment() {
+        scope.launch {
+            mutex.withLock {
+                var current = _cart.value
+                current.items.toList().forEach { line ->
+                    current = api.removeCartItem(line.key)
+                    accept(current)
+                }
+            }
+        }
+    }
+
     private fun fail(error: Throwable) {
         _state.value = StoreCartLoadState.ERROR
         _error.value = error.message ?: "No se ha podido actualizar el carrito."
     }
-}
+

@@ -3,11 +3,7 @@ package es.criosrango.shared
 import es.criosrango.shared.model.PaymentStatusResponse
 import kotlinx.coroutines.delay
 
-enum class SharedPaymentReconciliationResult {
-    PAID,
-    TERMINAL_UNPAID,
-    EXHAUSTED
-}
+enum class SharedPaymentReconciliationResult { PAID, TERMINAL_UNPAID, EXHAUSTED }
 
 fun isSharedPaymentConfirmed(order: PaymentStatusResponse): Boolean {
     val status = order.status.trim().lowercase()
@@ -37,7 +33,6 @@ suspend fun reconcileSharedPaymentStatus(
             delay(delayMs)
             continue
         }
-
         when {
             isSharedPaymentConfirmed(order) -> return SharedPaymentReconciliationResult.PAID
             isSharedPaymentTerminalUnpaid(order) -> return SharedPaymentReconciliationResult.TERMINAL_UNPAID

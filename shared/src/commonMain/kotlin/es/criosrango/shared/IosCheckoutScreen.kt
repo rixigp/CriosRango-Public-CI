@@ -18,9 +18,11 @@ import es.criosrango.shared.model.supportedPaymentOptions
 @Composable
 fun IosCheckoutScreen(
     checkoutStore: StoreCheckoutStore,
+    paymentStore: StorePaymentStore,
     accountRepository: AccountRepository,
     padding: PaddingValues,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenPayment: (String) -> Unit
 ) {
     val checkout by checkoutStore.checkout.collectAsState()
     val cart by checkoutStore.cart.collectAsState()
@@ -28,6 +30,9 @@ fun IosCheckoutScreen(
     val error by checkoutStore.error.collectAsState()
     val accountAddress by checkoutStore.accountAddress.collectAsState()
     val createdOrder by checkoutStore.createdOrder.collectAsState()
+    val paymentState by paymentStore.state.collectAsState()
+    val paymentError by paymentStore.error.collectAsState()
+    val paymentOrderId by paymentStore.orderId.collectAsState()
 
     var firstName by remember { mutableStateOf("") }
     var lastName by remember { mutableStateOf("") }
@@ -46,15 +51,24 @@ fun IosCheckoutScreen(
     LaunchedEffect(Unit) { checkoutStore.load() }
     LaunchedEffect(accountAddress) {
         accountAddress?.let {
-            firstName = it.firstName; lastName = it.lastName; email = it.email; phone = it.phone
-            address = it.address1; address2 = it.address2; postcode = it.postcode
-            city = it.city; state = it.state; country = it.country.ifBlank { "ES" }
+            firstName = it.firstName
+            lastName = it.lastName
+            email = it.email
+            phone = it.phone
+            address = it.address1
+            address2 = it.address2
+            postcode = it.postcode
+            city = it.city
+            state = it.state
+            country = it.country.ifBlank { "ES" }
         }
     }
 
     val paymentOptions = checkout?.supportedPaymentOptions().orEmpty()
     LaunchedEffect(paymentOptions) {
-        if (selectedPayment !in paymentOptions.map { it.gatewayId }) selectedPayment = paymentOptions.firstOrNull()?.gatewayId.orEmpty()
+        if (selectedPayment !in paymentOptions.map { it.gatewayId }) {
+            selectedPayment = paymentOptions.firstOrNull()?.gatewayId.orEmpty()
+        }
     }
     LaunchedEffect(cart.shippingRates) {
         val selected = cart.shippingRates.flatMap { pack ->
@@ -63,13 +77,24 @@ fun IosCheckoutScreen(
         if (selected != null) selectedShipping = selected
     }
 
+    LaunchedEffect(createdOrder?.orderId, createdOrder?.paymentMethod) {
+        val order = createdOrder ?: return@LaunchedEffect
+        if (order.paymentMethod.equals("cecabank_gateway", ignoreCase = true)) {
+            paymentStore.startCardPayment(order)?.let { onOpenPayment(it) }
+        }
+    }
+
     val addressValue = CustomerAddress(
         firstName.trim(), lastName.trim(), email.trim(), phone.trim(),
         address.trim(), address2.trim(), postcode.trim(), city.trim(), state.trim(), country.trim()
     )
     val shippingOptions = cart.shippingRates.flatMap { pack -> pack.rates.map { pack to it } }
     val canSubmit = phase == StoreCheckoutPhase.READY &&
-        selectedShipping != null && selectedPayment.isNotBlank() && addressError == null && createdOrder == null
+        selectedShipping != null &&
+        selectedPayment.isNotBlank() &&
+        addressError == null &&
+        createdOrder == null &&
+        paymentState !in setOf(StoreCardPaymentState.OPENING, StoreCardPaymentState.WAITING_RETURN, StoreCardPaymentState.RECONCILING)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
@@ -147,21 +172,46 @@ fun IosCheckoutScreen(
             }
         }
         item { Text("Total: " + cart.totals.totalPrice + " " + cart.totals.currencySymbol, style = MaterialTheme.typography.titleLarge) }
+
+        if (paymentState == StoreCardPaymentState.PAID) item {
+            Text("Pago confirmado para el pedido #" + (paymentOrderId ?: ""), color = MaterialTheme.colorScheme.primary)
+            Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Seguir comprando") }
+        }
+        if (paymentState == StoreCardPaymentState.NOT_PAID) item {
+            Text("El pago no se ha completado.", color = MaterialTheme.colorScheme.error)
+            Button(onClick = { paymentStore.clearForNewProcess() }, modifier = Modifier.fillMaxWidth()) { Text("Volver a intentarlo") }
+        }
         if (!error.isNullOrBlank()) item {
             Text(error!!, color = MaterialTheme.colorScheme.error)
-            TextButton(onClick = { checkoutStore.load() }) { Text("Reintentar") }
+            TextButton(onClick = { checkoutStore.load() }) { Text("Reintentar checkout") }
         }
-        createdOrder?.let { order -> item {
-            Text("Pedido creado correctamente: " + (order.orderNumber ?: order.orderId), color = MaterialTheme.colorScheme.primary)
-            Text("El pedido se ha creado. El pago se gestionará en el siguiente paso.")
-        } }
+        if (!paymentError.isNullOrBlank()) item {
+            Text(paymentError!!, color = MaterialTheme.colorScheme.error)
+            if (paymentState == StoreCardPaymentState.ERROR) {
+                TextButton(onClick = paymentStore::retryReconciliation) { Text("Reintentar comprobación") }
+            }
+        }
+
+        createdOrder?.let { order ->
+            val isBizum = order.paymentMethod.equals("bizum", ignoreCase = true) || order.paymentMethod.equals("cheque", ignoreCase = true)
+            if (isBizum) item {
+                Text("Pedido recibido", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                Text("Pedido #" + (order.orderNumber ?: order.orderId) + " creado correctamente.")
+                Text("Realiza el pago por Bizum al 679 97 28 88 y utiliza el número de pedido como referencia de pago.")
+                Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Seguir comprando") }
+            } else if (paymentState == StoreCardPaymentState.OPENING || paymentState == StoreCardPaymentState.WAITING_RETURN || paymentState == StoreCardPaymentState.RECONCILING) {
+                Text("Pasarela de pago", style = MaterialTheme.typography.titleLarge)
+                Text(if (paymentState == StoreCardPaymentState.RECONCILING) "Comprobando el pago…" else "Abriendo Cecabank…")
+            }
+        }
+
         item {
             Button(
                 onClick = { checkoutStore.createOrder(addressValue, selectedPayment, selectedShipping!!.second) },
                 enabled = canSubmit,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (phase == StoreCheckoutPhase.CREATING_ORDER) "Creando pedido…" else "Crear pedido")
+                Text(if (phase == StoreCheckoutPhase.CREATING_ORDER) "Creando pedido…" else "Pagar")
             }
         }
         if (phase == StoreCheckoutPhase.CREATING_ORDER) item { CircularProgressIndicator() }

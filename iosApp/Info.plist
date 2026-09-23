@@ -16,12 +16,22 @@
     <string>CriosRangoKMPSpike</string>
     <key>CADisableMinimumFrameDurationOnPhone</key>
     <true/>
-    <key>UILaunchStoryboardName</key>
-    <string>LaunchScreen</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>CFBundleURLName</key>
+            <string>es.criosrango.payment-return</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>criosrango</string>
+            </array>
+        </dict>
+    </array>
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>
         <false/>
     </dict>
 </dict>
-</plist>

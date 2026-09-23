@@ -67,7 +67,9 @@ fun CriosRangoIOSRootScreen(
     storeApi: es.criosrango.shared.api.StoreApiClient,
     accountRepository: AccountRepository,
     cartStore: StoreCartStore,
-    checkoutStore: StoreCheckoutStore
+    checkoutStore: StoreCheckoutStore,
+    paymentStore: StorePaymentStore,
+    onOpenPayment: (String) -> Unit
 ) {
     var section by remember { mutableStateOf(IosRootSection.HOME) }
     var checkoutOpen by remember { mutableStateOf(false) }
@@ -88,7 +90,14 @@ fun CriosRangoIOSRootScreen(
             }
         ) { padding ->
             if (checkoutOpen) {
-                IosCheckoutScreen(checkoutStore, accountRepository, padding) { checkoutOpen = false }
+                IosCheckoutScreen(
+                    checkoutStore = checkoutStore,
+                    paymentStore = paymentStore,
+                    accountRepository = accountRepository,
+                    padding = padding,
+                    onBack = { checkoutOpen = false },
+                    onOpenPayment = onOpenPayment
+                )
             } else when (section) {
                 IosRootSection.HOME -> IosHomeScreen(
                     storeApi = storeApi,
