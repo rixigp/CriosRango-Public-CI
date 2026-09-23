@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.model.CustomerAddress
+import es.criosrango.shared.model.supportedPaymentOptions
 
 @Composable
 fun IosCheckoutScreen(
