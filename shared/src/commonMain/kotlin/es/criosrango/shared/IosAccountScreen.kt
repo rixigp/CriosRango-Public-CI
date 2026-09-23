@@ -375,7 +375,6 @@ private fun IosForgotPasswordScreen(repository: AccountRepository, onBack: () ->
 }
 
 @Composable
-@Composable
 private fun IosProfileMenuScreen(
     onPersonalData: () -> Unit,
     onAddress: () -> Unit,
