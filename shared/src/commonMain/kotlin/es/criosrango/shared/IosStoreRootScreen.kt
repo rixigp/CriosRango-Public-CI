@@ -144,12 +144,16 @@ private fun IosMainTabBar(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = label,
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                        color = if (active) Color(0xFF183B35) else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                            color = if (active) Color(0xFF183B35) else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (item == IosRootSection.CART && cartCount > 0) {
+                            Text(" $cartCount", fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
         }
