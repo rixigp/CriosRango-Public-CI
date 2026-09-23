@@ -3,11 +3,11 @@ package es.criosrango.app
 import android.content.Context
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -24,14 +24,12 @@ class PaymentStatusExactlyOnceIsolatedTest {
     ) : StoreApi {
         val paymentStatusCalls = AtomicInteger(0)
         val createCheckoutCalls = AtomicInteger(0)
+        val cartCalls = AtomicInteger(0)
         val paymentStatusStarted = CompletableDeferred<Unit>()
-        val releasePaymentStatus = CompletableDeferred<Unit>()
-        var blockPaymentStatus = false
 
         override suspend fun getOrderStatus(orderId: Int, orderKey: String): OrderStatusResponse {
             paymentStatusCalls.incrementAndGet()
             paymentStatusStarted.complete(Unit)
-            if (blockPaymentStatus) releasePaymentStatus.await()
             return orderStatus
         }
 
@@ -40,7 +38,10 @@ class PaymentStatusExactlyOnceIsolatedTest {
         override suspend fun product(id: Int) = StoreProduct(id = id)
         override suspend fun productWithVariationAvailability(id: Int) = StoreProduct(id = id)
         override suspend fun categories(perPage: Int) = emptyList<ProductCategory>()
-        override suspend fun cart() = WooCart()
+        override suspend fun cart(): WooCart {
+            cartCalls.incrementAndGet()
+            return WooCart()
+        }
         override suspend fun addCartItem(request: AddCartRequest) = WooCart()
         override suspend fun updateCartItem(key: String, quantity: Int) = WooCart()
         override suspend fun removeCartItem(key: String) = WooCart()
@@ -55,7 +56,7 @@ class PaymentStatusExactlyOnceIsolatedTest {
 
     private fun newViewModel(context: Context, api: CountingStoreApi, pending: PendingCardPaymentStore): ShopViewModel {
         val preferences = context.getSharedPreferences(
-            "j5-exactly-once-isolated-" + System.identityHashCode(api),
+            "j5-simplified-" + System.identityHashCode(api),
             Context.MODE_PRIVATE
         )
         val session = StoreSession(preferences)
@@ -64,129 +65,14 @@ class PaymentStatusExactlyOnceIsolatedTest {
         return ShopViewModel(StoreRepository(api), cartStore, deliveryAddressStore, pending)
     }
 
-    private fun idleMainLooperImmediate() {
+    private fun idleMainLooper() {
         Shadows.shadowOf(Looper.getMainLooper()).idle()
     }
 
-    @Test
-    fun processDeathWithPendingPayment_callsPaymentStatusExactlyOnce() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val preferences = context.getSharedPreferences(
-            "j5-process-death-" + System.nanoTime(), Context.MODE_PRIVATE
-        )
-        val pendingStore = PendingCardPaymentStore(preferences)
-        check(pendingStore.save(LastCheckout(123, "wc_order_123", "https://criosrango.es/pay/123")))
-
-        assertNotNull(
-            "PROCESS-DEATH: pendingStore.load() before ViewModel must not be null",
-            pendingStore.load()
-        )
-
-        val api = CountingStoreApi()
-        api.blockPaymentStatus = true
-        val viewModel = newViewModel(context, api, pendingStore)
-
-        idleMainLooperImmediate()
-
-        assertTrue(
-            "PROCESS-DEATH: paymentStatusStarted must be completed",
-            api.paymentStatusStarted.isCompleted
-        )
-        assertEquals(
-            "PROCESS-DEATH: paymentStatusCalls must equal 1 while paymentStatus is blocked",
-            1,
-            api.paymentStatusCalls.get()
-        )
-
-        repeat(5) {
-            idleMainLooperImmediate()
-        }
-
-        assertEquals(
-            "PROCESS-DEATH: paymentStatusCalls must remain 1 while paymentStatus is blocked",
-            1,
-            api.paymentStatusCalls.get()
-        )
-
-        api.releasePaymentStatus.complete(Unit)
-        idleMainLooperImmediate()
-
-        assertEquals(
-            "PROCESS-DEATH: paymentStatusCalls must equal 1 after terminal unpaid cleanup",
-            1,
-            api.paymentStatusCalls.get()
-        )
-        assertEquals(
-            "PROCESS-DEATH: pendingStore.load() must be null after TERMINAL_UNPAID",
-            null,
-            pendingStore.load()
-        )
-
-        val lastCheckoutField = ShopViewModel::class.java.getDeclaredField("lastCheckout")
-        lastCheckoutField.isAccessible = true
-        assertEquals(
-            "PROCESS-DEATH: lastCheckout must be null after TERMINAL_UNPAID",
-            null,
-            lastCheckoutField.get(viewModel)
-        )
-    }
-
-    @Test
-    fun multipleResumeEventsWhilePaymentStatusIsInFlight_callPaymentStatusExactlyOnce() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val preferences = context.getSharedPreferences(
-            "j5-lifecycle-" + System.nanoTime(), Context.MODE_PRIVATE
-        )
-        val pendingStore = PendingCardPaymentStore(preferences)
-        val api = CountingStoreApi()
-
-        val viewModel = newViewModel(context, api, pendingStore)
-        idleMainLooperImmediate()
-
+    private fun setLastCheckout(viewModel: ShopViewModel, checkout: LastCheckout?) {
         val field = ShopViewModel::class.java.getDeclaredField("lastCheckout")
         field.isAccessible = true
-        field.set(viewModel, LastCheckout(123, "wc_order_123", "https://criosrango.es/pay/123"))
-
-        api.blockPaymentStatus = true
-        viewModel.verifyCardPaymentReturn()
-        idleMainLooperImmediate()
-
-        assertTrue(
-            "LIFECYCLE: paymentStatusStarted must be completed",
-            api.paymentStatusStarted.isCompleted
-        )
-        assertTrue(
-            "LIFECYCLE: checkoutLoading must remain true while paymentStatus is blocked",
-            viewModel.checkoutLoading.value
-        )
-        assertEquals(
-            "LIFECYCLE: paymentStatusCalls must equal 1 before resumes",
-            1,
-            api.paymentStatusCalls.get()
-        )
-
-        repeat(5) {
-            viewModel.verifyCardPaymentReturn()
-        }
-
-        assertEquals(
-            "LIFECYCLE: paymentStatusCalls must remain 1 after resumes",
-            1,
-            api.paymentStatusCalls.get()
-        )
-        assertTrue(
-            "LIFECYCLE: checkoutLoading must remain true before release",
-            viewModel.checkoutLoading.value
-        )
-
-        api.releasePaymentStatus.complete(Unit)
-        idleMainLooperImmediate()
-
-        assertEquals(
-            "LIFECYCLE: paymentStatusCalls must equal 1 after release",
-            1,
-            api.paymentStatusCalls.get()
-        )
+        field.set(viewModel, checkout)
     }
 
     private fun validAddress() = CustomerAddress(
@@ -202,13 +88,26 @@ class PaymentStatusExactlyOnceIsolatedTest {
     )
 
     @Test
-    fun processDeathUnpaid_firstTapShowsLoadingAndContinuesWithoutSecondTap() {
+    fun pendingMarkerAtStartup_isCleared_withoutPaymentStatus() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val preferences = context.getSharedPreferences(
-            "j5-regression-unpaid-" + System.nanoTime(), Context.MODE_PRIVATE
-        )
+        val preferences = context.getSharedPreferences("j5-startup-" + System.nanoTime(), Context.MODE_PRIVATE)
         val pendingStore = PendingCardPaymentStore(preferences)
-        check(pendingStore.save(LastCheckout(123, "wc_order_123", "https://criosrango.es/pay/123")))
+        assertTrue(pendingStore.save(LastCheckout(123, "wc_order_123", "https://criosrango.es/pay/123")))
+
+        val api = CountingStoreApi()
+        newViewModel(context, api, pendingStore)
+        idleMainLooper()
+
+        assertNull(pendingStore.load())
+        assertEquals(0, api.paymentStatusCalls.get())
+    }
+
+    @Test
+    fun firstCreateOrder_afterProcessDeathStartsImmediately_withoutReconciliation() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("j5-create-" + System.nanoTime(), Context.MODE_PRIVATE)
+        val pendingStore = PendingCardPaymentStore(preferences)
+        assertTrue(pendingStore.save(LastCheckout(123, "wc_order_123", "https://criosrango.es/pay/123")))
 
         val api = CountingStoreApi(
             checkoutResponse = CheckoutResponse(
@@ -217,56 +116,29 @@ class PaymentStatusExactlyOnceIsolatedTest {
                 redirectUrl = "https://criosrango.es/pay/456"
             )
         )
-        api.blockPaymentStatus = true
         val viewModel = newViewModel(context, api, pendingStore)
-
-        idleMainLooperImmediate()
-        assertTrue(api.paymentStatusStarted.isCompleted)
+        idleMainLooper()
 
         viewModel.createOrder(validAddress(), "cecabank_gateway", "flat_rate:1")
 
-        assertTrue(
-            "REGRESSION-UNPAID: checkoutLoading must become true immediately on the first tap",
-            viewModel.checkoutLoading.value
-        )
-        assertEquals(
-            "REGRESSION-UNPAID: new checkout must not be sent while reconciliation is in flight",
-            0,
-            api.createCheckoutCalls.get()
-        )
+        assertTrue(viewModel.checkoutLoading.value)
+        assertEquals(0, api.paymentStatusCalls.get())
 
         repeat(5) {
             viewModel.createOrder(validAddress(), "cecabank_gateway", "flat_rate:1")
         }
-        assertEquals(
-            "REGRESSION-UNPAID: additional taps must not create another order",
-            0,
-            api.createCheckoutCalls.get()
-        )
+        idleMainLooper()
 
-        api.releasePaymentStatus.complete(Unit)
-        repeat(3) { idleMainLooperImmediate() }
-
-        assertEquals(
-            "REGRESSION-UNPAID: exactly one new order must be created without another tap",
-            1,
-            api.createCheckoutCalls.get()
-        )
-        assertTrue(
-            "REGRESSION-UNPAID: checkoutLoading must eventually clear after creating the order",
-            !viewModel.checkoutLoading.value
-        )
+        assertEquals(1, api.createCheckoutCalls.get())
+        assertEquals(0, api.paymentStatusCalls.get())
+        assertFalse(viewModel.checkoutLoading.value)
     }
 
     @Test
-    fun processDeathReconciliationStillBlockedAfterFiveSeconds_doesNotCreateOrderAndReleasesGate() {
+    fun multipleTaps_createExactlyOneOrder() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val preferences = context.getSharedPreferences(
-            "j5-regression-timeout-" + System.nanoTime(), Context.MODE_PRIVATE
-        )
+        val preferences = context.getSharedPreferences("j5-multitap-" + System.nanoTime(), Context.MODE_PRIVATE)
         val pendingStore = PendingCardPaymentStore(preferences)
-        check(pendingStore.save(LastCheckout(123, "wc_order_123", "https://criosrango.es/pay/123")))
-
         val api = CountingStoreApi(
             checkoutResponse = CheckoutResponse(
                 orderId = 456,
@@ -274,114 +146,63 @@ class PaymentStatusExactlyOnceIsolatedTest {
                 redirectUrl = "https://criosrango.es/pay/456"
             )
         )
-        api.blockPaymentStatus = true
         val viewModel = newViewModel(context, api, pendingStore)
+        idleMainLooper()
 
-        idleMainLooperImmediate()
-        assertTrue(api.paymentStatusStarted.isCompleted)
+        repeat(10) {
+            viewModel.createOrder(validAddress(), "cecabank_gateway", "flat_rate:1")
+        }
+        idleMainLooper()
 
-        viewModel.createOrder(validAddress(), "cecabank_gateway", "flat_rate:1")
-        assertTrue(
-            "REGRESSION-TIMEOUT: first tap must enter loading immediately",
-            viewModel.checkoutLoading.value
-        )
-
-        Shadows.shadowOf(Looper.getMainLooper()).idleFor(5_200L, TimeUnit.MILLISECONDS)
-        idleMainLooperImmediate()
-
-        assertEquals(
-            "REGRESSION-TIMEOUT: no new order may be created while reconciliation is still unknown",
-            0,
-            api.createCheckoutCalls.get()
-        )
-        assertTrue(
-            "REGRESSION-TIMEOUT: loading must be false after the 5 second visible wait",
-            !viewModel.checkoutLoading.value
-        )
-        assertEquals(
-            "REGRESSION-TIMEOUT: checkout must return to READY",
-            CheckoutPhase.READY,
-            viewModel.checkoutPhase.value
-        )
-        assertEquals(
-            "REGRESSION-TIMEOUT: short retry message must be visible",
-            "Estamos comprobando el pago anterior. Inténtalo de nuevo en unos segundos.",
-            viewModel.checkoutError.value
-        )
-
-        viewModel.createOrder(validAddress(), "cecabank_gateway", "flat_rate:1")
-        assertTrue(
-            "REGRESSION-TIMEOUT: gate must be released after the 5 second timeout",
-            viewModel.checkoutLoading.value
-        )
-        assertEquals(
-            "REGRESSION-TIMEOUT: retry must still wait for the unresolved reconciliation",
-            0,
-            api.createCheckoutCalls.get()
-        )
-
-        api.releasePaymentStatus.complete(Unit)
-        repeat(3) { idleMainLooperImmediate() }
-        assertEquals(
-            "REGRESSION-TIMEOUT: once reconciliation resolves unpaid, exactly one retry order may be created",
-            1,
-            api.createCheckoutCalls.get()
-        )
+        assertEquals(1, api.createCheckoutCalls.get())
     }
 
     @Test
-    fun processDeathPaid_firstTapShowsLoadingAndDoesNotCreateNewOrder() {
+    fun normalCecabankReturn_stillUsesPaymentStatus() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val preferences = context.getSharedPreferences(
-            "j5-regression-paid-" + System.nanoTime(), Context.MODE_PRIVATE
-        )
+        val preferences = context.getSharedPreferences("j5-return-" + System.nanoTime(), Context.MODE_PRIVATE)
         val pendingStore = PendingCardPaymentStore(preferences)
-        check(pendingStore.save(LastCheckout(123, "wc_order_123", "https://criosrango.es/pay/123")))
-
         val api = CountingStoreApi(
             orderStatus = OrderStatusResponse(
-                id = 123,
-                status = "processing",
-                paid = true,
-                needsPayment = false,
-                terminal = false
+                id = 123, status = "processing", paid = true, needsPayment = false, terminal = true
             )
         )
-        api.blockPaymentStatus = true
         val viewModel = newViewModel(context, api, pendingStore)
+        idleMainLooper()
 
-        idleMainLooperImmediate()
-        assertTrue(api.paymentStatusStarted.isCompleted)
+        val pending = LastCheckout(123, "wc_order_123", "https://criosrango.es/pay/123")
+        assertTrue(pendingStore.save(pending))
+        setLastCheckout(viewModel, pending)
 
-        viewModel.createOrder(validAddress(), "cecabank_gateway", "flat_rate:1")
+        viewModel.verifyCardPaymentReturn()
+        idleMainLooper()
 
-        assertTrue(
-            "REGRESSION-PAID: checkoutLoading must become true immediately on the first tap",
-            viewModel.checkoutLoading.value
-        )
-        assertEquals(
-            "REGRESSION-PAID: new checkout must not be sent while reconciliation is in flight",
-            0,
-            api.createCheckoutCalls.get()
-        )
-
-        api.releasePaymentStatus.complete(Unit)
-        repeat(3) { idleMainLooperImmediate() }
-
-        assertEquals(
-            "REGRESSION-PAID: no new order may be created after old payment is PAID",
-            0,
-            api.createCheckoutCalls.get()
-        )
-        assertEquals(
-            "REGRESSION-PAID: reconciled PAID result must leave the checkout phase coherent",
-            CheckoutPhase.ORDER_CREATED,
-            viewModel.checkoutPhase.value
-        )
-        assertTrue(
-            "REGRESSION-PAID: checkoutLoading must clear after PAID reconciliation",
-            !viewModel.checkoutLoading.value
-        )
+        assertEquals(1, api.paymentStatusCalls.get())
+        assertEquals(CheckoutPhase.ORDER_CREATED, viewModel.checkoutPhase.value)
+        assertTrue(viewModel.cardPaymentResult.value?.paid == true)
+        assertNull(pendingStore.load())
     }
 
+    @Test
+    fun normalCecabankCancellation_clearsPendingAndKeepsCartUsable() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("j5-cancel-" + System.nanoTime(), Context.MODE_PRIVATE)
+        val pendingStore = PendingCardPaymentStore(preferences)
+        val api = CountingStoreApi()
+        val viewModel = newViewModel(context, api, pendingStore)
+        idleMainLooper()
+
+        val pending = LastCheckout(123, "wc_order_123", "https://criosrango.es/pay/123")
+        assertTrue(pendingStore.save(pending))
+        setLastCheckout(viewModel, pending)
+
+        viewModel.handleCardPaymentCancelled(123)
+        idleMainLooper()
+
+        assertNull(pendingStore.load())
+        assertEquals(0, api.paymentStatusCalls.get())
+        assertEquals(CardPaymentResult(123, false), viewModel.cardPaymentResult.value)
+        assertEquals(CheckoutPhase.IDLE, viewModel.checkoutPhase.value)
+        assertTrue(api.cartCalls.get() >= 1)
+    }
 }
