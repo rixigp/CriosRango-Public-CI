@@ -110,18 +110,18 @@ class StorePaymentStoreTest {
         paymentStore.handlePaymentReturn("ok", 123)
         advanceUntilIdle()
 
-        assertEquals(1, paymentStatusCalls)
-        assertEquals(StoreCardPaymentState.PAID, paymentStore.state.value)
-        assertNull(pendingStore.load())
+        assertEquals(1, paymentStatusCalls, "payment-status call count")
+        assertEquals(StoreCardPaymentState.PAID, paymentStore.state.value, "payment state")
+        assertNull(pendingStore.load(), "pending payment")
 
         paymentStore.onForeground()
         paymentStore.onForeground()
         paymentStore.handlePaymentReturn("ok", 123)
         advanceUntilIdle()
 
-        assertEquals(1, paymentStatusCalls)
-        assertEquals(StoreCardPaymentState.PAID, paymentStore.state.value)
-        assertNull(pendingStore.load())
+        assertEquals(1, paymentStatusCalls, "payment-status call count")
+        assertEquals(StoreCardPaymentState.PAID, paymentStore.state.value, "payment state")
+        assertNull(pendingStore.load(), "pending payment")
     }
 
     @Test
@@ -161,7 +161,7 @@ class StorePaymentStoreTest {
 
         newPaymentStore.clearForNewProcess()
 
-        assertNull(pendingStore.load())
+        assertNull(pendingStore.load(), "pending payment")
         assertEquals(0, paymentStatusCalls)
         assertEquals(StoreCardPaymentState.IDLE, newPaymentStore.state.value)
         assertEquals(
