@@ -108,6 +108,12 @@ class StorePaymentStoreTest {
         paymentStore.markPaymentOpened()
 
         paymentStore.handlePaymentReturn("ok", 123)
+        advanceUntilIdle()
+
+        assertEquals(1, paymentStatusCalls)
+        assertEquals(StoreCardPaymentState.PAID, paymentStore.state.value)
+        assertNull(pendingStore.load())
+
         paymentStore.onForeground()
         paymentStore.onForeground()
         paymentStore.handlePaymentReturn("ok", 123)
