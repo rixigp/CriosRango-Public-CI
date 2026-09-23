@@ -66,7 +66,8 @@ class WordPressPagesClientTest {
 
     @Test
     fun htmlEntitiesDecodeSafely() {
-        assertEquals("& < > \" ' ", wordpressHtmlToText("&amp; &lt; &gt; &quot; &apos; &nbsp;"))
+        assertEquals("& < > \" '", wordpressHtmlToText("&amp; &lt; &gt; &quot; &apos;"))
+        assertEquals("Uno Dos", wordpressHtmlToText("Uno&nbsp;Dos"))
         assertEquals("–", wordpressHtmlToText("&#8211;"))
         assertEquals("–", wordpressHtmlToText("&#x2013;"))
         assertEquals("😀", wordpressHtmlToText("&#x1F600;"))

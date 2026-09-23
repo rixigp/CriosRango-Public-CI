@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 private class K5CheckoutTokenStore : AccountTokenStore {
     private var token: String? = "account-token"
@@ -53,7 +54,7 @@ class StoreCheckoutAccountK5Test {
                     address = savedAddress
                     respond("", headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
                 }
-                else -> respond("{}", headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
+                else -> error("Unexpected Account endpoint: ${request.url.encodedPath}")
             }
         }
         val accountClient = AccountClient(
@@ -64,12 +65,37 @@ class StoreCheckoutAccountK5Test {
             }
         )
         val repository = AccountRepository(K5CheckoutTokenStore(), accountClient)
+        assertTrue(repository.hasSession, "Expected restored Account session")
 
-        val storeEngine = MockEngine {
-            respond(
-                "{}",
-                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
-            )
+        val storeCartJson = """
+            {
+              "items": [],
+              "coupons": [],
+              "totals": {
+                "total_items":"0","total_items_tax":"0","total_fees":"0","total_fees_tax":"0",
+                "total_discount":"0","total_discount_tax":"0","total_shipping":"0",
+                "total_shipping_tax":"0","total_price":"0","total_tax":"0",
+                "currency_symbol":"€","currency_minor_unit":2
+              },
+              "payment_methods":[],
+              "shipping_rates":[],
+              "items_count":0,
+              "errors":[]
+            }
+        """.trimIndent()
+        val storeCheckoutJson = """{"order_id":321,"order_key":"wc_order_key","status":"pending","payment_method":"cecabank_gateway","payment_methods":["cecabank_gateway","cheque"],"payment_requirements":[],"redirect_url":"https://pay.example/321","totals":{"total_price":"12300"},"errors":[]}"""
+        val storeEngine = MockEngine { request ->
+            when (request.url.encodedPath) {
+                "/wp-json/wc/store/v1/cart" -> respond(
+                    storeCartJson,
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                )
+                "/wp-json/wc/store/v1/checkout" -> respond(
+                    storeCheckoutJson,
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                )
+                else -> error("Unexpected Store endpoint: ${request.url.encodedPath}")
+            }
         }
         val scope = CoroutineScope(StandardTestDispatcher(testScheduler))
         val api = StoreApiClient(
