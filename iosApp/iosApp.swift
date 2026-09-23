@@ -66,6 +66,7 @@ final class CriosRangoSceneDelegate: UIResponder, UIWindowSceneDelegate {
             .first(where: { $0.name == "order_id" })?
             .value
             .flatMap(Int.init)
+            .map { KotlinInt(value: Int32($0)) }
         MainViewControllerKt.handleIosPaymentReturn(result: result, orderId: orderId)
     }
 }
