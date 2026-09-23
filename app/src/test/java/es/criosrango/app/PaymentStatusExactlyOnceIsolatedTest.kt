@@ -154,7 +154,8 @@ class PaymentStatusExactlyOnceIsolatedTest {
                 orderId = 456,
                 orderKey = "wc_order_456",
                 redirectUrl = "https://criosrango.es/pay/456"
-            )
+            ),
+            holdCheckout = true
         )
         val viewModel = newViewModel(context, api, pendingStore)
         idleMainLooper()
