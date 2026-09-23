@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -303,7 +304,8 @@ private fun IosCatalogScreen(
     cartStore: StoreCartStore,
     onOpenCategory: (StoreCategory) -> Unit,
     onOpenProduct: (StoreProduct) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    cartStore: StoreCartStore
 ) {
     when (page) {
         IosCatalogPage.Root -> IosCategoryRoot(storeApi, padding, onOpenCategory)
@@ -429,7 +431,7 @@ private fun IosProductDetail(
                 Button(onClick = {
                     val variation = selectedVariation
                     val attrs = variation?.attributes.orEmpty().map { attr -> StoreCartVariation(attr.name.ifBlank { "pa_attribute" }, attr.value) }
-                    store.add(variation?.id ?: product.id, 1, attrs)
+                    store.add(product.id, 1, attrs)
                 }, enabled = product.isPurchasable != false && (selectedVariation?.isPurchasable != false), modifier = Modifier.fillMaxWidth().padding(20.dp)) { Text("Añadir al carrito") }
             }
             if (loading) CircularProgressIndicator(Modifier.padding(20.dp).size(24.dp))
