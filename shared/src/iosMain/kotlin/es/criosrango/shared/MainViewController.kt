@@ -7,12 +7,14 @@ import es.criosrango.shared.api.StoreApiClient
 fun MainViewController() = ComposeUIViewController {
     val storeSession = IosStoreSessionStore()
     val storeApi = StoreApiClient(session = storeSession)
+    val cartStore = StoreCartStore(storeApi)
     val accountRepository = AccountRepository(
         tokenStore = IosAccountTokenStore(),
         claimOrderStore = IosClaimOrderStore()
     )
     CriosRangoIOSRootScreen(
         storeApi = storeApi,
-        accountRepository = accountRepository
+        accountRepository = accountRepository,
+        cartStore = cartStore
     )
 }
