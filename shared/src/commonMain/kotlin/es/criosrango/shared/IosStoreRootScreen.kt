@@ -68,6 +68,7 @@ fun CriosRangoIOSRootScreen(
     var catalogPage by remember { mutableStateOf<IosCatalogPage>(IosCatalogPage.Root) }
 
     MaterialTheme {
+        androidx.compose.runtime.LaunchedEffect(Unit) { println("KMP_RUNTIME_ROOT_SCREEN_READY") }
         Scaffold(
             bottomBar = {
                 IosMainTabBar(
@@ -176,6 +177,7 @@ private fun IosHomeScreen(
             categories = result.second
         }.onSuccess {
             loading = false
+            println("KMP_RUNTIME_HOME_READY products=${products.size} categories=${categories.size}")
         }.onFailure {
             error = it.message ?: "No se ha podido cargar la tienda."
             loading = false
@@ -186,6 +188,7 @@ private fun IosHomeScreen(
         when {
             loading -> IosStoreLoading()
             error != null -> IosStoreError(error!!, ::retry)
+            products.isEmpty() && categories.isEmpty() -> IosStoreEmpty("No hay contenido disponible.")
             else -> {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -372,8 +375,11 @@ private fun IosProductDetail(
 ) {
     var product by remember(initialProduct.id) { mutableStateOf(initialProduct) }
     var loading by remember(initialProduct.id) { mutableStateOf(true) }
+    var error by remember(initialProduct.id) { mutableStateOf<String?>(null) }
     LaunchedEffect(initialProduct.id) {
-        runCatching { storeApi.product(initialProduct.id) }.onSuccess { product = it }
+        runCatching { storeApi.product(initialProduct.id) }
+            .onSuccess { product = it }
+            .onFailure { error = it.message ?: "No se ha podido cargar el producto." }
         loading = false
     }
     LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 24.dp)) {
@@ -387,6 +393,12 @@ private fun IosProductDetail(
             Text(product.name, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(20.dp, 12.dp, 20.dp, 4.dp))
             Text(product.prices.price + " " + product.prices.currencySymbol, fontWeight = FontWeight.Bold, color = Color(0xFF183B35), modifier = Modifier.padding(horizontal = 20.dp))
             if (loading) CircularProgressIndicator(Modifier.padding(20.dp).size(24.dp))
+            error?.let { message ->
+                IosStoreError(message) {
+                    error = null
+                    loading = true
+                }
+            }
         }
     }
 }
@@ -403,6 +415,11 @@ private fun IosStoreLoading() {
         Spacer(Modifier.height(12.dp))
         Text("Cargando")
     }
+}
+
+@Composable
+private fun IosStoreEmpty(message: String) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(message) }
 }
 
 @Composable
