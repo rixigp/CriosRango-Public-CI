@@ -12,7 +12,7 @@ import io.ktor.http.headersOf
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 
 private class FakePendingCardPaymentStore : PendingCardPaymentStore {
@@ -108,7 +108,12 @@ class StorePaymentStoreTest {
         paymentStore.markPaymentOpened()
 
         paymentStore.handlePaymentReturn("ok", 123)
-        advanceUntilIdle()
+        paymentStore.onForeground()
+        paymentStore.state.first { state ->
+            state == StoreCardPaymentState.PAID ||
+                state == StoreCardPaymentState.NOT_PAID ||
+                state == StoreCardPaymentState.ERROR
+        }
 
         assertEquals(
             1,
@@ -164,7 +169,12 @@ class StorePaymentStoreTest {
         )
         paymentStore.markPaymentOpened()
         paymentStore.handlePaymentReturn("ok", 123)
-        advanceUntilIdle()
+        paymentStore.onForeground()
+        paymentStore.state.first { state ->
+            state == StoreCardPaymentState.PAID ||
+                state == StoreCardPaymentState.NOT_PAID ||
+                state == StoreCardPaymentState.ERROR
+        }
 
         assertEquals(
             1,
@@ -184,7 +194,11 @@ class StorePaymentStoreTest {
         paymentStore.onForeground()
         paymentStore.onForeground()
         paymentStore.handlePaymentReturn("ok", 123)
-        advanceUntilIdle()
+        paymentStore.state.first { state ->
+            state == StoreCardPaymentState.PAID ||
+                state == StoreCardPaymentState.NOT_PAID ||
+                state == StoreCardPaymentState.ERROR
+        }
 
         assertEquals(
             1,
@@ -253,7 +267,6 @@ class StorePaymentStoreTest {
                 )
             )
         )
-        advanceUntilIdle()
         assertEquals(0, paymentStatusCalls)
     }
 }
