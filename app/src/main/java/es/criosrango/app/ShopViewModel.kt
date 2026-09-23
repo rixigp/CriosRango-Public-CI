@@ -412,7 +412,21 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         _checkoutError.value = null
         viewModelScope.launch {
             try {
-                processDeathReconciliationJob?.join()
+                val reconciliationJob = processDeathReconciliationJob
+                if (reconciliationJob != null) {
+                    val reconciliationFinished = withTimeoutOrNull(5_000L) {
+                        reconciliationJob.join()
+                        true
+                    } ?: false
+                    if (!reconciliationFinished) {
+                        if (generation == checkoutGeneration) {
+                            _checkoutLoading.value = false
+                            _checkoutPhase.value = CheckoutPhase.READY
+                            _checkoutError.value = "Estamos comprobando el pago anterior. Inténtalo de nuevo en unos segundos."
+                        }
+                        return@launch
+                    }
+                }
                 if (processDeathPaidOrderId != null) {
                     _checkoutPhase.value = CheckoutPhase.ORDER_CREATED
                     return@launch
