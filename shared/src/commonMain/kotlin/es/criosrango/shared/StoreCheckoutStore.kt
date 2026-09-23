@@ -69,9 +69,9 @@ class StoreCheckoutStore(
                         runCatching { accountRepository.customerAddress().toCustomerAddress() }.getOrNull()
                     } else null
                     _accountAddress.value = address
-                    val response = api.checkout()
-                    cartStore.refresh()
-                    response
+                    val currentCart = api.cart()
+                    _cart.value = currentCart
+                    api.checkout()
                 }.onSuccess {
                     _checkout.value = it
                     _cart.value = cartStore.cart.value
@@ -92,7 +92,8 @@ class StoreCheckoutStore(
                             accountRepository.saveCustomerAddress(address.toAccountCustomerAddress())
                         }
                     }
-                    api.updateCustomer(es.criosrango.shared.model.UpdateCustomerRequest(address, address))
+                    val updatedCart = api.updateCustomer(es.criosrango.shared.model.UpdateCustomerRequest(address, address))
+                    _cart.value = updatedCart
                     api.checkout()
                 }.onSuccess {
                     _checkout.value = it
@@ -109,7 +110,8 @@ class StoreCheckoutStore(
                 _phase.value = StoreCheckoutPhase.LOADING
                 _error.value = null
                 runCatching {
-                    api.selectShippingRate(SelectShippingRateRequest(packageId, rateId))
+                    val updatedCart = api.selectShippingRate(SelectShippingRateRequest(packageId, rateId))
+                    _cart.value = updatedCart
                     api.checkout()
                 }.onSuccess {
                     _cart.value = cartStore.cart.value
