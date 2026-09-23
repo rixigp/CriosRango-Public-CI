@@ -72,7 +72,7 @@ class StorePaymentStoreTest {
     }
 
     @Test
-    fun callbackAndForegroundAreExactlyOnce() = runTest {
+    fun callbackReconciliationIsExactlyOnce() = runTest {
         var paymentStatusCalls = 0
         val engine = MockEngine { request ->
             if (request.url.encodedPath.contains("/payment-status")) {
@@ -120,20 +120,57 @@ class StorePaymentStoreTest {
             "FIRST reconciliation: expected pending payment cleared, actual=" + pendingStore.load()
         }
 
+    }
+    @Test
+    fun duplicateForegroundAndCallbackAfterPaidAreIgnored() = runTest {
+        var paymentStatusCalls = 0
+        val engine = MockEngine { request ->
+            if (request.url.encodedPath.contains("/payment-status")) {
+                paymentStatusCalls++
+                respond(
+                    content = """{"order_id":123,"status":"processing","paid":true,"terminal":true}""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                )
+            } else {
+                respond(
+                    content = """{"items":[],"totals":{"total_price":"0","currency_symbol":"€","currency_minor_unit":2}}""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                )
+            }
+        }
+        val api = StoreApiClient(client = HttpClient(engine))
+        val pendingStore = FakePendingCardPaymentStore()
+        val cartStore = StoreCartStore(api, this)
+        val paymentStore = StorePaymentStore(api, cartStore, pendingStore, this)
+
+        check(
+            paymentStore.startCardPayment(
+                CheckoutResponse(
+                    orderId = 123,
+                    orderKey = "wc_order_123",
+                    paymentMethod = "cecabank_gateway",
+                    redirectUrl = "https://payment.example/123"
+                )
+            ) == "https://payment.example/123"
+        )
+        paymentStore.markPaymentOpened()
+        paymentStore.handlePaymentReturn("ok", 123)
+        advanceUntilIdle()
+
+        check(paymentStatusCalls == 1)
+        check(paymentStore.state.value == StoreCardPaymentState.PAID)
+        check(pendingStore.load() == null)
+
         paymentStore.onForeground()
         paymentStore.onForeground()
         paymentStore.handlePaymentReturn("ok", 123)
         advanceUntilIdle()
 
-        check(paymentStatusCalls == 1) {
-            "DUPLICATE events: expected exactly 1 payment-status call total, actual=" + paymentStatusCalls
-        }
-        check(paymentStore.state.value == StoreCardPaymentState.PAID) {
-            "DUPLICATE events: expected PAID, actual=" + paymentStore.state.value
-        }
-        check(pendingStore.load() == null) {
-            "DUPLICATE events: expected pending payment cleared, actual=" + pendingStore.load()
-        }
+        check(paymentStatusCalls == 1)
+        check(paymentStore.state.value == StoreCardPaymentState.PAID)
+        check(pendingStore.load() == null)
     }
 
     @Test
