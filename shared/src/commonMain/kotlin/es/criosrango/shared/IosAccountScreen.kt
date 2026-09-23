@@ -41,7 +41,7 @@ import kotlinx.coroutines.launch
 private enum class IosAccountPage { HOME, LOGIN, REGISTER, FORGOT, PROFILE, ADDRESS, ORDERS, ORDER_DETAIL }
 
 @Composable
-fun CriosRangoIOSAccountScreen(repository: AccountRepository) {
+fun CriosRangoIOSAccountScreen(repository: AccountRepository, modifier: Modifier = Modifier) {
     var page by remember { mutableStateOf(IosAccountPage.HOME) }
     var user by remember { mutableStateOf<AccountUser?>(null) }
     var startup by remember { mutableStateOf(true) }
@@ -60,6 +60,7 @@ fun CriosRangoIOSAccountScreen(repository: AccountRepository) {
     }
 
     MaterialTheme {
+        androidx.compose.foundation.layout.Box(modifier.fillMaxSize()) {
         if (startup) {
             FullScreenLoading("Comprobando sesión")
         } else {
@@ -93,6 +94,7 @@ fun CriosRangoIOSAccountScreen(repository: AccountRepository) {
                 IosAccountPage.ORDERS -> IosOrdersScreen(repository, { selectedOrder = it; page = IosAccountPage.ORDER_DETAIL }) { page = IosAccountPage.HOME }
                 IosAccountPage.ORDER_DETAIL -> selectedOrder?.let { IosOrderDetailScreen(it) { page = IosAccountPage.ORDERS } }
             }
+        }
         }
     }
 }
