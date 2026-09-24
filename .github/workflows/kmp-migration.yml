@@ -207,7 +207,7 @@ jobs:
           done
           EFFECTIVE_CONFIGURATION="$(grep -E '^[[:space:]]*CONFIGURATION[[:space:]]*=' "$SETTINGS_FILE" | tail -n 1 | sed -E 's/^[[:space:]]*CONFIGURATION[[:space:]]*=[[:space:]]*//')"
           EFFECTIVE_OPTIMIZATION="$(grep -E '^[[:space:]]*SWIFT_OPTIMIZATION_LEVEL[[:space:]]*=' "$SETTINGS_FILE" | tail -n 1 | sed -E 's/^[[:space:]]*SWIFT_OPTIMIZATION_LEVEL[[:space:]]*=[[:space:]]*//')"
-          EFFECTIVE_CONDITIONS="$(grep -E '^[[:space:]]*SWIFT_ACTIVE_COMPILATION_CONDITIONS[[:space:]]*=' "$SETTINGS_FILE" | tail -n 1 | sed -E 's/^[[:space:]]*SWIFT_ACTIVE_COMPILATION_CONDITIONS[[:space:]]*=[[:space:]]*//')"
+          EFFECTIVE_CONDITIONS="$(sed -n -E 's/^[[:space:]]*SWIFT_ACTIVE_COMPILATION_CONDITIONS[[:space:]]*=[[:space:]]*//p' "$SETTINGS_FILE" | tail -n 1)"
           EFFECTIVE_FRAMEWORK_SEARCH_PATHS="$(grep -E '^[[:space:]]*FRAMEWORK_SEARCH_PATHS[[:space:]]*=' "$SETTINGS_FILE" | tail -n 1 | sed -E 's/^[[:space:]]*FRAMEWORK_SEARCH_PATHS[[:space:]]*=[[:space:]]*//')"
           echo "Effective target CONFIGURATION=$EFFECTIVE_CONFIGURATION"
           echo "Effective target SWIFT_OPTIMIZATION_LEVEL=$EFFECTIVE_OPTIMIZATION"
