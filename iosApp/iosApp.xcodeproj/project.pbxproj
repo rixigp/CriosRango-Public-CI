@@ -8,6 +8,7 @@
 /* Begin PBXBuildFile section */
         A10000010000000000000001 /* iosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000100000000000000001 /* iosApp.swift */; };
         A10000020000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000140000000000000001 /* Assets.xcassets */; };
+        A10000030000000000000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A10000150000000000000001 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -16,6 +17,7 @@
         A10000120000000000000001 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
         A10000130000000000000001 /* CriosRango.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CriosRango.app; sourceTree = BUILT_PRODUCTS_DIR; };
         A10000140000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+        A10000150000000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -30,7 +32,7 @@
         };
         A10000310000000000000001 /* iosApp */ = {
             isa = PBXGroup;
-            children = (A10000100000000000000001 /* iosApp.swift */, A10000110000000000000000001 /* Info.plist */, A10000120000000000000001 /* LaunchScreen.storyboard */, A10000140000000000000001 /* Assets.xcassets */);
+            children = (A10000100000000000000001 /* iosApp.swift */, A10000110000000000000000001 /* Info.plist */, A10000120000000000000001 /* LaunchScreen.storyboard */, A10000140000000000000001 /* Assets.xcassets */, A10000150000000000000001 /* PrivacyInfo.xcprivacy */);
             path = .;
             sourceTree = "<group>";
         };
@@ -81,7 +83,7 @@
         A10000600000000000000001 /* Resources */ = {
             isa = PBXResourcesBuildPhase;
             buildActionMask = 2147483647;
-            files = (A10000020000000000000001 /* Assets.xcassets in Resources */);
+            files = (A10000020000000000000001 /* Assets.xcassets in Resources */, A10000030000000000000001 /* PrivacyInfo.xcprivacy in Resources */);
             runOnlyForDeploymentPostprocessing = 0;
         };
 /* End PBXResourcesBuildPhase section */
