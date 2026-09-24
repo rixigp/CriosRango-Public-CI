@@ -187,70 +187,42 @@ jobs:
         run: |
           xcodebuild -project iosApp/iosApp.xcodeproj -scheme CriosRangoKMPSpike -sdk iphoneos -configuration Debug -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -derivedDataPath "$GITHUB_WORKSPACE/ios-device-derived-data" build
       - name: Inspect effective iOS Release build settings
-        if: ${{ matrix.platform == 'ios' }}
+        if: \${{ matrix.platform == 'ios' }}
         run: |
           set -euo pipefail
-
           SETTINGS_FILE="$RUNNER_TEMP/ios-release-build-settings.txt"
-
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
-            -scheme CriosRangoKMPSpike \
-            -sdk iphoneos \
+            -target CriosRangoKMPSpike \
             -configuration Release \
-            -destination 'generic/platform=iOS' \
+            -sdk iphoneos \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             -showBuildSettings \
             > "$SETTINGS_FILE"
-
           cat "$SETTINGS_FILE"
-
-          echo "===== CRITICAL RELEASE SETTINGS ====="
-
-          for KEY in \
-            CONFIGURATION \
-            CONFIGURATION_BUILD_DIR \
-            CONFIGURATION_TEMP_DIR \
-            BUILT_PRODUCTS_DIR \
-            TARGET_BUILD_DIR \
-            SDK_NAME \
-            PLATFORM_NAME \
-            PRODUCT_NAME \
-            PRODUCT_BUNDLE_IDENTIFIER \
-            SWIFT_OPTIMIZATION_LEVEL \
-            SWIFT_ACTIVE_COMPILATION_CONDITIONS \
-            FRAMEWORK_SEARCH_PATHS \
-            SYMROOT \
-            OBJROOT \
-            BUILD_DIR \
-            BUILD_ROOT \
-            SKIP_INSTALL \
-            INSTALL_PATH \
-            DEPLOYMENT_LOCATION \
-            DSTROOT \
-            ACTION
-          do
+          echo "===== CRITICAL RELEASE TARGET SETTINGS ====="
+          for KEY in CONFIGURATION CONFIGURATION_BUILD_DIR CONFIGURATION_TEMP_DIR BUILT_PRODUCTS_DIR TARGET_BUILD_DIR SDK_NAME PLATFORM_NAME PRODUCT_NAME PRODUCT_BUNDLE_IDENTIFIER SWIFT_OPTIMIZATION_LEVEL SWIFT_ACTIVE_COMPILATION_CONDITIONS FRAMEWORK_SEARCH_PATHS SYMROOT OBJROOT BUILD_DIR BUILD_ROOT SKIP_INSTALL INSTALL_PATH DEPLOYMENT_LOCATION DSTROOT ACTION; do
             grep -E "^[[:space:]]*$KEY[[:space:]]*=" "$SETTINGS_FILE" || true
           done
-
-          EFFECTIVE_CONFIGURATION="$(grep -E '^[[:space:]]*CONFIGURATION[[:space:]]*=' "$SETTINGS_FILE" | head -n 1 | sed -E 's/^[[:space:]]*CONFIGURATION[[:space:]]*=[[:space:]]*//')"
-          if [ "$EFFECTIVE_CONFIGURATION" != "Release" ]; then
-            echo "::error::Effective Xcode CONFIGURATION is not Release: $EFFECTIVE_CONFIGURATION"
-            exit 1
-          fi
-
-          EFFECTIVE_OPTIMIZATION="$(grep -E '^[[:space:]]*SWIFT_OPTIMIZATION_LEVEL[[:space:]]*=' "$SETTINGS_FILE" | head -n 1 | sed -E 's/^[[:space:]]*SWIFT_OPTIMIZATION_LEVEL[[:space:]]*=[[:space:]]*//')"
-          if [ "$EFFECTIVE_OPTIMIZATION" = "-Onone" ]; then
-            echo "::error::Effective Release SWIFT_OPTIMIZATION_LEVEL is -Onone"
-            exit 1
-          fi
-
-          EFFECTIVE_CONDITIONS="$(grep -E '^[[:space:]]*SWIFT_ACTIVE_COMPILATION_CONDITIONS[[:space:]]*=' "$SETTINGS_FILE" | head -n 1 | sed -E 's/^[[:space:]]*SWIFT_ACTIVE_COMPILATION_CONDITIONS[[:space:]]*=[[:space:]]*//')"
+          EFFECTIVE_CONFIGURATION="$(grep -E '^[[:space:]]*CONFIGURATION[[:space:]]*=' "$SETTINGS_FILE" | tail -n 1 | sed -E 's/^[[:space:]]*CONFIGURATION[[:space:]]*=[[:space:]]*//')"
+          EFFECTIVE_OPTIMIZATION="$(grep -E '^[[:space:]]*SWIFT_OPTIMIZATION_LEVEL[[:space:]]*=' "$SETTINGS_FILE" | tail -n 1 | sed -E 's/^[[:space:]]*SWIFT_OPTIMIZATION_LEVEL[[:space:]]*=[[:space:]]*//')"
+          EFFECTIVE_CONDITIONS="$(grep -E '^[[:space:]]*SWIFT_ACTIVE_COMPILATION_CONDITIONS[[:space:]]*=' "$SETTINGS_FILE" | tail -n 1 | sed -E 's/^[[:space:]]*SWIFT_ACTIVE_COMPILATION_CONDITIONS[[:space:]]*=[[:space:]]*//')"
+          EFFECTIVE_FRAMEWORK_SEARCH_PATHS="$(grep -E '^[[:space:]]*FRAMEWORK_SEARCH_PATHS[[:space:]]*=' "$SETTINGS_FILE" | tail -n 1 | sed -E 's/^[[:space:]]*FRAMEWORK_SEARCH_PATHS[[:space:]]*=[[:space:]]*//')"
+          echo "Effective target CONFIGURATION=$EFFECTIVE_CONFIGURATION"
+          echo "Effective target SWIFT_OPTIMIZATION_LEVEL=$EFFECTIVE_OPTIMIZATION"
+          echo "Effective target SWIFT_ACTIVE_COMPILATION_CONDITIONS=$EFFECTIVE_CONDITIONS"
+          echo "Effective target FRAMEWORK_SEARCH_PATHS=$EFFECTIVE_FRAMEWORK_SEARCH_PATHS"
+          test "$EFFECTIVE_CONFIGURATION" = "Release"
+          test "$EFFECTIVE_OPTIMIZATION" != "-Onone"
           if printf '%s\n' "$EFFECTIVE_CONDITIONS" | grep -Eq '(^|[[:space:]])DEBUG([[:space:]]|$)'; then
             echo "::error::Effective Release SWIFT_ACTIVE_COMPILATION_CONDITIONS contains DEBUG"
             exit 1
           fi
+          case "$EFFECTIVE_FRAMEWORK_SEARCH_PATHS" in
+            *"shared/build/xcode-frameworks/Release/"*) ;;
+            *) echo "::error::Release FRAMEWORK_SEARCH_PATHS does not contain shared/build/xcode-frameworks/Release/"; exit 1 ;;
+          esac
 
       - name: Compile iOS device app Release (unsigned)
         if: ${{ matrix.platform == 'ios' }}
@@ -261,9 +233,9 @@ jobs:
           rm -rf "$GITHUB_WORKSPACE/shared/build/xcode-frameworks/Debug"
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
-            -scheme CriosRangoKMPSpike \
-            -sdk iphoneos \
+            -target CriosRangoKMPSpike \
             -configuration Release \
+            -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
@@ -287,45 +259,47 @@ jobs:
           test -e "$RELEASE_FRAMEWORK_PATH"
 
       - name: Archive iOS Release (unsigned)
-        if: ${{ matrix.platform == 'ios' }}
+        if: \${{ matrix.platform == 'ios' }}
         run: |
           set -euo pipefail
           ARCHIVE_PATH="$RUNNER_TEMP/CriosRango.xcarchive"
+          ARCHIVE_LOG="$RUNNER_TEMP/CriosRango-archive.log"
           rm -rf "$ARCHIVE_PATH"
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
             -scheme CriosRangoKMPSpike \
-            -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -archivePath "$ARCHIVE_PATH" \
+            CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            archive
-
+            archive 2>&1 | tee "$ARCHIVE_LOG"
           echo "===== EXPECTED ARCHIVE ====="
           echo "$ARCHIVE_PATH"
-
+          echo "===== ARCHIVE CONFIGURATION EVIDENCE ====="
+          grep -E 'Release-iphoneos|Debug-iphoneos|xcode-frameworks/(Release|Debug)|link(Release|Debug)Framework|assemble(Release|Debug)AppleFrameworkForXcode' "$ARCHIVE_LOG" || true
+          if grep -q 'Debug-iphoneos' "$ARCHIVE_LOG"; then
+            echo "::error::Archive used Debug-iphoneos"
+            exit 1
+          fi
+          grep -q 'Release-iphoneos' "$ARCHIVE_LOG"
+          grep -q 'shared/build/xcode-frameworks/Release/' "$ARCHIVE_LOG"
           echo "===== ARCHIVES IN RUNNER_TEMP ====="
           find "$RUNNER_TEMP" -maxdepth 5 -name '*.xcarchive' -print || true
-
           echo "===== ARCHIVES UNDER XCODE ====="
           find "$HOME/Library/Developer/Xcode" -maxdepth 10 -name '*.xcarchive' -print 2>/dev/null || true
-
           echo "===== ARCHIVE INTERMEDIATES ====="
           find "$HOME/Library/Developer/Xcode" -path '*ArchiveIntermediates*' -print 2>/dev/null | tail -n 300 || true
-
           if [ ! -d "$ARCHIVE_PATH" ]; then
             echo "::error::ARCHIVE SUCCEEDED but expected xcarchive was not materialized at $ARCHIVE_PATH"
             exit 1
           fi
-
           APP_PATH="$ARCHIVE_PATH/Products/Applications/CriosRango.app"
           test -d "$APP_PATH"
           test -f "$APP_PATH/Info.plist"
           test -f "$APP_PATH/PrivacyInfo.xcprivacy"
           test -f "$APP_PATH/Assets.car"
-          plutil -p "$APP_PATH/Info.plist"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")" = "es.criosrango.app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$APP_PATH/Info.plist")" = "Críos&Rango"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")" = "1.0.139"
