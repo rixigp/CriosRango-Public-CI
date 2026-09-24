@@ -187,7 +187,7 @@ jobs:
         run: |
           xcodebuild -project iosApp/iosApp.xcodeproj -scheme CriosRangoKMPSpike -sdk iphoneos -configuration Debug -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -derivedDataPath "$GITHUB_WORKSPACE/ios-device-derived-data" build
       - name: Inspect effective iOS Release build settings
-        if: \${{ matrix.platform == 'ios' }}
+        if: ${{ matrix.platform == 'ios' }}
         run: |
           set -euo pipefail
           SETTINGS_FILE="$RUNNER_TEMP/ios-release-build-settings.txt"
@@ -259,7 +259,7 @@ jobs:
           test -e "$RELEASE_FRAMEWORK_PATH"
 
       - name: Archive iOS Release (unsigned)
-        if: \${{ matrix.platform == 'ios' }}
+        if: ${{ matrix.platform == 'ios' }}
         run: |
           set -euo pipefail
           ARCHIVE_PATH="$RUNNER_TEMP/CriosRango.xcarchive"
