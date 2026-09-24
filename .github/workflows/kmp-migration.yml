@@ -186,30 +186,153 @@ jobs:
         if: ${{ matrix.platform == 'ios' }}
         run: |
           xcodebuild -project iosApp/iosApp.xcodeproj -scheme CriosRangoKMPSpike -sdk iphoneos -configuration Debug -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -derivedDataPath "$GITHUB_WORKSPACE/ios-device-derived-data" build
+      - name: Inspect effective iOS Release build settings
+        if: ${{ matrix.platform == 'ios' }}
+        run: |
+          set -euo pipefail
+
+          SETTINGS_FILE="$RUNNER_TEMP/ios-release-build-settings.txt"
+
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme CriosRangoKMPSpike \
+            -sdk iphoneos \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            -showBuildSettings \
+            > "$SETTINGS_FILE"
+
+          cat "$SETTINGS_FILE"
+
+          echo "===== CRITICAL RELEASE SETTINGS ====="
+
+          for KEY in \
+            CONFIGURATION \
+            CONFIGURATION_BUILD_DIR \
+            CONFIGURATION_TEMP_DIR \
+            BUILT_PRODUCTS_DIR \
+            TARGET_BUILD_DIR \
+            SDK_NAME \
+            PLATFORM_NAME \
+            PRODUCT_NAME \
+            PRODUCT_BUNDLE_IDENTIFIER \
+            SWIFT_OPTIMIZATION_LEVEL \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS \
+            FRAMEWORK_SEARCH_PATHS \
+            SYMROOT \
+            OBJROOT \
+            BUILD_DIR \
+            BUILD_ROOT \
+            SKIP_INSTALL \
+            INSTALL_PATH \
+            DEPLOYMENT_LOCATION \
+            DSTROOT \
+            ACTION
+          do
+            grep -E "^[[:space:]]*$KEY[[:space:]]*=" "$SETTINGS_FILE" || true
+          done
+
+          EFFECTIVE_CONFIGURATION="$(grep -E '^[[:space:]]*CONFIGURATION[[:space:]]*=' "$SETTINGS_FILE" | head -n 1 | sed -E 's/^[[:space:]]*CONFIGURATION[[:space:]]*=[[:space:]]*//')"
+          if [ "$EFFECTIVE_CONFIGURATION" != "Release" ]; then
+            echo "::error::Effective Xcode CONFIGURATION is not Release: $EFFECTIVE_CONFIGURATION"
+            exit 1
+          fi
+
+          EFFECTIVE_OPTIMIZATION="$(grep -E '^[[:space:]]*SWIFT_OPTIMIZATION_LEVEL[[:space:]]*=' "$SETTINGS_FILE" | head -n 1 | sed -E 's/^[[:space:]]*SWIFT_OPTIMIZATION_LEVEL[[:space:]]*=[[:space:]]*//')"
+          if [ "$EFFECTIVE_OPTIMIZATION" = "-Onone" ]; then
+            echo "::error::Effective Release SWIFT_OPTIMIZATION_LEVEL is -Onone"
+            exit 1
+          fi
+
+          EFFECTIVE_CONDITIONS="$(grep -E '^[[:space:]]*SWIFT_ACTIVE_COMPILATION_CONDITIONS[[:space:]]*=' "$SETTINGS_FILE" | head -n 1 | sed -E 's/^[[:space:]]*SWIFT_ACTIVE_COMPILATION_CONDITIONS[[:space:]]*=[[:space:]]*//')"
+          if printf '%s\n' "$EFFECTIVE_CONDITIONS" | grep -Eq '(^|[[:space:]])DEBUG([[:space:]]|$)'; then
+            echo "::error::Effective Release SWIFT_ACTIVE_COMPILATION_CONDITIONS contains DEBUG"
+            exit 1
+          fi
+
       - name: Compile iOS device app Release (unsigned)
         if: ${{ matrix.platform == 'ios' }}
         run: |
           set -euo pipefail
-          xcodebuild -project iosApp/iosApp.xcodeproj -scheme CriosRangoKMPSpike -sdk iphoneos -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -derivedDataPath "$GITHUB_WORKSPACE/ios-release-derived-data" build
+          rm -rf "$GITHUB_WORKSPACE/ios-release-derived-data"
+          rm -rf "$GITHUB_WORKSPACE/shared/build/xcode-frameworks/Release"
+          rm -rf "$GITHUB_WORKSPACE/shared/build/xcode-frameworks/Debug"
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme CriosRangoKMPSpike \
+            -sdk iphoneos \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            -derivedDataPath "$GITHUB_WORKSPACE/ios-release-derived-data" \
+            build
+          echo "===== IOS RELEASE PRODUCTS ====="
+          find "$GITHUB_WORKSPACE/ios-release-derived-data/Build/Products" -maxdepth 3 -print || true
+          APP_PATH="$(find "$GITHUB_WORKSPACE/ios-release-derived-data/Build/Products" -path '*/CriosRango.app' -type d -print -quit)"
+          echo "Release app path: $APP_PATH"
+          test -n "$APP_PATH"
+          case "$APP_PATH" in
+            */Release-iphoneos/*) ;;
+            */Debug-iphoneos/*) echo "::error::Release build produced Debug-iphoneos product: $APP_PATH"; exit 1 ;;
+            *) echo "::error::Release build produced unexpected product path: $APP_PATH"; exit 1 ;;
+          esac
+
+          echo "===== KMP XCODE FRAMEWORKS ====="
+          find "$GITHUB_WORKSPACE/shared/build/xcode-frameworks" -maxdepth 5 -print || true
+          RELEASE_FRAMEWORK_PATH="$(find "$GITHUB_WORKSPACE/shared/build/xcode-frameworks" -path '*/Release/iphoneos*' -print -quit)"
+          test -n "$RELEASE_FRAMEWORK_PATH"
+          test -e "$RELEASE_FRAMEWORK_PATH"
+
       - name: Archive iOS Release (unsigned)
         if: ${{ matrix.platform == 'ios' }}
         run: |
           set -euo pipefail
           ARCHIVE_PATH="$RUNNER_TEMP/CriosRango.xcarchive"
           rm -rf "$ARCHIVE_PATH"
-          xcodebuild -project iosApp/iosApp.xcodeproj -scheme CriosRangoKMPSpike -configuration Release -sdk iphoneos -archivePath "$ARCHIVE_PATH" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO archive
-          test -d "$ARCHIVE_PATH"
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme CriosRangoKMPSpike \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            archive
+
+          echo "===== EXPECTED ARCHIVE ====="
+          echo "$ARCHIVE_PATH"
+
+          echo "===== ARCHIVES IN RUNNER_TEMP ====="
+          find "$RUNNER_TEMP" -maxdepth 5 -name '*.xcarchive' -print || true
+
+          echo "===== ARCHIVES UNDER XCODE ====="
+          find "$HOME/Library/Developer/Xcode" -maxdepth 10 -name '*.xcarchive' -print 2>/dev/null || true
+
+          echo "===== ARCHIVE INTERMEDIATES ====="
+          find "$HOME/Library/Developer/Xcode" -path '*ArchiveIntermediates*' -print 2>/dev/null | tail -n 300 || true
+
+          if [ ! -d "$ARCHIVE_PATH" ]; then
+            echo "::error::ARCHIVE SUCCEEDED but expected xcarchive was not materialized at $ARCHIVE_PATH"
+            exit 1
+          fi
+
           APP_PATH="$ARCHIVE_PATH/Products/Applications/CriosRango.app"
           test -d "$APP_PATH"
           test -f "$APP_PATH/Info.plist"
           test -f "$APP_PATH/PrivacyInfo.xcprivacy"
-          test -d "$APP_PATH/Assets.xcassets"
-          test -d "$APP_PATH/Assets.xcassets/AppIcon.appiconset"
+          test -f "$APP_PATH/Assets.car"
           plutil -p "$APP_PATH/Info.plist"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")" = "es.criosrango.app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$APP_PATH/Info.plist")" = "Críos&Rango"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")" = "1.0.139"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")" = "139"
+          if /usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$APP_PATH/Info.plist" >/dev/null 2>&1; then
+            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$APP_PATH/Info.plist")" = "AppIcon"
+          fi
           echo "Validated unsigned archive: $ARCHIVE_PATH"
           echo "Validated archive app: $APP_PATH"
       - name: Runtime smoke test on iOS Simulator
