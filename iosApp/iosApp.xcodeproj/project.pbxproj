@@ -172,13 +172,13 @@
 /* Begin XCConfigurationList section */
         A10000710000000000000001 /* Project configuration list */ = {
             isa = XCConfigurationList;
-            buildConfigurations = (A10001000000000000000001 /* Debug */, A10001010000000000000000001 /* Release */);
+            buildConfigurations = (A10001000000000000000001 /* Debug */, A10001010000000000000001 /* Release */);
             defaultConfigurationIsVisible = 0;
             defaultConfigurationName = Release;
         };
         A10000800000000000000001 /* Build configuration list for target */ = {
             isa = XCConfigurationList;
-            buildConfigurations = (A10001100000000000000001 /* Debug */, A10001110000000000000000001 /* Release */);
+            buildConfigurations = (A10001100000000000000001 /* Debug */, A10001110000000000000001 /* Release */);
             defaultConfigurationIsVisible = 0;
             defaultConfigurationName = Release;
         };
