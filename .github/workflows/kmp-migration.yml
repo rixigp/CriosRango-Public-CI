@@ -233,7 +233,7 @@ jobs:
           rm -rf "$GITHUB_WORKSPACE/shared/build/xcode-frameworks/Debug"
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
-            -target CriosRangoKMPSpike \
+            -scheme CriosRangoKMPSpike \
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
