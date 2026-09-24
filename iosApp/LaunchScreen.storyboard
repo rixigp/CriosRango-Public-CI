@@ -1,16 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.Xcode" version="3.0" toolsVersion="21512" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES">
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.Xcode" version="3.0" toolsVersion="21512" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="A10000050000000000000001">
     <scenes>
-        <scene sceneID="LaunchScene">
+        <scene sceneID="A10000060000000000000001">
             <objects>
-                <viewController id="VC" sceneMemberID="viewController">
-                    <view key="view" contentMode="scaleToFill" id="VIEW">
+                <viewController id="A10000050000000000000001" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="A10000070000000000000001">
                         <rect key="frame" x="0.0" y="0.0" width="390" height="844"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <color key="backgroundColor" systemColor="systemBackgroundColor"/>
                     </view>
                 </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="A10000080000000000000001" userLabel="First Responder" sceneMemberID="firstResponder"/>
             </objects>
+            <point key="canvasLocation" x="0.0" y="0.0"/>
         </scene>
     </scenes>
 </document>
