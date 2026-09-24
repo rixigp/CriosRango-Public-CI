@@ -25,7 +25,7 @@ jobs:
             runner: ubuntu-24.04
           - name: iOS simulator build
             platform: ios
-            runner: macos-14
+            runner: macos-26
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -178,6 +178,27 @@ jobs:
             echo "CRIOSRANGO_DEBUG_KEY_ALIAS=$CRIOSRANGO_DEBUG_KEY_ALIAS"
             echo "CRIOSRANGO_DEBUG_KEY_PASSWORD=$CRIOSRANGO_DEBUG_KEY_PASSWORD"
           } >> "$GITHUB_ENV"
+      - name: Select and validate Xcode 26 toolchain
+        if: ${{ matrix.platform == 'ios' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEVELOPER_DIR="/Applications/Xcode_26.6.app/Contents/Developer"
+          test -d "$DEVELOPER_DIR"
+          sudo xcode-select -s "$DEVELOPER_DIR"
+          echo "===== XCODE TOOLCHAIN ====="
+          xcodebuild -version
+          SDK_VERSION="$(xcrun --sdk iphoneos --show-sdk-version)"
+          echo "iPhoneOS SDK version: $SDK_VERSION"
+          swift --version
+          echo "xcode-select path: $(xcode-select -p)"
+          XCODE_MAJOR="$(xcodebuild -version | awk '/^Xcode / {split($2,v,"."); print v[1]; exit}')"
+          SDK_MAJOR="${SDK_VERSION%%.*}"
+          echo "Xcode major: $XCODE_MAJOR"
+          echo "iPhoneOS SDK major: $SDK_MAJOR"
+          test "$XCODE_MAJOR" -ge 26
+          test "$SDK_MAJOR" -ge 26
+          test "$(xcode-select -p)" = "$DEVELOPER_DIR"
       - name: Build iOS Simulator app
         if: ${{ matrix.platform == 'ios' }}
         run: |
