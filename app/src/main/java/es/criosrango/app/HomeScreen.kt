@@ -548,7 +548,7 @@ internal fun NovedadesScreen(
                 .padding(
                     start = 12.dp,
                     end = 20.dp,
-                    top = 18.dp
+                    top = CatalogHeaderGeometry.topPadding
                 ),
             verticalAlignment =
                 Alignment.CenterVertically
