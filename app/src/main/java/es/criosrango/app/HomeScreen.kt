@@ -941,9 +941,11 @@ internal fun ProductCarousel(products: List<StoreProduct>, onProduct: (StoreProd
                 }
                 Spacer(Modifier.height(8.dp))
                         Text(product.name.cleanWooText(), maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(product.displayPrice(), color = Color(0xFF183B35), fontWeight = FontWeight.Bold)
-                    if (product.onSale) Text("  ${product.regularDisplayPrice()}", color = Color.Gray, style = MaterialTheme.typography.bodySmall, textDecoration = TextDecoration.LineThrough)
+                if (product.hasDisplayablePrice) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(product.displayPrice(), color = Color(0xFF183B35), fontWeight = FontWeight.Bold)
+                        if (product.onSale) Text("  ${product.regularDisplayPrice()}", color = Color.Gray, style = MaterialTheme.typography.bodySmall, textDecoration = TextDecoration.LineThrough)
+                    }
                 }
             }
         }
