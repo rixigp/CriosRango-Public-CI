@@ -2,6 +2,7 @@ package es.criosrango.app
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.window.Dialog
@@ -254,11 +255,9 @@ internal fun SortableProductGrid(
 
     Column(modifier) {
 
-        CatalogProductControlsRow(
-            sortMode = sortMode,
-            onSortMode = { sortMode = it },
-            activeFilters = 0,
-            onOpenFilters = { filtersOpen = true }
+        ProductSortControl(
+            mode = sortMode,
+            onMode = { sortMode = it }
         )
 
         ProductGrid(
