@@ -310,11 +310,13 @@ private fun IosProductCard(product: StoreProduct, onClick: (StoreProduct) -> Uni
         )
         Spacer(Modifier.height(7.dp))
         Text(product.name, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-        Text(
-            product.prices.price + " " + product.prices.currencySymbol,
-            color = Color(0xFF183B35),
-            fontWeight = FontWeight.Bold
-        )
+        if (product.hasDisplayablePrice) {
+            Text(
+                product.prices.price + " " + product.prices.currencySymbol,
+                color = Color(0xFF183B35),
+                fontWeight = FontWeight.Bold
+            )
+        }
         cartStore?.let { store ->
             if (product.variations.isEmpty()) {
                 TextButton(onClick = { store.add(product.id) }) { Text("Añadir") }
@@ -442,7 +444,9 @@ private fun IosProductDetail(
                 modifier = Modifier.fillMaxWidth().aspectRatio(1f)
             )
             Text(product.name, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(20.dp, 12.dp, 20.dp, 4.dp))
-            Text(product.prices.price + " " + product.prices.currencySymbol, fontWeight = FontWeight.Bold, color = Color(0xFF183B35), modifier = Modifier.padding(horizontal = 20.dp))
+            if (product.hasDisplayablePrice) {
+                Text(product.prices.price + " " + product.prices.currencySymbol, fontWeight = FontWeight.Bold, color = Color(0xFF183B35), modifier = Modifier.padding(horizontal = 20.dp))
+            }
             cartStore?.let { store ->
                 var selectedVariation by remember(product.id) { mutableStateOf(product.variations.firstOrNull()) }
                 if (product.variations.isNotEmpty()) {
