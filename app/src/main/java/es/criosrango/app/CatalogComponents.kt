@@ -85,7 +85,8 @@ import kotlinx.coroutines.launch
 internal fun CatalogScreenHeader(
     title: String,
     onBack: () -> Unit,
-    trailing: @Composable RowScope.() -> Unit = {}
+    trailing: @Composable RowScope.() -> Unit = {},
+    onTitleLongPress: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
@@ -101,7 +102,17 @@ internal fun CatalogScreenHeader(
         }
         Text(
             text = title,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .then(
+                    if (onTitleLongPress != null) {
+                        Modifier.pointerInput(Unit) {
+                            detectTapGestures(onLongPress = { onTitleLongPress() })
+                        }
+                    } else {
+                        Modifier
+                    }
+                ),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Normal,
             color = Color(0xFF183B35)
@@ -243,23 +254,12 @@ internal fun SortableProductGrid(
 
     Column(modifier) {
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = 20.dp,
-                    vertical = 8.dp
-                ),
-            horizontalArrangement =
-                Arrangement.End
-        ) {
-            ProductSortControl(
-                mode = sortMode,
-                onMode = {
-                    sortMode = it
-                }
-            )
-        }
+        CatalogProductControlsRow(
+            sortMode = sortMode,
+            onSortMode = { sortMode = it },
+            activeFilters = 0,
+            onOpenFilters = { filtersOpen = true }
+        )
 
         ProductGrid(
             sorted,
