@@ -312,7 +312,7 @@ private fun IosProductCard(product: StoreProduct, onClick: (StoreProduct) -> Uni
         Text(product.name, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
         if (product.hasDisplayablePrice) {
             Text(
-                product.prices.price + " " + product.prices.currencySymbol,
+                formatStorePrice(product.prices.price, product.prices.currencyMinorUnit, product.prices.currencySymbol),
                 color = Color(0xFF183B35),
                 fontWeight = FontWeight.Bold
             )
@@ -445,7 +445,7 @@ private fun IosProductDetail(
             )
             Text(product.name, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(20.dp, 12.dp, 20.dp, 4.dp))
             if (product.hasDisplayablePrice) {
-                Text(product.prices.price + " " + product.prices.currencySymbol, fontWeight = FontWeight.Bold, color = Color(0xFF183B35), modifier = Modifier.padding(horizontal = 20.dp))
+                Text(formatStorePrice(product.prices.price, product.prices.currencyMinorUnit, product.prices.currencySymbol), fontWeight = FontWeight.Bold, color = Color(0xFF183B35), modifier = Modifier.padding(horizontal = 20.dp))
             }
             cartStore?.let { store ->
                 var selectedVariation by remember(product.id) { mutableStateOf(product.variations.firstOrNull()) }
