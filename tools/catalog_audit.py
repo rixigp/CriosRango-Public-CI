@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Read-only WooCommerce Store API vs app catalog audit.
 
-The app's CategoryCatalogCache first downloads the complete Store API product
-catalog, deduplicates by product id, stores direct category relations, and
-resolves category descendants when a category is opened. This script mirrors
-those rules without writing to WooCommerce or the app database.
+WooCommerce view = direct category assignment exposed by the complete Store
+API catalog. App view mirrors CategoryCatalogCache.queryCategoryTree(): the
+complete global snapshot is deduplicated by product_id and category descendants
+are included. No endpoint or database is modified.
 """
 from __future__ import annotations
 
@@ -23,11 +23,12 @@ PAGE_SIZE = 100
 def fetch_json(base: str, path: str, params: dict[str, Any]) -> tuple[Any, dict[str, str]]:
     url = base.rstrip("/") + "/" + path.lstrip("/")
     url += "?" + urllib.parse.urlencode(params)
-    request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "CriosRango-Catalog-Audit/1.0"})
+    request = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json", "User-Agent": "CriosRango-Catalog-Audit/1.0"},
+    )
     with urllib.request.urlopen(request, timeout=45) as response:
-        body = json.loads(response.read().decode("utf-8"))
-        headers = {k.lower(): v for k, v in response.headers.items()}
-        return body, headers
+        return json.loads(response.read().decode("utf-8")), {k.lower(): v for k, v in response.headers.items()}
 
 
 def fetch_all(base: str, path: str) -> tuple[list[dict[str, Any]], int, list[int]]:
@@ -82,15 +83,18 @@ def main() -> int:
     parser.add_argument("--output", default="catalog-audit.json")
     args = parser.parse_args()
 
-    base = args.base_url
-    raw_categories, category_pages, _ = fetch_all(base, "products/categories")
-    raw_products, product_pages, product_page_numbers = fetch_all(base, "products")
+    raw_categories, category_pages, _ = fetch_all(args.base_url, "products/categories")
+    raw_products, product_pages, product_page_numbers = fetch_all(args.base_url, "products")
 
     categories: dict[int, dict[str, Any]] = {int(c["id"]): c for c in raw_categories if "id" in c}
-    duplicate_product_ids = sorted(pid for pid, n in Counter(int(p["id"]) for p in raw_products if "id" in p).items() if n > 1)
+    raw_ids = [int(p["id"]) for p in raw_products if "id" in p]
+    duplicate_product_ids = sorted(pid for pid, n in Counter(raw_ids).items() if n > 1)
     products_by_id = {int(p["id"]): p for p in raw_products if "id" in p}
 
-    outlet = next((c for c in categories.values() if str(c.get("slug", "")).lower() == "outlet" or str(c.get("name", "")).lower() == "outlet"), None)
+    outlet = next(
+        (c for c in categories.values() if str(c.get("slug", "")).lower() == "outlet" or str(c.get("name", "")).lower() == "outlet"),
+        None,
+    )
     outlet_id = int(outlet["id"]) if outlet else None
     outlet_tree = category_descendants(outlet_id, categories) if outlet_id is not None else set()
 
@@ -104,21 +108,7 @@ def main() -> int:
     for category in visible:
         cid = int(category["id"])
         subtree = category_descendants(cid, categories)
-        # WooCommerce/Store API view: server-side category query, all pages, deduped.
-        woo_raw, woo_pages, _ = fetch_all(base, "products") if False else (None, None, None)
-        woo_products: list[dict[str, Any]] = []
-        page = 1
-        while True:
-            body, headers = fetch_json(base, "products", {"category": cid, "per_page": PAGE_SIZE, "page": page})
-            if not isinstance(body, list):
-                raise RuntimeError(f"Unexpected category response for {cid} page {page}")
-            woo_products.extend(body)
-            total_pages = int(headers["x-wp-totalpages"]) if headers.get("x-wp-totalpages", "").isdigit() else None
-            if (total_pages is not None and page >= total_pages) or (total_pages is None and len(body) < PAGE_SIZE):
-                break
-            page += 1
-        woo_ids = sorted({int(p["id"]) for p in woo_products if "id" in p})
-        # App view: complete global snapshot + direct relations + descendants, exactly as queryCategoryTree().
+        woo_ids = sorted(pid for pid, product in products_by_id.items() if cid in direct_category_ids(product))
         app_ids = sorted(pid for pid, product in products_by_id.items() if direct_category_ids(product) & subtree)
         woo_set, app_set = set(woo_ids), set(app_ids)
         category_rows.append({
@@ -161,7 +151,7 @@ def main() -> int:
 
     report = {
         "read_only": True,
-        "api_base": base,
+        "api_base": args.base_url,
         "page_size": PAGE_SIZE,
         "pagination": {
             "categories_pages": category_pages,
@@ -170,8 +160,8 @@ def main() -> int:
             "complete": True,
         },
         "rules": {
-            "woocommerce": "Store API products?category=<id>, all pages, deduplicated by product_id",
-            "app": "Complete global Store API snapshot, deduplicated by product_id; category membership follows CategoryCatalogCache queryCategoryTree, including descendants",
+            "woocommerce": "Complete Store API snapshot, deduplicated by product_id; direct category assignment only.",
+            "app": "Complete Store API snapshot, deduplicated by product_id; CategoryCatalogCache.queryCategoryTree semantics, including descendants.",
             "original_category_ids": "read-only extension data; never used to mutate category membership",
         },
         "categories": category_rows,
@@ -191,7 +181,7 @@ def main() -> int:
     }
 
     with open(args.output, "w", encoding="utf-8") as fh:
-        json.dump(report, fh, ensure_ascii=False, indent=2, sort_keys=False)
+        json.dump(report, fh, ensure_ascii=False, indent=2)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
 
