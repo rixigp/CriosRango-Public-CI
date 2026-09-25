@@ -23,6 +23,9 @@ data class StoreProduct(
 ) {
     val originalCategoryIds: List<Int>
         get() = extensions?.criosrangoOutlet?.originalCategoryIds.orEmpty()
+
+    val hasDisplayablePrice: Boolean
+        get() = prices.price.toLongOrNull()?.let { it > 0L } == true
 }
 @Serializable
 data class StoreProductExtensions(
