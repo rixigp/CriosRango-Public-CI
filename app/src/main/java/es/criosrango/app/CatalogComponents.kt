@@ -80,6 +80,60 @@ import compose.icons.tablericons.Shirt
 import compose.icons.tablericons.Tag
 import kotlinx.coroutines.launch
 
+
+@Composable
+internal fun CatalogScreenHeader(
+    title: String,
+    onBack: () -> Unit,
+    trailing: @Composable RowScope.() -> Unit = {}
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Volver"
+            )
+        }
+        Text(
+            text = title,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Normal,
+            color = Color(0xFF183B35)
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            content = trailing
+        )
+    }
+}
+
+@Composable
+internal fun CatalogProductControlsRow(
+    sortMode: ProductSortMode,
+    onSortMode: (ProductSortMode) -> Unit,
+    activeFilters: Int,
+    onOpenFilters: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ProductSortControl(mode = sortMode, onMode = onSortMode)
+        OutlinedButton(onClick = onOpenFilters) {
+            Text(if (activeFilters == 0) "Filtros" else "Filtros ($activeFilters)")
+        }
+    }
+}
+
 // PRODUCT_SORT_START
 
 internal enum class ProductSortMode(
