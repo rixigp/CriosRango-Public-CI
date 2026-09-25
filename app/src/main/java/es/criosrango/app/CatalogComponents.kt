@@ -10,7 +10,6 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.outlined.LocalOffer
 import androidx.compose.ui.draw.scale
-
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
@@ -81,10 +80,10 @@ import compose.icons.tablericons.Shirt
 import compose.icons.tablericons.Tag
 import kotlinx.coroutines.launch
 
-/** One geometry rule for every catalog screen title row. */
+/** Single vertical rule for every catalog screen title row. */
 internal object CatalogHeaderGeometry {
     val horizontalPadding = 20.dp
-    val topPadding = 12.dp
+    val topGapAfterGlobalHeader = 12.dp
     val bottomPadding = 12.dp
     val controlsVerticalPadding = 8.dp
 }
@@ -93,37 +92,44 @@ internal object CatalogHeaderGeometry {
 internal fun CatalogScreenHeader(
     title: String,
     onBack: () -> Unit,
+    subtitle: String? = null,
     trailing: @Composable RowScope.() -> Unit = {},
     onTitleLongPress: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(
-                horizontal = CatalogHeaderGeometry.horizontalPadding,
-                vertical = CatalogHeaderGeometry.topPadding
-            )
+            .padding(horizontal = CatalogHeaderGeometry.horizontalPadding)
+            .padding(top = CatalogHeaderGeometry.topGapAfterGlobalHeader)
             .padding(bottom = CatalogHeaderGeometry.bottomPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onBack) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
         }
-        Text(
-            text = title,
-            modifier = Modifier
-                .weight(1f)
-                .then(
-                    if (onTitleLongPress != null) {
-                        Modifier.pointerInput(Unit) {
-                            detectTapGestures(onLongPress = { onTitleLongPress() })
-                        }
-                    } else Modifier
-                ),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Normal,
-            color = Color(0xFF183B35)
-        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = title,
+                modifier = if (onTitleLongPress != null) {
+                    Modifier.pointerInput(Unit) {
+                        detectTapGestures(onLongPress = { onTitleLongPress() })
+                    }
+                } else Modifier,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Normal,
+                color = Color(0xFF183B35)
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray
+                )
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically, content = trailing)
     }
 }
@@ -178,33 +184,3 @@ internal fun ProductSortControl(mode: ProductSortMode, onMode: (ProductSortMode)
             androidx.compose.material3.TextButton(onClick = { expanded = true }) {
                 Text(text = "${mode.label}  ▾", color = MaterialTheme.colorScheme.onBackground)
             }
-            androidx.compose.material3.DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }
-            ) {
-                ProductSortMode.values().forEach { option ->
-                    androidx.compose.material3.DropdownMenuItem(
-                        text = { Text(option.label) },
-                        onClick = { expanded = false; onMode(option) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun SortableProductGrid(
-    products: List<StoreProduct>,
-    modifier: Modifier = Modifier,
-    onProduct: (StoreProduct) -> Unit
-) {
-    var sortMode by remember { mutableStateOf(ProductSortMode.RECENT) }
-    val sorted = sortProducts(products, sortMode)
-    Column(modifier) {
-        ProductSortControl(mode = sortMode, onMode = { sortMode = it })
-        ProductGrid(sorted, Modifier.weight(1f), onProduct)
-    }
-}
-
-// PRODUCT_SORT_END
