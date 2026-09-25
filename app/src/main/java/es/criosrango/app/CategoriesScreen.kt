@@ -408,6 +408,9 @@ private fun CategoryTelemetryDialog(
     var backendDialogOpen by remember { mutableStateOf(false) }
     var backendRunning by remember { mutableStateOf(false) }
     var backendResult by remember { mutableStateOf<String?>(null) }
+    var catalogCountDialogOpen by remember { mutableStateOf(false) }
+    var catalogCountRunning by remember { mutableStateOf(false) }
+    var catalogCountResult by remember { mutableStateOf<String?>(null) }
 
     fun value(v: Long?) = v?.let { it.toString() + " ms" } ?: "N/A"
     fun delta(from: Long?, to: Long?) =
@@ -523,6 +526,23 @@ private fun CategoryTelemetryDialog(
                     Text("PRUEBA BACKEND")
                 }
 
+                TextButton(
+                    enabled = !catalogCountRunning,
+                    onClick = {
+                        catalogCountRunning = true
+                        catalogCountResult = null
+                        catalogCountDialogOpen = true
+                        scope.launch {
+                            catalogCountResult = CatalogCountDiagnosticRunner(
+                                StoreSession(context.getSharedPreferences("criosrango", android.content.Context.MODE_PRIVATE))
+                            ).run()
+                            catalogCountRunning = false
+                        }
+                    }
+                ) {
+                    Text("CONTEO CATEGORÍAS")
+                }
+
                 TextButton(onClick = {
                     val clipboard =
                         context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
@@ -550,6 +570,14 @@ private fun CategoryTelemetryDialog(
             result = backendResult ?: "",
             running = backendRunning,
             onDismiss = { backendDialogOpen = false }
+        )
+    }
+
+    if (catalogCountDialogOpen) {
+        BackendDiagnosticResultDialog(
+            result = catalogCountResult ?: "",
+            running = catalogCountRunning,
+            onDismiss = { catalogCountDialogOpen = false }
         )
     }
 }
