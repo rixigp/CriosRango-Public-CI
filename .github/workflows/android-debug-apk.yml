@@ -1,0 +1,85 @@
+name: Android debug APK
+
+on:
+  push:
+    branches:
+      - kmp-migration
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-debug-apk:
+    name: Android debug APK
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Prepare Google Services
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$GOOGLE_SERVICES_JSON_BASE64"
+          printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
+          test -s app/google-services.json
+      - name: Prepare permanent debug keystore
+        env:
+          CRIOSRANGO_DEBUG_KEYSTORE_BASE64: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_BASE64 }}
+          CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD }}
+          CRIOSRANGO_DEBUG_KEY_ALIAS: ${{ secrets.CRIOSRANGO_DEBUG_KEY_ALIAS }}
+          CRIOSRANGO_DEBUG_KEY_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$CRIOSRANGO_DEBUG_KEYSTORE_BASE64"
+          test -n "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD"
+          test -n "$CRIOSRANGO_DEBUG_KEY_ALIAS"
+          test -n "$CRIOSRANGO_DEBUG_KEY_PASSWORD"
+          printf '%s' "$CRIOSRANGO_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/criosrango-debug.jks"
+          chmod 600 "$RUNNER_TEMP/criosrango-debug.jks"
+          {
+            echo "CRIOSRANGO_DEBUG_KEYSTORE_FILE=$RUNNER_TEMP/criosrango-debug.jks"
+            echo "CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD=$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD"
+            echo "CRIOSRANGO_DEBUG_KEY_ALIAS=$CRIOSRANGO_DEBUG_KEY_ALIAS"
+            echo "CRIOSRANGO_DEBUG_KEY_PASSWORD=$CRIOSRANGO_DEBUG_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+      - name: Verify permanent signing certificate
+        env:
+          CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          STOREPASS="$(printf '%s' "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD" | tr -d '\r\n')"
+          keytool -list -keystore "$RUNNER_TEMP/criosrango-debug.jks" -storepass "$STOREPASS" -alias "criosrango-development"
+      - name: Assemble Android debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+      - name: Locate and validate exactly one APK
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_DIR="app/build/outputs/apk/debug"
+          APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' | wc -l)
+          test "$APK_COUNT" -eq 1
+          APK_PATH="$(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK_PATH"
+          test -s "$APK_PATH"
+          echo "APK_PATH=$APK_PATH"
+          echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
+          echo "APK_NAME=$(basename "$APK_PATH")"
+          echo "APK_SIZE=$(stat -c '%s' "$APK_PATH") bytes"
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: criosrango-debug-apk
+          retention-days: 2
+          path: ${{ steps.apk.outputs.apk_path }}
+          if-no-files-found: error
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f app/google-services.json
+          rm -f "$RUNNER_TEMP/criosrango-debug.jks"
