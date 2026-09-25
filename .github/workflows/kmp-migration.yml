@@ -357,46 +357,29 @@ jobs:
           xcrun simctl install "$UDID" "$APP_PATH"
           CONSOLE_LOG="$GITHUB_WORKSPACE/kmp-runtime-console.log"
           rm -f "$CONSOLE_LOG"
-          APP_PID="$(xcrun simctl launch "$UDID" es.criosrango.app | tail -n 1 | awk '{print $NF}')"
-          echo "Application PID returned by simctl launch: $APP_PID"
-          case "$APP_PID" in
-            ''|*[!0-9]*) echo "::error::simctl launch did not return a numeric application PID: $APP_PID"; exit 1 ;;
-          esac
-          echo "Application launch succeeded without --console-pty."
+          xcrun simctl launch --console-pty "$UDID" es.criosrango.app >"$CONSOLE_LOG" 2>&1 &
+          CONSOLE_PID=$!
+          echo "simctl console PID: $CONSOLE_PID"
           FOUND=0
           for i in $(seq 1 30); do
-            if xcrun simctl spawn "$UDID" pgrep -x "$CF_BUNDLE_EXECUTABLE" >/dev/null 2>&1; then
-              echo "Application process is alive at smoke check ${i}/30."
-            else
-              echo "Application process is not visible at smoke check ${i}/30."
-              break
-            fi
+            if grep -q "KMP_RUNTIME_ROOT_SCREEN_READY" "$CONSOLE_LOG" && grep -q "KMP_RUNTIME_HOME_READY" "$CONSOLE_LOG"; then FOUND=1; break; fi
+            if ! kill -0 "$CONSOLE_PID" >/dev/null 2>&1; then break; fi
             sleep 1
           done
-          if xcrun simctl spawn "$UDID" pgrep -x "$CF_BUNDLE_EXECUTABLE" >/dev/null 2>&1; then
-            FOUND=1
-          fi
-          echo "Application PID(s) after stability window:"
-          xcrun simctl spawn "$UDID" pgrep -x "$CF_BUNDLE_EXECUTABLE" 2>&1 || true
-          echo "Runtime smoke evidence from Simulator log (markers are optional):"
-          xcrun simctl spawn "$UDID" log show --last 45s --style compact --predicate 'process == "CriosRango"' >"$CONSOLE_LOG" 2>&1 || true
+          if kill -0 "$CONSOLE_PID" >/dev/null 2>&1; then kill "$CONSOLE_PID" >/dev/null 2>&1 || true; fi
+          wait "$CONSOLE_PID" >/dev/null 2>&1 || true
+          echo "Runtime console output:"
           cat "$CONSOLE_LOG" || true
-          if grep -q "KMP_RUNTIME_ROOT_SCREEN_READY" "$CONSOLE_LOG" && grep -q "KMP_RUNTIME_HOME_READY" "$CONSOLE_LOG"; then
-            echo "Runtime smoke markers captured from Simulator log."
-          else
-            echo "Runtime smoke markers were not captured from Simulator log; continuing because launch/stability is authoritative."
-          fi
-          echo "Crash indicators:"
-          grep -Ei "crash|exception|fatal|abort|terminated|killed" "$CONSOLE_LOG" || true
+          echo "Application PID(s):"
+          xcrun simctl spawn "$UDID" pgrep -f "es.criosrango.app" 2>&1 || true
           if [ "$FOUND" -ne 1 ]; then
-            echo "::error::CriosRango did not remain alive for the runtime smoke stability window."
+            echo "Runtime smoke markers were not all captured from direct app console (root + home)."
+            echo "Crash indicators:"
+            grep -Ei "crash|exception|fatal|abort|terminated|killed" "$CONSOLE_LOG" || true
+            echo "First likely error:"
+            grep -Ein "error|exception|fatal|crash|abort|failed" "$CONSOLE_LOG" | head -n 1 || true
             exit 1
           fi
-          if grep -Eiq "crash|exception|fatal|abort" "$CONSOLE_LOG"; then
-            echo "::error::Runtime smoke found crash indicators in the CriosRango Simulator log."
-            exit 1
-          fi
-          echo "Runtime smoke PASS: app installed, simctl launch returned PID $APP_PID, process remained alive, and no crash indicators were found."
       - name: Cleanup signing material
         if: always() && matrix.platform == 'ios'
         run: rm -f "$RUNNER_TEMP/criosrango-debug.jks"
