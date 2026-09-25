@@ -81,13 +81,12 @@ import compose.icons.tablericons.Shirt
 import compose.icons.tablericons.Tag
 import kotlinx.coroutines.launch
 
-/** Single vertical geometry used by every catalog title row. */
+/** One geometry rule for every catalog screen title row. */
 internal object CatalogHeaderGeometry {
     val horizontalPadding = 20.dp
     val topPadding = 12.dp
     val bottomPadding = 12.dp
-    val controlsTopPadding = 8.dp
-    val controlsBottomPadding = 8.dp
+    val controlsVerticalPadding = 8.dp
 }
 
 @Composable
@@ -102,20 +101,13 @@ internal fun CatalogScreenHeader(
             .fillMaxWidth()
             .padding(
                 horizontal = CatalogHeaderGeometry.horizontalPadding,
-                vertical = 0.dp
+                vertical = CatalogHeaderGeometry.topPadding
             )
-            .heightIn(min = 48.dp)
-            .padding(
-                top = CatalogHeaderGeometry.topPadding,
-                bottom = CatalogHeaderGeometry.bottomPadding
-            ),
+            .padding(bottom = CatalogHeaderGeometry.bottomPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onBack) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Volver"
-            )
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
         }
         Text(
             text = title,
@@ -126,18 +118,13 @@ internal fun CatalogScreenHeader(
                         Modifier.pointerInput(Unit) {
                             detectTapGestures(onLongPress = { onTitleLongPress() })
                         }
-                    } else {
-                        Modifier
-                    }
+                    } else Modifier
                 ),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Normal,
             color = Color(0xFF183B35)
         )
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            content = trailing
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, content = trailing)
     }
 }
 
@@ -153,7 +140,7 @@ internal fun CatalogProductControlsRow(
             .fillMaxWidth()
             .padding(
                 horizontal = CatalogHeaderGeometry.horizontalPadding,
-                vertical = CatalogHeaderGeometry.controlsTopPadding
+                vertical = CatalogHeaderGeometry.controlsVerticalPadding
             ),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -167,19 +154,14 @@ internal fun CatalogProductControlsRow(
 
 // PRODUCT_SORT_START
 
-internal enum class ProductSortMode(
-    val label: String
-) {
+internal enum class ProductSortMode(val label: String) {
     RECENT("Más recientes"),
     PRICE_ASC("Precio: menor a mayor"),
     PRICE_DESC("Precio: mayor a menor"),
     NAME_ASC("Nombre A-Z")
 }
 
-internal fun sortProducts(
-    products: List<StoreProduct>,
-    mode: ProductSortMode
-): List<StoreProduct> =
+internal fun sortProducts(products: List<StoreProduct>, mode: ProductSortMode): List<StoreProduct> =
     when (mode) {
         ProductSortMode.RECENT -> products
         ProductSortMode.PRICE_ASC -> products.sortedBy { it.prices.price.toLongOrNull() ?: Long.MAX_VALUE }
@@ -188,10 +170,7 @@ internal fun sortProducts(
     }
 
 @Composable
-internal fun ProductSortControl(
-    mode: ProductSortMode,
-    onMode: (ProductSortMode) -> Unit
-) {
+internal fun ProductSortControl(mode: ProductSortMode, onMode: (ProductSortMode) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Ordenar por", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
@@ -206,10 +185,7 @@ internal fun ProductSortControl(
                 ProductSortMode.values().forEach { option ->
                     androidx.compose.material3.DropdownMenuItem(
                         text = { Text(option.label) },
-                        onClick = {
-                            expanded = false
-                            onMode(option)
-                        }
+                        onClick = { expanded = false; onMode(option) }
                     )
                 }
             }
