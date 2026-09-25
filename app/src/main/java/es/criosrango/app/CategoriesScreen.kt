@@ -1430,12 +1430,13 @@ internal fun CategoryParentWithFilters(
     Column(Modifier.fillMaxSize().padding(padding)) {
         CatalogScreenHeader(
             title = title,
-            onBack = onBack
-        ) {
-            OutlinedButton(onClick = { open = true }) {
-                Text(if (active == 0) "Filtros" else "Filtros ($active)")
+            onBack = onBack,
+            trailing = {
+                OutlinedButton(onClick = { open = true }) {
+                    Text(if (active == 0) "Filtros" else "Filtros ($active)")
+                }
             }
-        }
+        )
 
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
 
