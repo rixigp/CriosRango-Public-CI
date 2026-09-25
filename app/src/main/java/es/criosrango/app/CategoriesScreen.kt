@@ -713,8 +713,8 @@ internal fun CategoryList(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(
-            start = 0.dp,
-            end = 0.dp,
+            start = 20.dp,
+            end = 20.dp,
             top = 0.dp,
             bottom = 28.dp
         ),
