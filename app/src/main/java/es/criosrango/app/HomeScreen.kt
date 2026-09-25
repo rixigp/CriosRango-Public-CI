@@ -546,10 +546,10 @@ internal fun NovedadesScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    start = 12.dp,
-                    end = 20.dp,
-                    top = CatalogHeaderGeometry.topPadding
-                ),
+                    horizontal = CatalogHeaderGeometry.horizontalPadding,
+                    vertical = CatalogHeaderGeometry.topPadding
+                )
+                .padding(bottom = CatalogHeaderGeometry.bottomPadding),
             verticalAlignment =
                 Alignment.CenterVertically
         ) {
@@ -567,7 +567,7 @@ internal fun NovedadesScreen(
                 Text(
                     text = "Novedades",
                     style =
-                        MaterialTheme.typography.headlineMedium
+                        MaterialTheme.typography.titleLarge
                 )
 
                 Text(
