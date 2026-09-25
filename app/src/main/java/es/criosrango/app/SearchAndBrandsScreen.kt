@@ -690,23 +690,25 @@ internal fun ProductCard(product: StoreProduct, onProduct: (StoreProduct) -> Uni
                 fontWeight = FontWeight.SemiBold
             )
         }
-        Row(
-            Modifier.fillMaxWidth().height(24.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                product.displayPrice(),
-                color = Color(0xFF183B35),
-                fontWeight = FontWeight.Bold
-            )
-            if (product.onSale) {
-                Spacer(Modifier.width(8.dp))
+        if (product.hasDisplayablePrice) {
+            Row(
+                Modifier.fillMaxWidth().height(24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    product.regularDisplayPrice(),
-                    color = Color.Gray,
-                    style = MaterialTheme.typography.bodySmall,
-                    textDecoration = TextDecoration.LineThrough
+                    product.displayPrice(),
+                    color = Color(0xFF183B35),
+                    fontWeight = FontWeight.Bold
                 )
+                if (product.onSale) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        product.regularDisplayPrice(),
+                        color = Color.Gray,
+                        style = MaterialTheme.typography.bodySmall,
+                        textDecoration = TextDecoration.LineThrough
+                    )
+                }
             }
         }
     }
