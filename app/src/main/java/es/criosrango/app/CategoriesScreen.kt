@@ -624,37 +624,34 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             onProduct = onProduct
         )
     } else {
-        Column(Modifier.padding(padding)) {
-            Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onCategoriesBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
-                }
-                var telemetryDialogOpen by remember(currentId) { mutableStateOf(false) }
-                Text(
-                    current?.name ?: "Productos",
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            var telemetryDialogOpen by remember(currentId) { mutableStateOf(false) }
+            CatalogScreenHeader(
+                title = current?.name ?: "Productos",
+                onBack = onCategoriesBack
+            )
+            if (currentId != null) {
+                Box(
                     modifier = Modifier.pointerInput(currentId) {
                         detectTapGestures(onLongPress = { telemetryDialogOpen = true })
-                    },
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF183B35)
+                    }
                 )
-                if (telemetryDialogOpen && currentId != null) {
-                    CategoryTelemetryDialog(
-                        categoryId = currentId,
-                        categoryName = current?.name ?: "Productos",
-                        onDismiss = { telemetryDialogOpen = false }
-                    )
-                }
+            }
+            if (telemetryDialogOpen && currentId != null) {
+                CategoryTelemetryDialog(
+                    categoryId = currentId,
+                    categoryName = current?.name ?: "Productos",
+                    onDismiss = { telemetryDialogOpen = false }
+                )
             }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             OutletAwareCatalogGrid(
-                    current = current,
-                    products = products,
-                    allCategories = categories,
-                    modifier = Modifier.fillMaxSize(),
-                    onProduct = onProduct
-                )
+                current = current,
+                products = products,
+                allCategories = categories,
+                modifier = Modifier.fillMaxSize(),
+                onProduct = onProduct
+            )
         }
     }
 }
@@ -690,30 +687,18 @@ internal fun CategoryList(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(
-            start = 20.dp,
-            end = 20.dp,
-            top = 18.dp,
+            start = 0.dp,
+            end = 0.dp,
+            top = 0.dp,
             bottom = 28.dp
         ),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         item {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
-                }
-
-                Text(
-                    "Categorías",
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Normal,
-                    color = Color(0xFF183B35)
-                )
-            }
+            CatalogScreenHeader(
+                title = "Categorías",
+                onBack = onBack
+            )
         }
 
         items(rows.size) { rowIndex ->
@@ -1417,22 +1402,10 @@ internal fun CategoryParentWithFilters(
     val active = sizes.size + colors.size + brands.size
 
     Column(Modifier.fillMaxSize().padding(padding)) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+        CatalogScreenHeader(
+            title = title,
+            onBack = onBack
         ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver")
-            }
-
-            Text(
-                title,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Normal,
-                color = Color(0xFF183B35)
-            )
-
             OutlinedButton(onClick = { open = true }) {
                 Text(if (active == 0) "Filtros" else "Filtros ($active)")
             }
