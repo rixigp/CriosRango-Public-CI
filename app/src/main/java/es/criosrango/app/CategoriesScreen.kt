@@ -628,15 +628,13 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             var telemetryDialogOpen by remember(currentId) { mutableStateOf(false) }
             CatalogScreenHeader(
                 title = current?.name ?: "Productos",
-                onBack = onCategoriesBack
+                onBack = onCategoriesBack,
+                onTitleLongPress = if (currentId != null) {
+                    { telemetryDialogOpen = true }
+                } else {
+                    null
+                }
             )
-            if (currentId != null) {
-                Box(
-                    modifier = Modifier.pointerInput(currentId) {
-                        detectTapGestures(onLongPress = { telemetryDialogOpen = true })
-                    }
-                )
-            }
             if (telemetryDialogOpen && currentId != null) {
                 CategoryTelemetryDialog(
                     categoryId = currentId,
