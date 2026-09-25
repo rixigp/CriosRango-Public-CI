@@ -194,8 +194,6 @@ jobs:
           xcrun swiftc --version
           echo "xcode-select path:"
           xcode-select -p
-          echo "swift-driver:"
-          xcrun swift-driver --version
           XCODE_INFO="$(xcodebuild -version)"
           printf "%s\\n" "$XCODE_INFO"
           SDK_VERSION="$(xcrun --sdk iphoneos --show-sdk-version)"
