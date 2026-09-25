@@ -81,6 +81,14 @@ import compose.icons.tablericons.Shirt
 import compose.icons.tablericons.Tag
 import kotlinx.coroutines.launch
 
+/** Single vertical geometry used by every catalog title row. */
+internal object CatalogHeaderGeometry {
+    val horizontalPadding = 20.dp
+    val topPadding = 12.dp
+    val bottomPadding = 12.dp
+    val controlsTopPadding = 8.dp
+    val controlsBottomPadding = 8.dp
+}
 
 @Composable
 internal fun CatalogScreenHeader(
@@ -92,7 +100,15 @@ internal fun CatalogScreenHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .padding(
+                horizontal = CatalogHeaderGeometry.horizontalPadding,
+                vertical = 0.dp
+            )
+            .heightIn(min = 48.dp)
+            .padding(
+                top = CatalogHeaderGeometry.topPadding,
+                bottom = CatalogHeaderGeometry.bottomPadding
+            ),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onBack) {
@@ -135,7 +151,10 @@ internal fun CatalogProductControlsRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
+            .padding(
+                horizontal = CatalogHeaderGeometry.horizontalPadding,
+                vertical = CatalogHeaderGeometry.controlsTopPadding
+            ),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -162,26 +181,10 @@ internal fun sortProducts(
     mode: ProductSortMode
 ): List<StoreProduct> =
     when (mode) {
-
-        ProductSortMode.RECENT ->
-            products
-
-        ProductSortMode.PRICE_ASC ->
-            products.sortedBy {
-                it.prices.price.toLongOrNull()
-                    ?: Long.MAX_VALUE
-            }
-
-        ProductSortMode.PRICE_DESC ->
-            products.sortedByDescending {
-                it.prices.price.toLongOrNull()
-                    ?: Long.MIN_VALUE
-            }
-
-        ProductSortMode.NAME_ASC ->
-            products.sortedBy {
-                it.name.lowercase()
-            }
+        ProductSortMode.RECENT -> products
+        ProductSortMode.PRICE_ASC -> products.sortedBy { it.prices.price.toLongOrNull() ?: Long.MAX_VALUE }
+        ProductSortMode.PRICE_DESC -> products.sortedByDescending { it.prices.price.toLongOrNull() ?: Long.MIN_VALUE }
+        ProductSortMode.NAME_ASC -> products.sortedBy { it.name.lowercase() }
     }
 
 @Composable
@@ -189,46 +192,20 @@ internal fun ProductSortControl(
     mode: ProductSortMode,
     onMode: (ProductSortMode) -> Unit
 ) {
-    var expanded by remember {
-        mutableStateOf(false)
-    }
-
-    Row(
-        verticalAlignment =
-            Alignment.CenterVertically
-    ) {
-        Text(
-            text = "Ordenar por",
-            style =
-                MaterialTheme.typography.bodyMedium,
-            color = Color.Gray
-        )
-
+    var expanded by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Ordenar por", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
         Box {
-            androidx.compose.material3.TextButton(
-                onClick = {
-                    expanded = true
-                }
-            ) {
-                Text(
-                    text = "${mode.label}  ▾",
-                    color =
-                        MaterialTheme.colorScheme.onBackground
-                )
+            androidx.compose.material3.TextButton(onClick = { expanded = true }) {
+                Text(text = "${mode.label}  ▾", color = MaterialTheme.colorScheme.onBackground)
             }
-
             androidx.compose.material3.DropdownMenu(
                 expanded = expanded,
-                onDismissRequest = {
-                    expanded = false
-                }
+                onDismissRequest = { expanded = false }
             ) {
                 ProductSortMode.values().forEach { option ->
-
                     androidx.compose.material3.DropdownMenuItem(
-                        text = {
-                            Text(option.label)
-                        },
+                        text = { Text(option.label) },
                         onClick = {
                             expanded = false
                             onMode(option)
@@ -246,25 +223,11 @@ internal fun SortableProductGrid(
     modifier: Modifier = Modifier,
     onProduct: (StoreProduct) -> Unit
 ) {
-    var sortMode by remember {
-        mutableStateOf(ProductSortMode.RECENT)
-    }
-
-    val sorted =
-        sortProducts(products, sortMode)
-
+    var sortMode by remember { mutableStateOf(ProductSortMode.RECENT) }
+    val sorted = sortProducts(products, sortMode)
     Column(modifier) {
-
-        ProductSortControl(
-            mode = sortMode,
-            onMode = { sortMode = it }
-        )
-
-        ProductGrid(
-            sorted,
-            Modifier.weight(1f),
-            onProduct
-        )
+        ProductSortControl(mode = sortMode, onMode = { sortMode = it })
+        ProductGrid(sorted, Modifier.weight(1f), onProduct)
     }
 }
 
