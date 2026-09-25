@@ -73,8 +73,8 @@ internal class CatalogCountDiagnosticRunner(
             buildString {
                 appendLine("CATALOG CATEGORY COUNT DIAGNOSTIC")
                 appendLine("READ_ONLY=true")
-                appendLine("PRODUCT_ENDPOINT=\${STORE_API_BASE_URL}products")
-                appendLine("CATEGORY_ENDPOINT=\${STORE_API_BASE_URL}products/categories")
+                appendLine("PRODUCT_ENDPOINT=${STORE_API_BASE_URL}products")
+                appendLine("CATEGORY_ENDPOINT=${STORE_API_BASE_URL}products/categories")
                 appendLine("PRODUCT_PAGE_SIZE=100")
                 appendLine("CATEGORY_PAGE_SIZE=100")
                 appendLine("COUNT_RULE=Store API products received by the app; all pages; distinct product ID; category hierarchy includes descendants.")
@@ -82,19 +82,19 @@ internal class CatalogCountDiagnosticRunner(
                 appendLine("OUTLET_ORIGIN_RULE=original_category_ids are not counted as normal category membership; they are used only by the existing Outlet-origin UI.")
                 appendLine()
                 appendLine("PRODUCT_PAGES_COMPLETE=true")
-                appendLine("TOTAL_DISTINCT_PRODUCTS=\${products.size}")
-                appendLine("TOTAL_CATEGORIES=\${rows.size}")
+                appendLine("TOTAL_DISTINCT_PRODUCTS=${products.size}")
+                appendLine("TOTAL_CATEGORIES=${rows.size}")
                 appendLine()
                 appendLine("[")
                 rows.forEachIndexed { index, row ->
                     appendLine(
-                        "  {\"category_id\":\${row.categoryId},\"category_name\":\${json(row.categoryName)},\"parent_id\":\${row.parentId},\"parent_name\":\${row.parentName?.let(::json) ?: "null"},\"product_count\":\${row.productCount}}" +
+                        "  {\"category_id\":${row.categoryId},\"category_name\":${json(row.categoryName)},\"parent_id\":${row.parentId},\"parent_name\":${row.parentName?.let(::json) ?: "null"},\"product_count\":${row.productCount}}" +
                             if (index == rows.lastIndex) "" else ","
                     )
                 }
                 appendLine("]")
                 appendLine()
-                appendLine("{\"total_categories\":\${rows.size},\"total_distinct_products\":\${products.size}}")
+                appendLine("{\"total_categories\":${rows.size},\"total_distinct_products\":${products.size}}")
             }.trim()
         } finally {
             client.connectionPool.evictAll()
@@ -106,10 +106,10 @@ internal class CatalogCountDiagnosticRunner(
         val result = mutableListOf<StoreProduct>()
         var page = 1
         while (true) {
-            val response = request(client, "products?per_page=100&page=\$page")
+            val response = request(client, "products?per_page=100&page=$page")
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw IllegalStateException("Products page \$page HTTP \${response.code}: \$body")
+                throw IllegalStateException("Products page $page HTTP ${response.code}: $body")
             }
             val batch = gson.fromJson<List<StoreProduct>>(
                 body,
@@ -129,10 +129,10 @@ internal class CatalogCountDiagnosticRunner(
         val result = mutableListOf<ProductCategory>()
         var page = 1
         while (true) {
-            val response = request(client, "products/categories?per_page=100&page=\$page")
+            val response = request(client, "products/categories?per_page=100&page=$page")
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw IllegalStateException("Categories page \$page HTTP \${response.code}: \$body")
+                throw IllegalStateException("Categories page $page HTTP ${response.code}: $body")
             }
             val batch = gson.fromJson<List<ProductCategory>>(
                 body,
