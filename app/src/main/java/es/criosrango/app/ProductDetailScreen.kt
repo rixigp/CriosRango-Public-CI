@@ -553,24 +553,27 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
 
                     Spacer(Modifier.height(8.dp))
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            current?.displayPrice() ?: product.displayPrice(),
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF252225)
-                        )
-
-                        if (product.onSale) {
+                    val effectiveProduct = current ?: product
+                    if (effectiveProduct.hasDisplayablePrice) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
                             Text(
-                                product.regularDisplayPrice(),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = Color(0xFF9E9E9E),
-                                textDecoration = TextDecoration.LineThrough
+                                effectiveProduct.displayPrice(),
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF252225)
                             )
+
+                            if (effectiveProduct.onSale) {
+                                Text(
+                                    effectiveProduct.regularDisplayPrice(),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = Color(0xFF9E9E9E),
+                                    textDecoration = TextDecoration.LineThrough
+                                )
+                            }
                         }
                     }
 
