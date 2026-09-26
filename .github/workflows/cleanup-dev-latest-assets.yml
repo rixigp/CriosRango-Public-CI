@@ -12,7 +12,7 @@ jobs:
     steps:
       - name: Delete only APK assets 119-136 and validate release
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: \${{ github.repository }}
           RELEASE_ID: "392186031"
         shell: bash
@@ -40,8 +40,22 @@ jobs:
             579764028
           )
 
+          test -n "$GH_TOKEN"
+          echo "GH_TOKEN is present"
+          echo "GH_TOKEN length: ${#GH_TOKEN}"
+          gh auth status
+
           echo "Validating release $RELEASE_ID before deletion..."
-          release="$(gh api "repos/$REPOSITORY/releases/$RELEASE_ID")"
+          release="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")"
+
+          test "$(jq -r '.id' <<<"$release")" = "$RELEASE_ID"
+          test "$(jq -r '.tag_name' <<<"$release")" = "dev-latest"
+
+          echo "Read-only release check OK: $RELEASE_ID / dev-latest"
+          echo "Read-only asset listing:"
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" --jq '.[].name'
+
+          echo "Read-only checks passed; entering DELETE phase..."
 
           test "$(jq -r '.id' <<<"$release")" = "$RELEASE_ID"
           test "$(jq -r '.tag_name' <<<"$release")" = "dev-latest"
