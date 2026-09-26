@@ -13,112 +13,13 @@ jobs:
       - name: Delete only APK assets 119-136 and validate release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPOSITORY: \${{ github.repository }}
+          REPOSITORY: ${{ github.repository }}
           RELEASE_ID: "392186031"
         shell: bash
         run: |
           set -euo pipefail
 
-          assets=(
-            590546988
-            575571121
-            575609625
-            575638268
-            575670248
-            576424189
-            576507752
-            576606071
-            576783448
-            576962173
-            577076933
-            577351057
-            577674211
-            577745761
-            578513758
-            579596036
-            579719138
-            579764028
-          )
-
-          test -n "$GH_TOKEN"
-          echo "GH_TOKEN is present"
-          echo "GH_TOKEN length: ${#GH_TOKEN}"
-          gh auth status
-
-          echo "Validating release $RELEASE_ID before deletion..."
-          release="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")"
-
-          test "$(jq -r '.id' <<<"$release")" = "$RELEASE_ID"
-          test "$(jq -r '.tag_name' <<<"$release")" = "dev-latest"
-
-          echo "Read-only release check OK: $RELEASE_ID / dev-latest"
-          echo "Read-only asset listing:"
-          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" --jq '.[].name'
-
-          echo "Read-only checks passed; entering DELETE phase..."
-
-          test "$(jq -r '.id' <<<"$release")" = "$RELEASE_ID"
-          test "$(jq -r '.tag_name' <<<"$release")" = "dev-latest"
-
-          for asset_id in "${assets[@]}"; do
-            echo "Deleting asset ID $asset_id..."
-            gh api --method DELETE "repos/$REPOSITORY/releases/assets/$asset_id"
-          done
-
-          echo "Validating release after deletion..."
-          release_after="$(gh api "repos/$REPOSITORY/releases/$RELEASE_ID")"
-          test "$(jq -r '.id' <<<"$release_after")" = "$RELEASE_ID"
-          test "$(jq -r '.tag_name' <<<"$release_after")" = "dev-latest"
-
-          assets_after="$(gh api "repos/$REPOSITORY/releases/$RELEASE_ID/assets?per_page=100")"
-
-          expected_keep=(
-            "CriosRango-latest.apk"
-            "CriosRango-v1.0.137-code137.apk"
-            "CriosRango-v1.0.138-code138.apk"
-            "CriosRango-v1.0.139-code139.apk"
-          )
-
-          for name in "${expected_keep[@]}"; do
-            if ! jq -e --arg name "$name" 'any(.[]; .name == $name)' <<<"$assets_after" >/dev/null; then
-              echo "ERROR: required asset disappeared: $name"
-              exit 1
-            fi
-          done
-
-          forbidden_ids=(
-            591617158
-            580830732
-            581128408
-            591617162
-          )
-
-          for asset_id in "${forbidden_ids[@]}"; do
-            if jq -e --argjson id "$asset_id" 'any(.[]; .id == $id)' <<<"$assets_after" >/dev/null; then
-              echo "OK: protected asset ID $asset_id remains"
-            else
-              echo "ERROR: protected asset ID $asset_id is missing"
-              exit 1
-            fi
-          done
-
-          forbidden_names=(
-            "CriosRango-latest.apk"
-            "CriosRango-v1.0.137-code137.apk"
-            "CriosRango-v1.0.138-code138.apk"
-            "CriosRango-v1.0.139-code139.apk"
-          )
-
-          for name in "${forbidden_names[@]}"; do
-            if jq -e --arg name "$name" 'any(.[]; .name == $name)' <<<"$assets_after" >/dev/null; then
-              echo "OK: protected asset remains: $name"
-            else
-              echo "ERROR: protected asset missing: $name"
-              exit 1
-            fi
-          done
-
-          old_names=(
+          target_names=(
             "CriosRango-v1.0.119-code119.apk"
             "CriosRango-v1.0.120-code120.apk"
             "CriosRango-v1.0.121-code121.apk"
@@ -139,11 +40,77 @@ jobs:
             "CriosRango-v1.0.136-code136.apk"
           )
 
-          for name in "${old_names[@]}"; do
-            if jq -e --arg name "$name" 'any(.[]; .name == $name)' <<<"$assets_after" >/dev/null; then
-              echo "ERROR: old asset still exists: $name"
+          protected_names=(
+            "CriosRango-latest.apk"
+            "CriosRango-v1.0.137-code137.apk"
+            "CriosRango-v1.0.138-code138.apk"
+            "CriosRango-v1.0.139-code139.apk"
+          )
+
+          test -n "$GH_TOKEN"
+          echo "GH_TOKEN is present"
+          echo "GH_TOKEN length: ${#GH_TOKEN}"
+          gh auth status
+
+          echo "Validating release $RELEASE_ID before deletion..."
+          release="$(gh api "repos/$REPOSITORY/releases/$RELEASE_ID")"
+          test "$(jq -r '.id' <<<"$release")" = "$RELEASE_ID"
+          test "$(jq -r '.tag_name' <<<"$release")" = "dev-latest"
+
+          echo "Read-only release check OK: $RELEASE_ID / dev-latest"
+
+          assets_json="$(gh api --paginate --slurp "repos/$REPOSITORY/releases/$RELEASE_ID/assets" | jq 'add')"
+
+          echo "Current assets (ID<TAB>NAME):"
+          jq -r '.[] | "\(.id)\t\(.name)"' <<<"$assets_json"
+
+          for name in "${protected_names[@]}"; do
+            count="$(jq --arg name "$name" '[.[] | select(.name == $name)] | length' <<<"$assets_json")"
+            if [ "$count" -ne 1 ]; then
+              echo "ERROR: protected asset must exist exactly once: $name (matches: $count)"
               exit 1
             fi
+          done
+
+          for name in "${target_names[@]}"; do
+            count="$(jq --arg name "$name" '[.[] | select(.name == $name)] | length' <<<"$assets_json")"
+            if [ "$count" -ne 1 ]; then
+              echo "ERROR: target asset must exist exactly once before deletion: $name (matches: $count)"
+              exit 1
+            fi
+          done
+
+          echo "All protected assets and all 119-136 targets validated exactly once."
+          echo "Read-only checks passed; entering DELETE phase..."
+
+          for name in "${target_names[@]}"; do
+            id="$(jq -r --arg name "$name" '.[] | select(.name == $name) | .id' <<<"$assets_json")"
+            echo "Deleting $name (asset id $id)"
+            gh api --method DELETE "repos/$REPOSITORY/releases/assets/$id"
+          done
+
+          echo "Validating release after deletion..."
+          release_after="$(gh api "repos/$REPOSITORY/releases/$RELEASE_ID")"
+          test "$(jq -r '.id' <<<"$release_after")" = "$RELEASE_ID"
+          test "$(jq -r '.tag_name' <<<"$release_after")" = "dev-latest"
+
+          assets_after="$(gh api --paginate --slurp "repos/$REPOSITORY/releases/$RELEASE_ID/assets" | jq 'add')"
+
+          for name in "${target_names[@]}"; do
+            count="$(jq --arg name "$name" '[.[] | select(.name == $name)] | length' <<<"$assets_after")"
+            if [ "$count" -ne 0 ]; then
+              echo "ERROR: old asset still exists: $name (matches: $count)"
+              exit 1
+            fi
+          done
+
+          for name in "${protected_names[@]}"; do
+            count="$(jq --arg name "$name" '[.[] | select(.name == $name)] | length' <<<"$assets_after")"
+            if [ "$count" -ne 1 ]; then
+              echo "ERROR: protected asset must exist exactly once after deletion: $name (matches: $count)"
+              exit 1
+            fi
+            echo "OK: protected asset remains exactly once: $name"
           done
 
           echo "Post-cleanup assets:"
