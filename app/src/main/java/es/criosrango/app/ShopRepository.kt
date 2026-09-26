@@ -244,6 +244,16 @@ class StoreRepository(private val api: StoreApi) {
         }
     }
 
+    suspend fun productsByBrandPage(
+        brand: BrandTerm,
+        page: Int,
+        perPage: Int
+    ): List<StoreProduct> = api.productsByTag(
+        perPage = perPage,
+        page = page,
+        tag = brand.slug
+    )
+
     suspend fun allProducts(): List<StoreProduct> {
         val result = mutableListOf<StoreProduct>()
         var page = 1
