@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   verified-apk:
-    if: ${{ github.event.head_commit.message == 'ci: run verified APK publication for current head' }}
     name: Build and verify installable Android APK
     runs-on: ubuntu-24.04
     steps:
@@ -121,8 +120,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSIONED_APK: ${{ steps.apk.outputs.versioned_apk }}
-          VERSION_NAME: ${{ steps.apk.outputs.version_name }}
-          VERSION_CODE: ${{ steps.apk.outputs.version_code }}
           APK_SHA256: ${{ steps.apk.outputs.apk_sha256 }}
         run: |
           set -euo pipefail
