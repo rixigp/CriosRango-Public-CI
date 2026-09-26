@@ -496,6 +496,10 @@ internal fun NovedadesScreen(
     onBack: () -> Unit,
     onProduct: (StoreProduct) -> Unit
 ) {
+    BackHandler {
+        onBack()
+    }
+
     var selected by remember {
         mutableStateOf("Todas")
     }
@@ -546,10 +550,10 @@ internal fun NovedadesScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    horizontal = CatalogHeaderGeometry.horizontalPadding,
-                    vertical = CatalogHeaderGeometry.topPadding
-                )
-                .padding(bottom = CatalogHeaderGeometry.bottomPadding),
+                    start = 12.dp,
+                    end = 20.dp,
+                    top = 18.dp
+                ),
             verticalAlignment =
                 Alignment.CenterVertically
         ) {
@@ -567,7 +571,7 @@ internal fun NovedadesScreen(
                 Text(
                     text = "Novedades",
                     style =
-                        MaterialTheme.typography.titleLarge
+                        MaterialTheme.typography.headlineMedium
                 )
 
                 Text(
@@ -941,11 +945,9 @@ internal fun ProductCarousel(products: List<StoreProduct>, onProduct: (StoreProd
                 }
                 Spacer(Modifier.height(8.dp))
                         Text(product.name.cleanWooText(), maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                if (product.hasDisplayablePrice) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(product.displayPrice(), color = Color(0xFF183B35), fontWeight = FontWeight.Bold)
-                        if (product.onSale) Text("  ${product.regularDisplayPrice()}", color = Color.Gray, style = MaterialTheme.typography.bodySmall, textDecoration = TextDecoration.LineThrough)
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(product.displayPrice(), color = Color(0xFF183B35), fontWeight = FontWeight.Bold)
+                    if (product.onSale) Text("  ${product.regularDisplayPrice()}", color = Color.Gray, style = MaterialTheme.typography.bodySmall, textDecoration = TextDecoration.LineThrough)
                 }
             }
         }
