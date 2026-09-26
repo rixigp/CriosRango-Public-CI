@@ -8,6 +8,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -18,6 +19,9 @@ import android.util.Log
 import java.io.IOException
 import java.net.SocketTimeoutException
 import kotlinx.coroutines.TimeoutCancellationException
+import es.criosrango.shared.CatalogPage
+import es.criosrango.shared.CatalogPaginator
+import es.criosrango.shared.CatalogPagingState
 
 enum class CheckoutPhase { IDLE, QUOTING, READY, CREATING_ORDER, ORDER_CREATED, OPENING_PAYMENT, FAILED }
 data class PaymentRedirect(val generation: Long, val orderId: Int, val url: String)
@@ -49,7 +53,12 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private val _checkoutLoading = MutableStateFlow(false)
     val checkoutLoading: StateFlow<Boolean> = _checkoutLoading.asStateFlow()
     private val _products = MutableStateFlow<List<StoreProduct>>(emptyList())
-    private val brandProductsCache = mutableMapOf<String, List<StoreProduct>>()
+    private val brandProductsCache = mutableMapOf<String, CatalogPagingState<StoreProduct>>()
+    private val brandPaginators = mutableMapOf<String, CatalogPaginator<StoreProduct>>()
+    private val _brandPagingState = MutableStateFlow(CatalogPagingState<StoreProduct>())
+    val brandPagingState: StateFlow<CatalogPagingState<StoreProduct>> = _brandPagingState.asStateFlow()
+    private var brandStateSyncJob: Job? = null
+    private var activeBrand: BrandTerm? = null
     private val _activeBrandProducts = MutableStateFlow<List<StoreProduct>>(emptyList())
     val activeBrandProducts: StateFlow<List<StoreProduct>> = _activeBrandProducts.asStateFlow()
     private val _activeBrandSlug = MutableStateFlow<String?>(null)
@@ -210,23 +219,63 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         val requestVersion = ++productsRequestVersion
         categoryCatalogLoadStatus.value = CategoryLoadStatus()
         val brandKey = brand.slug.trim().lowercase()
+        activeBrand = brand
         _activeBrandSlug.value = brandKey
-        _activeBrandProducts.value = brandProductsCache[brandKey].orEmpty()
+        brandStateSyncJob?.cancel()
+        val paginator = brandPaginators.getOrPut(brandKey) { CatalogPaginator(identity = { it.id }) }
+        val currentState = paginator.state.value
+        _brandPagingState.value = currentState
+        _activeBrandProducts.value = currentState.items
+        brandProductsCache[brandKey] = currentState
+        brandStateSyncJob = viewModelScope.launch {
+            paginator.state.collect { state ->
+                if (requestVersion != productsRequestVersion || _activeBrandSlug.value != brandKey) return@collect
+                _brandPagingState.value = state
+                _activeBrandProducts.value = state.items
+                brandProductsCache[brandKey] = state
+                if (state.initialError != null) _error.value = (state.initialError as? Exception)?.toStoreUiError() ?: StoreUiError(StoreErrorType.UNEXPECTED)
+                if (!state.isInitialLoading) _isLoading.value = false
+            }
+        }
+        if (currentState.currentPage > 0 || currentState.isInitialLoading) {
+            _isLoading.value = currentState.isInitialLoading
+            return
+        }
+        _brandPagingState.value = CatalogPagingState(isInitialLoading = true)
         viewModelScope.launch {
             _isLoading.value = true; _error.value = null
-            try {
-                val direct = runCatching { repository.productsByBrand(brand) }.getOrDefault(emptyList())
-                val loaded = if (direct.isNotEmpty()) direct else repository.allProducts().filter { it.hasBrand(brand) }
-                val isolated = loaded.distinctBy { it.id }
-                brandProductsCache[brandKey] = isolated
-                if (requestVersion == productsRequestVersion && _activeBrandSlug.value == brandKey) {
-                    _activeBrandProducts.value = isolated
-                }
-            } catch (exception: Exception) {
-                if (requestVersion == productsRequestVersion && _activeBrandSlug.value == brandKey) {
-                    _error.value = exception.toStoreUiError()
-                }
-            } finally { if (requestVersion == productsRequestVersion) _isLoading.value = false }
+            paginator.start(brandKey) { page, perPage ->
+                val items = repository.productsByBrandPage(brand, page, perPage)
+                CatalogPage(items = items, hasMore = items.size >= perPage)
+            }
+            if (requestVersion == productsRequestVersion && _activeBrandSlug.value == brandKey) {
+                val state = paginator.state.value
+                _brandPagingState.value = state
+                _activeBrandProducts.value = state.items
+                brandProductsCache[brandKey] = state
+                _isLoading.value = false
+                if (state.initialError != null) _error.value = (state.initialError as? Exception)?.toStoreUiError() ?: StoreUiError(StoreErrorType.UNEXPECTED)
+            }
+        }
+    }
+
+    fun loadNextBrandPage() {
+        val brandKey = _activeBrandSlug.value ?: return
+        val brand = activeBrand ?: return
+        val paginator = brandPaginators[brandKey] ?: return
+        val state = paginator.state.value
+        if (state.isAppending || !state.hasMore || state.currentPage <= 0) return
+        viewModelScope.launch {
+            paginator.loadNext { page, perPage ->
+                val items = repository.productsByBrandPage(brand, page, perPage)
+                CatalogPage(items = items, hasMore = items.size >= perPage)
+            }
+            if (_activeBrandSlug.value == brandKey && activeBrand?.slug?.trim()?.lowercase() == brandKey) {
+                val updated = paginator.state.value
+                _brandPagingState.value = updated
+                _activeBrandProducts.value = updated.items
+                brandProductsCache[brandKey] = updated
+            }
         }
     }
 
