@@ -368,7 +368,7 @@ jobs:
           LOG_STREAM="$GITHUB_WORKSPACE/kmp-runtime-log-stream.log"
           LOG_SHOW="$GITHUB_WORKSPACE/kmp-runtime-log-show.log"
           rm -f "$LOG_STREAM" "$LOG_SHOW"
-          echo "Starting independent Simulator log capture..."
+          echo "Starting independent Simulator log capture (launch is validated separately)..."
           xcrun simctl spawn "$UDID" log stream --style compact --level debug --predicate "process == \"$CF_BUNDLE_EXECUTABLE\"" >"$LOG_STREAM" 2>&1 &
           LOG_STREAM_PID=$!
           echo "log stream PID: $LOG_STREAM_PID"
