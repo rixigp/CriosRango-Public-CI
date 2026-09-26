@@ -1,0 +1,147 @@
+name: Android verified development APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verified-apk:
+    name: Build and verify installable Android APK
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: kmp-migration
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Prepare Google Services
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$GOOGLE_SERVICES_JSON_BASE64"
+          printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
+          test -s app/google-services.json
+
+      - name: Prepare permanent debug keystore
+        env:
+          CRIOSRANGO_DEBUG_KEYSTORE_BASE64: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_BASE64 }}
+          CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD }}
+          CRIOSRANGO_DEBUG_KEY_ALIAS: ${{ secrets.CRIOSRANGO_DEBUG_KEY_ALIAS }}
+          CRIOSRANGO_DEBUG_KEY_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$CRIOSRANGO_DEBUG_KEYSTORE_BASE64"
+          test -n "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD"
+          test -n "$CRIOSRANGO_DEBUG_KEY_ALIAS"
+          test -n "$CRIOSRANGO_DEBUG_KEY_PASSWORD"
+          printf '%s' "$CRIOSRANGO_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/criosrango-debug.jks"
+          chmod 600 "$RUNNER_TEMP/criosrango-debug.jks"
+          {
+            echo "CRIOSRANGO_DEBUG_KEYSTORE_FILE=$RUNNER_TEMP/criosrango-debug.jks"
+            echo "CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD=$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD"
+            echo "CRIOSRANGO_DEBUG_KEY_ALIAS=$CRIOSRANGO_DEBUG_KEY_ALIAS"
+            echo "CRIOSRANGO_DEBUG_KEY_PASSWORD=$CRIOSRANGO_DEBUG_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Verify signing certificate
+        env:
+          CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          STOREPASS="$(printf '%s' "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD" | tr -d '\r\n')"
+          keytool -list -v -keystore "$RUNNER_TEMP/criosrango-debug.jks" -storepass "$STOREPASS" -alias "criosrango-development" | grep -E 'Alias name:|Entry type:|Owner:|SHA256:'
+
+      - name: Assemble Android debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Locate and validate exactly one APK
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== ALL APK OUTPUTS ==='
+          find app/build/outputs -type f -name '*.apk' -print
+          APK_DIR="app/build/outputs/apk/debug"
+          APK_COUNT=$(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' | wc -l)
+          test "$APK_COUNT" -eq 1
+          APK_PATH="$(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -s "$APK_PATH"
+          echo "APK_PATH=$APK_PATH"
+          echo "APK_NAME=$(basename "$APK_PATH")"
+          echo "APK_SIZE=$(stat -c '%s' "$APK_PATH") bytes"
+          sha256sum "$APK_PATH"
+
+          echo '=== unzip -t ==='
+          unzip -t "$APK_PATH"
+
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          test -x "$BUILD_TOOLS/apksigner"
+          test -x "$BUILD_TOOLS/zipalign"
+          test -x "$BUILD_TOOLS/aapt"
+
+          echo '=== aapt dump badging ==='
+          "$BUILD_TOOLS/aapt" dump badging "$APK_PATH"
+
+          echo '=== apksigner verify ==='
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK_PATH"
+
+          echo '=== zipalign check ==='
+          "$BUILD_TOOLS/zipalign" -c -v 4 "$APK_PATH"
+
+          VERSION_NAME=$(grep -E 'versionName[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
+          VERSION_CODE=$(grep -E 'versionCode[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/')
+          cp "$APK_PATH" "CriosRango-v${VERSION_NAME}-code${VERSION_CODE}.apk"
+          cp "$APK_PATH" CriosRango-latest.apk
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "VERSIONED_APK=CriosRango-v${VERSION_NAME}-code${VERSION_CODE}.apk" >> "$GITHUB_OUTPUT"
+          echo "APK_SHA256=$(sha256sum "$APK_PATH" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload verified APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: verified-criosrango-apk
+          retention-days: 7
+          path: |
+            CriosRango-v${{ steps.apk.outputs.version_name }}-code${{ steps.apk.outputs.version_code }}.apk
+            CriosRango-latest.apk
+          if-no-files-found: error
+
+      - name: Publish verified development APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSIONED_APK: ${{ steps.apk.outputs.VERSIONED_APK }}
+          VERSION_NAME: ${{ steps.apk.outputs.VERSION_NAME }}
+          VERSION_CODE: ${{ steps.apk.outputs.VERSION_CODE }}
+          APK_SHA256: ${{ steps.apk.outputs.APK_SHA256 }}
+        run: |
+          set -euo pipefail
+          NOTES="Verified debug APK for kmp-migration commit ${GITHUB_SHA}\n\nAPK SHA-256: ${APK_SHA256}\nGradle task: :app:assembleDebug\nValidation: unzip -t, aapt dump badging, apksigner verify --verbose --print-certs, zipalign -c -v 4"
+          if ! gh release view dev-latest >/dev/null 2>&1; then
+            gh release create dev-latest --title "Development latest" --notes "$NOTES" --prerelease --target "${GITHUB_SHA}"
+          else
+            gh release edit dev-latest --title "Development latest" --notes "$NOTES" --prerelease --target "${GITHUB_SHA}"
+          fi
+          gh release upload dev-latest "$VERSIONED_APK" CriosRango-latest.apk --clobber
+
+      - name: Final publication assertion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view dev-latest --json targetCommitish,assets
+          test "$(gh release view dev-latest --json targetCommitish --jq '.targetCommitish')" = "${GITHUB_SHA}"
+          gh release view dev-latest --json assets --jq '.assets[].name' | grep -Fx CriosRango-latest.apk
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f app/google-services.json
+          rm -f "$RUNNER_TEMP/criosrango-debug.jks"
