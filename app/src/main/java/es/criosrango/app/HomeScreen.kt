@@ -496,6 +496,10 @@ internal fun NovedadesScreen(
     onBack: () -> Unit,
     onProduct: (StoreProduct) -> Unit
 ) {
+    BackHandler {
+        onBack()
+    }
+
     var selected by remember {
         mutableStateOf("Todas")
     }
