@@ -1,13 +1,16 @@
 name: Android verified development APK
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - kmp-migration
 
 permissions:
   contents: write
 
 jobs:
   verified-apk:
+    if: ${{ github.event.head_commit.message == 'ci: run verified APK publication for current head' }}
     name: Build and verify installable Android APK
     runs-on: ubuntu-24.04
     steps:
@@ -99,10 +102,10 @@ jobs:
           VERSION_CODE=$(grep -E 'versionCode[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/')
           cp "$APK_PATH" "CriosRango-v${VERSION_NAME}-code${VERSION_CODE}.apk"
           cp "$APK_PATH" CriosRango-latest.apk
-          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_OUTPUT"
-          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_OUTPUT"
-          echo "VERSIONED_APK=CriosRango-v${VERSION_NAME}-code${VERSION_CODE}.apk" >> "$GITHUB_OUTPUT"
-          echo "APK_SHA256=$(sha256sum "$APK_PATH" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "versioned_apk=CriosRango-v${VERSION_NAME}-code${VERSION_CODE}.apk" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$(sha256sum "$APK_PATH" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Upload verified APK artifact
         uses: actions/upload-artifact@v7
@@ -117,10 +120,10 @@ jobs:
       - name: Publish verified development APK
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSIONED_APK: ${{ steps.apk.outputs.VERSIONED_APK }}
-          VERSION_NAME: ${{ steps.apk.outputs.VERSION_NAME }}
-          VERSION_CODE: ${{ steps.apk.outputs.VERSION_CODE }}
-          APK_SHA256: ${{ steps.apk.outputs.APK_SHA256 }}
+          VERSIONED_APK: ${{ steps.apk.outputs.versioned_apk }}
+          VERSION_NAME: ${{ steps.apk.outputs.version_name }}
+          VERSION_CODE: ${{ steps.apk.outputs.version_code }}
+          APK_SHA256: ${{ steps.apk.outputs.apk_sha256 }}
         run: |
           set -euo pipefail
           NOTES="Verified debug APK for kmp-migration commit ${GITHUB_SHA}\n\nAPK SHA-256: ${APK_SHA256}\nGradle task: :app:assembleDebug\nValidation: unzip -t, aapt dump badging, apksigner verify --verbose --print-certs, zipalign -c -v 4"
