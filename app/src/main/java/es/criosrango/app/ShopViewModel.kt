@@ -70,6 +70,10 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     val activeCategoryId: StateFlow<Int?> = _activeCategoryId.asStateFlow()
     private val _activeCategoryProducts = MutableStateFlow<List<StoreProduct>>(emptyList())
     val activeCategoryProducts: StateFlow<List<StoreProduct>> = _activeCategoryProducts.asStateFlow()
+    private val categoryPaginators = mutableMapOf<Int, CatalogPaginator<StoreProduct>>()
+    private val _categoryPagingState = MutableStateFlow(CatalogPagingState<StoreProduct>())
+    val categoryPagingState: StateFlow<CatalogPagingState<StoreProduct>> = _categoryPagingState.asStateFlow()
+    private var categoryStateSyncJob: Job? = null
     private val _categories = MutableStateFlow<List<ProductCategory>>(emptyList())
     val categories: StateFlow<List<ProductCategory>> = _categories.asStateFlow()
     private val _homeProducts = MutableStateFlow<List<StoreProduct>>(emptyList())
@@ -142,7 +146,33 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
 
     private fun activateCategory(categoryId: Int) {
         _activeCategoryId.value = categoryId
-        _activeCategoryProducts.value = _categoryProducts.value[categoryId]?.products.orEmpty()
+        val state = categoryPaginators[categoryId]?.state?.value ?: CatalogPagingState()
+        _categoryPagingState.value = state
+        _activeCategoryProducts.value = state.items
+        _categoryProducts.value = _categoryProducts.value.toMutableMap().apply {
+            put(categoryId, CategoryProductsState(
+                products = state.items,
+                loading = state.isInitialLoading || state.isAppending,
+                loaded = state.currentPage > 0,
+                error = (state.initialError ?: state.appendError)?.let { it.toStoreUiError() },
+                requestVersion = state.currentPage
+            ))
+        }
+    }
+
+    private fun updateCategoryPagingState(categoryId: Int, state: CatalogPagingState<StoreProduct>) {
+        if (_activeCategoryId.value != categoryId) return
+        _categoryPagingState.value = state
+        _activeCategoryProducts.value = state.items
+        _categoryProducts.value = _categoryProducts.value.toMutableMap().apply {
+            put(categoryId, CategoryProductsState(
+                products = state.items,
+                loading = state.isInitialLoading || state.isAppending,
+                loaded = state.currentPage > 0,
+                error = (state.initialError ?: state.appendError)?.let { it.toStoreUiError() },
+                requestVersion = state.currentPage
+            ))
+        }
     }
 
     private fun updateCategoryProducts(categoryId: Int, state: CategoryProductsState) {
@@ -161,28 +191,75 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     fun loadCategory(categoryId: Int) {
         lastCatalogOperation = CatalogOperation.Category(categoryId)
         CategoryLoadTelemetry.tap(categoryId)
-        activateCategory(categoryId)
         val requestVersion = ++productsRequestVersion
-        val categoryRequestVersion = (_categoryProducts.value[categoryId]?.requestVersion ?: 0) + 1
-        val previous = _categoryProducts.value[categoryId]
-        updateCategoryProducts(categoryId, CategoryProductsState(previous?.products.orEmpty(), true, previous?.loaded == true, null, categoryRequestVersion))
-        categoryCatalogLoadStatus.value = CategoryLoadStatus(categoryId, CategoryLoadState.LOADING)
-        viewModelScope.launch {
-            _isLoading.value = true; _error.value = null
-            try {
-                val loaded = repository.products(category = categoryId)
-                updateCategoryProducts(categoryId, CategoryProductsState(loaded, false, true, null, categoryRequestVersion))
-                if (_activeCategoryId.value == categoryId) CategoryLoadTelemetry.uiProducts(categoryId, loaded.size, "network")
-                if (requestVersion == productsRequestVersion && _activeCategoryId.value == categoryId) categoryCatalogLoadStatus.value = CategoryLoadStatus(categoryId, if (loaded.isEmpty()) CategoryLoadState.LOADED_EMPTY else CategoryLoadState.LOADED_WITH_RESULTS)
-            } catch (exception: Exception) {
-                val current = _categoryProducts.value[categoryId]
-                updateCategoryProducts(categoryId, CategoryProductsState(current?.products.orEmpty(), false, current?.loaded == true, exception.toStoreUiError(), categoryRequestVersion))
-                if (requestVersion == productsRequestVersion && _activeCategoryId.value == categoryId) {
+        _activeCategoryId.value = categoryId
+        categoryStateSyncJob?.cancel()
+        val paginator = categoryPaginators.getOrPut(categoryId) { CatalogPaginator(identity = { it.id }) }
+        val currentState = paginator.state.value
+        _categoryPagingState.value = currentState
+        _activeCategoryProducts.value = currentState.items
+        updateCategoryPagingState(categoryId, currentState)
+        categoryStateSyncJob = viewModelScope.launch {
+            paginator.state.collect { state ->
+                if (requestVersion != productsRequestVersion || _activeCategoryId.value != categoryId) return@collect
+                updateCategoryPagingState(categoryId, state)
+                if (state.initialError != null) {
+                    _error.value = (state.initialError as? Exception)?.toStoreUiError() ?: StoreUiError(StoreErrorType.UNEXPECTED)
                     categoryCatalogLoadStatus.value = CategoryLoadStatus(categoryId, CategoryLoadState.ERROR)
-                    _error.value = exception.toStoreUiError()
+                } else if (!state.isInitialLoading) {
+                    categoryCatalogLoadStatus.value = CategoryLoadStatus(
+                        categoryId,
+                        if (state.items.isEmpty()) CategoryLoadState.LOADED_EMPTY else CategoryLoadState.LOADED_WITH_RESULTS
+                    )
+                    _isLoading.value = false
+                    if (state.currentPage > 0) CategoryLoadTelemetry.uiProducts(categoryId, state.items.size, "paged")
                 }
-            } finally {
-                if (requestVersion == productsRequestVersion) _isLoading.value = false
+                if (state.appendError != null) {
+                    _error.value = (state.appendError as? Exception)?.toStoreUiError() ?: StoreUiError(StoreErrorType.UNEXPECTED)
+                }
+            }
+        }
+        categoryCatalogLoadStatus.value = CategoryLoadStatus(categoryId, if (currentState.currentPage > 0) CategoryLoadState.LOADED_WITH_RESULTS else CategoryLoadState.LOADING)
+        if (currentState.currentPage > 0 || currentState.isInitialLoading) {
+            _isLoading.value = currentState.isInitialLoading
+            return
+        }
+        _isLoading.value = true
+        _error.value = null
+        viewModelScope.launch {
+            paginator.start(categoryId.toString()) { page, perPage ->
+                val items = repository.productsByCategoryPage(
+                    categoryId = categoryId,
+                    page = page,
+                    perPage = perPage
+                )
+                CatalogPage(items = items, hasMore = items.size >= perPage)
+            }
+            if (requestVersion == productsRequestVersion && _activeCategoryId.value == categoryId) {
+                val state = paginator.state.value
+                updateCategoryPagingState(categoryId, state)
+                _isLoading.value = state.isInitialLoading
+                if (state.initialError != null) _error.value = (state.initialError as? Exception)?.toStoreUiError() ?: StoreUiError(StoreErrorType.UNEXPECTED)
+            }
+        }
+    }
+
+    fun loadNextCategoryPage() {
+        val categoryId = _activeCategoryId.value ?: return
+        val paginator = categoryPaginators[categoryId] ?: return
+        val state = paginator.state.value
+        if (state.isAppending || !state.hasMore || state.currentPage <= 0) return
+        viewModelScope.launch {
+            paginator.loadNext { page, perPage ->
+                val items = repository.productsByCategoryPage(
+                    categoryId = categoryId,
+                    page = page,
+                    perPage = perPage
+                )
+                CatalogPage(items = items, hasMore = items.size >= perPage)
+            }
+            if (_activeCategoryId.value == categoryId) {
+                updateCategoryPagingState(categoryId, paginator.state.value)
             }
         }
     }
