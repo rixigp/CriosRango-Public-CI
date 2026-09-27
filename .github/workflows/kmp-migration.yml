@@ -388,19 +388,24 @@ jobs:
           fi
           echo "Application PID: $APP_PID"
           sleep 3
-          if ! xcrun simctl spawn "$UDID" kill -0 "$APP_PID" >/dev/null 2>&1; then
-            echo "::error::CriosRango process is not alive after launch"
-            exit 1
+          APP_PROCESSES="$(xcrun simctl spawn "$UDID" pgrep -f "$CF_BUNDLE_EXECUTABLE" 2>/dev/null || true)"
+          echo "Application processes after launch:"
+          printf '%s\n' "$APP_PROCESSES"
+          if [ -z "$APP_PROCESSES" ]; then
+            echo "::warning::CriosRango process was not found immediately after launch; collecting Simulator process/crash evidence before deciding failure."
+            xcrun simctl spawn "$UDID" ps aux 2>&1 | grep -E "CriosRango|$BUNDLE_ID" || true
+          else
+            echo "Application process is alive after launch."
           fi
-          echo "Application process is alive after launch."
           FOUND=0
           for i in $(seq 1 27); do
             if grep -q "KMP_RUNTIME_ROOT_SCREEN_READY" "$LOG_STREAM" && grep -q "KMP_RUNTIME_HOME_READY" "$LOG_STREAM"; then
               FOUND=1
               break
             fi
-            if ! xcrun simctl spawn "$UDID" kill -0 "$APP_PID" >/dev/null 2>&1; then
-              echo "::error::CriosRango process died during runtime smoke"
+            APP_PROCESSES="$(xcrun simctl spawn "$UDID" pgrep -f "$CF_BUNDLE_EXECUTABLE" 2>/dev/null || true)"
+            if [ -z "$APP_PROCESSES" ]; then
+              echo "::warning::CriosRango process is no longer visible in the Simulator process list."
               break
             fi
             sleep 1
@@ -411,12 +416,16 @@ jobs:
           echo "Runtime log stream output:"
           cat "$LOG_STREAM" || true
           echo "Post-launch application process check:"
-          if xcrun simctl spawn "$UDID" kill -0 "$APP_PID" >/dev/null 2>&1; then
-            echo "Application PID $APP_PID is still alive."
+          APP_PROCESSES="$(xcrun simctl spawn "$UDID" pgrep -f "$CF_BUNDLE_EXECUTABLE" 2>/dev/null || true)"
+          printf '%s\n' "$APP_PROCESSES"
+          if [ -n "$APP_PROCESSES" ]; then
+            echo "Application process is still alive."
             APP_ALIVE=1
           else
-            echo "Application PID $APP_PID is no longer alive."
+            echo "Application process is no longer visible in the Simulator process list."
             APP_ALIVE=0
+            echo "Simulator process diagnostics:"
+            xcrun simctl spawn "$UDID" ps aux 2>&1 | grep -E "CriosRango|$BUNDLE_ID" || true
           fi
           echo "Independent Simulator log snapshot:"
           xcrun simctl spawn "$UDID" log show --style compact --last 2m --predicate "process == \"$CF_BUNDLE_EXECUTABLE\"" >"$LOG_SHOW" 2>&1 || true
