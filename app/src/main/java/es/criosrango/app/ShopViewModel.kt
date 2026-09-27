@@ -154,7 +154,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 products = state.items,
                 loading = state.isInitialLoading || state.isAppending,
                 loaded = state.currentPage > 0,
-                error = (state.initialError ?: state.appendError)?.let { it.toStoreUiError() },
+                error = (state.initialError ?: state.appendError)?.let { (it as? Exception)?.toStoreUiError() },
                 requestVersion = state.currentPage
             ))
         }
@@ -169,7 +169,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 products = state.items,
                 loading = state.isInitialLoading || state.isAppending,
                 loaded = state.currentPage > 0,
-                error = (state.initialError ?: state.appendError)?.let { it.toStoreUiError() },
+                error = (state.initialError ?: state.appendError)?.let { (it as? Exception)?.toStoreUiError() },
                 requestVersion = state.currentPage
             ))
         }
