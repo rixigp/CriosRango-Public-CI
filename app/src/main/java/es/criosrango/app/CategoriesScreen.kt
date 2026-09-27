@@ -170,15 +170,21 @@ internal fun OutletAwareCatalogGrid(
     products: List<StoreProduct>,
     allCategories: List<ProductCategory>,
     modifier: Modifier = Modifier,
-    onProduct: (StoreProduct) -> Unit
+    onProduct: (StoreProduct) -> Unit,
+    pagingState: es.criosrango.shared.CatalogPagingState<StoreProduct>? = null,
+    onLoadNextPage: (() -> Unit)? = null,
+    pagingKey: Any? = null
 ) {
 
     // Solo las categorías finales dentro de Outlet.
     if (current?.parent != 445) {
         CatalogFilteredProductGrid(
-            products,
-            modifier,
-            onProduct
+            products = products,
+            modifier = modifier,
+            onProduct = onProduct,
+            pagingState = pagingState,
+            onLoadNextPage = onLoadNextPage,
+            pagingKey = pagingKey
         )
         return
     }
@@ -346,7 +352,10 @@ internal fun OutletAwareCatalogGrid(
         CatalogFilteredProductGrid(
             products = visibleProducts,
             modifier = Modifier.weight(1f),
-            onProduct = onProduct
+            onProduct = onProduct,
+            pagingState = pagingState,
+            onLoadNextPage = onLoadNextPage,
+            pagingKey = listOf(pagingKey, selectedCategoryId)
         )
     }
 }
@@ -445,7 +454,7 @@ private fun CategoryTelemetryDialog(
         appendLine("TAP -> UI_PRODUCTS: " + delta(snapshot?.tapMs, snapshot?.uiProductsMs))
         appendLine()
         appendLine("endpoint: GET products")
-        appendLine("per_page: 24")
+        appendLine("per_page: 12")
         appendLine("productos recibidos: " + (snapshot?.products ?: "N/A"))
         appendLine("páginas solicitadas antes de pintar: 1")
         appendLine("globalSync wait: NO")
@@ -583,7 +592,7 @@ private fun CategoryTelemetryDialog(
 }
 
 @Composable
-internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<StoreProduct>, path: MutableList<Int>, padding: PaddingValues, loading: Boolean, loadCategory: (Int) -> Unit, loadCategoryTree: (Int) -> Unit, onProduct: (StoreProduct) -> Unit, onRootBack: (() -> Unit)? = null, onOpen: (ProductCategory) -> Unit,
+internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<StoreProduct>, path: MutableList<Int>, padding: PaddingValues, loading: Boolean, categoryPagingState: es.criosrango.shared.CatalogPagingState<StoreProduct>, loadNextCategoryPage: () -> Unit, loadCategory: (Int) -> Unit, loadCategoryTree: (Int) -> Unit, onProduct: (StoreProduct) -> Unit, onRootBack: (() -> Unit)? = null, onOpen: (ProductCategory) -> Unit,
     outletSeasonFilter: HomeOutletSeason? = null, onSingleLevelBack: (() -> Unit)? = null) {
     val currentId = path.lastOrNull()
     val current = categories.firstOrNull { it.id == currentId }
@@ -676,7 +685,10 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
                 products = products,
                 allCategories = categories,
                 modifier = Modifier.fillMaxSize(),
-                onProduct = onProduct
+                onProduct = onProduct,
+                pagingState = categoryPagingState,
+                onLoadNextPage = loadNextCategoryPage,
+                pagingKey = currentId
             )
         }
     }
@@ -1200,7 +1212,10 @@ internal fun StoreProduct.matchesCatalogFilters(
 internal fun CatalogFilteredProductGrid(
     products: List<StoreProduct>,
     modifier: Modifier = Modifier,
-    onProduct: (StoreProduct) -> Unit
+    onProduct: (StoreProduct) -> Unit,
+    pagingState: es.criosrango.shared.CatalogPagingState<StoreProduct>? = null,
+    onLoadNextPage: (() -> Unit)? = null,
+    pagingKey: Any? = null
 ) {
     var filtersOpen by remember { mutableStateOf(false) }
     var sortMode by remember {
@@ -1272,9 +1287,16 @@ internal fun CatalogFilteredProductGrid(
         }
 
         ProductGrid(
-            filtered,
-            Modifier.weight(1f),
-            onProduct
+            products = filtered,
+            modifier = Modifier.weight(1f),
+            onProduct = onProduct,
+            pagingState = pagingState,
+            onLoadNextPage = onLoadNextPage,
+            resetKey = if (pagingState != null) {
+                listOf(pagingKey, sortMode, selectedSizes, selectedColors, selectedBrands)
+            } else {
+                null
+            }
         )
     }
 

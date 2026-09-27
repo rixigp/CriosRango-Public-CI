@@ -184,6 +184,9 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
 
     internal fun applyCategoryCacheUpdate(update: CategoryCacheUpdate) {
         if (_activeCategoryId.value != update.categoryId) return
+        // The active category UI is paginator-owned. A background Room/global-sync
+        // update must not replace a partial paged list with the full cached snapshot.
+        if (categoryPaginators.containsKey(update.categoryId)) return
         val current = _categoryProducts.value[update.categoryId]
         updateCategoryProducts(update.categoryId, CategoryProductsState(update.products.toList(), current?.loading == true, true, null, current?.requestVersion ?: 0))
     }

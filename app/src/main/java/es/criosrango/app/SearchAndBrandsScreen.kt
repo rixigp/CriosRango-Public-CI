@@ -648,21 +648,54 @@ internal fun ProductSkeletonGrid(modifier: Modifier) {
 internal fun ProductGrid(
     products: List<StoreProduct>,
     modifier: Modifier = Modifier,
-    onProduct: (StoreProduct) -> Unit
+    onProduct: (StoreProduct) -> Unit,
+    pagingState: es.criosrango.shared.CatalogPagingState<StoreProduct>? = null,
+    onLoadNextPage: (() -> Unit)? = null,
+    resetKey: Any? = null
 ) {
     val gridState =
         androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     val categoryStatus by categoryCatalogLoadStatus.collectAsStateWithLifecycle()
 
     val productOrder = products.map { it.id }
+    val effectiveResetKey = resetKey ?: productOrder
 
-    LaunchedEffect(productOrder) {
+    LaunchedEffect(effectiveResetKey) {
         if (products.isNotEmpty()) {
             gridState.scrollToItem(0)
         }
     }
 
-    if (products.isEmpty() && categoryStatus.state == CategoryLoadState.LOADING) {
+    if (pagingState != null && onLoadNextPage != null) {
+        val latestPagingState by rememberUpdatedState(pagingState)
+        val latestProductsSize by rememberUpdatedState(products.size)
+        val latestLoadNextPage by rememberUpdatedState(onLoadNextPage)
+        val prefetchDistance = es.criosrango.shared.CatalogPaginator.PREFETCH_DISTANCE
+
+        LaunchedEffect(gridState, resetKey) {
+            snapshotFlow {
+                val state = latestPagingState
+                val itemCount = latestProductsSize
+                val lastVisibleIndex =
+                    gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+
+                itemCount > 0 &&
+                    !state.isInitialLoading &&
+                    !state.isAppending &&
+                    state.appendError == null &&
+                    state.hasMore &&
+                    lastVisibleIndex >= itemCount - 1 - prefetchDistance
+            }.collect { shouldLoad ->
+                if (shouldLoad) {
+                    latestLoadNextPage()
+                }
+            }
+        }
+    }
+
+    val initialPagingLoading = pagingState?.isInitialLoading == true
+
+    if (products.isEmpty() && (initialPagingLoading || categoryStatus.state == CategoryLoadState.LOADING)) {
         ProductSkeletonGrid(modifier)
     } else if (products.isEmpty()) {
         Box(
@@ -695,6 +728,33 @@ internal fun ProductGrid(
                     onProduct,
                     onImageReady = { categoryStatus.categoryId?.let { CategoryLoadTelemetry.firstImage(it, product.id) } }
                 )
+            }
+
+            if (pagingState?.isAppending == true) {
+                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(22.dp))
+                    }
+                }
+            } else if (pagingState?.appendError != null && pagingState.hasMore && onLoadNextPage != null) {
+                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = onLoadNextPage) {
+                            Text("Reintentar")
+                        }
+                    }
+                }
             }
         }
     }

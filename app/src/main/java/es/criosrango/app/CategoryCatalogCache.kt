@@ -429,7 +429,10 @@ val metadata = snapshotMetadata()
 
 class CategoryCacheStoreApi(private val delegate: StoreApi, private val cache: CategoryCatalogCache) : StoreApi by delegate {
     override suspend fun products(perPage: Int, page: Int, search: String?, category: Int?, orderBy: String?, order: String?, after: String?, featured: Boolean?): List<StoreProduct> {
-        if (category != null && search == null && page == 1 && orderBy == null && order == null && after == null && featured == null) {
+        // Keep the existing full-snapshot cache path for the legacy/default
+        // category request. The UI paginator uses perPage=12 and must reach the
+        // delegate one backend page at a time.
+        if (category != null && perPage == 24 && search == null && page == 1 && orderBy == null && order == null && after == null && featured == null) {
             return cache.load(category) { delegate.products(perPage, page, search, category, orderBy, order, after, featured) }
         }
         if (search == null && category == null && page == 1 && orderBy == null && order == null && after == null && featured == null) {
