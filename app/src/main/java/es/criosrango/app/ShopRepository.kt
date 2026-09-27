@@ -129,6 +129,9 @@ data class DiagnosticNormalClient(
 class StoreRepository(private val api: StoreApi) {
     private val cacheMutex = Mutex()
 
+    private val categoryProductsPageDataSource =
+        CategoryProductsPageDataSource(api)
+
     private val categoryCache = mutableMapOf<Int, List<StoreProduct>>()
     private val categoryInFlight = mutableMapOf<Int, CompletableDeferred<List<StoreProduct>>>()
 
@@ -253,6 +256,17 @@ class StoreRepository(private val api: StoreApi) {
         page = page,
         tag = brand.slug
     )
+
+    suspend fun productsByCategoryPage(
+        categoryId: Int,
+        page: Int,
+        perPage: Int
+    ): List<StoreProduct> =
+        categoryProductsPageDataSource.productsByCategoryPage(
+            categoryId = categoryId,
+            page = page,
+            perPage = perPage
+        )
 
     suspend fun allProducts(): List<StoreProduct> {
         val result = mutableListOf<StoreProduct>()
