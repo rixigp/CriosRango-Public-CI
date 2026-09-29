@@ -41,8 +41,8 @@ android {
         applicationId = "es.criosrango.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 140
-        versionName = "1.0.140"
+        versionCode = 141
+        versionName = "1.0.141"
     }
     signingConfigs {
         getByName("debug") {
@@ -58,6 +58,7 @@ android {
 
 dependencies {
     implementation(project(":shared"))
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("androidx.media3:media3-exoplayer:1.6.1")
     implementation("androidx.media3:media3-ui:1.6.1")
     implementation("androidx.browser:browser:1.8.0")
