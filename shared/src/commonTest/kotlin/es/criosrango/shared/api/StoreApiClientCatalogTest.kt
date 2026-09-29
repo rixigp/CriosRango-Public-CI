@@ -13,6 +13,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import es.criosrango.shared.model.countFor
 
 class StoreApiClientCatalogTest {
     @Test
