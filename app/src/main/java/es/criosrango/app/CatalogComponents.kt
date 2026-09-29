@@ -94,7 +94,8 @@ internal fun CatalogScreenHeader(
     title: String,
     onBack: () -> Unit,
     trailing: @Composable RowScope.() -> Unit = {},
-    onTitleLongPress: (() -> Unit)? = null
+    onTitleLongPress: (() -> Unit)? = null,
+    bottomPadding: androidx.compose.ui.unit.Dp = CatalogHeaderGeometry.bottomPadding
 ) {
     Row(
         modifier = Modifier
@@ -103,7 +104,7 @@ internal fun CatalogScreenHeader(
                 horizontal = CatalogHeaderGeometry.horizontalPadding,
                 vertical = CatalogHeaderGeometry.topPadding
             )
-            .padding(bottom = CatalogHeaderGeometry.bottomPadding),
+            .padding(bottom = bottomPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onBack) {

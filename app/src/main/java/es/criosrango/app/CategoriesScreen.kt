@@ -70,6 +70,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.text.HtmlCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -169,6 +170,26 @@ internal data class OutletBubbleDefinition(
     val label: String,
     val categoryIds: Set<Int>
 )
+
+private fun outletBubbleDisplayLabel(label: String): String =
+    when (label) {
+        "Abrigos y cazadoras" -> "Abrigos"
+        "Camisas y camisetas" -> "Camisas"
+        "Chaquetas y chalecos" -> "Chaquetas"
+        "Jerséis" -> "Jerséis"
+        "Pantalones y faldas" -> "Pantalones"
+        "Ropa de fiesta" -> "Fiesta"
+        "Vestidos, conjuntos y monos casual" -> "Vestidos y conjuntos"
+        "Americanas y trajes" -> "Americanas"
+        "Camisetas y polos" -> "Camisetas"
+        "Complementos y baño" -> "Complementos"
+        "Jerseis y Chaquetas" -> "Jerséis"
+        "Pantalones y bermudas" -> "Pantalones"
+        "Ropa de baño" -> "Baño"
+        "Ropa de sport" -> "Sport"
+        "Ropa de vestir" -> "Vestir"
+        else -> label
+    }
 
 private fun outletBubble(
     label: String,
@@ -350,37 +371,40 @@ internal fun OutletAwareCatalogGrid(
                         bottom = 10.dp
                     ),
                 horizontalArrangement =
-                    Arrangement.spacedBy(8.dp)
+                    Arrangement.spacedBy(7.dp)
             ) {
-
                 val allSelected =
                     selectedBubbleKey == null
 
-                OutlinedButton(
-                    onClick = {
-                        selectedBubbleKey = null
-                    },
-                    shape =
-                        RoundedCornerShape(50.dp),
-                    colors =
-                        androidx.compose.material3
-                            .ButtonDefaults
-                            .outlinedButtonColors(
-                                containerColor =
-                                    if (allSelected)
-                                        Color(0xFF163B35)
-                                    else
-                                        Color.Transparent,
-                                contentColor =
-                                    if (allSelected)
-                                        Color.White
-                                    else
-                                        MaterialTheme
-                                            .colorScheme
-                                            .onBackground
-                            )
+                Surface(
+                    modifier = Modifier
+                        .height(34.dp)
+                        .clickable {
+                            selectedBubbleKey = null
+                        },
+                    shape = RoundedCornerShape(17.dp),
+                    color =
+                        if (allSelected)
+                            Color(0xFF163B35)
+                        else
+                            Color(0xFFF1EDEF)
                 ) {
-                    Text("Todas")
+                    Box(
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Todas",
+                            color =
+                                if (allSelected)
+                                    Color.White
+                                else
+                                    Color(0xFF3F3A3D),
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Clip
+                        )
+                    }
                 }
 
                 bubbles.forEach { bubble ->
@@ -389,32 +413,35 @@ internal fun OutletAwareCatalogGrid(
                         selectedBubbleKey ==
                             bubble.key
 
-                    OutlinedButton(
-                        onClick = {
-                            selectedBubbleKey =
-                                bubble.key
-                        },
-                        shape =
-                            RoundedCornerShape(50.dp),
-                        colors =
-                            androidx.compose.material3
-                                .ButtonDefaults
-                                .outlinedButtonColors(
-                                    containerColor =
-                                        if (selected)
-                                            Color(0xFF163B35)
-                                        else
-                                            Color.Transparent,
-                                    contentColor =
-                                        if (selected)
-                                            Color.White
-                                        else
-                                            MaterialTheme
-                                                .colorScheme
-                                                .onBackground
-                                )
+                    Surface(
+                        modifier = Modifier
+                            .height(34.dp)
+                            .clickable {
+                                selectedBubbleKey = bubble.key
+                            },
+                        shape = RoundedCornerShape(17.dp),
+                        color =
+                            if (selected)
+                                Color(0xFF163B35)
+                            else
+                                Color(0xFFF1EDEF)
                     ) {
-                        Text(bubble.label)
+                        Box(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = outletBubbleDisplayLabel(bubble.label),
+                                color =
+                                    if (selected)
+                                        Color.White
+                                    else
+                                        Color(0xFF3F3A3D),
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Clip
+                            )
+                        }
                     }
                 }
             }
@@ -761,6 +788,9 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             CatalogScreenHeader(
                 title = current?.name ?: "Productos",
                 onBack = onCategoriesBack,
+                bottomPadding =
+                    if (current?.parent == 445) 10.dp
+                    else CatalogHeaderGeometry.bottomPadding,
                 onTitleLongPress = if (currentId != null) {
                     { telemetryDialogOpen = true }
                 } else {
