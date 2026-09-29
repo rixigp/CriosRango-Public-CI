@@ -164,6 +164,81 @@ internal fun productBelongsToOutletOriginCategory(
     }
 }
 
+internal data class OutletBubbleDefinition(
+    val key: String,
+    val label: String,
+    val categoryIds: Set<Int>
+)
+
+private fun outletBubble(
+    label: String,
+    vararg categoryIds: Int
+): OutletBubbleDefinition =
+    OutletBubbleDefinition(
+        key = outletBubbleKey(label),
+        label = label,
+        categoryIds = categoryIds.toSet()
+    )
+
+internal fun fixedOutletBubbles(outletCategoryId: Int): List<OutletBubbleDefinition> =
+    when (outletCategoryId) {
+        // Hombre invierno / verano.
+        446, 475 -> listOf(
+            outletBubble("Abrigos y cazadoras", 430),
+            outletBubble("Americanas y trajes", 320),
+            outletBubble("Camisas", 318),
+            outletBubble("Camisetas y polos", 319),
+            outletBubble("Complementos y baño", 317),
+            outletBubble("Jerseis y Chaquetas", 459),
+            outletBubble("Pantalones y bermudas", 321),
+            outletBubble("Sudaderas", 471)
+        )
+
+        // Mujer invierno / verano.
+        447, 476 -> listOf(
+            outletBubble("Abrigos y cazadoras", 431),
+            outletBubble("Camisas y camisetas", 324),
+            outletBubble("Chaquetas y chalecos", 326),
+            outletBubble("Complementos", 468),
+            outletBubble("Jerséis", 461),
+            outletBubble("Pantalones y faldas", 325),
+            outletBubble("Ropa de fiesta", 323),
+            outletBubble("Vestidos, conjuntos y monos casual", 322)
+        )
+
+        // Niña invierno / verano = Niña + Bebé niña.
+        449, 478 -> listOf(
+            outletBubble("Abrigos y cazadoras", 433, 428),
+            outletBubble("Calzado", 421),
+            outletBubble("Ropa de baño", 80, 286),
+            outletBubble("Ropa de sport", 313, 289),
+            outletBubble("Ropa de vestir", 316, 311)
+        )
+
+        // Niño invierno / verano = Niño + Bebé niño.
+        448, 477 -> listOf(
+            outletBubble("Abrigos y cazadoras", 434, 429),
+            outletBubble("Ropa de baño", 78, 287),
+            outletBubble("Ropa de sport", 314, 290),
+            outletBubble("Ropa de vestir", 315, 312)
+        )
+
+        else -> emptyList()
+    }
+
+internal fun productBelongsToOutletBubble(
+    product: StoreProduct,
+    bubble: OutletBubbleDefinition,
+    categoriesById: Map<Int, ProductCategory>
+): Boolean =
+    bubble.categoryIds.any { categoryId ->
+        productBelongsToOutletOriginCategory(
+            product = product,
+            categoryId = categoryId,
+            categoriesById = categoriesById
+        )
+    }
+
 @Composable
 internal fun OutletAwareCatalogGrid(
     current: ProductCategory?,
@@ -194,73 +269,69 @@ internal fun OutletAwareCatalogGrid(
             allCategories.associateBy { it.id }
         }
 
-    val audience =
-        remember(current.id) {
-            outletBubbleKey(current.name)
-                .substringBefore(" ")
-        }
-
-    val originalRoot =
-        remember(allCategories, audience) {
-            allCategories.firstOrNull {
-                it.parent == 0 &&
-                outletBubbleKey(it.name) == audience
-            }
-        }
-
+    // Las burbujas de Outlet son fijas por audiencia y son iguales en invierno/verano.
+    // No dependen de qué páginas de productos haya cargado el paginador A2.
     val bubbles =
-        remember(
-            products,
-            allCategories,
-            originalRoot?.id
-        ) {
-            val rootId = originalRoot?.id
-
-            if (rootId == null) {
-                emptyList()
-            } else {
-                allCategories
-                    .filter { category ->
-                        rootId != null && category.id != rootId && isCategoryDescendantOf(category.id, rootId, categoriesById)
-                    }
-                    .filter { category ->
-                        products.any { product ->
-                            productBelongsToOutletOriginCategory(
-                                product,
-                                category.id,
-                                categoriesById
-                            )
-                        }
-                    }
-                    .distinctBy { it.id }
-            }
+        remember(current.id) {
+            fixedOutletBubbles(current.id)
         }
 
-    var selectedCategoryId by remember(current.id) {
-        mutableStateOf<Int?>(null)
+    var selectedBubbleKey by remember(current.id) {
+        mutableStateOf<String?>(null)
     }
+
+    val selectedBubble =
+        remember(bubbles, selectedBubbleKey) {
+            bubbles.firstOrNull { bubble ->
+                bubble.key == selectedBubbleKey
+            }
+        }
 
     val visibleProducts =
         remember(
             products,
-            selectedCategoryId,
+            selectedBubble,
             categoriesById
         ) {
-            val selected =
-                selectedCategoryId
-
-            if (selected == null) {
+            if (selectedBubble == null) {
                 products
             } else {
                 products.filter { product ->
-                    productBelongsToOutletOriginCategory(
-                        product,
-                        selected,
-                        categoriesById
+                    productBelongsToOutletBubble(
+                        product = product,
+                        bubble = selectedBubble,
+                        categoriesById = categoriesById
                     )
                 }
             }
         }
+
+    // Si la burbuja seleccionada no tiene coincidencias en las páginas ya cargadas,
+    // seguimos usando el paginador A2 existente hasta encontrar la primera o agotar
+    // la categoría. No se cambia CategoryProductsPageDataSource ni su page/perPage.
+    val shouldProbeMorePages =
+        selectedBubble != null &&
+            visibleProducts.isEmpty() &&
+            pagingState != null &&
+            !pagingState.isInitialLoading &&
+            !pagingState.isAppending &&
+            pagingState.appendError == null &&
+            pagingState.hasMore &&
+            onLoadNextPage != null
+
+    LaunchedEffect(
+        current.id,
+        selectedBubbleKey,
+        products.size,
+        pagingState?.currentPage,
+        pagingState?.hasMore,
+        pagingState?.isAppending,
+        pagingState?.appendError
+    ) {
+        if (shouldProbeMorePages) {
+            onLoadNextPage?.invoke()
+        }
+    }
 
     Column(modifier) {
 
@@ -283,11 +354,11 @@ internal fun OutletAwareCatalogGrid(
             ) {
 
                 val allSelected =
-                    selectedCategoryId == null
+                    selectedBubbleKey == null
 
                 OutlinedButton(
                     onClick = {
-                        selectedCategoryId = null
+                        selectedBubbleKey = null
                     },
                     shape =
                         RoundedCornerShape(50.dp),
@@ -312,16 +383,16 @@ internal fun OutletAwareCatalogGrid(
                     Text("Todas")
                 }
 
-                bubbles.forEach { category ->
+                bubbles.forEach { bubble ->
 
                     val selected =
-                        selectedCategoryId ==
-                            category.id
+                        selectedBubbleKey ==
+                            bubble.key
 
                     OutlinedButton(
                         onClick = {
-                            selectedCategoryId =
-                                category.id
+                            selectedBubbleKey =
+                                bubble.key
                         },
                         shape =
                             RoundedCornerShape(50.dp),
@@ -343,20 +414,44 @@ internal fun OutletAwareCatalogGrid(
                                                 .onBackground
                                 )
                     ) {
-                        Text(category.name)
+                        Text(bubble.label)
                     }
                 }
             }
         }
 
-        CatalogFilteredProductGrid(
-            products = visibleProducts,
-            modifier = Modifier.weight(1f),
-            onProduct = onProduct,
-            pagingState = pagingState,
-            onLoadNextPage = onLoadNextPage,
-            pagingKey = listOf(pagingKey, selectedCategoryId)
-        )
+        val probingSelectedBubble =
+            selectedBubble != null &&
+                visibleProducts.isEmpty() &&
+                pagingState?.appendError == null &&
+                (pagingState?.isInitialLoading == true ||
+                    pagingState?.isAppending == true ||
+                    pagingState?.hasMore == true)
+
+        if (probingSelectedBubble) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        } else {
+            CatalogFilteredProductGrid(
+                products = visibleProducts,
+                modifier = Modifier.weight(1f),
+                onProduct = onProduct,
+                pagingState = pagingState,
+                onLoadNextPage = onLoadNextPage,
+                pagingKey = listOf(
+                    pagingKey,
+                    selectedBubbleKey
+                )
+            )
+        }
     }
 }
 
