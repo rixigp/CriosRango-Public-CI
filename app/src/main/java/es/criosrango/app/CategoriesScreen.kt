@@ -168,7 +168,8 @@ internal fun productBelongsToOutletOriginCategory(
 internal data class OutletBubbleDefinition(
     val key: String,
     val label: String,
-    val categoryIds: Set<Int>
+    val categoryIds: Set<Int>,
+    val availableInOutletCategoryIds: Set<Int>
 )
 
 private fun outletBubbleDisplayLabel(label: String): String =
@@ -198,12 +199,12 @@ private fun outletBubble(
     OutletBubbleDefinition(
         key = outletBubbleKey(label),
         label = label,
-        categoryIds = categoryIds.toSet()
+        categoryIds = categoryIds.toSet(),
+        availableInOutletCategoryIds = emptySet()
     )
 
-internal fun fixedOutletBubbles(outletCategoryId: Int): List<OutletBubbleDefinition> =
-    when (outletCategoryId) {
-        // Hombre invierno / verano.
+internal fun fixedOutletBubbles(outletCategoryId: Int): List<OutletBubbleDefinition> {
+    val configured = when (outletCategoryId) {
         446, 475 -> listOf(
             outletBubble("Abrigos y cazadoras", 430),
             outletBubble("Americanas y trajes", 320),
@@ -214,8 +215,6 @@ internal fun fixedOutletBubbles(outletCategoryId: Int): List<OutletBubbleDefinit
             outletBubble("Pantalones y bermudas", 321),
             outletBubble("Sudaderas", 471)
         )
-
-        // Mujer invierno / verano.
         447, 476 -> listOf(
             outletBubble("Abrigos y cazadoras", 431),
             outletBubble("Camisas y camisetas", 324),
@@ -226,8 +225,6 @@ internal fun fixedOutletBubbles(outletCategoryId: Int): List<OutletBubbleDefinit
             outletBubble("Ropa de fiesta", 323),
             outletBubble("Vestidos, conjuntos y monos casual", 322)
         )
-
-        // Niña invierno / verano = Niña + Bebé niña.
         449, 478 -> listOf(
             outletBubble("Abrigos y cazadoras", 433, 428),
             outletBubble("Calzado", 421),
@@ -235,17 +232,34 @@ internal fun fixedOutletBubbles(outletCategoryId: Int): List<OutletBubbleDefinit
             outletBubble("Ropa de sport", 313, 289),
             outletBubble("Ropa de vestir", 316, 311)
         )
-
-        // Niño invierno / verano = Niño + Bebé niño.
         448, 477 -> listOf(
             outletBubble("Abrigos y cazadoras", 434, 429),
             outletBubble("Ropa de baño", 78, 287),
             outletBubble("Ropa de sport", 314, 290),
             outletBubble("Ropa de vestir", 315, 312)
         )
-
         else -> emptyList()
     }
+
+    val enabledLabelsByOutlet = mapOf(
+        447 to setOf("Abrigos y cazadoras", "Camisas y camisetas", "Chaquetas y chalecos", "Jerséis", "Pantalones y faldas", "Ropa de fiesta", "Vestidos, conjuntos y monos casual"),
+        476 to setOf("Abrigos y cazadoras", "Camisas y camisetas", "Pantalones y faldas", "Ropa de fiesta", "Vestidos, conjuntos y monos casual"),
+        446 to emptySet(),
+        475 to emptySet(),
+        449 to setOf("Ropa de sport", "Ropa de vestir"),
+        478 to setOf("Ropa de baño", "Ropa de sport", "Ropa de vestir"),
+        448 to setOf("Ropa de sport", "Ropa de vestir"),
+        477 to setOf("Abrigos y cazadoras", "Ropa de baño", "Ropa de sport", "Ropa de vestir")
+    )
+
+    val enabledLabels = enabledLabelsByOutlet[outletCategoryId].orEmpty()
+    return configured.map { bubble ->
+        bubble.copy(
+            availableInOutletCategoryIds =
+                if (bubble.label in enabledLabels) setOf(outletCategoryId) else emptySet()
+        )
+    }
+}
 
 internal fun productBelongsToOutletBubble(
     product: StoreProduct,
@@ -304,7 +318,8 @@ internal fun OutletAwareCatalogGrid(
     val selectedBubble =
         remember(bubbles, selectedBubbleKey) {
             bubbles.firstOrNull { bubble ->
-                bubble.key == selectedBubbleKey
+                bubble.key == selectedBubbleKey &&
+                    current.id in bubble.availableInOutletCategoryIds
             }
         }
 
@@ -409,20 +424,26 @@ internal fun OutletAwareCatalogGrid(
 
                 bubbles.forEach { bubble ->
 
+                    val enabled =
+                        current.id in bubble.availableInOutletCategoryIds
+
                     val selected =
-                        selectedBubbleKey ==
-                            bubble.key
+                        enabled &&
+                            selectedBubbleKey ==
+                                bubble.key
 
                     Surface(
                         modifier = Modifier
                             .height(34.dp)
-                            .clickable {
+                            .clickable(enabled = enabled) {
                                 selectedBubbleKey = bubble.key
                             },
                         shape = RoundedCornerShape(17.dp),
                         color =
                             if (selected)
                                 Color(0xFF163B35)
+                            else if (!enabled)
+                                Color(0xFFF5F2F3)
                             else
                                 Color(0xFFF1EDEF)
                     ) {
@@ -435,6 +456,8 @@ internal fun OutletAwareCatalogGrid(
                                 color =
                                     if (selected)
                                         Color.White
+                                    else if (!enabled)
+                                        Color(0xFFB6B0B3)
                                     else
                                         Color(0xFF3F3A3D),
                                 fontSize = 13.sp,
