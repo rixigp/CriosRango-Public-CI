@@ -32,9 +32,10 @@ class OutletAvailabilityStore(
 
     suspend fun refresh() {
         val (owner, deferred) = refreshMutex.withLock {
-            refreshInFlight?.let { false to it } ?: CompletableDeferred<Unit>().also {
-                refreshInFlight = it
-                true to it
+            refreshInFlight?.let { false to it } ?: run {
+                val created = CompletableDeferred<Unit>()
+                refreshInFlight = created
+                true to created
             }
         }
 
