@@ -164,6 +164,13 @@ class StoreApiClient(
             }
         }
 
+    suspend fun outletAvailability(): es.criosrango.shared.model.OutletAvailability =
+        executeCart {
+            client.get("https://criosrango.es/wp-json/criosrango/v1/outlet-availability") {
+                sessionHeaders()
+            }
+        }
+
     suspend fun product(id: Int): StoreProduct =
         client.get(baseUrl + "products/" + id).body()
 

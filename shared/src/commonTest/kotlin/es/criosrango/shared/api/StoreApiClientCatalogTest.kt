@@ -59,6 +59,25 @@ class StoreApiClientCatalogTest {
                     headers = headersOf(HttpHeaders.ContentType, "application/json")
                 )
 
+                request.url.encodedPath == "/wp-json/criosrango/v1/outlet-availability" -> respond(
+                    """
+                    {
+                      "schema_version": 1,
+                      "version": 7,
+                      "outlets": [
+                        {
+                          "outlet_category_id": 478,
+                          "counts": [
+                            {"category_id":80,"count":4},
+                            {"category_id":313,"count":37}
+                          ]
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+
                 else -> respond(
                     """
                     [
@@ -119,6 +138,14 @@ class StoreApiClientCatalogTest {
             val categories = api.categories()
             assertEquals(445, categories.single().id)
             assertEquals("Outlet", categories.single().name)
+
+            val availability = api.outletAvailability()
+            assertEquals(1, availability.schemaVersion)
+            assertEquals(7L, availability.version)
+            assertEquals(478, availability.outlets.single().outletCategoryId)
+            assertEquals(4, availability.countFor(478, 80))
+            assertEquals(37, availability.countFor(478, 313))
+            assertEquals(0, availability.countFor(478, 999))
 
             val product = api.productWithVariationAvailability(10)
             assertEquals(listOf(41, 42), product.originalCategoryIds)

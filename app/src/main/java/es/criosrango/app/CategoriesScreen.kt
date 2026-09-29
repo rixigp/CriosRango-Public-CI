@@ -81,6 +81,7 @@ import compose.icons.tablericons.Hanger
 import compose.icons.tablericons.Shirt
 import compose.icons.tablericons.Tag
 import kotlinx.coroutines.launch
+import es.criosrango.shared.model.countFor
 
 // OUTLET_CATEGORY_BUBBLES_START
 
@@ -168,8 +169,7 @@ internal fun productBelongsToOutletOriginCategory(
 internal data class OutletBubbleDefinition(
     val key: String,
     val label: String,
-    val categoryIds: Set<Int>,
-    val availableInOutletCategoryIds: Set<Int>
+    val categoryIds: Set<Int>
 )
 
 private fun outletBubbleDisplayLabel(label: String): String =
@@ -199,12 +199,11 @@ private fun outletBubble(
     OutletBubbleDefinition(
         key = outletBubbleKey(label),
         label = label,
-        categoryIds = categoryIds.toSet(),
-        availableInOutletCategoryIds = emptySet()
+        categoryIds = categoryIds.toSet()
     )
 
-internal fun fixedOutletBubbles(outletCategoryId: Int): List<OutletBubbleDefinition> {
-    val configured = when (outletCategoryId) {
+internal fun fixedOutletBubbles(outletCategoryId: Int): List<OutletBubbleDefinition> =
+    when (outletCategoryId) {
         446, 475 -> listOf(
             outletBubble("Abrigos y cazadoras", 430),
             outletBubble("Americanas y trajes", 320),
@@ -241,26 +240,6 @@ internal fun fixedOutletBubbles(outletCategoryId: Int): List<OutletBubbleDefinit
         else -> emptyList()
     }
 
-    val enabledLabelsByOutlet = mapOf(
-        447 to setOf("Abrigos y cazadoras", "Camisas y camisetas", "Chaquetas y chalecos", "Jerséis", "Pantalones y faldas", "Ropa de fiesta", "Vestidos, conjuntos y monos casual"),
-        476 to setOf("Abrigos y cazadoras", "Camisas y camisetas", "Pantalones y faldas", "Ropa de fiesta", "Vestidos, conjuntos y monos casual"),
-        446 to emptySet(),
-        475 to emptySet(),
-        449 to setOf("Ropa de sport", "Ropa de vestir"),
-        478 to setOf("Ropa de baño", "Ropa de sport", "Ropa de vestir"),
-        448 to setOf("Ropa de sport", "Ropa de vestir"),
-        477 to setOf("Abrigos y cazadoras", "Ropa de baño", "Ropa de sport", "Ropa de vestir")
-    )
-
-    val enabledLabels = enabledLabelsByOutlet[outletCategoryId].orEmpty()
-    return configured.map { bubble ->
-        bubble.copy(
-            availableInOutletCategoryIds =
-                if (bubble.label in enabledLabels) setOf(outletCategoryId) else emptySet()
-        )
-    }
-}
-
 internal fun productBelongsToOutletBubble(
     product: StoreProduct,
     bubble: OutletBubbleDefinition,
@@ -278,6 +257,7 @@ internal fun productBelongsToOutletBubble(
 internal fun OutletAwareCatalogGrid(
     current: ProductCategory?,
     products: List<StoreProduct>,
+    availabilityStore: OutletAvailabilityStore,
     allCategories: List<ProductCategory>,
     modifier: Modifier = Modifier,
     onProduct: (StoreProduct) -> Unit,
@@ -304,22 +284,54 @@ internal fun OutletAwareCatalogGrid(
             allCategories.associateBy { it.id }
         }
 
-    // Las burbujas de Outlet son fijas por audiencia y son iguales en invierno/verano.
-    // No dependen de qué páginas de productos haya cargado el paginador A2.
+    // Las burbujas son definiciones fijas de Kotlin. Su visibilidad procede
+    // únicamente del snapshot persistido/dinámico de disponibilidad.
     val bubbles =
         remember(current.id) {
             fixedOutletBubbles(current.id)
+        }
+
+    val availability by availabilityStore.snapshot.collectAsStateWithLifecycle()
+
+    LaunchedEffect(current.id) {
+        runCatching {
+            availabilityStore.refresh()
+        }
+    }
+
+    val hasValidAvailabilitySnapshot =
+        availability?.schemaVersion == 1
+
+    val visibleBubbles =
+        remember(bubbles, availability) {
+            if (!hasValidAvailabilitySnapshot) {
+                bubbles
+            } else {
+                bubbles.filter { bubble ->
+                    bubble.categoryIds.any { categoryId ->
+                        availability?.countFor(current.id, categoryId)?.let { it > 0 } == true
+                    }
+                }
+            }
         }
 
     var selectedBubbleKey by remember(current.id) {
         mutableStateOf<String?>(null)
     }
 
+    LaunchedEffect(selectedBubbleKey, visibleBubbles) {
+        if (
+            selectedBubbleKey != null &&
+            visibleBubbles.none { it.key == selectedBubbleKey }
+        ) {
+            selectedBubbleKey = null
+        }
+    }
+
     val selectedBubble =
-        remember(bubbles, selectedBubbleKey) {
-            bubbles.firstOrNull { bubble ->
-                bubble.key == selectedBubbleKey &&
-                    current.id in bubble.availableInOutletCategoryIds
+        remember(visibleBubbles, selectedBubbleKey) {
+            visibleBubbles.firstOrNull { bubble ->
+                bubble.key == selectedBubbleKey
             }
         }
 
@@ -422,28 +434,22 @@ internal fun OutletAwareCatalogGrid(
                     }
                 }
 
-                bubbles.forEach { bubble ->
-
-                    val enabled =
-                        current.id in bubble.availableInOutletCategoryIds
+                visibleBubbles.forEach { bubble ->
 
                     val selected =
-                        enabled &&
-                            selectedBubbleKey ==
-                                bubble.key
+                        selectedBubbleKey ==
+                            bubble.key
 
                     Surface(
                         modifier = Modifier
                             .height(34.dp)
-                            .clickable(enabled = enabled) {
+                            .clickable {
                                 selectedBubbleKey = bubble.key
                             },
                         shape = RoundedCornerShape(17.dp),
                         color =
                             if (selected)
                                 Color(0xFF163B35)
-                            else if (!enabled)
-                                Color(0xFFF5F2F3)
                             else
                                 Color(0xFFF1EDEF)
                     ) {
@@ -456,8 +462,6 @@ internal fun OutletAwareCatalogGrid(
                                 color =
                                     if (selected)
                                         Color.White
-                                    else if (!enabled)
-                                        Color(0xFFB6B0B3)
                                     else
                                         Color(0xFF3F3A3D),
                                 fontSize = 13.sp,
@@ -737,7 +741,7 @@ private fun CategoryTelemetryDialog(
 }
 
 @Composable
-internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<StoreProduct>, path: MutableList<Int>, padding: PaddingValues, loading: Boolean, categoryPagingState: es.criosrango.shared.CatalogPagingState<StoreProduct>, loadNextCategoryPage: () -> Unit, loadCategory: (Int) -> Unit, loadCategoryTree: (Int) -> Unit, onProduct: (StoreProduct) -> Unit, onRootBack: (() -> Unit)? = null, onOpen: (ProductCategory) -> Unit,
+internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<StoreProduct>, path: MutableList<Int>, padding: PaddingValues, loading: Boolean, categoryPagingState: es.criosrango.shared.CatalogPagingState<StoreProduct>, loadNextCategoryPage: () -> Unit, loadCategory: (Int) -> Unit, loadCategoryTree: (Int) -> Unit, onProduct: (StoreProduct) -> Unit, availabilityStore: OutletAvailabilityStore, onRootBack: (() -> Unit)? = null, onOpen: (ProductCategory) -> Unit,
     outletSeasonFilter: HomeOutletSeason? = null, onSingleLevelBack: (() -> Unit)? = null) {
     val currentId = path.lastOrNull()
     val current = categories.firstOrNull { it.id == currentId }
@@ -832,6 +836,7 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
                 current = current,
                 products = products,
                 allCategories = categories,
+                availabilityStore = availabilityStore,
                 modifier = Modifier.fillMaxSize(),
                 onProduct = onProduct,
                 pagingState = categoryPagingState,

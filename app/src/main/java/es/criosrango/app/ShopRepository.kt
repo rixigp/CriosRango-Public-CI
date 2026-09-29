@@ -36,6 +36,10 @@ interface StoreApi {
 
     suspend fun productWithVariationAvailability(id: Int): StoreProduct
 
+    suspend fun outletAvailability(): es.criosrango.shared.model.OutletAvailability {
+        throw UnsupportedOperationException("Outlet availability is not supported by this StoreApi implementation")
+    }
+
     suspend fun categories(perPage: Int = 100): List<ProductCategory>
     suspend fun cart(): WooCart
     suspend fun addCartItem(request: AddCartRequest): WooCart
@@ -336,6 +340,7 @@ class StoreRepository(private val api: StoreApi) {
             .take(homeProductCount)
     }
     suspend fun categories() = api.categories()
+    suspend fun outletAvailability() = api.outletAvailability()
     suspend fun product(id: Int) = api.product(id)
     suspend fun checkout() = api.checkout()
     suspend fun createCheckout(request: CreateOrderRequest) = api.createCheckout(request)

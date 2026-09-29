@@ -25,6 +25,7 @@ import es.criosrango.shared.model.CreateOrderRequest as SharedCreateOrderRequest
 import es.criosrango.shared.model.PaymentStatusResponse as SharedPaymentStatusResponse
 import es.criosrango.shared.model.CheckoutResponse as SharedCheckoutResponse
 import es.criosrango.shared.model.OutletOriginExtension as SharedOutletOriginExtension
+import es.criosrango.shared.model.OutletAvailability as SharedOutletAvailability
 import es.criosrango.shared.model.VariationAttribute as SharedVariationAttribute
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.ResponseException
@@ -113,6 +114,15 @@ class SharedCatalogStoreApiAdapter(
         Log.d("CriosRangoSharedCatalog", "PRODUCT_DETAIL_VARIATIONS source=shared id=$id")
         return try {
             sharedClient.productWithVariationAvailability(id).toAndroid()
+        } catch (exception: Exception) {
+            throw exception.toAndroidCatalogException()
+        }
+    }
+
+    override suspend fun outletAvailability(): SharedOutletAvailability {
+        Log.d("CriosRangoSharedCatalog", "OUTLET_AVAILABILITY source=shared operation=GET")
+        return try {
+            sharedClient.outletAvailability()
         } catch (exception: Exception) {
             throw exception.toAndroidCatalogException()
         }

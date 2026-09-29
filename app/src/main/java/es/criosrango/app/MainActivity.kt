@@ -100,8 +100,9 @@ class MainActivity : ComponentActivity() {
         val cachedApi = CategoryCacheStoreApi(catalogApi, categoryCache)
         val repository = StoreRepository(cachedApi)
         categoryCache.bindRepository(repository)
+        val outletAvailabilityStore = OutletAvailabilityStore(repository, preferences)
         val shopViewModel = androidx.lifecycle.ViewModelProvider(this, ShopViewModel.Factory(repository, cartStore, DeliveryAddressStore(preferences), pendingCardPaymentStore))[ShopViewModel::class.java]
-        setContent { CriosRangoApp(shopViewModel, categoryCache) }
+        setContent { CriosRangoApp(shopViewModel, categoryCache, outletAvailabilityStore) }
     }
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
@@ -111,7 +112,11 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatalogCache) {
+private fun CriosRangoApp(
+    viewModel: ShopViewModel,
+    categoryCache: CategoryCatalogCache,
+    outletAvailabilityStore: OutletAvailabilityStore
+) {
     val accountViewModel: AccountViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val accountUser by accountViewModel.user.collectAsStateWithLifecycle()
     val products by viewModel.products.collectAsStateWithLifecycle()
@@ -201,8 +206,8 @@ private fun CriosRangoApp(viewModel: ShopViewModel, categoryCache: CategoryCatal
                     selectedBrand != null -> BrandProductsScreen(brand = selectedBrand!!, products = activeBrandProducts, loading = loading, padding = padding, onBack = { selectedBrand = null; when (brandOrigin) { BrandOrigin.HOME -> { showAllBrands = false; tab = AppTab.HOME }; BrandOrigin.ALL_BRANDS -> { showAllBrands = true; tab = AppTab.HOME } } }, onProduct = viewModel::openProduct)
                     loading && products.isEmpty() && tab != AppTab.SEARCH && tab != AppTab.CATEGORIES && tab != AppTab.OUTLET -> LoadingState(padding)
                     tab == AppTab.HOME -> HomeScreen(products = homeProducts, allProducts = products, roots = categories, brands = normalizedBrands, padding = padding, onProduct = viewModel::openProduct, onAllCategories = { categoryPath.clear(); tab = AppTab.CATEGORIES }, onCategory = { category -> categoryPath.clear(); categoryPath += category.id; tab = AppTab.CATEGORIES }, onOutlet = { category -> outletSeasonFilter = null; categoryPath.clear(); categoryPath += category.id; tab = AppTab.OUTLET }, onBrand = { brand -> brandOrigin = BrandOrigin.HOME; selectedBrand = brand; showAllBrands = false; viewModel.loadBrand(brand) }, onAllBrands = { brandOrigin = BrandOrigin.HOME; selectedBrand = null; showAllBrands = true }, onOutletWinter = { outletSeasonFilter = HomeOutletSeason.WINTER; categoryPath.clear(); categoryPath += 445; tab = AppTab.OUTLET }, onOutletSummer = { outletSeasonFilter = HomeOutletSeason.SUMMER; categoryPath.clear(); categoryPath += 445; tab = AppTab.OUTLET }, onOutletAll = { outletSeasonFilter = null; categoryPath.clear(); categoryPath += 445; tab = AppTab.OUTLET }, homeListState = homeListState, showAll = homeShowAll, onShowAllChange = { homeShowAll = it })
-                    tab == AppTab.CATEGORIES -> CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = viewModel::openProduct, onRootBack = { categoryPath.clear(); tab = AppTab.HOME }, onOpen = { category: ProductCategory -> categoryPath += category.id }, outletSeasonFilter = null)
-                    tab == AppTab.OUTLET -> CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = viewModel::openProduct, onRootBack = { categoryPath.clear(); outletSeasonFilter = null; tab = AppTab.HOME }, onOpen = { category: ProductCategory -> categoryPath += category.id; tab = AppTab.OUTLET }, outletSeasonFilter = outletSeasonFilter, onSingleLevelBack = if (outletSeasonFilter != null) { { outletSeasonFilter = null } } else { { categoryPath.clear(); tab = AppTab.HOME } })
+                    tab == AppTab.CATEGORIES -> CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = viewModel::openProduct, availabilityStore = outletAvailabilityStore, onRootBack = { categoryPath.clear(); tab = AppTab.HOME }, onOpen = { category: ProductCategory -> categoryPath += category.id }, outletSeasonFilter = null)
+                    tab == AppTab.OUTLET -> CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = viewModel::openProduct, availabilityStore = outletAvailabilityStore, onRootBack = { categoryPath.clear(); outletSeasonFilter = null; tab = AppTab.HOME }, onOpen = { category: ProductCategory -> categoryPath += category.id; tab = AppTab.OUTLET }, outletSeasonFilter = outletSeasonFilter, onSingleLevelBack = if (outletSeasonFilter != null) { { outletSeasonFilter = null } } else { { categoryPath.clear(); tab = AppTab.HOME } })
                     tab == AppTab.SEARCH -> SearchScreen(products = products, allProducts = homeProducts, categories = categories, brands = normalizedBrands, padding = padding, search = viewModel::search, onProduct = viewModel::openProduct, onCategory = { category -> categoryPath.clear(); categoryPath += category.id; tab = AppTab.CATEGORIES }, loading = loading)
                     tab == AppTab.ACCOUNT -> AccountLoginScreen(
                         padding = padding,
