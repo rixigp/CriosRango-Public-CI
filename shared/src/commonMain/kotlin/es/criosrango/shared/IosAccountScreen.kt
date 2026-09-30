@@ -70,6 +70,11 @@ fun CriosRangoIOSAccountScreen(
         scope.launch {
             runCatching { repository.claimPendingOrder() }
                 .onFailure { println("KMP_ACCOUNT_CLAIM_FAILED=${it.message}") }
+            if (!repository.hasSession) {
+                user = null
+                error = "La sesión ha caducado. Vuelve a iniciar sesión."
+                page = IosAccountPage.HOME
+            }
         }
     }
 
@@ -80,10 +85,18 @@ fun CriosRangoIOSAccountScreen(
             runCatching { repository.me() }
                 .onSuccess {
                     user = it
+                    error = null
                     runCatching { repository.claimPendingOrder() }
                         .onFailure { claimError -> println("KMP_ACCOUNT_CLAIM_FAILED=${claimError.message}") }
+                    if (!repository.hasSession) {
+                        user = null
+                        error = "La sesión ha caducado. Vuelve a iniciar sesión."
+                    }
                 }
-                .onFailure { error = it.message ?: "No se ha podido recuperar la sesión." }
+                .onFailure {
+                    user = null
+                    error = it.message ?: "No se ha podido recuperar la sesión."
+                }
         }
         startup = false
     }
@@ -486,7 +499,15 @@ private fun IosProfileScreen(
                     }.onSuccess {
                         onUserChanged(it)
                         notice = "Datos actualizados"
-                    }.onFailure { error = it.message ?: "No se han podido guardar los datos." }
+                    }.onFailure {
+                        if (!repository.hasSession) {
+                            onUserChanged(null)
+                            notice = null
+                            error = "La sesión ha caducado. Vuelve a iniciar sesión."
+                        } else {
+                            error = it.message ?: "No se han podido guardar los datos."
+                        }
+                    }
                     busy = false
                 }
             },
@@ -505,8 +526,15 @@ private fun IosAddressScreen(repository: AccountRepository, onBack: () -> Unit) 
     var notice by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         runCatching { repository.customerAddress() }
-            .onSuccess { address = it; loaded = true }
-            .onFailure { error = it.message ?: "No se ha podido cargar la dirección."; loaded = true }
+            .onSuccess { address = it; error = null; loaded = true }
+            .onFailure {
+                if (!repository.hasSession) {
+                    error = "La sesión ha caducado. Vuelve a iniciar sesión."
+                } else {
+                    error = it.message ?: "No se ha podido cargar la dirección."
+                }
+                loaded = true
+            }
     }
     AccountForm("Mi dirección", onBack) {
         if (!loaded) {
@@ -522,7 +550,13 @@ private fun IosAddressScreen(repository: AccountRepository, onBack: () -> Unit) 
                     scope.launch {
                         runCatching { repository.saveCustomerAddress(address) }
                             .onSuccess { notice = "Dirección actualizada" }
-                            .onFailure { error = it.message ?: "No se ha podido guardar la dirección." }
+                            .onFailure {
+                                if (!repository.hasSession) {
+                                    error = "La sesión ha caducado. Vuelve a iniciar sesión."
+                                } else {
+                                    error = it.message ?: "No se ha podido guardar la dirección."
+                                }
+                            }
                         busy = false
                     }
                 },
@@ -575,8 +609,15 @@ private fun IosOrdersScreen(
     LaunchedEffect(loading) {
         if (!loading) return@LaunchedEffect
         runCatching { repository.orders().orders }
-            .onSuccess { orders = it; loading = false }
-            .onFailure { error = it.message ?: "No se han podido cargar tus pedidos."; loading = false }
+            .onSuccess { orders = it; error = null; loading = false }
+            .onFailure {
+                error = if (!repository.hasSession) {
+                    "La sesión ha caducado. Vuelve a iniciar sesión."
+                } else {
+                    it.message ?: "No se han podido cargar tus pedidos."
+                }
+                loading = false
+            }
     }
     Column(Modifier.fillMaxSize().padding(24.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
