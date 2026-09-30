@@ -496,11 +496,20 @@ private fun IosSectionHeader(title: String) {
 }
 
 @Composable
-internal fun IosStoreLoading() {
-    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        CircularProgressIndicator()
-        Spacer(Modifier.height(12.dp))
-        Text("Cargando")
+internal fun IosStoreLoading(label: String = "Cargando") {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(20.dp),
+        shape = RoundedCornerShape(18.dp),
+        tonalElevation = 1.dp
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(vertical = 28.dp, horizontal = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            CircularProgressIndicator(Modifier.size(28.dp))
+            Spacer(Modifier.height(12.dp))
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -510,25 +519,47 @@ internal fun IosStoreEmpty(
     action: (() -> Unit)? = null,
     actionLabel: String? = null
 ) {
-    Column(
-        Modifier.fillMaxSize().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(20.dp),
+        shape = RoundedCornerShape(18.dp),
+        tonalElevation = 1.dp
     ) {
-        Text(message)
-        if (action != null && !actionLabel.isNullOrBlank()) {
-            Spacer(Modifier.height(12.dp))
-            TextButton(onClick = action) { Text(actionLabel) }
+        Column(
+            Modifier.fillMaxWidth().padding(vertical = 28.dp, horizontal = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                message,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (action != null && !actionLabel.isNullOrBlank()) {
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(onClick = action) { Text(actionLabel) }
+            }
         }
     }
 }
 
 @Composable
 internal fun IosStoreError(message: String, retry: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Text(message, color = MaterialTheme.colorScheme.error)
-        Spacer(Modifier.height(12.dp))
-        Button(onClick = retry) { Text("Reintentar") }
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(20.dp),
+        shape = RoundedCornerShape(18.dp),
+        tonalElevation = 1.dp
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(vertical = 28.dp, horizontal = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error
+            )
+            Spacer(Modifier.height(12.dp))
+            Button(onClick = retry) { Text("Reintentar") }
+        }
     }
 }
 
