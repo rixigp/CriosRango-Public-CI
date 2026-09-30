@@ -1,6 +1,8 @@
 package es.criosrango.shared
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -89,12 +91,18 @@ fun IosCheckoutScreen(
         address.trim(), address2.trim(), postcode.trim(), city.trim(), state.trim(), country.trim()
     )
     val shippingOptions = cart.shippingRates.flatMap { pack -> pack.rates.map { pack to it } }
+    val paymentInProgress = paymentState in setOf(
+        StoreCardPaymentState.OPENING,
+        StoreCardPaymentState.WAITING_RETURN,
+        StoreCardPaymentState.RECONCILING
+    )
+    val checkoutBusy = phase == StoreCheckoutPhase.LOADING || phase == StoreCheckoutPhase.CREATING_ORDER
     val canSubmit = phase == StoreCheckoutPhase.READY &&
         selectedShipping != null &&
         selectedPayment.isNotBlank() &&
         addressError == null &&
         createdOrder == null &&
-        paymentState !in setOf(StoreCardPaymentState.OPENING, StoreCardPaymentState.WAITING_RETURN, StoreCardPaymentState.RECONCILING)
+        !paymentInProgress
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
@@ -102,13 +110,35 @@ fun IosCheckoutScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack) { Text("← Carrito") }
-                Text("Finalizar compra", style = MaterialTheme.typography.headlineSmall)
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onBack, enabled = !checkoutBusy && !paymentInProgress) { Text("← Carrito") }
+                Text("Finalizar compra", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
             }
         }
-        if (phase == StoreCheckoutPhase.LOADING && checkout == null) item { CircularProgressIndicator() }
-        item { Text("Dirección", style = MaterialTheme.typography.titleLarge) }
+        if (phase == StoreCheckoutPhase.LOADING && checkout == null) item {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                CircularProgressIndicator()
+                Text("Cargando checkout…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (cart.items.isEmpty() && phase != StoreCheckoutPhase.LOADING) item {
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), tonalElevation = 1.dp) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("El carrito está vacío", style = MaterialTheme.typography.titleMedium)
+                    Text("Añade productos al carrito antes de continuar con la compra.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = onBack) { Text("Volver al carrito") }
+                }
+            }
+        }
+        item { CheckoutSection(1, "Entrega") }
         item { CheckoutField("Nombre", firstName) { firstName = it } }
         item { CheckoutField("Apellidos", lastName) { lastName = it } }
         item { CheckoutField("Email", email, KeyboardType.Email) { email = it } }
@@ -130,7 +160,7 @@ fun IosCheckoutScreen(
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Consultar entrega") }
         }
-        item { Text("Envío", style = MaterialTheme.typography.titleLarge) }
+        item { CheckoutSection(2, "Envío") }
         if (shippingOptions.isEmpty() && checkout != null) item { Text("No hay tarifas disponibles para esta dirección.") }
         items(shippingOptions) { pair ->
             val pack = pair.first
@@ -151,11 +181,11 @@ fun IosCheckoutScreen(
                 )
                 Column(Modifier.weight(1f)) {
                     Text(rate.name)
-                    Text(rate.price + " " + rate.currencySymbol, style = MaterialTheme.typography.bodySmall)
+                    Text(formatStorePrice(rate.price, rate.currencyMinorUnit, rate.currencySymbol), style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
-        item { HorizontalDivider(); Text("Método de pago", style = MaterialTheme.typography.titleLarge) }
+        item { CheckoutSection(4, "Pago") }
         if (paymentOptions.isEmpty() && checkout != null) item { Text("No hay métodos de pago disponibles.") }
         items(paymentOptions) { option ->
             Row(
@@ -171,7 +201,34 @@ fun IosCheckoutScreen(
                 )
             }
         }
-        item { Text("Total: " + cart.totals.totalPrice + " " + cart.totals.currencySymbol, style = MaterialTheme.typography.titleLarge) }
+        item {
+            CheckoutSection(3, "Resumen")
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text(
+                    if (cart.items.size == 1) "1 producto" else cart.items.size.toString() + " productos",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                cart.items.forEach { line ->
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(line.name, Modifier.weight(1f))
+                        Text("×" + line.quantity, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                HorizontalDivider()
+                CheckoutAmount("Subtotal", formatStorePrice(cart.totals.totalItems, cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
+                CheckoutAmount(
+                    "Envío",
+                    when {
+                        checkoutBusy -> "Calculando…"
+                        selectedShipping == null -> "Pendiente"
+                        cart.totals.totalShipping == null -> "Pendiente"
+                        cart.totals.totalShipping == "0" -> "Gratis"
+                        else -> formatStorePrice(cart.totals.totalShipping, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)
+                    }
+                )
+                CheckoutAmount("Total", formatStorePrice(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), true)
+            }
+        }
 
         if (paymentState == StoreCardPaymentState.PAID) item {
             Text("Pago confirmado para el pedido #" + (paymentOrderId ?: ""), color = MaterialTheme.colorScheme.primary)
@@ -189,7 +246,13 @@ fun IosCheckoutScreen(
         }
         if (!error.isNullOrBlank()) item {
             Text(error!!, color = MaterialTheme.colorScheme.error)
-            TextButton(onClick = { checkoutStore.load() }) { Text("Reintentar checkout") }
+            TextButton(
+                onClick = {
+                    if (addressValue.firstName.isNotBlank() && addressValue.lastName.isNotBlank()) checkoutStore.updateCustomer(addressValue)
+                    else checkoutStore.load()
+                },
+                enabled = !checkoutBusy && !paymentInProgress
+            ) { Text("Reintentar checkout") }
         }
         if (!paymentError.isNullOrBlank()) item {
             Text(paymentError!!, color = MaterialTheme.colorScheme.error)
@@ -216,14 +279,27 @@ fun IosCheckoutScreen(
 
         item {
             Button(
-                onClick = { checkoutStore.createOrder(addressValue, selectedPayment, selectedShipping!!.second) },
+                onClick = { if (canSubmit) checkoutStore.createOrder(addressValue, selectedPayment, selectedShipping!!.second) },
                 enabled = canSubmit,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(28.dp)
             ) {
-                Text(if (phase == StoreCheckoutPhase.CREATING_ORDER) "Creando pedido…" else "Pagar")
+                Text(
+                    when {
+                        phase == StoreCheckoutPhase.CREATING_ORDER -> "Creando pedido…"
+                        paymentInProgress -> "Abriendo Cecabank…"
+                        else -> "Pagar " + formatStorePrice(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)
+                    }
+                )
             }
         }
-        if (phase == StoreCheckoutPhase.CREATING_ORDER) item { CircularProgressIndicator() }
+        if (phase == StoreCheckoutPhase.CREATING_ORDER) item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(10.dp))
+                Text("Creando pedido…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }
 
@@ -247,4 +323,29 @@ private fun validateIosCheckoutAddress(address: CustomerAddress): String? = when
     address.state.isBlank() -> "Indica una provincia."
     address.country != "ES" -> "Selecciona España."
     else -> null
+}
+
+@Composable
+private fun CheckoutSection(number: Int, title: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier.size(28.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(number.toString(), color = MaterialTheme.colorScheme.onPrimary)
+        }
+        Text(title, style = MaterialTheme.typography.titleLarge)
+    }
+}
+
+@Composable
+private fun CheckoutAmount(label: String, value: String, strong: Boolean = false) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, fontWeight = if (strong) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal)
+        Text(value, fontWeight = if (strong) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal)
+    }
 }
