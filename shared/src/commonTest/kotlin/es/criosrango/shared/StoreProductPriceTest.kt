@@ -31,7 +31,8 @@ class StoreProductPriceTest {
           }
         }"""
 
-        val product = json.decodeFromString<StoreProduct>(json)
+        val product = Json { ignoreUnknownKeys = true }
+            .decodeFromString<StoreProduct>(json)
 
         assertEquals("1599", product.prices.price)
         assertEquals("1999", product.prices.regularPrice)
