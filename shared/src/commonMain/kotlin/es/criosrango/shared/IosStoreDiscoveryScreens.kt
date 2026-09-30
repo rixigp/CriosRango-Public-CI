@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -19,9 +20,146 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
+internal enum class IosNovedadesAudience(val key: String, val label: String) {
+    ALL("all", "Todas"),
+    GIRL("girl", "Niña"),
+    BOY("boy", "Niño"),
+    BABY("baby", "Bebé"),
+    WOMAN("woman", "Mujer"),
+    MAN("man", "Hombre")
+}
+
+internal enum class IosNovedadesSort(val key: String, val label: String) {
+    RECENT("recent", "Más recientes"),
+    PRICE_ASC("price_asc", "Precio: menor a mayor"),
+    PRICE_DESC("price_desc", "Precio: mayor a menor"),
+    NAME_ASC("name_asc", "Nombre A-Z")
+}
+
+internal fun novedadesKey(value: String): String =
+    java.text.Normalizer.normalize(value.lowercase().trim(), java.text.Normalizer.Form.NFD)
+        .replace("\\p{Mn}+".toRegex(), "")
+
+internal fun novedadesAudienceMatches(
+    product: StoreProduct,
+    audience: IosNovedadesAudience,
+    allCategories: List<StoreCategory>
+): Boolean {
+    if (audience == IosNovedadesAudience.ALL) return true
+    val byId = allCategories.associateBy { it.id }
+    val names = mutableSetOf<String>()
+    product.categories.forEach { productCategory ->
+        names += novedadesKey(productCategory.name)
+        var currentId = productCategory.id
+        val visited = mutableSetOf<Int>()
+        while (currentId != 0 && visited.add(currentId)) {
+            val category = byId[currentId] ?: break
+            names += novedadesKey(category.name)
+            currentId = category.parent
+        }
+    }
+    return when (audience) {
+        IosNovedadesAudience.ALL -> true
+        IosNovedadesAudience.GIRL -> "nina" in names
+        IosNovedadesAudience.BOY -> "nino" in names
+        IosNovedadesAudience.BABY -> "bebe nina" in names || "bebe nino" in names || "recien nacido" in names
+        IosNovedadesAudience.WOMAN -> "mujer" in names
+        IosNovedadesAudience.MAN -> "hombre" in names
+    }
+}
+
+internal fun sortNovedadesProducts(
+    products: List<StoreProduct>,
+    sort: IosNovedadesSort
+): List<StoreProduct> = when (sort) {
+    IosNovedadesSort.RECENT -> products
+    IosNovedadesSort.PRICE_ASC -> products.sortedBy { it.prices.price.toLongOrNull() ?: Long.MAX_VALUE }
+    IosNovedadesSort.PRICE_DESC -> products.sortedByDescending { it.prices.price.toLongOrNull() ?: Long.MIN_VALUE }
+    IosNovedadesSort.NAME_ASC -> products.sortedBy { it.name.lowercase() }
+}
+
 @Composable
-internal fun IosNovedadesScreen(storeApi: StoreApiClient,padding: PaddingValues,cartStore: StoreCartStore,onProduct:(StoreProduct)->Unit,onBack:()->Unit) =
-    IosPagedProductScreen("Novedades",padding,cartStore,onProduct,onBack,{p,n->storeApi.products(p,n,orderBy="date",order="desc")},"novedades")
+internal fun IosNovedadesScreen(
+    storeApi: StoreApiClient,
+    padding: PaddingValues,
+    cartStore: StoreCartStore,
+    onProduct: (StoreProduct) -> Unit,
+    onBack: () -> Unit
+) {
+    var audienceKey by rememberSaveable { mutableStateOf(IosNovedadesAudience.ALL.key) }
+    var sortKey by rememberSaveable { mutableStateOf(IosNovedadesSort.RECENT.key) }
+    val audience = IosNovedadesAudience.values().firstOrNull { it.key == audienceKey } ?: IosNovedadesAudience.ALL
+    val sort = IosNovedadesSort.values().firstOrNull { it.key == sortKey } ?: IosNovedadesSort.RECENT
+    var categories by remember { mutableStateOf(emptyList<StoreCategory>()) }
+
+    LaunchedEffect(Unit) {
+        categories = runCatching { storeApi.categories(perPage = 100) }.getOrDefault(emptyList())
+    }
+
+    IosPagedProductScreen(
+        title = "Novedades",
+        padding = padding,
+        cartStore = cartStore,
+        onProduct = onProduct,
+        onBack = onBack,
+        load = { page, perPage ->
+            storeApi.products(perPage = perPage, page = page, orderBy = "date", order = "desc")
+        },
+        queryKey = "novedades:$audienceKey",
+        transform = { products ->
+            sortNovedadesProducts(
+                products.filter { novedadesAudienceMatches(it, audience, categories) },
+                sort
+            )
+        },
+        emptyMessage = if (audience == IosNovedadesAudience.ALL) "No hay novedades." else "No hay productos con estos filtros.",
+        emptyActionLabel = if (audience == IosNovedadesAudience.ALL) null else "Borrar filtros",
+        onEmptyAction = if (audience == IosNovedadesAudience.ALL) null else { { audienceKey = IosNovedadesAudience.ALL.key } },
+        headerContent = {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                items(IosNovedadesAudience.values(), key = { it.key }) { option ->
+                    FilterChip(
+                        selected = audience == option,
+                        onClick = { audienceKey = option.key },
+                        label = { Text(option.label) }
+                    )
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (audience != IosNovedadesAudience.ALL) {
+                    TextButton(onClick = { audienceKey = IosNovedadesAudience.ALL.key }) {
+                        Text("Borrar filtros")
+                    }
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
+                Box {
+                    var expanded by remember { mutableStateOf(false) }
+                    TextButton(onClick = { expanded = true }) {
+                        Text("Ordenar: ${sort.label} ▾")
+                    }
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        IosNovedadesSort.values().forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option.label) },
+                                onClick = {
+                                    expanded = false
+                                    sortKey = option.key
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    )
+}
 
 @Composable
 internal fun IosSearchScreen(storeApi: StoreApiClient,padding: PaddingValues,cartStore: StoreCartStore,onProduct:(StoreProduct)->Unit,onBack:()->Unit) {
@@ -74,7 +212,7 @@ internal fun IosOutletScreen(storeApi:StoreApiClient,padding:PaddingValues,cartS
 }
 
 @Composable
-private fun IosPagedProductScreen(title:String,padding:PaddingValues,cartStore:StoreCartStore,onProduct:(StoreProduct)->Unit,onBack:()->Unit,load:suspend(Int,Int)->List<StoreProduct>,queryKey:String){
+private fun IosPagedProductScreen(title:String,padding:PaddingValues,cartStore:StoreCartStore,onProduct:(StoreProduct)->Unit,onBack:()->Unit,load:suspend(Int,Int)->List<StoreProduct>,queryKey:String,transform:(List<StoreProduct>)->List<StoreProduct>={it},emptyMessage:String="No hay productos.",emptyActionLabel:String?=null,onEmptyAction:(()->Unit)?=null,headerContent:(@Composable ColumnScope.()->Unit)?=null){
     val scope=rememberCoroutineScope(); val paginator=remember(queryKey){CatalogPaginatorStore<StoreProduct>(scope){it.id}}; val state by paginator.state.collectAsState(); val grid=rememberLazyGridState()
     LaunchedEffect(queryKey){paginator.start(queryKey){p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}
     LaunchedEffect(grid,state.items.size,state.hasMore){snapshotFlow{grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index?:-1}.collect{last->if(state.hasMore&&!state.isInitialLoading&&!state.isAppending&&last>=state.items.size-CatalogPaginator.PREFETCH_DISTANCE)paginator.loadNext{p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}}
@@ -83,9 +221,9 @@ private fun IosPagedProductScreen(title:String,padding:PaddingValues,cartStore:S
         when{
             state.isInitialLoading->IosStoreLoading()
             state.initialError!=null->IosStoreError(state.initialError!!.message?:"No se ha podido cargar."){paginator.start(queryKey){p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}
-            state.items.isEmpty()->IosStoreEmpty("No hay productos.")
-            else->LazyVerticalGrid(columns=GridCells.Fixed(2),state=grid,contentPadding=PaddingValues(12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
-                items(state.items,key={it.id}){IosProductCard(it,onProduct,cartStore)}
+            state.items.isEmpty()->IosStoreEmpty(emptyMessage,onEmptyAction,emptyActionLabel)
+            else->Column { headerContent?.invoke(); LazyVerticalGrid(columns=GridCells.Fixed(2),state=grid,contentPadding=PaddingValues(12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
+                items(transform(state.items),key={it.id}){IosProductCard(it,onProduct,cartStore)}
                 if(state.isAppending)item(span={GridItemSpan(maxLineSpan)}){IosStoreLoading()}
                 state.appendError?.let{e->item(span={GridItemSpan(maxLineSpan)}){IosStoreError(e.message?:"Error"){paginator.loadNext{p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}}}
             }

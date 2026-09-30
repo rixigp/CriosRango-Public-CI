@@ -467,8 +467,22 @@ internal fun IosStoreLoading() {
 }
 
 @Composable
-internal fun IosStoreEmpty(message: String) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(message) }
+internal fun IosStoreEmpty(
+    message: String,
+    action: (() -> Unit)? = null,
+    actionLabel: String? = null
+) {
+    Column(
+        Modifier.fillMaxSize().padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(message)
+        if (action != null && !actionLabel.isNullOrBlank()) {
+            Spacer(Modifier.height(12.dp))
+            TextButton(onClick = action) { Text(actionLabel) }
+        }
+    }
 }
 
 @Composable
