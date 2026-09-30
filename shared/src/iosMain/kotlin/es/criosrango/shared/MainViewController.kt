@@ -28,6 +28,7 @@ fun MainViewController() = ComposeUIViewController {
         cartStore = cartStore,
         checkoutStore = StoreCheckoutStore(storeApi, cartStore, accountRepository),
         paymentStore = paymentStore,
+        outletAvailabilityStore = IosOutletAvailabilityStore(storeApi),
         onOpenPayment = ::openIosPaymentUrl,
         onOpenExternalUrl = ::openIosExternalUrl
     )
