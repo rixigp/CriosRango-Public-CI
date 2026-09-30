@@ -31,6 +31,14 @@ internal fun IosCatalogScreen(
         IosCatalogPage.Root -> IosCategoryRoot(storeApi, padding, onOpenCategory)
         is IosCatalogPage.Category -> IosCategoryProducts(storeApi, padding, page.category, onOpenProduct, onBack, cartStore)
         is IosCatalogPage.Product -> IosProductDetail(storeApi, padding, page.product, onBack, cartStore)
+        IosCatalogPage.Novedades -> IosNovedadesScreen(storeApi, padding, cartStore, onOpenProduct, onBack)
+        IosCatalogPage.Search -> IosSearchScreen(storeApi, padding, cartStore, onOpenProduct, onBack)
+        IosCatalogPage.Brands -> IosBrandsScreen(storeApi, padding, cartStore, onOpenProduct, onBack)
+        IosCatalogPage.Outlet -> {
+            var categories by remember { mutableStateOf(emptyList<StoreCategory>()) }
+            LaunchedEffect(Unit) { categories = runCatching { storeApi.categories(100) }.getOrDefault(emptyList()) }
+            IosOutletScreen(storeApi, padding, cartStore, categories, onOpenProduct, onBack)
+        }
     }
 }
 

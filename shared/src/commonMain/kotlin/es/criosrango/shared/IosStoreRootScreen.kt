@@ -57,6 +57,10 @@ import kotlinx.coroutines.launch
 
 internal enum class IosRootSection { HOME, CATEGORIES, CART, ACCOUNT }
 internal sealed class IosCatalogPage {
+    data object Novedades : IosCatalogPage()
+    data object Search : IosCatalogPage()
+    data object Brands : IosCatalogPage()
+    data object Outlet : IosCatalogPage()
     data object Root : IosCatalogPage()
     data class Category(val category: StoreCategory) : IosCatalogPage()
     data class Product(val product: StoreProduct) : IosCatalogPage()
@@ -123,7 +127,11 @@ fun CriosRangoIOSRootScreen(
                     onProduct = {
                         section = IosRootSection.CATEGORIES
                         catalogPage = IosCatalogPage.Product(it)
-                    }
+                    },
+                    onNovedades = { section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Novedades },
+                    onSearch = { section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Search },
+                    onBrands = { section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Brands },
+                    onOutlet = { section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Outlet }
                 )
                 IosRootSection.CATEGORIES -> IosCatalogScreen(
                     storeApi = storeApi,
@@ -135,6 +143,7 @@ fun CriosRangoIOSRootScreen(
                     onBack = {
                         catalogPage = when (catalogPage) {
                             IosCatalogPage.Root -> IosCatalogPage.Root
+                            IosCatalogPage.Novedades, IosCatalogPage.Search, IosCatalogPage.Brands, IosCatalogPage.Outlet -> IosCatalogPage.Root
                             is IosCatalogPage.Category,
                             is IosCatalogPage.Product -> IosCatalogPage.Root
                         }
@@ -196,7 +205,11 @@ private fun IosHomeScreen(
     cartStore: StoreCartStore,
     padding: PaddingValues,
     onCategory: (StoreCategory) -> Unit,
-    onProduct: (StoreProduct) -> Unit
+    onProduct: (StoreProduct) -> Unit,
+    onNovedades: () -> Unit,
+    onSearch: () -> Unit,
+    onBrands: () -> Unit,
+    onOutlet: () -> Unit
 ) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -238,7 +251,13 @@ private fun IosHomeScreen(
                     contentPadding = PaddingValues(bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
-                    item { IosHomeHero() }
+                    item {
+                        IosHomeHero()
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = onSearch, modifier = Modifier.weight(1f)) { Text("Buscar") }
+                            OutlinedButton(onClick = onBrands, modifier = Modifier.weight(1f)) { Text("Marcas") }
+                        }
+                    }
                     item {
                         IosSectionHeader("Categorías")
                         Spacer(Modifier.height(10.dp))
@@ -252,7 +271,10 @@ private fun IosHomeScreen(
                         }
                     }
                     item {
-                        IosSectionHeader("Novedades")
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Novedades", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            TextButton(onClick = onNovedades) { Text("Ver todas") }
+                        }
                         Spacer(Modifier.height(10.dp))
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 20.dp),
