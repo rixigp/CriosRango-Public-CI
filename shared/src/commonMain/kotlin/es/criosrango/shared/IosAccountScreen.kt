@@ -26,12 +26,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.LocationOn
-import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -413,19 +407,19 @@ private fun IosProfileMenuScreen(
             TextButton(onClick = onBack) { Text("Atrás") }
             Text("Mi perfil", style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(10.dp))
-            IosProfileActionRow("Datos personales", Icons.Outlined.Person, onPersonalData)
-            IosProfileActionRow("Dirección de entrega", Icons.Outlined.LocationOn, onAddress)
-            IosProfileActionRow("Cambiar contraseña", Icons.Outlined.Lock, onPassword)
+            IosProfileActionRow("Datos personales", "👤", onPersonalData)
+            IosProfileActionRow("Dirección de entrega", "⌖", onAddress)
+            IosProfileActionRow("Cambiar contraseña", "🔒", onPassword)
             IosProfileActionRow(
                 AccountDeletion.TITLE,
-                Icons.Outlined.Delete,
+                "🗑",
                 { showDeleteConfirmation = true },
                 containerColor = AccountDeletion.background,
                 contentColor = AccountDeletion.accent
             )
             IosProfileActionRow(
                 "Cerrar sesión",
-                Icons.AutoMirrored.Outlined.Logout,
+                "↪",
                 onLogout,
                 containerColor = Color(0xFFFFECEF),
                 contentColor = Color(0xFFC73B4C)
@@ -453,7 +447,7 @@ private fun IosProfileMenuScreen(
 @Composable
 private fun IosProfileActionRow(
     title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: String,
     onClick: () -> Unit,
     containerColor: Color = Color(0xFFF0EDF1),
     contentColor: Color = MaterialTheme.colorScheme.onSurface
@@ -467,7 +461,7 @@ private fun IosProfileActionRow(
             Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            androidx.compose.material3.Icon(icon, contentDescription = null, modifier = Modifier.width(28.dp), tint = contentColor)
+            Text(icon, modifier = Modifier.width(28.dp), color = contentColor)
             Spacer(Modifier.width(14.dp))
             Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = contentColor)
             Text("›", style = MaterialTheme.typography.titleLarge, color = contentColor)
