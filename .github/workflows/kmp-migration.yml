@@ -17,6 +17,11 @@ jobs:
     if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
       - name: Prepare Google Services
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
