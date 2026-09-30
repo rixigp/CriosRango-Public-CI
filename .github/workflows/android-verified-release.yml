@@ -1,21 +1,15 @@
 name: Android verified development APK
 
 on:
-  push:
-    branches:
-      - kmp-migration
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verified-apk:
     name: Build and verify installable Android APK
     runs-on: ubuntu-24.04
-    concurrency:
-      group: dev-latest-release
-      cancel-in-progress: false
-      queue: max
     steps:
       - uses: actions/checkout@v7
         with:
@@ -119,30 +113,6 @@ jobs:
             CriosRango-v${{ steps.apk.outputs.version_name }}-code${{ steps.apk.outputs.version_code }}.apk
             CriosRango-latest.apk
           if-no-files-found: error
-
-      - name: Publish verified development APK
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSIONED_APK: ${{ steps.apk.outputs.versioned_apk }}
-          APK_SHA256: ${{ steps.apk.outputs.apk_sha256 }}
-        run: |
-          set -euo pipefail
-          NOTES="Verified debug APK for kmp-migration commit ${GITHUB_SHA}\n\nAPK SHA-256: ${APK_SHA256}\nGradle task: :app:assembleDebug\nValidation: unzip -t, aapt dump badging, apksigner verify --verbose --print-certs, zipalign -c -v 4"
-          if ! gh release view dev-latest >/dev/null 2>&1; then
-            gh release create dev-latest --title "Development latest" --notes "$NOTES" --prerelease
-          else
-            gh release edit dev-latest --title "Development latest" --notes "$NOTES" --prerelease
-          fi
-          gh release upload dev-latest "$VERSIONED_APK" CriosRango-latest.apk --clobber
-
-      - name: Final publication assertion
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh release view dev-latest --json targetCommitish,assets
-          test "$(gh release view dev-latest --json targetCommitish --jq '.targetCommitish')" = "${GITHUB_SHA}"
-          gh release view dev-latest --json assets --jq '.assets[].name' | grep -Fx CriosRango-latest.apk
 
       - name: Cleanup
         if: always()
