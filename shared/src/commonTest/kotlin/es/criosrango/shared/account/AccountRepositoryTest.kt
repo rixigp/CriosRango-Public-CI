@@ -160,7 +160,7 @@ class AccountRepositoryTest {
             )
         )
 
-        repo.logout()
+        assertFailsWith<Exception> { repo.logout() }
         assertNull(store.load())
         assertTrue(!repo.hasSession)
     }
