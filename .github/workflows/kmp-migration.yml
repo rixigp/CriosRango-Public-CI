@@ -120,9 +120,9 @@ jobs:
           set -euo pipefail
           RELEASE_NOTES="CriosRango v${VERSION_NAME} code ${VERSION_CODE} - automatic development build from commit ${GITHUB_SHA}"
           if ! gh release view dev-latest >/dev/null 2>&1; then
-            gh release create dev-latest --title "Development latest" --notes "$RELEASE_NOTES" --prerelease --target "${GITHUB_SHA}"
+            gh release create dev-latest --title "Development latest" --notes "$RELEASE_NOTES" --prerelease
           else
-            gh release edit dev-latest --title "Development latest" --notes "$RELEASE_NOTES" --prerelease --target "${GITHUB_SHA}"
+            gh release edit dev-latest --title "Development latest" --notes "$RELEASE_NOTES" --prerelease
           fi
           publish_assets() {
             local attempt=1
