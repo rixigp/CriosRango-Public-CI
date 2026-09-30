@@ -36,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -55,7 +56,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 
-internal enum class IosRootSection { HOME, CATEGORIES, CART, ACCOUNT }
+internal enum class IosRootSection { HOME, CATEGORIES, OUTLET, CART, ACCOUNT }
 internal sealed class IosCatalogPage {
     data object Novedades : IosCatalogPage()
     data object Search : IosCatalogPage()
@@ -79,6 +80,10 @@ fun CriosRangoIOSRootScreen(
     var section by remember { mutableStateOf(IosRootSection.HOME) }
     var checkoutOpen by remember { mutableStateOf(false) }
     var catalogPage by remember { mutableStateOf<IosCatalogPage>(IosCatalogPage.Root) }
+    val catalogHistory = remember { mutableStateListOf<IosCatalogPage>() }
+    fun openCatalog(page: IosCatalogPage) { if (catalogPage != page) catalogHistory.add(catalogPage); catalogPage = page }
+    fun resetCatalog() { catalogHistory.clear(); catalogPage = IosCatalogPage.Root }
+    fun backCatalog() { catalogPage = if (catalogHistory.isNotEmpty()) catalogHistory.removeAt(catalogHistory.lastIndex) else IosCatalogPage.Root }
 
     val createdOrder by checkoutStore.createdOrder.collectAsState()
     LaunchedEffect(createdOrder?.orderId, createdOrder?.orderKey) {
@@ -101,7 +106,7 @@ fun CriosRangoIOSRootScreen(
                     cartCount = cartStore.cart.collectAsState().value.itemsCount,
                     onSelected = {
                         section = it
-                        if (it == IosRootSection.CATEGORIES) catalogPage = IosCatalogPage.Root
+                        if (it == IosRootSection.CATEGORIES || it == IosRootSection.OUTLET) resetCatalog()
                     }
                 )
             }
@@ -122,32 +127,27 @@ fun CriosRangoIOSRootScreen(
                     padding = padding,
                     onCategory = {
                         section = IosRootSection.CATEGORIES
-                        catalogPage = IosCatalogPage.Category(it)
+                        resetCatalog()
+                        openCatalog(IosCatalogPage.Category(it))
                     },
                     onProduct = {
                         section = IosRootSection.CATEGORIES
-                        catalogPage = IosCatalogPage.Product(it)
+                        resetCatalog()
+                        openCatalog(IosCatalogPage.Product(it))
                     },
-                    onNovedades = { section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Novedades },
-                    onSearch = { section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Search },
-                    onBrands = { section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Brands },
-                    onOutlet = { section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Outlet }
+                    onNovedades = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Novedades) },
+                    onSearch = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Search) },
+                    onBrands = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Brands) },
+                    onOutlet = { section = IosRootSection.OUTLET; resetCatalog(); openCatalog(IosCatalogPage.Outlet) }
                 )
-                IosRootSection.CATEGORIES -> IosCatalogScreen(
+                IosRootSection.OUTLET, IosRootSection.CATEGORIES -> IosCatalogScreen(
                     storeApi = storeApi,
                     padding = padding,
                     page = catalogPage,
                     cartStore = cartStore,
-                    onOpenCategory = { catalogPage = IosCatalogPage.Category(it) },
-                    onOpenProduct = { catalogPage = IosCatalogPage.Product(it) },
-                    onBack = {
-                        catalogPage = when (catalogPage) {
-                            IosCatalogPage.Root -> IosCatalogPage.Root
-                            IosCatalogPage.Novedades, IosCatalogPage.Search, IosCatalogPage.Brands, IosCatalogPage.Outlet -> IosCatalogPage.Root
-                            is IosCatalogPage.Category,
-                            is IosCatalogPage.Product -> IosCatalogPage.Root
-                        }
-                    }
+                    onOpenCategory = { openCatalog(IosCatalogPage.Category(it)) },
+                    onOpenProduct = { openCatalog(IosCatalogPage.Product(it)) },
+                    onBack = { if (catalogPage == IosCatalogPage.Root) { section = IosRootSection.HOME } else backCatalog() }
                 )
                 IosRootSection.CART -> IosCartScreen(cartStore, padding, onCheckout = { checkoutOpen = true }) { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) }
                 IosRootSection.ACCOUNT -> CriosRangoIOSAccountScreen(
