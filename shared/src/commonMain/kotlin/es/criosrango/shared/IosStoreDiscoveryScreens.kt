@@ -213,7 +213,20 @@ internal fun IosOutletScreen(storeApi:StoreApiClient,padding:PaddingValues,cartS
 }
 
 @Composable
-private fun IosPagedProductScreen(title:String,padding:PaddingValues,cartStore:StoreCartStore,onProduct:(StoreProduct)->Unit,onBack:()->Unit,load:suspend(Int,Int)->List<StoreProduct>,queryKey:String,transform:(List<StoreProduct>)->List<StoreProduct>={it},emptyMessage:String="No hay productos.",emptyActionLabel:String?=null,onEmptyAction:(()->Unit)?=null,headerContent:(@Composable ColumnScope.()->Unit)?=null){
+private fun IosPagedProductScreen(
+    title: String,
+    padding: PaddingValues,
+    cartStore: StoreCartStore,
+    onProduct: (StoreProduct) -> Unit,
+    onBack: () -> Unit,
+    load: suspend (Int, Int) -> List<StoreProduct>,
+    queryKey: String,
+    transform: (List<StoreProduct>) -> List<StoreProduct> = { it },
+    emptyMessage: String = "No hay productos.",
+    emptyActionLabel: String? = null,
+    onEmptyAction: (() -> Unit)? = null,
+    headerContent: (@Composable ColumnScope.() -> Unit)? = null
+) {
     val scope=rememberCoroutineScope(); val paginator=remember(queryKey){CatalogPaginatorStore<StoreProduct>(scope){it.id}}; val state by paginator.state.collectAsState(); val grid=rememberLazyGridState()
     LaunchedEffect(queryKey){paginator.start(queryKey){p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}
     LaunchedEffect(grid,state.items.size,state.hasMore){snapshotFlow{grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index?:-1}.collect{last->if(state.hasMore&&!state.isInitialLoading&&!state.isAppending&&last>=state.items.size-CatalogPaginator.PREFETCH_DISTANCE)paginator.loadNext{p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}}
