@@ -126,6 +126,46 @@ class AccountRepositoryTest {
     }
 
     @Test
+    fun meTransportFailure_preservesPersistedToken() = runBlocking {
+        val store = FakeAccountTokenStore("tok-persisted")
+        val engine = MockEngine { throw io.ktor.utils.io.errors.IOException("network") }
+        val repo = AccountRepository(
+            store,
+            AccountClient(
+                "https://test.invalid/wp-json/criosrango/v1/",
+                HttpClient(engine) {
+                    expectSuccess = true
+                    install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+                }
+            )
+        )
+
+        assertFailsWith<Exception> { repo.me() }
+        assertEquals("tok-persisted", store.load())
+        assertTrue(repo.hasSession)
+    }
+
+    @Test
+    fun logoutTransportFailure_stillClearsPersistedToken() = runBlocking {
+        val store = FakeAccountTokenStore("tok-logout")
+        val engine = MockEngine { throw io.ktor.utils.io.errors.IOException("network") }
+        val repo = AccountRepository(
+            store,
+            AccountClient(
+                "https://test.invalid/wp-json/criosrango/v1/",
+                HttpClient(engine) {
+                    expectSuccess = true
+                    install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+                }
+            )
+        )
+
+        repo.logout()
+        assertNull(store.load())
+        assertTrue(!repo.hasSession)
+    }
+
+    @Test
     fun processDeath_newRepositoryRestoresPersistedToken() = runBlocking {
         val store = FakeAccountTokenStore()
         val first = AccountRepository(store, client(body = """{"token":"tok-p","user":{"id":9,"email":"p@b.es"}}"""))
