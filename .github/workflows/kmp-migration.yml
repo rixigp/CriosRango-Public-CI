@@ -14,7 +14,7 @@ permissions:
 jobs:
   fast-ci:
     name: Android validation
-    if: ${{ github.event_name == 'push' }}
+    if: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, '[full-ios]') }}
     runs-on: ubuntu-24.04
     concurrency:
       group: dev-latest-release
@@ -188,7 +188,7 @@ jobs:
         run: rm -f "$RUNNER_TEMP/criosrango-debug.jks"
   full-ios-ci:
     name: iOS simulator build
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[full-ios]')) }}
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
