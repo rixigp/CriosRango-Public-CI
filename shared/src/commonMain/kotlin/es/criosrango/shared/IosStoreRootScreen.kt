@@ -448,15 +448,15 @@ private fun IosCartScreen(
                 tonalElevation = 1.dp
             ) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RemoteStoreImage(line.images.firstOrNull()?.src, line.name, Modifier.size(84.dp).clip(RoundedCornerShape(10.dp)), ContentScale.Crop)
+                    RemoteStoreImage(line.images.firstOrNull()?.src, line.name, Modifier.size(84.dp), ContentScale.Crop)
                     Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(line.name, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         if (line.variation.isNotEmpty()) Text(
                             line.variation.joinToString(" · ") { "${it.attribute.removePrefix("pa_")}: ${it.value}" },
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(formatMinorUnits(line.consumerUnitPrice(), line.prices.currencyMinorUnit, line.prices.currencySymbol) + " / ud.", fontWeight = FontWeight.Bold)
-                        Text("Subtotal: " + formatMinorUnits(line.totals.consumerSubtotal(), line.prices.currencyMinorUnit, line.prices.currencySymbol), style = MaterialTheme.typography.bodySmall)
+                        Text(formatStorePrice(line.prices.price, line.prices.currencyMinorUnit, line.prices.currencySymbol) + " / ud.", fontWeight = FontWeight.Bold)
+                        Text("Subtotal: " + line.totals.lineTotal + " " + line.prices.currencySymbol, style = MaterialTheme.typography.bodySmall)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = { cartStore.update(line, line.quantity - 1) }) { Text("−", style = MaterialTheme.typography.titleLarge) }
                             Text(line.quantity.toString(), modifier = Modifier.padding(horizontal = 8.dp), fontWeight = FontWeight.SemiBold)
@@ -470,13 +470,13 @@ private fun IosCartScreen(
         if (cart.items.isNotEmpty()) item {
             HorizontalDivider()
             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text("Subtotal: " + formatMinorUnits(cart.totals.consumerSubtotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
+                Text("Subtotal: " + cart.totals.subtotal + " " + cart.totals.currencySymbol)
                 when {
                     cart.totals.totalShipping == null -> Text("Envío: Se calcula en el checkout", color = Color.Gray)
-                    cart.totals.consumerShipping().toBigDecimalOrZero() == java.math.BigDecimal.ZERO -> Text("Envío: Gratis")
-                    else -> Text("Envío: " + formatMinorUnits(cart.totals.consumerShipping(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
+                    cart.totals.shipping == "0" || cart.totals.shipping == "0.00" -> Text("Envío: Gratis")
+                    else -> Text("Envío: " + cart.totals.shipping + " " + cart.totals.currencySymbol)
                 }
-                Text("Total: " + formatMinorUnits(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("Total: " + cart.totals.totalPrice + " " + cart.totals.currencySymbol, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Button(onClick = onCheckout, enabled = state == StoreCartLoadState.SUCCESS_ITEMS, modifier = Modifier.fillMaxWidth()) { Text("Finalizar compra") }
                 OutlinedButton(onClick = { clearCartConfirm = true }, modifier = Modifier.fillMaxWidth()) { Text("Vaciar carrito") }
             }
