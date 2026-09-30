@@ -82,6 +82,22 @@ class StoreCartStore(
         }
     }
 
+    fun clear() {
+        scope.launch {
+            mutex.withLock {
+                _error.value = null
+                runCatching {
+                    var current = _cart.value
+                    current.items.toList().forEach { line ->
+                        current = api.removeCartItem(line.key)
+                        accept(current)
+                    }
+                    current
+                }.onFailure { fail(it) }
+            }
+        }
+    }
+
     private fun accept(cart: StoreCart) {
         _cart.value = cart
         _state.value = if (cart.items.isEmpty()) StoreCartLoadState.SUCCESS_EMPTY else StoreCartLoadState.SUCCESS_ITEMS
