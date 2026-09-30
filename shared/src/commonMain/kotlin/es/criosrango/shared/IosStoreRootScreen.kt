@@ -381,6 +381,7 @@ private fun IosCartScreen(
         }
         if (cart.items.isNotEmpty()) item {
             Button(onClick = onCheckout, modifier = Modifier.fillMaxWidth()) { Text("Finalizar compra") }
+            OutlinedButton(onClick = cartStore::clear, modifier = Modifier.fillMaxWidth()) { Text("Vaciar carrito") }
             HorizontalDivider()
             Text("Total: ${cart.totals.totalPrice} ${cart.totals.currencySymbol}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
