@@ -181,7 +181,7 @@ internal fun IosProductDetail(
             .onSuccess { loaded ->
                 product = loaded
                 loaded.attributes.forEach { attribute ->
-                    attribute.terms.firstOrNull { it.default }?.let { selected.putIfAbsent(attribute.name, it.slug) }
+                    attribute.terms.firstOrNull { it.default }?.let { term -> if (!selected.containsKey(attribute.name)) selected[attribute.name] = term.slug }
                 }
             }
             .onFailure { error = it.message ?: "No se ha podido cargar el producto." }
