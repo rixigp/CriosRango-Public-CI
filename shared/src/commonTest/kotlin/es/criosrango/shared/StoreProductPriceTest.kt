@@ -7,6 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class StoreProductPriceTest {
+    private val json = Json { ignoreUnknownKeys = true }
     @Test
     fun formatsMinorUnits() {
         assertEquals("15,99 €", formatStorePrice("1599", 2, "€"))
@@ -30,7 +31,7 @@ class StoreProductPriceTest {
           }
         }"""
 
-        val product = Json { ignoreUnknownKeys = true }.decodeFromString<StoreProduct>(json)
+        val product = json.decodeFromString<StoreProduct>(json)
 
         assertEquals("1599", product.prices.price)
         assertEquals("1999", product.prices.regularPrice)

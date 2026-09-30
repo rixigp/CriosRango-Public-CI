@@ -70,6 +70,7 @@ class StoreApiClient(
     private val client: HttpClient = createStoreHttpClient(),
     private val session: StoreSessionStore = InMemoryStoreSessionStore()
 ) {
+    private val json = Json { ignoreUnknownKeys = true }
     private suspend inline fun <reified T> executeCart(
         request: suspend () -> io.ktor.client.statement.HttpResponse
     ): T {
@@ -78,7 +79,7 @@ class StoreApiClient(
         val raw = response.bodyAsText()
         if (!response.status.isSuccess()) {
             val error = runCatching {
-                Json { ignoreUnknownKeys = true }.decodeFromString<es.criosrango.shared.model.StoreCartApiError>(raw)
+                json.decodeFromString<es.criosrango.shared.model.StoreCartApiError>(raw)
             }.getOrNull()
             throw StoreApiException(
                 response.status.value,
@@ -86,7 +87,7 @@ class StoreApiClient(
                 error?.message?.takeIf { it.isNotBlank() } ?: raw.ifBlank { response.status.description }
             )
         }
-        return Json { ignoreUnknownKeys = true }.decodeFromString(raw)
+        return json.decodeFromString(raw)
     }
 
     private fun io.ktor.client.request.HttpRequestBuilder.sessionHeaders() {
@@ -234,14 +235,14 @@ class StoreApiClient(
             category?.let { parameter("category", it) }
         }
         val rawJson = response.bodyAsText()
-        val models = Json { ignoreUnknownKeys = true }.decodeFromString<List<StoreProduct>>(rawJson)
+        val models = json.decodeFromString<List<StoreProduct>>(rawJson)
         return rawJson to models
     }
 
     internal suspend fun categoriesWithRawJson(perPage: Int = 100): Pair<String, List<StoreCategory>> {
         val response = client.get("${baseUrl}products/categories") { parameter("per_page", perPage) }
         val rawJson = response.bodyAsText()
-        val models = Json { ignoreUnknownKeys = true }.decodeFromString<List<StoreCategory>>(rawJson)
+        val models = json.decodeFromString<List<StoreCategory>>(rawJson)
         return rawJson to models
     }
 

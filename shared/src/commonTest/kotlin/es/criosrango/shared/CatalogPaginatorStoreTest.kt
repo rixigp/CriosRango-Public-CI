@@ -1,11 +1,13 @@
 package es.criosrango.shared
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class CatalogPaginatorStoreTest {
     @Test
     fun start_and_append_expose_shared_paginator_state() = runTest {

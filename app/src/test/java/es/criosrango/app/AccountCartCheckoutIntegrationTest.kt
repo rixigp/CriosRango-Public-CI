@@ -2,7 +2,7 @@ package es.criosrango.app
 
 import es.criosrango.shared.account.AccountCustomerAddress
 
-import org.junit.Assert.assertEquals
+import kotlin.test.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
