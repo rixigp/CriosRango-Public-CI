@@ -37,8 +37,9 @@ internal enum class IosNovedadesSort(val key: String, val label: String) {
 }
 
 internal fun novedadesKey(value: String): String =
-    java.text.Normalizer.normalize(value.lowercase().trim(), java.text.Normalizer.Form.NFD)
-        .replace("\\p{Mn}+".toRegex(), "")
+    value.lowercase().trim()
+        .replace('á', 'a').replace('é', 'e').replace('í', 'i')
+        .replace('ó', 'o').replace('ú', 'u').replace('ü', 'u').replace('ñ', 'n')
 
 internal fun novedadesAudienceMatches(
     product: StoreProduct,
