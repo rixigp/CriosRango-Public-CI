@@ -200,10 +200,9 @@ internal fun IosProductDetail(
     val currentPrices = selectedVariation?.prices ?: product.prices
     val currentInStock = selectedVariation?.isInStock ?: product.isInStock
     val currentPurchasable = selectedVariation?.isPurchasable ?: product.isPurchasable
-    val limits = selectedVariation?.quantityLimits ?: selectedVariation?.addToCart ?: product.quantityLimits ?: product.addToCart
-    val minimum = limits?.minimum ?: 1
-    val maximum = limits?.maximum
-    val multiple = limits?.multipleOf?.takeIf { it > 0 } ?: 1
+    val minimum = selectedVariation?.quantityLimits?.minimum ?: selectedVariation?.addToCart?.minimum ?: product.quantityLimits?.minimum ?: product.addToCart?.minimum ?: 1
+    val maximum = selectedVariation?.quantityLimits?.maximum ?: selectedVariation?.addToCart?.maximum ?: product.quantityLimits?.maximum ?: product.addToCart?.maximum
+    val multiple = (selectedVariation?.quantityLimits?.multipleOf ?: selectedVariation?.addToCart?.multipleOf ?: product.quantityLimits?.multipleOf ?: product.addToCart?.multipleOf)?.takeIf { it > 0 } ?: 1
     val canAdd = currentInStock && currentPurchasable != false && (product.type != "variable" || selectedVariation != null)
     LaunchedEffect(currentId, minimum, maximum, multiple) {
         quantity = quantity.coerceAtLeast(minimum)
@@ -220,7 +219,8 @@ internal fun IosProductDetail(
         item {
             if (product.images.isNotEmpty()) {
                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(currentImages, key = { it.src }) { image ->
+                    items(currentImages.size) { index ->
+                        val image = currentImages[index]
                         RemoteStoreImage(image.src, product.name, Modifier.width(300.dp).aspectRatio(.78f))
                     }
                 }
