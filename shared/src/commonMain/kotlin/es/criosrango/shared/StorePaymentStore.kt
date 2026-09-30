@@ -52,6 +52,15 @@ class StorePaymentStore(
             ?: checkout.paymentResult?.redirectUrl
             ?: checkout.paymentResult?.paymentUrl
             ?: return fail("La tienda no ha devuelto la URL de pago.")
+        val existingPending = pendingStore.load()
+        if (existingPending != null) {
+            attemptActive = true
+            _orderId.value = existingPending.orderId
+            _redirectUrl.value = existingPending.paymentUrl
+            _state.value = StoreCardPaymentState.ERROR
+            _error.value = "Ya existe un intento de pago pendiente. Debe resolverse antes de iniciar otro pago."
+            return null
+        }
         val pending = StorePendingCardPayment(orderId, orderKey, paymentUrl)
         if (!pendingStore.save(pending)) return fail("No se ha podido guardar el intento de pago.")
         attemptActive = true
@@ -138,18 +147,22 @@ class StorePaymentStore(
                         )
                     ) {
                         SharedPaymentReconciliationResult.PAID -> {
-                            pendingStore.clear()
+                            cartStore.clearAfterConfirmedPaymentAwait()
+                            if (!pendingStore.clear()) {
+                                throw IllegalStateException("No se ha podido cerrar el intento de pago.")
+                            }
                             attemptActive = false
                             _redirectUrl.value = null
                             _state.value = StoreCardPaymentState.PAID
-                            cartStore.clearAfterConfirmedPayment()
                         }
                         SharedPaymentReconciliationResult.TERMINAL_UNPAID -> {
-                            pendingStore.clear()
+                            cartStore.refreshAwait()
+                            if (!pendingStore.clear()) {
+                                throw IllegalStateException("No se ha podido cerrar el intento de pago.")
+                            }
                             attemptActive = false
                             _redirectUrl.value = null
                             _state.value = StoreCardPaymentState.NOT_PAID
-                            cartStore.refresh()
                         }
                         SharedPaymentReconciliationResult.EXHAUSTED -> {
                             // No terminal backend answer: keep the durable pending marker.

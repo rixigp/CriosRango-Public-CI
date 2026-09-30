@@ -106,13 +106,27 @@ class StoreCartStore(
 
     fun clearAfterConfirmedPayment() {
         scope.launch {
-            mutex.withLock {
-                var current = _cart.value
-                current.items.toList().forEach { line ->
-                    current = api.removeCartItem(line.key)
-                    accept(current)
-                }
+            clearAfterConfirmedPaymentAwait()
+        }
+    }
+
+    suspend fun clearAfterConfirmedPaymentAwait() {
+        mutex.withLock {
+            var current = _cart.value
+            current.items.toList().forEach { line ->
+                current = api.removeCartItem(line.key)
+                accept(current)
             }
+        }
+    }
+
+    suspend fun refreshAwait() {
+        mutex.withLock {
+            _state.value = StoreCartLoadState.LOADING
+            _error.value = null
+            runCatching { api.cart() }
+                .onSuccess { accept(it) }
+                .onFailure { throw it }
         }
     }
 

@@ -8,7 +8,7 @@ import platform.UIKit.UIApplication
 
 private var iosPaymentStore: StorePaymentStore? = null
 
-fun MainViewController() = ComposeUIViewController {
+fun MainViewController() : UIViewController {
     val storeSession = IosStoreSessionStore()
     val storeApi = StoreApiClient(session = storeSession)
     val cartStore = StoreCartStore(storeApi)
@@ -17,12 +17,13 @@ fun MainViewController() = ComposeUIViewController {
         claimOrderStore = IosClaimOrderStore()
     )
     val pendingStore = IosPendingCardPaymentStore()
-    // Pending card payment state is durable and must survive process death.
-    // StorePaymentStore restores it and owns the reconciliation lifecycle.
+    // Create and publish the payment store before UIKit can deliver a cold-start URL.
+    // StorePaymentStore restores the durable pending state during construction.
     val paymentStore = StorePaymentStore(storeApi, cartStore, pendingStore)
     iosPaymentStore = paymentStore
 
-    CriosRangoIOSRootScreen(
+    return ComposeUIViewController {
+        CriosRangoIOSRootScreen(
         storeApi = storeApi,
         accountRepository = accountRepository,
         cartStore = cartStore,
@@ -30,7 +31,8 @@ fun MainViewController() = ComposeUIViewController {
         paymentStore = paymentStore,
         onOpenPayment = ::openIosPaymentUrl,
         onOpenExternalUrl = ::openIosExternalUrl
-    )
+        )
+    }
 }
 
 fun handleIosPaymentReturn(result: String?, orderId: Int?) {
