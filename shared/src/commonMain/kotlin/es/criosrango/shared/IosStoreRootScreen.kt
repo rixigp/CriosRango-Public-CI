@@ -470,11 +470,11 @@ private fun IosCartScreen(
         if (cart.items.isNotEmpty()) item {
             HorizontalDivider()
             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text("Subtotal: " + cart.totals.subtotal + " " + cart.totals.currencySymbol)
+                Text("Subtotal: " + cart.totals.totalItems + " " + cart.totals.currencySymbol)
                 when {
                     cart.totals.totalShipping == null -> Text("Envío: Se calcula en el checkout", color = Color.Gray)
-                    cart.totals.shipping == "0" || cart.totals.shipping == "0.00" -> Text("Envío: Gratis")
-                    else -> Text("Envío: " + cart.totals.shipping + " " + cart.totals.currencySymbol)
+                    cart.totals.totalShipping == "0" || cart.totals.totalShipping == "0.00" -> Text("Envío: Gratis")
+                    else -> Text("Envío: " + cart.totals.totalShipping.orEmpty() + " " + cart.totals.currencySymbol)
                 }
                 Text("Total: " + cart.totals.totalPrice + " " + cart.totals.currencySymbol, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Button(onClick = onCheckout, enabled = state == StoreCartLoadState.SUCCESS_ITEMS, modifier = Modifier.fillMaxWidth()) { Text("Finalizar compra") }
