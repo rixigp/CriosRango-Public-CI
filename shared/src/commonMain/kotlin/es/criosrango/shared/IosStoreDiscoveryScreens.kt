@@ -241,6 +241,7 @@ private fun IosPagedProductScreen(
                 if(state.isAppending)item(span={GridItemSpan(maxLineSpan)}){IosStoreLoading()}
                 state.appendError?.let{e->item(span={GridItemSpan(maxLineSpan)}){IosStoreError(e.message?:"Error"){paginator.loadNext{p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}}}
             }
+            }
         }
     }
 }
