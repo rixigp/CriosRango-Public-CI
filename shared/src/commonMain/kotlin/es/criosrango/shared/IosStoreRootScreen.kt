@@ -300,7 +300,7 @@ private fun IosCategoryChip(category: StoreCategory, onClick: (StoreCategory) ->
 }
 
 @Composable
-private fun IosProductCard(product: StoreProduct, onClick: (StoreProduct) -> Unit, cartStore: StoreCartStore? = null) {
+internal fun IosProductCard(product: StoreProduct, onClick: (StoreProduct) -> Unit, cartStore: StoreCartStore? = null) {
     Column(Modifier.width(158.dp).clickable { onClick(product) }) {
         RemoteStoreImage(
             url = product.images.firstOrNull()?.src,
@@ -371,7 +371,7 @@ private fun IosSectionHeader(title: String) {
 }
 
 @Composable
-private fun IosStoreLoading() {
+internal fun IosStoreLoading() {
     Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         CircularProgressIndicator()
         Spacer(Modifier.height(12.dp))
@@ -380,12 +380,12 @@ private fun IosStoreLoading() {
 }
 
 @Composable
-private fun IosStoreEmpty(message: String) {
+internal fun IosStoreEmpty(message: String) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(message) }
 }
 
 @Composable
-private fun IosStoreError(message: String, retry: () -> Unit) {
+internal fun IosStoreError(message: String, retry: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Text(message, color = MaterialTheme.colorScheme.error)
         Spacer(Modifier.height(12.dp))
