@@ -120,7 +120,33 @@ jobs:
           else
             gh release edit dev-latest --title "Development latest" --notes "$RELEASE_NOTES" --prerelease --target "${GITHUB_SHA}"
           fi
-          gh release upload dev-latest "$VERSIONED_APK" CriosRango-latest.apk --clobber
+          publish_assets() {
+            local attempt=1
+            local max_attempts=3
+            local output
+            local status
+            while [ "$attempt" -le "$max_attempts" ]; do
+              set +e
+              output="$(gh release upload dev-latest "$VERSIONED_APK" CriosRango-latest.apk --clobber 2>&1)"
+              status=$?
+              set -e
+              if [ "$status" -eq 0 ]; then
+                printf '%s\n' "$output"
+                return 0
+              fi
+              printf '%s\n' "$output" >&2
+              if ! printf '%s\n' "$output" | grep -Eq 'HTTP 5[0-9][0-9] '; then
+                return "$status"
+              fi
+              if [ "$attempt" -lt "$max_attempts" ]; then
+                echo "GitHub Release API returned a 5xx; retrying upload (attempt $((attempt + 1))/$max_attempts)..." >&2
+                sleep 2
+              fi
+              attempt=$((attempt + 1))
+            done
+            return "$status"
+          }
+          publish_assets
       - name: Cleanup Google Services
         if: always() && matrix.platform == 'android'
         run: rm -f app/google-services.json
@@ -137,6 +163,19 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - name: Read application version
+        id: app-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION_NAME="$(grep -E 'versionName[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')"
+          VERSION_CODE="$(grep -E 'versionCode[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/')"
+          test -n "$VERSION_NAME"
+          test -n "$VERSION_CODE"
+          echo "VERSION_NAME=$VERSION_NAME"
+          echo "VERSION_CODE=$VERSION_CODE"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
       - name: Prepare Google Services
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
@@ -308,8 +347,11 @@ jobs:
           test -f "$APP_PATH/Assets.car"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")" = "es.criosrango.app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$APP_PATH/Info.plist")" = "Críos&Rango"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")" = "1.0.139"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")" = "139"
+          ARCHIVE_SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")"
+          ARCHIVE_BUILD_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")"
+          test "$ARCHIVE_SHORT_VERSION" = "${{ steps.app-version.outputs.version_name }}"
+          test "$ARCHIVE_BUILD_VERSION" = "${{ steps.app-version.outputs.version_code }}"
+          echo "Validated archive version: $ARCHIVE_SHORT_VERSION / $ARCHIVE_BUILD_VERSION"
           if /usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$APP_PATH/Info.plist" >/dev/null 2>&1; then
             test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$APP_PATH/Info.plist")" = "AppIcon"
           fi
