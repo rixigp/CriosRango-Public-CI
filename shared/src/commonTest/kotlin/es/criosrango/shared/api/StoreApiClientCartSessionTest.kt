@@ -80,4 +80,35 @@ class StoreApiClientCartSessionTest {
         assertEquals("/wp-json/wc/store/v1/cart/remove-item", requests[3].url.encodedPath)
         client.close()
     }
+
+    @Test
+    fun recreatedClient_reusesPersistedWooSessionIdentity() = runTest {
+        val requests = mutableListOf<io.ktor.client.request.HttpRequestData>()
+        val session = InMemoryStoreSessionStore(
+            cartToken = "cart-persisted",
+            nonce = "nonce-persisted",
+            cookieHeader = "woocommerce_cart_hash=hash-persisted"
+        )
+        val engine = MockEngine { request ->
+            requests += request
+            respond(
+                cartJson,
+                HttpStatusCode.OK,
+                headersOf(HttpHeaders.ContentType to listOf("application/json"))
+            )
+        }
+        val client = HttpClient(engine) {
+            install(ContentNegotiation) {
+                json(Json { ignoreUnknownKeys = true; coerceInputValues = true })
+            }
+        }
+
+        StoreApiClient("https://example.test/wp-json/wc/store/v1/", client, session).cart()
+
+        assertEquals(1, requests.size)
+        assertEquals("cart-persisted", requests.single().headers["Cart-Token"])
+        assertEquals("nonce-persisted", requests.single().headers["Nonce"])
+        assertEquals("woocommerce_cart_hash=hash-persisted", requests.single().headers["Cookie"])
+        client.close()
+    }
 }
