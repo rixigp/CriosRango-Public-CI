@@ -472,7 +472,7 @@ private fun IosProfileActionRow(
 private fun IosProfileScreen(
     repository: AccountRepository,
     user: AccountUser?,
-    onUserChanged: (AccountUser) -> Unit,
+    onUserChanged: (AccountUser?) -> Unit,
     onBack: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
