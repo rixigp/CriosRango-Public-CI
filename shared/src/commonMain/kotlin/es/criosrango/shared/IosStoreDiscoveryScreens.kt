@@ -15,6 +15,9 @@ import es.criosrango.shared.model.OutletAvailability
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.model.countFor
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 @Composable
 internal fun IosNovedadesScreen(storeApi: StoreApiClient,padding: PaddingValues,cartStore: StoreCartStore,onProduct:(StoreProduct)->Unit,onBack:()->Unit) =
@@ -59,7 +62,14 @@ internal fun IosOutletScreen(storeApi:StoreApiClient,padding:PaddingValues,cartS
             items(visible,key={it.key}){b->FilterChip(selected==b.key,{selected=b.key},label={Text(outletBubbleDisplayLabel(b.label))})}
         }
         availabilityError?.let{Text(it,modifier=Modifier.padding(12.dp))}
-        IosPagedProductScreen("",PaddingValues(),cartStore,onProduct,{}, {p,n->storeApi.products(p,n,category=outlet.id)},"outlet:"+outlet.id)
+        val selectedBubble = selected?.let { key -> visible.firstOrNull { it.key == key } }
+        val queryKey = "outlet:" + outlet.id + ":" + (selectedBubble?.key ?: "all")
+        IosPagedProductScreen("",PaddingValues(),cartStore,onProduct,{}, { p,n ->
+            if (selectedBubble == null) storeApi.products(p,n,category=outlet.id)
+            else coroutineScope {
+                selectedBubble.categoryIds.map { categoryId -> async { storeApi.products(p,n,category=categoryId) } }.awaitAll().flatten().distinctBy { it.id }
+            }
+        },queryKey)
     }
 }
 
