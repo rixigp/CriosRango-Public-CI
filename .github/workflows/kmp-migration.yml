@@ -404,7 +404,10 @@ jobs:
             exit 1
           fi
 
-          mapfile -t ARCHIVED_APPS < <(find "$APPLICATIONS_PATH" -mindepth 1 -maxdepth 1 -type d -name '*.app' -print | sort)
+          ARCHIVED_APPS=()
+          while IFS= read -r APP_CANDIDATE; do
+            ARCHIVED_APPS+=( "$APP_CANDIDATE" )
+          done < <(find "$APPLICATIONS_PATH" -mindepth 1 -maxdepth 1 -type d -name '*.app' -print | sort)
           APP_COUNT="\${#ARCHIVED_APPS[@]}"
           echo "Archived application bundle count: $APP_COUNT"
           if [ "$APP_COUNT" -eq 0 ]; then
