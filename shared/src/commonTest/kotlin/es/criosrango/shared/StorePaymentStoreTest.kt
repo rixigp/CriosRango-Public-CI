@@ -465,4 +465,83 @@ class StorePaymentStoreTest {
         assertEquals(123, pending.load()?.orderId)
     }
 
+    @Test
+    fun paidResultUpdatesCartBeforeClearingPending() = runTest {
+        val cartResponse = """{"items":[{"key":"line-1","id":7,"name":"Producto","quantity":1}],"totals":{"total_price":"1000","currency_symbol":"€","currency_minor_unit":2}}"""
+        val emptyCartResponse = """{"items":[],"totals":{"total_price":"0","currency_symbol":"€","currency_minor_unit":2}}"""
+        val api = StoreApiClient(client = HttpClient(MockEngine { request ->
+            when {
+                request.url.encodedPath.endsWith("/cart") -> respond(
+                    content = cartResponse,
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                )
+                request.url.encodedPath.contains("/payment-status") -> respond(
+                    content = """{"order_id":123,"status":"processing","paid":true,"terminal":true}""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                )
+                request.url.encodedPath.contains("/cart/remove-item") -> respond(
+                    content = emptyCartResponse,
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                )
+                else -> respond(
+                    content = emptyCartResponse,
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                )
+            }
+        }))
+        val cartStore = StoreCartStore(api, this)
+        cartStore.refresh()
+        cartStore.state.first { it == StoreCartLoadState.SUCCESS_ITEMS }
+
+        var clearObservedEmptyCart = false
+        var payment: StorePendingCardPayment? = null
+        val pending = object : PendingCardPaymentStore {
+            override fun save(value: StorePendingCardPayment): Boolean {
+                payment = value
+                return true
+            }
+            override fun load(): StorePendingCardPayment? = payment
+            override fun clear(): Boolean {
+                clearObservedEmptyCart = cartStore.cart.value.items.isEmpty()
+                payment = null
+                return true
+            }
+        }
+        val store = StorePaymentStore(api, cartStore, pending, this)
+        store.startCardPayment(
+            CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/123")
+        )
+        store.markPaymentOpened()
+        store.handlePaymentReturn("ok", 123)
+        store.state.first { it == StoreCardPaymentState.PAID }
+
+        assertEquals(true, clearObservedEmptyCart)
+        assertNull(pending.load())
+    }
+
+    @Test
+    fun invalidSecondPaymentCannotClearExistingPending() = runTest {
+        val api = StoreApiClient(client = HttpClient(MockEngine { respond(
+            content = """{"items":[],"totals":{"total_price":"0","currency_symbol":"€","currency_minor_unit":2}}""",
+            status = HttpStatusCode.OK,
+            headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+        ) }))
+        val pending = FakePendingCardPaymentStore()
+        val store = StorePaymentStore(api, StoreCartStore(api, this), pending, this)
+        store.startCardPayment(
+            CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/123")
+        )
+
+        val second = store.startCardPayment(
+            CheckoutResponse(456, null, paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/456")
+        )
+
+        assertNull(second)
+        assertEquals(123, pending.load()?.orderId)
+    }
+
 }

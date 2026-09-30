@@ -46,12 +46,6 @@ class StorePaymentStore(
 
     fun startCardPayment(checkout: CheckoutResponse): String? {
         if (!checkout.paymentMethod.equals("cecabank_gateway", ignoreCase = true)) return null
-        val orderId = checkout.orderId ?: return fail("La tienda no ha devuelto el identificador del pedido.")
-        val orderKey = checkout.orderKey?.takeIf { it.isNotBlank() } ?: return fail("La tienda no ha devuelto la clave del pedido.")
-        val paymentUrl = checkout.redirectUrl
-            ?: checkout.paymentResult?.redirectUrl
-            ?: checkout.paymentResult?.paymentUrl
-            ?: return fail("La tienda no ha devuelto la URL de pago.")
         val existingPending = pendingStore.load()
         if (existingPending != null) {
             attemptActive = true
@@ -61,6 +55,12 @@ class StorePaymentStore(
             _error.value = "Ya existe un intento de pago pendiente. Debe resolverse antes de iniciar otro pago."
             return null
         }
+        val orderId = checkout.orderId ?: return fail("La tienda no ha devuelto el identificador del pedido.")
+        val orderKey = checkout.orderKey?.takeIf { it.isNotBlank() } ?: return fail("La tienda no ha devuelto la clave del pedido.")
+        val paymentUrl = checkout.redirectUrl
+            ?: checkout.paymentResult?.redirectUrl
+            ?: checkout.paymentResult?.paymentUrl
+            ?: return fail("La tienda no ha devuelto la URL de pago.")
         val pending = StorePendingCardPayment(orderId, orderKey, paymentUrl)
         if (!pendingStore.save(pending)) return fail("No se ha podido guardar el intento de pago.")
         attemptActive = true
@@ -108,13 +108,18 @@ class StorePaymentStore(
     fun cancel(returnedOrderId: Int?) {
         val pending = pendingStore.load() ?: return
         if (returnedOrderId != null && returnedOrderId != pending.orderId) return
-        pendingStore.clear()
-        attemptActive = false
-        _redirectUrl.value = null
         _orderId.value = pending.orderId
         _state.value = StoreCardPaymentState.NOT_PAID
         _error.value = null
+        _redirectUrl.value = null
         cartStore.refresh()
+        if (!pendingStore.clear()) {
+            attemptActive = true
+            _state.value = StoreCardPaymentState.ERROR
+            _error.value = "No se ha podido cerrar el intento de pago."
+            return
+        }
+        attemptActive = false
     }
 
     fun clearForNewProcess() {
