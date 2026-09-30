@@ -213,7 +213,7 @@ private fun IosCatalogScreen(
     onOpenProduct: (StoreProduct) -> Unit, onOpenPage: (IosCatalogPage) -> Unit, onBack: () -> Unit
 ) {
     when (page) {
-        IosCatalogPage.Root -> IosCategoryRoot(storeApi, padding, onOpenCategory)
+        IosCatalogPage.Root -> IosCategoryRoot(storeApi, padding, onOpenCategory, onOpenPage)
         is IosCatalogPage.Category -> IosPagedProductGrid("category:" + page.category.id, page.category.name, storeApi, cartStore, padding, onBack, onOpenProduct) { p, size ->
             val items = storeApi.products(perPage = size, page = p, category = page.category.id)
             CatalogPage(items, items.size >= size)
@@ -234,7 +234,7 @@ private fun IosCatalogScreen(
 }
 
 @Composable
-private fun IosCategoryRoot(storeApi: StoreApiClient, padding: PaddingValues, onOpenCategory: (StoreCategory) -> Unit) {
+private fun IosCategoryRoot(storeApi: StoreApiClient, padding: PaddingValues, onOpenCategory: (StoreCategory) -> Unit, onOpenPage: (IosCatalogPage) -> Unit) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var categories by remember { mutableStateOf(emptyList<StoreCategory>()) }
@@ -252,7 +252,7 @@ private fun IosCategoryRoot(storeApi: StoreApiClient, padding: PaddingValues, on
             categories.isEmpty() -> IosStoreEmpty("No hay categorías.")
             else -> LazyVerticalGrid(GridCells.Fixed(2), Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(categories.filter { it.parent == 0 && !it.name.equals("Outlet", true) }.distinctBy { it.id }, key = { it.id }) { Button(onClick = { onOpenCategory(it) }) { Text(it.name) } }
-                item { Button(onClick = { onOpenCategory(StoreCategory(id = 446, parent = 445, name = "Hombre invierno")) }) { Text("Outlet") } }
+                item { Button(onClick = { onOpenPage(IosCatalogPage.Outlet(446, "Outlet")) }) { Text("Outlet") } }
             }
         }
     }
