@@ -106,7 +106,8 @@ fun CriosRangoIOSRootScreen(
                     cartCount = cartStore.cart.collectAsState().value.itemsCount,
                     onSelected = {
                         section = it
-                        if (it == IosRootSection.CATEGORIES || it == IosRootSection.OUTLET) resetCatalog()
+                        if (it == IosRootSection.CATEGORIES) resetCatalog()
+                        if (it == IosRootSection.OUTLET) { resetCatalog(); openCatalog(IosCatalogPage.Outlet) }
                     }
                 )
             }
@@ -147,7 +148,7 @@ fun CriosRangoIOSRootScreen(
                     cartStore = cartStore,
                     onOpenCategory = { openCatalog(IosCatalogPage.Category(it)) },
                     onOpenProduct = { openCatalog(IosCatalogPage.Product(it)) },
-                    onBack = { if (catalogPage == IosCatalogPage.Root) { section = IosRootSection.HOME } else backCatalog() }
+                    onBack = { if (section == IosRootSection.OUTLET && catalogPage == IosCatalogPage.Outlet) { section = IosRootSection.HOME; resetCatalog() } else if (catalogPage == IosCatalogPage.Root) { section = IosRootSection.HOME } else backCatalog() }
                 )
                 IosRootSection.CART -> IosCartScreen(cartStore, padding, onCheckout = { checkoutOpen = true }) { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) }
                 IosRootSection.ACCOUNT -> CriosRangoIOSAccountScreen(
@@ -174,6 +175,7 @@ private fun IosMainTabBar(
             listOf(
                 IosRootSection.HOME to "Inicio",
                 IosRootSection.CATEGORIES to "Categorías",
+                IosRootSection.OUTLET to "Outlet",
                 IosRootSection.CART to "Carrito",
                 IosRootSection.ACCOUNT to "Cuenta"
             ).forEach { (item, label) ->
