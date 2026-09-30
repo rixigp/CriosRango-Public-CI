@@ -172,50 +172,88 @@ internal fun IosProductDetail(
     var product by remember(initialProduct.id) { mutableStateOf(initialProduct) }
     var loading by remember(initialProduct.id) { mutableStateOf(true) }
     var error by remember(initialProduct.id) { mutableStateOf<String?>(null) }
+    var quantity by remember(initialProduct.id) { mutableStateOf(1) }
+    val selected = remember(initialProduct.id) { mutableStateMapOf<String, String>() }
     LaunchedEffect(initialProduct.id, loading) {
-        runCatching { storeApi.product(initialProduct.id) }
-            .onSuccess { product = it }
+        if (!loading) return@LaunchedEffect
+        runCatching { storeApi.productWithVariationAvailability(initialProduct.id) }
+            .onSuccess { loaded ->
+                product = loaded
+                loaded.attributes.forEach { attribute ->
+                    attribute.terms.firstOrNull { it.default }?.let { selected.putIfAbsent(attribute.name, it.slug) }
+                }
+            }
             .onFailure { error = it.message ?: "No se ha podido cargar el producto." }
         loading = false
     }
-    LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item {
-            TextButton(onClick = onBack) { Text("Atrás") }
-            RemoteStoreImage(
-                url = product.images.firstOrNull()?.src,
-                contentDescription = product.name,
-                modifier = Modifier.fillMaxWidth().aspectRatio(1f)
-            )
-            Text(product.name, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(20.dp, 12.dp, 20.dp, 4.dp))
-            if (product.hasDisplayablePrice) {
-                Text(formatStorePrice(product.prices.price, product.prices.currencyMinorUnit, product.prices.currencySymbol), fontWeight = FontWeight.Bold, color = Color(0xFF183B35), modifier = Modifier.padding(horizontal = 20.dp))
-            }
-            cartStore?.let { store ->
-                var selectedVariation by remember(product.id) { mutableStateOf(product.variations.firstOrNull()) }
-                if (product.variations.isNotEmpty()) {
-                    Text("Variantes", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(20.dp, 16.dp, 20.dp, 4.dp))
-                    Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        product.variations.forEach { variation ->
-                            OutlinedButton(onClick = { selectedVariation = variation }, modifier = Modifier.fillMaxWidth()) {
-                                Text(variation.attributes.joinToString(" · ") { it.value }.ifBlank { "Variación " + variation.id })
-                            }
-                        }
-                    }
-                }
-                Button(onClick = {
-                    val variation = selectedVariation
-                    val attrs = variation?.attributes.orEmpty().map { attr -> StoreCartVariation(attr.name.ifBlank { "pa_attribute" }, attr.value) }
-                    store.add(product.id, 1, attrs)
-                }, enabled = product.isPurchasable != false && (selectedVariation?.isPurchasable != false), modifier = Modifier.fillMaxWidth().padding(20.dp)) { Text("Añadir al carrito") }
-            }
-            if (loading) CircularProgressIndicator(Modifier.padding(20.dp).size(24.dp))
-            error?.let { message ->
-                IosStoreError(message) {
-                    error = null
-                    loading = true
-                }
+    val selectedVariation = remember(product, selected.toMap()) {
+        if (product.type != "variable") null else product.variations.firstOrNull { variation ->
+            product.attributes.filter { it.terms.isNotEmpty() }.all { attribute ->
+                val wanted = selected[attribute.name]
+                wanted != null && variation.attributes.any { it.name == attribute.name && it.value == wanted }
             }
         }
     }
+    val current = selectedVariation ?: product
+    val canAdd = current.isInStock && current.isPurchasable != false && (product.type != "variable" || selectedVariation != null)
+    val limits = current.quantityLimits ?: current.addToCart
+    val minimum = limits?.minimum ?: 1
+    val maximum = limits?.maximum
+    val multiple = limits?.multipleOf?.takeIf { it > 0 } ?: 1
+    LaunchedEffect(current.id, minimum, maximum, multiple) {
+        quantity = quantity.coerceAtLeast(minimum)
+        maximum?.let { quantity = quantity.coerceAtMost(it) }
+        if ((quantity - minimum) % multiple != 0) quantity = minimum
+    }
+    LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 32.dp)) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onBack) { Text("Atrás") }
+                Text("Detalle", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            }
+        }
+        item {
+            if (product.images.isNotEmpty()) {
+                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(product.images, key = { it.src }) { image ->
+                        RemoteStoreImage(image.src, product.name, Modifier.width(300.dp).aspectRatio(.78f))
+                    }
+                }
+            }
+            Text(product.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(20.dp, 16.dp, 20.dp, 4.dp))
+            if (current.hasDisplayablePrice) Text(formatStorePrice(current.prices.price, current.prices.currencyMinorUnit, current.prices.currencySymbol), fontWeight = FontWeight.Bold, color = Color(0xFF183B35), modifier = Modifier.padding(horizontal = 20.dp))
+            product.attributes.filter { it.terms.isNotEmpty() }.forEach { attribute ->
+                Text(attribute.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(20.dp, 18.dp, 20.dp, 6.dp))
+                Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    attribute.terms.forEach { term ->
+                        FilterChip(selected[attribute.name] == term.slug, { selected[attribute.name] = term.slug }, label = { Text(term.name) })
+                    }
+                }
+            }
+            if (product.type == "variable" && selectedVariation == null) Text("Elige una combinación para continuar.", modifier = Modifier.padding(20.dp))
+            Text("Cantidad", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(20.dp, 18.dp, 20.dp, 6.dp))
+            Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = { quantity = (quantity - multiple).coerceAtLeast(minimum) }, enabled = quantity > minimum) { Text("−") }
+                Text(quantity.toString(), modifier = Modifier.padding(horizontal = 18.dp), fontWeight = FontWeight.Bold)
+                OutlinedButton(onClick = { quantity = maximum?.let { (quantity + multiple).coerceAtMost(it) } ?: (quantity + multiple) }, enabled = maximum == null || quantity < maximum) { Text("+") }
+            }
+            cartStore?.let { store ->
+                Button(onClick = {
+                    val attrs = product.attributes.mapNotNull { attribute ->
+                        selected[attribute.name]?.let { value ->
+                            val taxonomy = attribute.taxonomy?.takeIf { it.isNotBlank() } ?: "pa_${attribute.name.lowercase().replace(Regex("[^a-z0-9]+"), "_")}"
+                            StoreCartVariation(taxonomy, value)
+                        }
+                    }
+                    store.add(current.id, quantity, attrs)
+                }, enabled = canAdd, modifier = Modifier.fillMaxWidth().padding(20.dp)) {
+                    Text(if (product.type == "variable" && selectedVariation == null) "Elige una combinación" else "Añadir al carrito")
+                }
+            }
+            if (loading) CircularProgressIndicator(Modifier.padding(20.dp).size(24.dp))
+            error?.let { message -> IosStoreError(message) { error = null; loading = true } }
+            if (product.shortDescription.isNotBlank()) Text(product.shortDescription, modifier = Modifier.padding(20.dp))
+            if (product.description.isNotBlank()) Text(product.description, modifier = Modifier.padding(20.dp))
+        }
+    }
 }
-
