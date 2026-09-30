@@ -25,6 +25,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Surface
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -406,19 +413,19 @@ private fun IosProfileMenuScreen(
             TextButton(onClick = onBack) { Text("Atrás") }
             Text("Mi perfil", style = MaterialTheme.typography.headlineSmall)
             Spacer(Modifier.height(10.dp))
-            IosProfileActionRow("Datos personales", "👤", onPersonalData)
-            IosProfileActionRow("Dirección de entrega", "⌖", onAddress)
-            IosProfileActionRow("Cambiar contraseña", "🔒", onPassword)
+            IosProfileActionRow("Datos personales", Icons.Outlined.Person, onPersonalData)
+            IosProfileActionRow("Dirección de entrega", Icons.Outlined.LocationOn, onAddress)
+            IosProfileActionRow("Cambiar contraseña", Icons.Outlined.Lock, onPassword)
             IosProfileActionRow(
                 AccountDeletion.TITLE,
-                "🗑",
+                Icons.Outlined.Delete,
                 { showDeleteConfirmation = true },
                 containerColor = AccountDeletion.background,
                 contentColor = AccountDeletion.accent
             )
             IosProfileActionRow(
                 "Cerrar sesión",
-                "↪",
+                Icons.AutoMirrored.Outlined.Logout,
                 onLogout,
                 containerColor = Color(0xFFFFECEF),
                 contentColor = Color(0xFFC73B4C)
@@ -446,7 +453,7 @@ private fun IosProfileMenuScreen(
 @Composable
 private fun IosProfileActionRow(
     title: String,
-    icon: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit,
     containerColor: Color = Color(0xFFF0EDF1),
     contentColor: Color = MaterialTheme.colorScheme.onSurface
@@ -460,7 +467,7 @@ private fun IosProfileActionRow(
             Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(icon, modifier = Modifier.width(28.dp), color = contentColor)
+            androidx.compose.material3.Icon(icon, contentDescription = null, modifier = Modifier.width(28.dp), tint = contentColor)
             Spacer(Modifier.width(14.dp))
             Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = contentColor)
             Text("›", style = MaterialTheme.typography.titleLarge, color = contentColor)
@@ -619,68 +626,169 @@ private fun IosOrdersScreen(
                 loading = false
             }
     }
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("Atrás") }
-            Spacer(Modifier.width(8.dp))
-            Text("Mis pedidos", style = MaterialTheme.typography.titleLarge)
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onBack) { Text("Atrás") }
+                Spacer(Modifier.width(8.dp))
+                Text("Mis pedidos", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            }
         }
         when {
-            loading -> FullScreenLoading("Cargando pedidos")
-            error != null -> Column(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(error!!, color = MaterialTheme.colorScheme.error)
-                Spacer(Modifier.height(12.dp))
-                OutlinedButton(onClick = { error = null; retry() }) { Text("Reintentar") }
+            loading -> item { FullScreenLoading("Cargando pedidos") }
+            error != null -> item {
+                Column(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(error!!, color = MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(onClick = { error = null; retry() }) { Text("Reintentar") }
+                }
             }
-            orders.isEmpty() -> Text("No tienes pedidos.")
-            else -> LazyColumn(contentPadding = PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(orders, key = { it.id }) { order ->
-                    Button(onClick = { onOpenOrder(order) }, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
-                            Text("Pedido #" + order.number)
-                            Text(order.statusLabel.ifBlank { order.status })
-                            Text("Total: " + order.total + " " + order.currency)
+            orders.isEmpty() -> item {
+                Column(Modifier.fillMaxWidth().padding(top = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Todavía no tienes pedidos.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            else -> items(orders, key = { it.id }) { order ->
+                Card(Modifier.fillMaxWidth().clickable { onOpenOrder(order) }, shape = RoundedCornerShape(18.dp)) {
+                    Column(Modifier.padding(16.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Pedido #${order.number.ifBlank { order.id.toString() }}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                            IosOrderStatusBadge(order.status, order.statusLabel)
+                        }
+                        order.dateCreated?.takeIf { it.isNotBlank() }?.let { rawDate ->
+                            Spacer(Modifier.height(8.dp))
+                            Text("Fecha: ${formatOrderDate(rawDate)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (order.items.isNotEmpty()) {
+                            Spacer(Modifier.height(10.dp))
+                            order.items.forEach { item ->
+                                Text("${item.quantity} × ${item.name}")
+                                val variationText = item.variations.filter { it.name.isNotBlank() && it.value.isNotBlank() }
+                                    .joinToString(" · ") { "${if (it.name.equals("Tallas", true)) "Talla" else it.name}: ${it.value}" }
+                                if (variationText.isNotBlank()) Text(variationText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(Modifier.height(4.dp))
+                            }
+                        }
+                        if (order.paymentMethodTitle.isNotBlank()) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(if (order.paymentMethodTitle.contains("bizum", true)) "Pago con Bizum" else "Pago con tarjeta", style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (order.total.isNotBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text("Total: ${formatAccountAmount(order.total, order.currency)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
                         }
                     }
-                    HorizontalDivider()
                 }
+            }
+        }
+        if (!loading && error == null && orders.isNotEmpty()) {
+            item { OutlinedButton(onClick = { retry() }, modifier = Modifier.fillMaxWidth()) { Text("Actualizar pedidos") } }
+        }
+    }
+}
+
+@Composable
+private fun IosOrderStatusBadge(status: String, label: String) {
+    val visible = label.ifBlank { status }
+    val combined = "$status $label".lowercase()
+    val background = when {
+        "complet" in combined -> Color(0xFFE3F1E8)
+        "proces" in combined || "prepar" in combined -> Color(0xFFF4EAD3)
+        "enviad" in combined || "shipped" in combined -> Color(0xFFE4EFF8)
+        "cancel" in combined || "fallid" in combined || "reembols" in combined -> Color(0xFFF8E3E1)
+        else -> Color(0xFFE9E9E7)
+    }
+    val foreground = when {
+        "complet" in combined -> Color(0xFF285C3B)
+        "proces" in combined || "prepar" in combined -> Color(0xFF76591F)
+        "enviad" in combined || "shipped" in combined -> Color(0xFF245579)
+        "cancel" in combined || "fallid" in combined || "reembols" in combined -> Color(0xFF8A332D)
+        else -> Color(0xFF5C5C58)
+    }
+    Surface(shape = RoundedCornerShape(50), color = background, contentColor = foreground) {
+        Text(visible, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+    }
+}
+
+private fun formatOrderDate(value: String): String {
+    val date = value.take(10)
+    val parts = date.split("-")
+    return if (parts.size == 3) "${parts[2]}-${parts[1]}-${parts[0]}" else date
+}
+
+private fun formatAccountAmount(value: String, currency: String): String {
+    val amount = value.replace('.', ',')
+    return if (currency.equals("EUR", true)) "$amount €" else "$amount $currency"
+}
+@Composable
+private fun IosOrderDetailScreen(order: AccountOrderSummary, onBack: () -> Unit) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onBack) { Text("Atrás") }
+                Spacer(Modifier.width(8.dp))
+                Text("Pedido #${order.number}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(4.dp))
+            IosOrderStatusBadge(order.status, order.statusLabel)
+            order.dateCreated?.takeIf { it.isNotBlank() }?.let {
+                Spacer(Modifier.height(8.dp))
+                Text("Fecha: ${formatOrderDate(it)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            AccountDetailCard("Productos") {
+                order.items.forEachIndexed { index, item ->
+                    Text("${item.quantity} × ${item.name}", fontWeight = FontWeight.Medium)
+                    item.variations.filter { it.name.isNotBlank() && it.value.isNotBlank() }.forEach {
+                        Text("${if (it.name.equals("Tallas", true)) "Talla" else it.name}: ${it.value}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (index != order.items.lastIndex) Spacer(Modifier.height(10.dp))
+                }
+            }
+        }
+        item {
+            AccountDetailCard("Pago") {
+                Text(if (order.paymentMethodTitle.contains("bizum", true)) "Pago con Bizum" else "Pago con tarjeta")
+            }
+        }
+        val a = order.shippingAddress
+        if (a.address1.isNotBlank() || a.city.isNotBlank() || a.postcode.isNotBlank()) {
+            item {
+                AccountDetailCard("Entrega") {
+                    if (a.address1.isNotBlank()) Text(a.address1)
+                    if (a.address2.isNotBlank()) Text(a.address2)
+                    val location = listOf(a.postcode, a.city, a.state).filter { it.isNotBlank() }.joinToString(" · ")
+                    if (location.isNotBlank()) Text(location)
+                    if (a.country.isNotBlank()) Text(if (a.country == "ES") "España" else a.country)
+                    if (order.shippingMethod.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(order.shippingMethod, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        item {
+            AccountDetailCard("Resumen") {
+                Text("Subtotal: ${formatAccountAmount(order.subtotal, order.currency)}")
+                Text(if (order.shippingTotal.isBlank() || order.shippingTotal == "0" || order.shippingTotal == "0.00") "Envío: Gratis" else "Envío: ${formatAccountAmount(order.shippingTotal, order.currency)}")
+                Spacer(Modifier.height(8.dp))
+                Text("Total: ${formatAccountAmount(order.total, order.currency)}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
         }
     }
 }
 
 @Composable
-private fun IosOrderDetailScreen(order: AccountOrderSummary, onBack: () -> Unit) {
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            TextButton(onClick = onBack) { Text("Atrás") }
-            Text("Pedido #" + order.number, style = MaterialTheme.typography.headlineSmall)
-            Text(order.statusLabel.ifBlank { order.status })
-            order.dateCreated?.takeIf { it.isNotBlank() }?.let { Text("Fecha: " + it.take(10)) }
-            Spacer(Modifier.height(8.dp))
-            Text("Productos", style = MaterialTheme.typography.titleMedium)
-        }
-        items(order.items) { item ->
-            Text(item.quantity.toString() + " × " + item.name)
-            item.variations.filter { it.name.isNotBlank() && it.value.isNotBlank() }.forEach {
-                Text(it.name + ": " + it.value, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        item {
-            Spacer(Modifier.height(8.dp))
-            Text("Pago: " + order.paymentMethodTitle.ifBlank { order.paymentMethod })
-            Text("Subtotal: " + order.subtotal + " " + order.currency)
-            Text("Envío: " + order.shippingTotal + " " + order.currency)
-            Text("Total: " + order.total + " " + order.currency, style = MaterialTheme.typography.titleLarge)
-            val a = order.shippingAddress
-            if (a.address1.isNotBlank() || a.city.isNotBlank() || a.postcode.isNotBlank()) {
-                Spacer(Modifier.height(12.dp))
-                Text("Entrega", style = MaterialTheme.typography.titleMedium)
-                if (a.address1.isNotBlank()) Text(a.address1)
-                val location = listOf(a.postcode, a.city, a.state).filter { it.isNotBlank() }.joinToString(" · ")
-                if (location.isNotBlank()) Text(location)
-                if (a.country.isNotBlank()) Text(a.country)
-            }
+private fun AccountDetailCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+            content()
         }
     }
 }
