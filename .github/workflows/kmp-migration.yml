@@ -16,6 +16,10 @@ jobs:
     name: Android validation
     if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-24.04
+    concurrency:
+      group: dev-latest-release
+      cancel-in-progress: false
+      queue: max
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
