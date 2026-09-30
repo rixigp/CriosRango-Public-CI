@@ -46,6 +46,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -337,7 +339,7 @@ private fun IosHomeHero() {
 
 @Composable
 private fun IosHomeCategoryTile(category: StoreCategory, onClick: (StoreCategory) -> Unit, modifier: Modifier) {
-    Column(modifier.clickable { onClick(category) }, horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(modifier.clickable { onClick(category) }.semantics { role = Role.Button; contentDescription = "Categoría ${category.name}" }, horizontalAlignment = Alignment.CenterHorizontally) {
         RemoteStoreImage(IOS_HOME_CATEGORY_IMAGES[category.id], category.name, Modifier.fillMaxWidth().aspectRatio(1f), ContentScale.Fit)
         Spacer(Modifier.height(6.dp))
         Text(category.name, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
@@ -388,7 +390,7 @@ private fun IosCategoryChip(category: StoreCategory, onClick: (StoreCategory) ->
 
 @Composable
 internal fun IosProductCard(product: StoreProduct, onClick: (StoreProduct) -> Unit, cartStore: StoreCartStore? = null) {
-    Column(Modifier.width(158.dp).clickable { onClick(product) }) {
+    Column(Modifier.width(158.dp).clickable { onClick(product) }.semantics { role = Role.Button; contentDescription = "Abrir ${product.name}" }) {
         RemoteStoreImage(
             url = product.images.firstOrNull()?.src,
             contentDescription = product.name,

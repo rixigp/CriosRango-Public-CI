@@ -17,6 +17,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
@@ -233,7 +235,7 @@ internal fun IosProductDetail(
             if (currentImages.isNotEmpty()) {
                 val pagerState = rememberPagerState(pageCount = { currentImages.size })
                 HorizontalPager(state = pagerState, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 20.dp), pageSpacing = 10.dp) { index ->
-                    RemoteStoreImage(currentImages[index].src, product.name, Modifier.fillMaxWidth().aspectRatio(.78f).clickable { fullscreenPage = index }, ContentScale.Crop)
+                    RemoteStoreImage(currentImages[index].src, product.name, Modifier.fillMaxWidth().aspectRatio(.78f).clickable { fullscreenPage = index }.semantics { role = Role.Button; contentDescription = "Ampliar imagen ${index + 1}" }, ContentScale.Crop)
                 }
                 if (currentImages.size > 1) {
                     Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
