@@ -216,14 +216,15 @@ fun IosCheckoutScreen(
                 }
                 HorizontalDivider()
                 CheckoutAmount("Subtotal", formatStorePrice(cart.totals.totalItems, cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
+                val shipping = cart.totals.totalShipping
                 CheckoutAmount(
                     "Envío",
                     when {
                         checkoutBusy -> "Calculando…"
                         selectedShipping == null -> "Pendiente"
-                        cart.totals.totalShipping == null -> "Pendiente"
-                        cart.totals.totalShipping == "0" -> "Gratis"
-                        else -> formatStorePrice(cart.totals.totalShipping, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)
+                        shipping == null -> "Pendiente"
+                        shipping == "0" -> "Gratis"
+                        else -> formatStorePrice(shipping, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)
                     }
                 )
                 CheckoutAmount("Total", formatStorePrice(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), true)
