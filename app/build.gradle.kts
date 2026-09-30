@@ -41,8 +41,8 @@ android {
         applicationId = "es.criosrango.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 143
-        versionName = "1.0.143"
+        versionCode = 144
+        versionName = "1.0.144"
     }
     signingConfigs {
         getByName("debug") {
