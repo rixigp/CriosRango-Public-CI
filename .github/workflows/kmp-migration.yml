@@ -361,8 +361,14 @@ jobs:
             echo "::error::Archive used Debug-iphoneos"
             exit 1
           fi
-          grep -q 'Release-iphoneos' "$ARCHIVE_LOG"
-          grep -q 'shared/build/xcode-frameworks/Release/' "$ARCHIVE_LOG"
+          if ! grep -q 'Release-iphoneos' "$ARCHIVE_LOG"; then
+            echo "::error::Archive log does not contain Release-iphoneos evidence"
+            exit 1
+          fi
+          if ! grep -q 'shared/build/xcode-frameworks/Release/' "$ARCHIVE_LOG"; then
+            echo "::error::Archive log does not contain the expected Release KMP framework path"
+            exit 1
+          fi
           echo "===== ARCHIVES IN RUNNER_TEMP ====="
           find "$RUNNER_TEMP" -maxdepth 5 -name '*.xcarchive' -print || true
           echo "===== ARCHIVES UNDER XCODE ====="
@@ -373,21 +379,118 @@ jobs:
             echo "::error::ARCHIVE SUCCEEDED but expected xcarchive was not materialized at $ARCHIVE_PATH"
             exit 1
           fi
-          APP_PATH="$ARCHIVE_PATH/Products/Applications/CriosRango.app"
-          test -d "$APP_PATH"
-          test -f "$APP_PATH/Info.plist"
-          test -f "$APP_PATH/PrivacyInfo.xcprivacy"
-          test -f "$APP_PATH/Assets.car"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")" = "es.criosrango.app"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$APP_PATH/Info.plist")" = "Críos&Rango"
-          ARCHIVE_SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")"
-          ARCHIVE_BUILD_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")"
-          test "$ARCHIVE_SHORT_VERSION" = "${{ steps.app-version.outputs.version_name }}"
-          test "$ARCHIVE_BUILD_VERSION" = "${{ steps.app-version.outputs.version_code }}"
-          echo "Validated archive version: $ARCHIVE_SHORT_VERSION / $ARCHIVE_BUILD_VERSION"
-          if /usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$APP_PATH/Info.plist" >/dev/null 2>&1; then
-            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$APP_PATH/Info.plist")" = "AppIcon"
+
+          echo "===== ARCHIVE CONTENT ====="
+          find "$ARCHIVE_PATH" -maxdepth 5 -print || true
+
+          echo "===== ARCHIVE INFO ====="
+          if [ -f "$ARCHIVE_PATH/Info.plist" ]; then
+            plutil -p "$ARCHIVE_PATH/Info.plist"
+          else
+            echo "::error::Archive Info.plist is missing: $ARCHIVE_PATH/Info.plist"
+            exit 1
           fi
+
+          echo "===== ARCHIVE APPLICATION PROPERTIES ====="
+          if /usr/libexec/PlistBuddy -c 'Print :ApplicationProperties' "$ARCHIVE_PATH/Info.plist" >/dev/null 2>&1; then
+            /usr/libexec/PlistBuddy -c 'Print :ApplicationProperties' "$ARCHIVE_PATH/Info.plist"
+          else
+            echo "Archive Info.plist has no ApplicationProperties dictionary"
+          fi
+
+          APPLICATIONS_PATH="$ARCHIVE_PATH/Products/Applications"
+          if [ ! -d "$APPLICATIONS_PATH" ]; then
+            echo "::error::xcarchive Products/Applications directory is missing: $APPLICATIONS_PATH"
+            exit 1
+          fi
+
+          mapfile -t ARCHIVED_APPS < <(find "$APPLICATIONS_PATH" -mindepth 1 -maxdepth 1 -type d -name '*.app' -print | sort)
+          APP_COUNT="\${#ARCHIVED_APPS[@]}"
+          echo "Archived application bundle count: $APP_COUNT"
+          if [ "$APP_COUNT" -eq 0 ]; then
+            echo "::error::No application bundle found inside xcarchive Products/Applications"
+            exit 1
+          fi
+          if [ "$APP_COUNT" -gt 1 ]; then
+            echo "::error::Unexpected multiple application bundles inside xcarchive Products/Applications"
+            printf 'Found application bundles:\n'
+            printf '  %s\n' "\${ARCHIVED_APPS[@]}"
+            exit 1
+          fi
+
+          APP_PATH="\${ARCHIVED_APPS[0]}"
+          echo "Resolved archived application: $APP_PATH"
+
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::Resolved archived application directory is missing: $APP_PATH"
+            exit 1
+          fi
+          if [ ! -f "$APP_PATH/Info.plist" ]; then
+            echo "::error::Archived application Info.plist is missing: $APP_PATH/Info.plist"
+            exit 1
+          fi
+          if [ ! -f "$APP_PATH/PrivacyInfo.xcprivacy" ]; then
+            echo "::error::Archived application PrivacyInfo.xcprivacy is missing: $APP_PATH/PrivacyInfo.xcprivacy"
+            exit 1
+          fi
+          if [ ! -f "$APP_PATH/Assets.car" ]; then
+            echo "::error::Archived application Assets.car is missing: $APP_PATH/Assets.car"
+            exit 1
+          fi
+
+          BUNDLE_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist" 2>/dev/null || true)"
+          if [ -z "$BUNDLE_IDENTIFIER" ]; then
+            echo "::error::Archived application CFBundleIdentifier is missing: $APP_PATH/Info.plist"
+            exit 1
+          fi
+          echo "Archived CFBundleIdentifier=$BUNDLE_IDENTIFIER"
+          if [ "$BUNDLE_IDENTIFIER" != "es.criosrango.app" ]; then
+            echo "::error::Unexpected archived CFBundleIdentifier: $BUNDLE_IDENTIFIER"
+            exit 1
+          fi
+
+          DISPLAY_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$APP_PATH/Info.plist" 2>/dev/null || true)"
+          if [ -z "$DISPLAY_NAME" ]; then
+            echo "::error::Archived application CFBundleDisplayName is missing: $APP_PATH/Info.plist"
+            exit 1
+          fi
+          echo "Archived CFBundleDisplayName=$DISPLAY_NAME"
+          if [ "$DISPLAY_NAME" != "Críos&Rango" ]; then
+            echo "::error::Unexpected archived CFBundleDisplayName: $DISPLAY_NAME"
+            exit 1
+          fi
+
+          ARCHIVE_SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist" 2>/dev/null || true)"
+          if [ -z "$ARCHIVE_SHORT_VERSION" ]; then
+            echo "::error::Archived application CFBundleShortVersionString is missing: $APP_PATH/Info.plist"
+            exit 1
+          fi
+          ARCHIVE_BUILD_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist" 2>/dev/null || true)"
+          if [ -z "$ARCHIVE_BUILD_VERSION" ]; then
+            echo "::error::Archived application CFBundleVersion is missing: $APP_PATH/Info.plist"
+            exit 1
+          fi
+          echo "Archived CFBundleShortVersionString=$ARCHIVE_SHORT_VERSION"
+          echo "Archived CFBundleVersion=$ARCHIVE_BUILD_VERSION"
+          if [ "$ARCHIVE_SHORT_VERSION" != "\${{ steps.app-version.outputs.version_name }}" ]; then
+            echo "::error::Archived CFBundleShortVersionString mismatch: expected \${{ steps.app-version.outputs.version_name }}, got $ARCHIVE_SHORT_VERSION"
+            exit 1
+          fi
+          if [ "$ARCHIVE_BUILD_VERSION" != "\${{ steps.app-version.outputs.version_code }}" ]; then
+            echo "::error::Archived CFBundleVersion mismatch: expected \${{ steps.app-version.outputs.version_code }}, got $ARCHIVE_BUILD_VERSION"
+            exit 1
+          fi
+          echo "Validated archive version: $ARCHIVE_SHORT_VERSION / $ARCHIVE_BUILD_VERSION"
+
+          if /usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$APP_PATH/Info.plist" >/dev/null 2>&1; then
+            ICON_NAME="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$APP_PATH/Info.plist")"
+            echo "Archived CFBundleIconName=$ICON_NAME"
+            if [ "$ICON_NAME" != "AppIcon" ]; then
+              echo "::error::Unexpected archived CFBundleIconName: $ICON_NAME"
+              exit 1
+            fi
+          fi
+
           echo "Validated unsigned archive: $ARCHIVE_PATH"
           echo "Validated archive app: $APP_PATH"
       - name: Runtime smoke test on iOS Simulator
