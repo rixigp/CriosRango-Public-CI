@@ -17,9 +17,9 @@ fun MainViewController() = ComposeUIViewController {
         claimOrderStore = IosClaimOrderStore()
     )
     val pendingStore = IosPendingCardPaymentStore()
-    pendingStore.clear()
+    // Pending card payment state is durable and must survive process death.
+    // StorePaymentStore restores it and owns the reconciliation lifecycle.
     val paymentStore = StorePaymentStore(storeApi, cartStore, pendingStore)
-    paymentStore.clearForNewProcess()
     iosPaymentStore = paymentStore
 
     CriosRangoIOSRootScreen(

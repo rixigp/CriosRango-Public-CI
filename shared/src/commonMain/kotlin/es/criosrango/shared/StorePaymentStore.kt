@@ -40,6 +40,10 @@ class StorePaymentStore(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    init {
+        restorePendingPayment()
+    }
+
     fun startCardPayment(checkout: CheckoutResponse): String? {
         if (!checkout.paymentMethod.equals("cecabank_gateway", ignoreCase = true)) return null
         val orderId = checkout.orderId ?: return fail("La tienda no ha devuelto el identificador del pedido.")
@@ -105,7 +109,7 @@ class StorePaymentStore(
     }
 
     fun clearForNewProcess() {
-        pendingStore.clear()
+        if (pendingStore.load() != null) return
         attemptActive = false
         _redirectUrl.value = null
         _orderId.value = null
@@ -148,12 +152,9 @@ class StorePaymentStore(
                             cartStore.refresh()
                         }
                         SharedPaymentReconciliationResult.EXHAUSTED -> {
-                            pendingStore.clear()
-                            attemptActive = false
-                            _redirectUrl.value = null
+                            // No terminal backend answer: keep the durable pending marker.
                             _state.value = StoreCardPaymentState.ERROR
-                            _error.value = "No hemos podido confirmar el pago. Puedes volver a intentarlo."
-                            cartStore.refresh()
+                            _error.value = "No hemos podido confirmar el pago. El intento sigue pendiente; puedes volver a comprobarlo."
                         }
                     }
                 } catch (t: Throwable) {
@@ -162,6 +163,15 @@ class StorePaymentStore(
                 }
             }
         }
+    }
+
+    private fun restorePendingPayment() {
+        val pending = pendingStore.load() ?: return
+        attemptActive = true
+        _orderId.value = pending.orderId
+        _redirectUrl.value = pending.paymentUrl
+        _error.value = null
+        _state.value = StoreCardPaymentState.WAITING_RETURN
     }
 
     private fun fail(message: String): String? {
