@@ -544,4 +544,41 @@ class StorePaymentStoreTest {
         assertEquals(123, pending.load()?.orderId)
     }
 
+    @Test
+    fun newPaymentIsAllowedAfterPreviousPaymentReachesTerminalState() = runTest {
+        var paymentStatusCalls = 0
+        val api = StoreApiClient(client = HttpClient(MockEngine { request ->
+            if (request.url.encodedPath.contains("/payment-status")) {
+                paymentStatusCalls++
+                respond(
+                    content = """{"order_id":123,"status":"processing","paid":true,"terminal":true}""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                )
+            } else {
+                respond(
+                    content = """{"items":[],"totals":{"total_price":"0","currency_symbol":"€","currency_minor_unit":2}}""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                )
+            }
+        }))
+        val pending = FakePendingCardPaymentStore()
+        val store = StorePaymentStore(api, StoreCartStore(api, this), pending, this)
+        store.startCardPayment(
+            CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/123")
+        )
+        store.markPaymentOpened()
+        store.handlePaymentReturn("ok", 123)
+        store.state.first { it == StoreCardPaymentState.PAID }
+
+        val next = store.startCardPayment(
+            CheckoutResponse(456, "wc_order_456", paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/456")
+        )
+
+        assertEquals("https://payment.example/456", next)
+        assertEquals(456, pending.load()?.orderId)
+        assertEquals(1, paymentStatusCalls)
+    }
+
 }
