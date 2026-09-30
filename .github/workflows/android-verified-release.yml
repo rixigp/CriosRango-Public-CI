@@ -129,9 +129,9 @@ jobs:
           set -euo pipefail
           NOTES="Verified debug APK for kmp-migration commit ${GITHUB_SHA}\n\nAPK SHA-256: ${APK_SHA256}\nGradle task: :app:assembleDebug\nValidation: unzip -t, aapt dump badging, apksigner verify --verbose --print-certs, zipalign -c -v 4"
           if ! gh release view dev-latest >/dev/null 2>&1; then
-            gh release create dev-latest --title "Development latest" --notes "$NOTES" --prerelease --target "${GITHUB_SHA}"
+            gh release create dev-latest --title "Development latest" --notes "$NOTES" --prerelease
           else
-            gh release edit dev-latest --title "Development latest" --notes "$NOTES" --prerelease --target "${GITHUB_SHA}"
+            gh release edit dev-latest --title "Development latest" --notes "$NOTES" --prerelease
           fi
           gh release upload dev-latest "$VERSIONED_APK" CriosRango-latest.apk --clobber
 
