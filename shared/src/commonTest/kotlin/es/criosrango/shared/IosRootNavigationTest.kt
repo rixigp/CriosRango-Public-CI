@@ -10,9 +10,9 @@ class IosRootNavigationTest {
     }
 
     @Test
-    fun mainSectionsAreHomeCategoriesAccount() {
+    fun mainSectionsAreHomeCategoriesOutletCartAccount() {
         assertEquals(
-            listOf(IosRootSection.HOME, IosRootSection.CATEGORIES, IosRootSection.CART, IosRootSection.ACCOUNT),
+            listOf(IosRootSection.HOME, IosRootSection.CATEGORIES, IosRootSection.OUTLET, IosRootSection.CART, IosRootSection.ACCOUNT),
             IosRootSection.entries.toList()
         )
     }
