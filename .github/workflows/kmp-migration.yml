@@ -264,12 +264,21 @@ jobs:
           test "$SDK_MAJOR" -ge 26
           test "$(xcode-select -p)" = "$DEVELOPER_DIR"
       - name: Build iOS Simulator app
+        env:
+          VERSION_NAME: ${{ steps.app-version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.app-version.outputs.version_code }}
         run: |
-          xcodebuild -project iosApp/iosApp.xcodeproj -scheme CriosRangoKMPSpike -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO -derivedDataPath "$GITHUB_WORKSPACE/ios-derived-data" build
+          xcodebuild -project iosApp/iosApp.xcodeproj -scheme CriosRangoKMPSpike -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO MARKETING_VERSION="$VERSION_NAME" CURRENT_PROJECT_VERSION="$VERSION_CODE" -derivedDataPath "$GITHUB_WORKSPACE/ios-derived-data" build
       - name: Compile iOS device app (unsigned)
+        env:
+          VERSION_NAME: ${{ steps.app-version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.app-version.outputs.version_code }}
         run: |
-          xcodebuild -project iosApp/iosApp.xcodeproj -scheme CriosRangoKMPSpike -sdk iphoneos -configuration Debug -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -derivedDataPath "$GITHUB_WORKSPACE/ios-device-derived-data" build
+          xcodebuild -project iosApp/iosApp.xcodeproj -scheme CriosRangoKMPSpike -sdk iphoneos -configuration Debug -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO MARKETING_VERSION="$VERSION_NAME" CURRENT_PROJECT_VERSION="$VERSION_CODE" -derivedDataPath "$GITHUB_WORKSPACE/ios-device-derived-data" build
       - name: Inspect effective iOS Release build settings
+        env:
+          VERSION_NAME: ${{ steps.app-version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.app-version.outputs.version_code }}
         run: |
           set -euo pipefail
           SETTINGS_FILE="$RUNNER_TEMP/ios-release-build-settings.txt"
@@ -280,6 +289,8 @@ jobs:
             -sdk iphoneos \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
+            MARKETING_VERSION="$VERSION_NAME" \
+            CURRENT_PROJECT_VERSION="$VERSION_CODE" \
             -showBuildSettings \
             > "$SETTINGS_FILE"
           cat "$SETTINGS_FILE"
@@ -307,6 +318,9 @@ jobs:
           esac
 
       - name: Compile iOS device app Release (unsigned)
+        env:
+          VERSION_NAME: ${{ steps.app-version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.app-version.outputs.version_code }}
         run: |
           set -euo pipefail
           rm -rf "$GITHUB_WORKSPACE/ios-release-derived-data"
@@ -320,6 +334,8 @@ jobs:
             -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
+            MARKETING_VERSION="$VERSION_NAME" \
+            CURRENT_PROJECT_VERSION="$VERSION_CODE" \
             -derivedDataPath "$GITHUB_WORKSPACE/ios-release-derived-data" \
             build
           echo "===== IOS RELEASE PRODUCTS ====="
@@ -338,6 +354,9 @@ jobs:
           test -n "$RELEASE_FRAMEWORK_PATH"
           test -e "$RELEASE_FRAMEWORK_PATH"
       - name: Archive iOS Release (unsigned)
+        env:
+          VERSION_NAME: ${{ steps.app-version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.app-version.outputs.version_code }}
         run: |
           set -euo pipefail
           ARCHIVE_PATH="$RUNNER_TEMP/CriosRango.xcarchive"
@@ -352,6 +371,8 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
+            MARKETING_VERSION="$VERSION_NAME" \
+            CURRENT_PROJECT_VERSION="$VERSION_CODE" \
             archive 2>&1 | tee "$ARCHIVE_LOG"
           echo "===== EXPECTED ARCHIVE ====="
           echo "$ARCHIVE_PATH"
