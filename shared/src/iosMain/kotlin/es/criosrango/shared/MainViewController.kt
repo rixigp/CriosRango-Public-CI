@@ -5,6 +5,7 @@ import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.api.StoreApiClient
 import platform.Foundation.NSURL
 import platform.UIKit.UIApplication
+import platform.UIKit.UIViewController
 
 private var iosPaymentStore: StorePaymentStore? = null
 
