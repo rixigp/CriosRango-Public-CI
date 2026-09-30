@@ -54,6 +54,7 @@ import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.model.StoreCartVariation
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 internal enum class IosRootSection { HOME, CATEGORIES, OUTLET, CART, ACCOUNT }
@@ -263,19 +264,22 @@ private fun IosHomeScreen(
                     item {
                         IosSectionHeader("Categorías")
                         Spacer(Modifier.height(10.dp))
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            items(categories.filter { it.parent == 0 && !it.name.equals("Outlet", true) }.distinctBy { it.id }.take(10), key = { it.id }) {
-                                IosCategoryChip(it, onCategory)
+                        val rootCategories = categories.filter { it.parent == 0 && !it.name.equals("Outlet", true) }.distinctBy { it.id }.take(9)
+                        Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            rootCategories.chunked(3).forEach { row ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    row.forEach { category ->
+                                        IosHomeCategoryTile(category, onCategory, Modifier.weight(1f))
+                                    }
+                                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                                }
                             }
                         }
                     }
                     item {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("Novedades", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                            TextButton(onClick = onNovedades) { Text("Ver todas") }
+                            TextButton(onClick = onNovedades) { Text("Ver todo ›") }
                         }
                         Spacer(Modifier.height(10.dp))
                         LazyRow(
@@ -288,14 +292,10 @@ private fun IosHomeScreen(
                         }
                     }
                     item {
-                        IosSectionHeader("Outlet")
-                        Spacer(Modifier.height(10.dp))
-                        val outlet = categories.firstOrNull { it.parent == 0 && it.name.contains("outlet", true) }
-                        if (outlet != null) {
-                            IosCategoryChip(outlet, onCategory)
-                        } else {
-                            Text("Outlet", Modifier.padding(horizontal = 20.dp))
-                        }
+                        IosHomeOutletSection(categories, onOutlet)
+                    }
+                    item {
+                        IosHomeBrandsSection(onBrands)
                     }
                 }
             }
@@ -303,15 +303,77 @@ private fun IosHomeScreen(
     }
 }
 
+private val IOS_HOME_HERO_IMAGES = listOf(
+    "https://images.pexels.com/photos/6617704/pexels-photo-6617704.jpeg?auto=compress&cs=tinysrgb&w=1600",
+    "https://images.pexels.com/photos/19915135/pexels-photo-19915135.jpeg?auto=compress&cs=tinysrgb&w=1600",
+    "https://images.pexels.com/photos/30804210/pexels-photo-30804210.jpeg?auto=compress&cs=tinysrgb&w=1600",
+    "https://images.pexels.com/photos/29614374/pexels-photo-29614374.jpeg?auto=compress&cs=tinysrgb&w=1600"
+)
+
+private val IOS_HOME_CATEGORY_IMAGES = mapOf(
+    67 to "https://www.criosrango.es/wp-content/uploads/2026/09/conjunto-peto-estampado-y-jersey-recien-nacida-laurel-XL-4.avif",
+    68 to "https://www.criosrango.es/wp-content/uploads/2026/09/conjunto-sudadera-bolsillos-y-pantalon-nina-botella-XL-1.avif",
+    70 to "https://www.criosrango.es/wp-content/uploads/2026/05/226_104164026f01_016955_1.webp",
+    71 to "https://www.criosrango.es/wp-content/uploads/2026/08/556cado321-46-2.jpg",
+    292 to "https://www.criosrango.es/wp-content/uploads/2026/09/conjunto-pantalon-y-blusa-con-chaleco-bebe-violeta-mezcla-XL-4.avif",
+    294 to "https://www.criosrango.es/wp-content/uploads/2026/08/chaqueton-pelo-bolsillos-bebe-alaska-XL-1.avif",
+    310 to "https://www.criosrango.es/wp-content/uploads/2026/09/polo-combinado-nino-lago-XL-1.avif",
+    420 to "https://www.criosrango.es/wp-content/uploads/2026/01/Captura-de-pantalla-2026-01-21-a-las-17.48.57.png",
+    504 to "https://www.criosrango.es/wp-content/uploads/2026/01/Captura-de-pantalla-2026-01-21-a-las-17.48.57.png"
+)
+
 @Composable
 private fun IosHomeHero() {
-    Box(
-        Modifier.fillMaxWidth().aspectRatio(4f / 3f).background(Color(0xFFE8E2DD)),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Críos & Rango", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("Moda infantil y familiar", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    var index by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(3500)
+            index = (index + 1) % IOS_HOME_HERO_IMAGES.size
+        }
+    }
+    RemoteStoreImage(IOS_HOME_HERO_IMAGES[index], null, Modifier.fillMaxWidth().aspectRatio(4f / 3f), ContentScale.Crop)
+}
+
+@Composable
+private fun IosHomeCategoryTile(category: StoreCategory, onClick: (StoreCategory) -> Unit, modifier: Modifier) {
+    Column(modifier.clickable { onClick(category) }, horizontalAlignment = Alignment.CenterHorizontally) {
+        RemoteStoreImage(IOS_HOME_CATEGORY_IMAGES[category.id], category.name, Modifier.fillMaxWidth().aspectRatio(1f), ContentScale.Fit)
+        Spacer(Modifier.height(6.dp))
+        Text(category.name, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+    }
+}
+
+@Composable
+private fun IosHomeOutletSection(categories: List<StoreCategory>, onSeeAll: () -> Unit) {
+    val outlet = categories.firstOrNull { it.parent == 0 && it.name.contains("outlet", true) } ?: return
+    val seasons = categories.filter { it.parent == outlet.id && (it.name.contains("invierno", true) || it.name.contains("verano", true)) }.distinctBy { it.id }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Outlet", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            TextButton(onClick = onSeeAll) { Text("Ver todo ›") }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            seasons.take(2).forEach { season ->
+                OutlinedButton(onClick = onSeeAll, modifier = Modifier.weight(1f)) { Text(season.name) }
+            }
+            if (seasons.isEmpty()) OutlinedButton(onClick = onSeeAll, modifier = Modifier.fillMaxWidth()) { Text("Ver Outlet") }
+        }
+    }
+}
+
+@Composable
+private fun IosHomeBrandsSection(onSeeAll: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Marcas", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            TextButton(onClick = onSeeAll) { Text("Ver todas ›") }
+        }
+        Spacer(Modifier.height(10.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 2.dp)) {
+            items(storeBrands.take(8), key = { it.slug }) { brand ->
+                OutlinedButton(onClick = onSeeAll) { Text(brand.name) }
+            }
         }
     }
 }
