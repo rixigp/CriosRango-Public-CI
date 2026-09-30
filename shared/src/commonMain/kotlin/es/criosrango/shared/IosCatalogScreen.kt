@@ -2,6 +2,7 @@ package es.criosrango.shared
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -194,13 +195,17 @@ internal fun IosProductDetail(
             }
         }
     }
-    val current = selectedVariation ?: product
-    val canAdd = current.isInStock && current.isPurchasable != false && (product.type != "variable" || selectedVariation != null)
-    val limits = current.quantityLimits ?: current.addToCart
+    val currentId = selectedVariation?.id ?: product.id
+    val currentImages = selectedVariation?.images?.takeIf { it.isNotEmpty() } ?: product.images
+    val currentPrices = selectedVariation?.prices ?: product.prices
+    val currentInStock = selectedVariation?.isInStock ?: product.isInStock
+    val currentPurchasable = selectedVariation?.isPurchasable ?: product.isPurchasable
+    val limits = selectedVariation?.quantityLimits ?: selectedVariation?.addToCart ?: product.quantityLimits ?: product.addToCart
     val minimum = limits?.minimum ?: 1
     val maximum = limits?.maximum
     val multiple = limits?.multipleOf?.takeIf { it > 0 } ?: 1
-    LaunchedEffect(current.id, minimum, maximum, multiple) {
+    val canAdd = currentInStock && currentPurchasable != false && (product.type != "variable" || selectedVariation != null)
+    LaunchedEffect(currentId, minimum, maximum, multiple) {
         quantity = quantity.coerceAtLeast(minimum)
         maximum?.let { quantity = quantity.coerceAtMost(it) }
         if ((quantity - minimum) % multiple != 0) quantity = minimum
@@ -215,13 +220,13 @@ internal fun IosProductDetail(
         item {
             if (product.images.isNotEmpty()) {
                 LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(product.images, key = { it.src }) { image ->
+                    items(currentImages, key = { it.src }) { image ->
                         RemoteStoreImage(image.src, product.name, Modifier.width(300.dp).aspectRatio(.78f))
                     }
                 }
             }
             Text(product.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(20.dp, 16.dp, 20.dp, 4.dp))
-            if (current.hasDisplayablePrice) Text(formatStorePrice(current.prices.price, current.prices.currencyMinorUnit, current.prices.currencySymbol), fontWeight = FontWeight.Bold, color = Color(0xFF183B35), modifier = Modifier.padding(horizontal = 20.dp))
+            if (currentPrices.price.toLongOrNull()?.let { it > 0L } == true) Text(formatStorePrice(currentPrices.price, currentPrices.currencyMinorUnit, currentPrices.currencySymbol), fontWeight = FontWeight.Bold, color = Color(0xFF183B35), modifier = Modifier.padding(horizontal = 20.dp))
             product.attributes.filter { it.terms.isNotEmpty() }.forEach { attribute ->
                 Text(attribute.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(20.dp, 18.dp, 20.dp, 6.dp))
                 Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -245,7 +250,7 @@ internal fun IosProductDetail(
                             StoreCartVariation(taxonomy, value)
                         }
                     }
-                    store.add(current.id, quantity, attrs)
+                    store.add(currentId, quantity, attrs)
                 }, enabled = canAdd, modifier = Modifier.fillMaxWidth().padding(20.dp)) {
                     Text(if (product.type == "variable" && selectedVariation == null) "Elige una combinación" else "Añadir al carrito")
                 }
