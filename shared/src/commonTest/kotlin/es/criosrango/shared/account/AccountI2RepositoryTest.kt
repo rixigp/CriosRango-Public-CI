@@ -204,6 +204,21 @@ class AccountI2RepositoryTest {
     }
 
     @Test
+    fun claimUnauthorized_clearsAccountSessionAndLeavesPendingIdentity() = runBlocking {
+        val tokenStore = FakeI2TokenStore("tok")
+        val pending = FakeClaimOrderStore(PendingClaimOrder(42, "key"))
+        val repo = AccountRepository(
+            tokenStore,
+            client = client("""{"message":"unauthorized"}""", HttpStatusCode.Unauthorized),
+            claimOrderStore = pending
+        )
+
+        assertFailsWith<Exception> { repo.claimPendingOrder() }
+        assertNull(tokenStore.load())
+        assertEquals(PendingClaimOrder(42, "key"), pending.load())
+    }
+
+    @Test
     fun claimTransportFailure_keepsPendingClaim() = runBlocking {
         val pending = FakeClaimOrderStore()
         val engine = MockEngine { throw io.ktor.utils.io.errors.IOException("network") }
