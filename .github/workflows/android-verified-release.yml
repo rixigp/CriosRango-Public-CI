@@ -12,6 +12,10 @@ jobs:
   verified-apk:
     name: Build and verify installable Android APK
     runs-on: ubuntu-24.04
+    concurrency:
+      group: dev-latest-release
+      cancel-in-progress: false
+      queue: max
     steps:
       - uses: actions/checkout@v7
         with:
