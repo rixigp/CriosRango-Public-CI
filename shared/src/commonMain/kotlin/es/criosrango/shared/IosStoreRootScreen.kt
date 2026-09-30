@@ -120,6 +120,7 @@ fun CriosRangoIOSRootScreen(
                     storeApi, cartStore, outletAvailabilityStore, padding, catalogPage,
                     onOpenCategory = { catalogPage = IosCatalogPage.Category(it) },
                     onOpenProduct = { catalogPage = IosCatalogPage.Product(it) },
+                    onOpenPage = { catalogPage = it },
                     onBack = { catalogPage = IosCatalogPage.Root }
                 )
                 IosRootSection.CART -> IosCartScreen(cartStore, padding, { checkoutOpen = true }) {
@@ -209,7 +210,7 @@ private fun IosHomeScreen(
 private fun IosCatalogScreen(
     storeApi: StoreApiClient, cartStore: StoreCartStore, outletAvailabilityStore: IosOutletAvailabilityStore,
     padding: PaddingValues, page: IosCatalogPage, onOpenCategory: (StoreCategory) -> Unit,
-    onOpenProduct: (StoreProduct) -> Unit, onBack: () -> Unit
+    onOpenProduct: (StoreProduct) -> Unit, onOpenPage: (IosCatalogPage) -> Unit, onBack: () -> Unit
 ) {
     when (page) {
         IosCatalogPage.Root -> IosCategoryRoot(storeApi, padding, onOpenCategory)
@@ -222,7 +223,7 @@ private fun IosCatalogScreen(
             val items = storeApi.products(perPage = size, page = p, orderBy = "date", order = "desc")
             CatalogPage(items, items.size >= size)
         }
-        IosCatalogPage.Brands -> IosBrandsScreen(padding, onBack) { name, slug -> onOpenCategory(StoreCategory(id = -slug.hashCode(), name = name, slug = slug)) }
+        IosCatalogPage.Brands -> IosBrandsScreen(padding, onBack) { name, slug -> onOpenPage(IosCatalogPage.Brand(name, slug)) }
         is IosCatalogPage.Brand -> IosPagedProductGrid("brand:" + page.slug, page.name, storeApi, cartStore, padding, onBack, onOpenProduct) { p, size ->
             val items = storeApi.products(perPage = size, page = p, tag = page.slug)
             CatalogPage(items, items.size >= size)
@@ -357,7 +358,7 @@ private fun IosOutletScreen(
     val availability by outletAvailabilityStore.snapshot.collectAsState()
     var categories by remember { mutableStateOf(emptyList<StoreCategory>()) }
     LaunchedEffect(Unit) {
-        if (availability == null) runCatching { outletAvailabilityStore.refresh() }
+        launch { runCatching { outletAvailabilityStore.refresh() } }
         categories = runCatching { storeApi.categories(perPage = 100) }.getOrDefault(emptyList())
     }
     val bubbles = remember(categoryId) { iosOutletBubbles(categoryId) }
