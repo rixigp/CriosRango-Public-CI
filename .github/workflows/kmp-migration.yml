@@ -475,11 +475,11 @@ jobs:
           fi
           echo "Archived CFBundleShortVersionString=$ARCHIVE_SHORT_VERSION"
           echo "Archived CFBundleVersion=$ARCHIVE_BUILD_VERSION"
-          if [ "$ARCHIVE_SHORT_VERSION" != "\${{ steps.app-version.outputs.version_name }}" ]; then
+          if [ "$ARCHIVE_SHORT_VERSION" != "${{ steps.app-version.outputs.version_name }}" ]; then
             echo "::error::Archived CFBundleShortVersionString mismatch: expected ${{ steps.app-version.outputs.version_name }}, got $ARCHIVE_SHORT_VERSION"
             exit 1
           fi
-          if [ "$ARCHIVE_BUILD_VERSION" != "\${{ steps.app-version.outputs.version_code }}" ]; then
+          if [ "$ARCHIVE_BUILD_VERSION" != "${{ steps.app-version.outputs.version_code }}" ]; then
             echo "::error::Archived CFBundleVersion mismatch: expected ${{ steps.app-version.outputs.version_code }}, got $ARCHIVE_BUILD_VERSION"
             exit 1
           fi
