@@ -1,6 +1,10 @@
 package es.criosrango.shared
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
@@ -11,12 +15,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import es.criosrango.shared.api.StoreApiClient
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.model.StoreCartVariation
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 
 @Composable
 internal fun IosCatalogScreen(
@@ -174,6 +183,7 @@ internal fun IosProductDetail(
     var loading by remember(initialProduct.id) { mutableStateOf(true) }
     var error by remember(initialProduct.id) { mutableStateOf<String?>(null) }
     var quantity by remember(initialProduct.id) { mutableStateOf(1) }
+    var fullscreenPage by remember(initialProduct.id) { mutableStateOf<Int?>(null) }
     val selected = remember(initialProduct.id) { mutableStateMapOf<String, String>() }
     LaunchedEffect(initialProduct.id, loading) {
         if (!loading) return@LaunchedEffect
@@ -217,16 +227,26 @@ internal fun IosProductDetail(
             }
         }
         item {
-            if (product.images.isNotEmpty()) {
-                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(currentImages.size) { index ->
-                        val image = currentImages[index]
-                        RemoteStoreImage(image.src, product.name, Modifier.width(300.dp).aspectRatio(.78f))
+            if (currentImages.isNotEmpty()) {
+                val pagerState = rememberPagerState(pageCount = { currentImages.size })
+                HorizontalPager(state = pagerState, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 20.dp), pageSpacing = 10.dp) { index ->
+                    RemoteStoreImage(currentImages[index].src, product.name, Modifier.fillMaxWidth().aspectRatio(.78f).clickable { fullscreenPage = index }, ContentScale.Crop)
+                }
+                if (currentImages.size > 1) {
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
+                        repeat(currentImages.size) { index ->
+                            Box(Modifier.padding(horizontal = 3.dp).size(if (pagerState.currentPage == index) 8.dp else 6.dp).background(if (pagerState.currentPage == index) Color(0xFF183B35) else Color(0xFFD8D4D7), RoundedCornerShape(50)))
+                        }
                     }
                 }
             }
             Text(product.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(20.dp, 16.dp, 20.dp, 4.dp))
-            if (currentPrices.price.toLongOrNull()?.let { it > 0L } == true) Text(formatStorePrice(currentPrices.price, currentPrices.currencyMinorUnit, currentPrices.currencySymbol), fontWeight = FontWeight.Bold, color = Color(0xFF183B35), modifier = Modifier.padding(horizontal = 20.dp))
+            if (currentPrices.price.toLongOrNull()?.let { it > 0L } == true) {
+                Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(formatStorePrice(currentPrices.price, currentPrices.currencyMinorUnit, currentPrices.currencySymbol), fontWeight = FontWeight.Bold, color = Color(0xFF183B35))
+                    if (product.onSale && currentPrices.regularPrice != currentPrices.price) Text(formatStorePrice(currentPrices.regularPrice, currentPrices.currencyMinorUnit, currentPrices.currencySymbol), color = Color(0xFF9E9E9E), textDecoration = TextDecoration.LineThrough)
+                }
+            }
             product.attributes.filter { it.terms.isNotEmpty() }.forEach { attribute ->
                 Text(attribute.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(20.dp, 18.dp, 20.dp, 6.dp))
                 Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -235,6 +255,12 @@ internal fun IosProductDetail(
                     }
                 }
             }
+            Text(
+                if (!currentInStock) "Sin stock" else if (selectedVariation?.lowStockRemaining != null) "Últimas unidades" else "Disponible",
+                color = if (currentInStock) Color(0xFF183B35) else MaterialTheme.colorScheme.error,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+            )
             if (product.type == "variable" && selectedVariation == null) Text("Elige una combinación para continuar.", modifier = Modifier.padding(20.dp))
             Text("Cantidad", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(20.dp, 18.dp, 20.dp, 6.dp))
             Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -259,6 +285,41 @@ internal fun IosProductDetail(
             error?.let { message -> IosStoreError(message) { error = null; loading = true } }
             if (product.shortDescription.isNotBlank()) Text(product.shortDescription, modifier = Modifier.padding(20.dp))
             if (product.description.isNotBlank()) Text(product.description, modifier = Modifier.padding(20.dp))
+        }
+    }
+    fullscreenPage?.let { initialPage ->
+        if (currentImages.isNotEmpty()) {
+            Dialog(onDismissRequest = { fullscreenPage = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+                val pagerState = rememberPagerState(initialPage = initialPage.coerceIn(0, currentImages.lastIndex), pageCount = { currentImages.size })
+                Box(Modifier.fillMaxSize().background(Color.Black)) {
+                    HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+                        var scale by remember(page) { mutableStateOf(1f) }
+                        var offsetX by remember(page) { mutableStateOf(0f) }
+                        var offsetY by remember(page) { mutableStateOf(0f) }
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            RemoteStoreImage(
+                                currentImages[page].src,
+                                product.name,
+                                Modifier.fillMaxWidth().pointerInput(page) {
+                                    detectTransformGestures { _, pan, zoom, _ ->
+                                        scale = (scale * zoom).coerceIn(1f, 4f)
+                                        if (scale > 1f) { offsetX += pan.x; offsetY += pan.y } else { offsetX = 0f; offsetY = 0f }
+                                    }
+                                }.graphicsLayer { scaleX = scale; scaleY = scale; translationX = offsetX; translationY = offsetY },
+                                ContentScale.Fit
+                            )
+                        }
+                    }
+                    TextButton(onClick = { fullscreenPage = null }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)) { Text("✕", color = Color.White) }
+                    if (currentImages.size > 1) {
+                        Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp), horizontalArrangement = Arrangement.Center) {
+                            repeat(currentImages.size) { index ->
+                                Box(Modifier.padding(horizontal = 4.dp).size(if (pagerState.currentPage == index) 8.dp else 6.dp).background(if (pagerState.currentPage == index) Color.White else Color.White.copy(alpha = .4f), RoundedCornerShape(50)))
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
