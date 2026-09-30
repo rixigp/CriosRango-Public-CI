@@ -504,7 +504,7 @@ private fun CheckoutCountry(
                 onValueChange = {},
                 readOnly = true,
                 modifier = Modifier
-                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true)
+                    .menuAnchor()
                     .fillMaxWidth()
                     .height(58.dp),
                 label = { Text("País", fontSize = 13.sp) },
