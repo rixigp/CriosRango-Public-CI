@@ -69,6 +69,7 @@ final class FakeOrder {
 final class FakeWpdb {
     public string $prefix = 'wp_';
     public int $insert_id = 0;
+    public function get_charset_collate(): string { return 'DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'; }
     public ?int $existingDeviceId = null;
     public ?object $digestRow = null;
     public ?object $eventRow = null;
