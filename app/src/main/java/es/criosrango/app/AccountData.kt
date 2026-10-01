@@ -78,6 +78,7 @@ class AccountSessionStore(context: Context) : AccountTokenStore {
 }
 
 class AccountRepository(context: Context) {
+    private val application = context.applicationContext
     private val session = AccountSessionStore(context.applicationContext)
     private val claimOrderStore = AndroidClaimOrderStore(context.applicationContext)
     private val sharedAccountRepository = SharedAccountRepository(
@@ -140,7 +141,7 @@ class AccountRepository(context: Context) {
         sharedAccountRepository.claimPendingOrder()
 
     suspend fun logout() {
-        PushNotificationController.unregister(getApplication())
+        PushNotificationController.unregister(application)
         sharedAccountRepository.logout()
     }
 
