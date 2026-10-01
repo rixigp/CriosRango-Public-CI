@@ -64,6 +64,14 @@ jobs:
           keytool -list -keystore "$RUNNER_TEMP/criosrango-debug.jks" -storepass "$STOREPASS" -alias "criosrango-development"
       - name: Compile and test shared KMP checkout
         run: ./gradlew :shared:compileDebugKotlinAndroid :shared:testDebugUnitTest :app:testDebugUnitTest --stacktrace
+      - name: Test Push WordPress plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -v
+          php -l tools/wordpress-plugin/criosrango-push/criosrango-push.php
+          php -l tools/wordpress-plugin/criosrango-push/tests/PushPluginContractTest.php
+          php tools/wordpress-plugin/criosrango-push/tests/PushPluginContractTest.php
       - name: Read-only checkout gateway audit
         shell: bash
         run: |
