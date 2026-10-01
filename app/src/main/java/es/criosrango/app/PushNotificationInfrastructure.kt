@@ -20,6 +20,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
+import es.criosrango.shared.PushNotificationContract
+import es.criosrango.shared.PushNotificationType
 
 class PushPreferencesStore(context: Context) {
     private val prefs=context.getSharedPreferences("criosrango_push_preferences",Context.MODE_PRIVATE)
@@ -72,12 +74,12 @@ class PushFirebaseMessagingService:FirebaseMessagingService(){
     override fun onCreate(){super.onCreate();PushNotificationController.initialize(this)}
     override fun onNewToken(token:String){PushNotificationController.register(this,token)}
     override fun onMessageReceived(message:RemoteMessage){
-        val type=message.data["type"]?:return
-        val orderId=message.data["order_id"]
+        val type=message.data[PushNotificationContract.TYPE_KEY]?:return
+        val orderId=message.data[PushNotificationContract.ORDER_ID_KEY]
         val title=message.data["title"]?:"Críos&Rango"
         val body=message.data["body"]?:"Tienes una nueva notificación"
-        val channel=if(type=="order_status")"criosrango_orders" else "criosrango_general"
-        val intent=Intent(this,MainActivity::class.java).apply{flags=Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP;putExtra("push_type",type);orderId?.let{putExtra("push_order_id",it)}}
+        val channel=if(type==PushNotificationType.ORDER_STATUS)"criosrango_orders" else "criosrango_general"
+        val intent=Intent(this,MainActivity::class.java).apply{flags=Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP;putExtra(PushNotificationContract.TYPE_KEY,type);orderId?.let{putExtra(PushNotificationContract.ORDER_ID_KEY,it)}}
         val pending=PendingIntent.getActivity(this,orderId?.hashCode()?:type.hashCode(),intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification=NotificationCompat.Builder(this,channel).setSmallIcon(es.criosrango.app.R.drawable.ic_stat_notification).setContentTitle(title).setContentText(body).setAutoCancel(true).setContentIntent(pending).build()
         androidx.core.app.NotificationManagerCompat.from(this).notify(orderId?.hashCode()?:type.hashCode(),notification)
