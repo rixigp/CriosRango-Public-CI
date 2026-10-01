@@ -8,6 +8,7 @@ import platform.UIKit.UIApplication
 import platform.UIKit.UIViewController
 
 private var iosPaymentStore: StorePaymentStore? = null
+private val iosPushNavigation = androidx.compose.runtime.mutableStateOf<IosPushNavigation?>(null)
 
 fun MainViewController() : UIViewController {
     val storeSession = IosStoreSessionStore()
@@ -31,7 +32,9 @@ fun MainViewController() : UIViewController {
         checkoutStore = StoreCheckoutStore(storeApi, cartStore, accountRepository),
         paymentStore = paymentStore,
         onOpenPayment = ::openIosPaymentUrl,
-        onOpenExternalUrl = ::openIosExternalUrl
+        onOpenExternalUrl = ::openIosExternalUrl,
+            pushNavigation = iosPushNavigation.value,
+            onPushNavigationConsumed = { iosPushNavigation.value = null }
         )
     }
 }
@@ -67,4 +70,9 @@ fun openIosExternalUrl(url: String) {
         options = emptyMap<Any?, Any?>(),
         completionHandler = null
     )
+}
+
+fun handleIosPushNotification(type: String?, orderId: Int32) {
+    val t = type?.lowercase() ?: return
+    if (t == PushNotificationType.NEW_PRODUCTS || t == PushNotificationType.ORDER_STATUS) iosPushNavigation.value = IosPushNavigation(t, orderId.takeIf { it > 0 }?.toInt())
 }
