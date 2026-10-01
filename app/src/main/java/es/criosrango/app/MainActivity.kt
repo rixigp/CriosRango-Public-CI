@@ -83,11 +83,15 @@ import kotlinx.coroutines.launch
 enum class BrandOrigin { HOME, ALL_BRANDS }
 enum class AppTab(val label: String) { HOME("Inicio"), CATEGORIES("Categorías"), OUTLET("Outlet"), SEARCH("Buscar"), CART("Carrito"), ACCOUNT("Cuenta") }
 private val paymentReturnUriState = androidx.compose.runtime.mutableStateOf<android.net.Uri?>(null)
+private val pushTypeState = androidx.compose.runtime.mutableStateOf<String?>(null)
+private val pushOrderIdState = androidx.compose.runtime.mutableStateOf<Int?>(null)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         paymentReturnUriState.value = intent?.data
+        pushTypeState.value = intent?.getStringExtra("push_type")
+        pushOrderIdState.value = intent?.getIntExtra("order_id", 0)?.takeIf { it > 0 }
         val preferences = getSharedPreferences("criosrango", MODE_PRIVATE)
         val session = StoreSession(preferences)
         val sharedSession = AndroidStoreSessionStore(session)
@@ -108,7 +112,10 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         paymentReturnUriState.value = intent.data
+        pushTypeState.value = intent.getStringExtra("push_type")
+        pushOrderIdState.value = intent.getIntExtra("order_id", 0).takeIf { it > 0 }
     }
+    override fun onResume() { super.onResume(); PushNotificationController.initialize(this) }
 }
 
 @Composable
@@ -138,7 +145,16 @@ private fun CriosRangoApp(
     val paymentRedirect by viewModel.paymentRedirect.collectAsStateWithLifecycle()
     val cardPaymentResult by viewModel.cardPaymentResult.collectAsStateWithLifecycle()
     val paymentReturnUri = paymentReturnUriState.value
+    val pushType = pushTypeState.value
+    val pushOrderId = pushOrderIdState.value
     val bizumOrderId by viewModel.bizumOrderId.collectAsStateWithLifecycle()
+    LaunchedEffect(pushType, pushOrderId) {
+        when (pushType) {
+            "new_products" -> { tab = AppTab.HOME; homeShowAll = true }
+            "order_status" -> { tab = AppTab.ACCOUNT }
+        }
+        if (pushType != null) { pushTypeState.value = null; pushOrderIdState.value = null }
+    }
     LaunchedEffect(checkout?.orderId, checkout?.orderKey) {
         val orderId = checkout?.orderId ?: return@LaunchedEffect
         val orderKey = checkout?.orderKey?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -213,6 +229,7 @@ private fun CriosRangoApp(
                         padding = padding,
                         vm = accountViewModel,
                         openLoginOnStart = returnToCartAfterLogin,
+                        initialOrderId = pushOrderId,
                         onAuthenticated = {
                             if (returnToCartAfterLogin) {
                                 returnToCartAfterLogin = false
