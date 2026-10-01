@@ -71,7 +71,7 @@ final class FakeWpdb {
         if (str_contains($query, 'FROM wp_criosrango_push_deliveries')) {
             preg_match('/event_id=([0-9]+)/', $query, $event);
             preg_match('/device_id=([0-9]+)/', $query, $device);
-            return $this->deliveries[((int)($event[1] ?? 0)) . ':' . ((int)($device[1] ?? 0)] ?? null;
+            return $this->deliveries[((int)($event[1] ?? 0)) . ':' . ((int)($device[1] ?? 0))] ?? null;
         }
         return null;
     }
