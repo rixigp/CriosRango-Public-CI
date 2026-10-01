@@ -139,8 +139,13 @@ function reset_push_harness(): FakeWpdb {
     return $db;
 }
 
+function reset_push_request_auth(): void {
+    $GLOBALS['push_test_user_id'] = 0;
+}
+
 function test_device_auth_and_dedup(): void {
     $db = reset_push_harness();
+    reset_push_request_auth();
     $GLOBALS['push_test_user_id'] = 42;
     $response = CriosRango_Push::register(new FakeRequest(
         ['platform' => 'android', 'token' => 'token-A'],
@@ -150,17 +155,20 @@ function test_device_auth_and_dedup(): void {
     push_assert_same(42, $db->lastInsertData['user_id'], 'valid bearer must associate the real current user');
 
     $db->existingDeviceId = 9;
+    reset_push_request_auth();
+    $GLOBALS['push_test_user_id'] = 42;
     CriosRango_Push::register(new FakeRequest(
         ['platform' => 'android', 'token' => 'token-A', 'new_products' => false, 'order_updates' => true],
         ['authorization' => 'Bearer valid']
     ));
     push_assert_same(42, $db->lastInsertData['user_id'], 'refresh must keep the authenticated user');
 
-    $GLOBALS['push_test_user_id'] = 0;
+    reset_push_request_auth();
     $anonymous = CriosRango_Push::register(new FakeRequest(['platform' => 'ios', 'token' => 'token-G']));
     push_assert(!is_wp_error($anonymous), 'anonymous device may register');
     push_assert_same(0, $db->lastInsertData['user_id'], 'anonymous device must have user_id=0');
 
+    reset_push_request_auth();
     $invalid = CriosRango_Push::register(new FakeRequest(
         ['platform' => 'ios', 'token' => 'token-B'],
         ['authorization' => 'Bearer expired']
