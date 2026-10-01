@@ -130,7 +130,7 @@ final class CriosRango_Push {
         $sig=str_pad(ltrim($rr,"\0"),32,"\0",STR_PAD_LEFT).str_pad(ltrim($ss,"\0"),32,"\0",STR_PAD_LEFT);
         $jwt="$h.$pl.".$b($sig);$host=$env==='production'?'https://api.push.apple.com':'https://api.sandbox.push.apple.com';
         $body=['aps'=>['alert'=>['title'=>$p['title'],'body'=>$p['body']],'sound'=>'default'],'type'=>$p['type'],'order_id'=>(string)($p['order_id']??'')];
-        $r=wp_remote_post($host.'/3/device/'.rawurlencode($token),['httpversion'=>'2.0','headers'=>['authorization'=>'bearer '.$jwt,'apns-topic'=>$bundle,'apns-push-type'=>'alert','apns-priority'=>'10','Content-Type'=>'application/json'],'body'=>wp_json_encode($body),'timeout'=>15);
+        $r=wp_remote_post($host.'/3/device/'.rawurlencode($token),['httpversion'=>'2.0','headers'=>['authorization'=>'bearer '.$jwt,'apns-topic'=>$bundle,'apns-push-type'=>'alert','apns-priority'=>'10','Content-Type'=>'application/json'],'body'=>wp_json_encode($body),'timeout'=>15]);
         $code=is_wp_error($r)?0:wp_remote_retrieve_response_code($r);$raw=is_wp_error($r)?'':wp_remote_retrieve_body($r);
         return['result'=>$code>=200&&$code<300?'sent':'failed','provider_id'=>(string)$code,'invalid'=>in_array($code,[400,410],true)&& (stripos($raw,'BadDeviceToken')!==false||stripos($raw,'Unregistered')!==false)];
     }
