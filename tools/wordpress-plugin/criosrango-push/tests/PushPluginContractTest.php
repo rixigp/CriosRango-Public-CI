@@ -14,6 +14,27 @@ final class WP_Error {
     ) {}
 }
 
+function rest_do_request($request): FakeRestResponse {
+    $authorization = trim((string)$request->get_header('authorization'));
+    $user_id = (int)($GLOBALS['push_test_user_id'] ?? 0);
+
+    if ($authorization === 'Bearer valid' && $user_id > 0) {
+        return new FakeRestResponse(200, [
+            'user' => ['id' => $user_id],
+        ]);
+    }
+
+    return new FakeRestResponse(401, [
+        'message' => 'Sesion no valida.',
+    ]);
+}
+
+if (!function_exists('absint')) {
+    function absint($value): int {
+        return abs((int)$value);
+    }
+}
+
 if (!function_exists('wp_json_encode')) {
     function wp_json_encode($value, $flags = 0, $depth = 512) {
         return json_encode($value, $flags, $depth);
