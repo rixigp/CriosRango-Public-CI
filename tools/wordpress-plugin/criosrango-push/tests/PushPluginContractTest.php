@@ -28,7 +28,6 @@ function wp_remote_post(...$args): array { return ['response' => ['code' => 200]
 function get_option($key): mixed { return null; }
 function get_current_user_id(): int { return $GLOBALS['push_test_user_id'] ?? 0; }
 function wc_get_order($id): object { return $GLOBALS['push_test_order']; }
-function gmdate($format): string { return '2026-10-01 10:00:00'; }
 
 final class FakeRequest {
     public function __construct(private array $params = [], private array $headers = []) {}
@@ -191,9 +190,9 @@ function test_daily_digest_and_idempotency(): void {
     $sender = function($device, $payload) use (&$sent): array { $sent++; return ['result' => 'sent', 'provider_id' => 'test', 'invalid' => false]; };
     CriosRango_Push::digest($sender);
     push_assert_same(1, $sent, 'one digest must send once to each eligible device');
-    push_assert(count(array_filter($db->queries, fn($q) => str_contains($q, 'digest:2026-10-01'))) === 1, 'one digest event must be created');
+    push_assert(count(array_filter($db->queries, fn($q) => str_contains($q, 'digest:' . wp_date('Y-m-d')))) === 1, 'one digest event must be created');
 
-    $db->digestRow = (object)['id' => 1, 'sent_gmt' => '2026-10-01 10:00:00'];
+    $db->digestRow = (object)['id' => 1, 'sent_gmt' => gmdate('Y-m-d H:i:s')];
     $before = $sent;
     CriosRango_Push::digest($sender);
     push_assert_same($before, $sent, 'a sent digest must never be sent twice');
