@@ -70,8 +70,8 @@ final class CriosRango_Push {
         $inserted=$wpdb->query($wpdb->prepare("INSERT IGNORE INTO ".self::table('events')." (idempotency_key,type,entity_id,entity_state,payload,created_gmt) VALUES(%s,%s,%d,%s,%s,%s)",$key,$type,$entity,$state,wp_json_encode($payload),gmdate('Y-m-d H:i:s')));
         if($type==='order_status' && $inserted)self::send_event((int)$wpdb->insert_id);
     }
-    static function digest(){
-        global $wpdb;$key='digest:'.wp_date('Y-m-d');
+    static function digest($sender=null){
+        global $wpdb;$sender=$sender?:function($d,$p){return self::send($d,$p);};$key='digest:'.wp_date('Y-m-d');
         $existing_digest=$wpdb->get_row($wpdb->prepare("SELECT * FROM ".self::table('events')." WHERE idempotency_key=%s",$key));
         if($existing_digest && $existing_digest->sent_gmt)return;
         $events=$wpdb->get_results("SELECT * FROM ".self::table('events')." WHERE type='product_published' AND sent_gmt IS NULL ORDER BY created_gmt ASC");
@@ -80,12 +80,12 @@ final class CriosRango_Push {
         $all_ok=true; foreach($devices as $d){
             $existing=$wpdb->get_var($wpdb->prepare("SELECT result FROM ".self::table('deliveries')." WHERE event_id=%d AND device_id=%d",$id,$d->id));
             if($existing==='sent')continue;
-            $r=self::send($d,['type'=>'new_products','title'=>'¡Hay novedades! 🛍️','body'=>'Hoy hemos añadido '.count($events).' nuevos productos. Échales un vistazo.']);self::delivery($id,$d->id,$r);if(!$r['invalid']&&$r['result']!=='sent')$all_ok=false;
+            $r=$sender($d,['type'=>'new_products','title'=>'¡Hay novedades! 🛍️','body'=>'Hoy hemos añadido '.count($events).' nuevos productos. Échales un vistazo.']);self::delivery($id,$d->id,$r);if(!$r['invalid']&&$r['result']!=='sent')$all_ok=false;
         }
         if($all_ok){$now=gmdate('Y-m-d H:i:s');$wpdb->update(self::table('events'),['sent_gmt'=>$now],['id'=>$id]);$ids=implode(',',array_map('intval',wp_list_pluck($events,'id')));$wpdb->query("UPDATE ".self::table('events')." SET sent_gmt='$now' WHERE id IN ($ids)");}
     }
-    static function send_event($id){
-        global $wpdb;$e=$wpdb->get_row($wpdb->prepare("SELECT * FROM ".self::table('events')." WHERE id=%d",$id));if(!$e)return;
+    static function send_event($id,$sender=null){
+        global $wpdb;$sender=$sender?:function($d,$p){return self::send($d,$p);};$e=$wpdb->get_row($wpdb->prepare("SELECT * FROM ".self::table('events')." WHERE id=%d",$id));if(!$e)return;
         $p=json_decode($e->payload,true);
         $order=function_exists('wc_get_order')?wc_get_order((int)$e->entity_id):null;
         $user=$order?(int)$order->get_customer_id():0;
@@ -94,7 +94,7 @@ final class CriosRango_Push {
         $all_ok=true; foreach($devices as $d){
             $existing=$wpdb->get_var($wpdb->prepare("SELECT result FROM ".self::table('deliveries')." WHERE event_id=%d AND device_id=%d",$e->id,$d->id));
             if($existing==='sent')continue;
-            $r=self::send($d,$p);self::delivery($e->id,$d->id,$r);if(!$r['invalid']&&$r['result']!=='sent')$all_ok=false;
+            $r=$sender($d,$p);self::delivery($e->id,$d->id,$r);if(!$r['invalid']&&$r['result']!=='sent')$all_ok=false;
         }
         if($all_ok)$wpdb->update(self::table('events'),['sent_gmt'=>gmdate('Y-m-d H:i:s')],['id'=>$id]);
     }
