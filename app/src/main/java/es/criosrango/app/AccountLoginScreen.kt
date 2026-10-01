@@ -79,6 +79,7 @@ fun AccountLoginScreen(
     LaunchedEffect(currentUser?.id) {
         if (currentUser != null) {
             showLogin = false
+            PushNotificationController.initialize(notificationContext)
             vm.refreshOrders()
             onAuthenticated?.invoke()
         }
