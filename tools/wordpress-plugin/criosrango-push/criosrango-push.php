@@ -59,8 +59,8 @@ final class CriosRango_Push {
     }
     static function event($type,$entity,$state,$payload){
         global $wpdb;$key=$type==='product_published'?'product_published:'.$entity:'order:'.$entity.':'.$state;
-        $wpdb->query($wpdb->prepare("INSERT IGNORE INTO ".self::table('events')." (idempotency_key,type,entity_id,entity_state,payload,created_gmt) VALUES(%s,%s,%d,%s,%s,%s)",$key,$type,$entity,$state,wp_json_encode($payload),gmdate('Y-m-d H:i:s')));
-        if($type==='order_status')self::send_event($wpdb->insert_id);
+        $inserted=$wpdb->query($wpdb->prepare("INSERT IGNORE INTO ".self::table('events')." (idempotency_key,type,entity_id,entity_state,payload,created_gmt) VALUES(%s,%s,%d,%s,%s,%s)",$key,$type,$entity,$state,wp_json_encode($payload),gmdate('Y-m-d H:i:s')));
+        if($type==='order_status' && $inserted)self::send_event((int)$wpdb->insert_id);
     }
     static function digest(){
         global $wpdb;$key='digest:'.wp_date('Y-m-d');
