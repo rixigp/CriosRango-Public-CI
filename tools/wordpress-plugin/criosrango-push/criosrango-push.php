@@ -135,7 +135,7 @@ final class CriosRango_Push {
         if($d->platform==='android')return self::fcm($d->token,$p); return self::apns($d->token,$p);
     }
     static function delivery($eid,$did,$r){
-        global $wpdb;$wpdb->query($wpdb->prepare("INSERT IGNORE INTO ".self::table('deliveries')." (event_id,device_id,result,provider_id,created_gmt) VALUES(%d,%d,%s,%s,%s)",$eid,$did,$r['result'],$r['provider_id'],gmdate('Y-m-d H:i:s')));
+        global $wpdb;$wpdb->query($wpdb->prepare("INSERT INTO ".self::table('deliveries')." (event_id,device_id,result,provider_id,created_gmt) VALUES(%d,%d,%s,%s,%s) ON DUPLICATE KEY UPDATE result=%s, provider_id=%s, created_gmt=%s",$eid,$did,$r['result'],$r['provider_id'],gmdate('Y-m-d H:i:s'),$r['result'],$r['provider_id'],gmdate('Y-m-d H:i:s')));
         if($r['invalid'])$wpdb->update(self::table('devices'),['active'=>0],['id'=>$did]);
     }
     static function fcm($token,$p){

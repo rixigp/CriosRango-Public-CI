@@ -177,6 +177,13 @@ final class FakeWpdb {
 
     public function query(string $query): int {
         $this->queries[] = $query;
+        if (str_starts_with(trim($query), 'INSERT INTO') && str_contains($query, 'criosrango_push_deliveries') && str_contains($query, 'ON DUPLICATE KEY UPDATE')) {
+            preg_match('/VALUES\(([0-9]+),([0-9]+),\'([^\']+)\',\'([^\']*)\',\'([^\']*)\)/', $query, $m);
+            $key = ((int)($m[1] ?? 0)) . ':' . ((int)($m[2] ?? 0));
+            $this->deliveries[$key] = $m[3] ?? '';
+            $this->insertedDeliveries[$key] = ['result' => $m[3] ?? '', 'provider_id' => $m[4] ?? '', 'created_gmt' => $m[5] ?? ''];
+            return 1;
+        }
         if (str_starts_with(trim($query), 'INSERT IGNORE')) {
             if (str_contains($query, "'digest'") && preg_match("/'digest:([^']+)'/", $query, $m)) {
                 $idempotencyKey = 'digest:' . $m[1];
@@ -414,6 +421,53 @@ function test_digest_transient_retry(): void {
     push_assert(count(array_filter($db->queries, fn($q) => str_contains($q, 'SET sent_gmt='))) === 1, 'successful retry must mark the product as sent');
 }
 
+function test_digest_staggered_retry_persists_success(): void {
+    $db = reset_push_harness();
+    $db->productEvents = [(object)['id' => 1, 'sent_gmt' => null]];
+    $db->devices = [
+        (object)['id' => 10, 'active' => 1, 'new_products' => 1, 'order_updates' => 1, 'user_id' => 0],
+        (object)['id' => 11, 'active' => 1, 'new_products' => 1, 'order_updates' => 1, 'user_id' => 0],
+    ];
+
+    $attempts = [10 => 0, 11 => 0];
+    $execution = 0;
+    $sender = function($device, $payload) use (&$attempts, &$execution): array {
+        $id = (int)$device->id;
+        $attempts[$id]++;
+        if ($execution === 1) {
+            return ['result' => 'failed', 'provider_id' => '500', 'invalid' => false];
+        }
+        if ($execution === 2 && $id === 10) {
+            return ['result' => 'sent', 'provider_id' => '200', 'invalid' => false];
+        }
+        if ($execution === 3 && $id === 11) {
+            return ['result' => 'sent', 'provider_id' => '200', 'invalid' => false];
+        }
+        return ['result' => 'failed', 'provider_id' => '500', 'invalid' => false];
+    };
+
+    $execution = 1;
+    CriosRango_Push::digest($sender);
+    push_assert_same(1, $attempts[10], 'first execution must attempt device 10 once');
+    push_assert_same(1, $attempts[11], 'first execution must attempt device 11 once');
+    push_assert($db->digestRow !== null && $db->digestRow->sent_gmt === null, 'first execution must leave digest pending');
+
+    $execution = 2;
+    CriosRango_Push::digest($sender);
+    push_assert_same(2, $attempts[10], 'second execution must retry device 10');
+    push_assert_same(2, $attempts[11], 'second execution must retry device 11');
+    push_assert_same('sent', $db->deliveries['1:10'] ?? null, 'device 10 successful retry must persist as sent');
+    push_assert($db->digestRow !== null && $db->digestRow->sent_gmt === null, 'second execution must leave digest pending');
+
+    $execution = 3;
+    CriosRango_Push::digest($sender);
+    push_assert_same(2, $attempts[10], 'third execution must skip resolved device 10');
+    push_assert_same(3, $attempts[11], 'third execution must retry only device 11');
+    push_assert($db->digestRow !== null && $db->digestRow->sent_gmt !== null, 'third execution must resolve the digest');
+    push_assert_same('sent', $db->deliveries['1:11'] ?? null, 'device 11 final retry must persist as sent');
+    push_assert(count(array_filter($db->queries, fn($q) => str_contains($q, 'SET sent_gmt='))) === 1, 'successful final retry must mark products as sent');
+}
+
 function test_digest_invalid_token_does_not_block_valid(): void {
     $db = reset_push_harness();
     $db->productEvents = [(object)['id' => 1, 'sent_gmt' => null]];
@@ -499,6 +553,7 @@ $tests = [
     'daily digest and idempotency' => 'test_daily_digest_and_idempotency',
     'digest zero devices stays pending' => 'test_digest_zero_devices_stays_pending',
     'digest transient retry' => 'test_digest_transient_retry',
+    'digest staggered retry persists success' => 'test_digest_staggered_retry_persists_success',
     'digest invalid token does not block valid' => 'test_digest_invalid_token_does_not_block_valid',
     'digest completed is idempotent' => 'test_digest_completed_is_idempotent',
     'order ownership and preferences' => 'test_order_ownership_and_preferences',
