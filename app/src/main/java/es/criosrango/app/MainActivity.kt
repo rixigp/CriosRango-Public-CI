@@ -148,13 +148,6 @@ private fun CriosRangoApp(
     val pushType = pushTypeState.value
     val pushOrderId = pushOrderIdState.value
     val bizumOrderId by viewModel.bizumOrderId.collectAsStateWithLifecycle()
-    LaunchedEffect(pushType, pushOrderId) {
-        when (pushType) {
-            "new_products" -> { tab = AppTab.HOME; homeShowAll = true }
-            "order_status" -> { tab = AppTab.ACCOUNT }
-        }
-        if (pushType != null) { pushTypeState.value = null; pushOrderIdState.value = null }
-    }
     LaunchedEffect(checkout?.orderId, checkout?.orderKey) {
         val orderId = checkout?.orderId ?: return@LaunchedEffect
         val orderKey = checkout?.orderKey?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -168,6 +161,14 @@ private fun CriosRangoApp(
     var tab by remember { mutableStateOf(AppTab.HOME) }
     var returnToCartAfterLogin by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var homeShowAll by remember { mutableStateOf(false) }
+
+    LaunchedEffect(pushType, pushOrderId) {
+        when (pushType) {
+            "new_products" -> { tab = AppTab.HOME; homeShowAll = true }
+            "order_status" -> { tab = AppTab.ACCOUNT }
+        }
+        if (pushType != null) { pushTypeState.value = null; pushOrderIdState.value = null }
+    }
     val homeListState = androidx.compose.foundation.lazy.rememberLazyListState()
     var checkoutOpen by remember { mutableStateOf(false) }
     var paymentBrowserOpened by remember { mutableStateOf(false) }

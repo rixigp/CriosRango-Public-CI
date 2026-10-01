@@ -22,8 +22,16 @@ import kotlinx.coroutines.launch
 
 class PushPreferencesStore(context: Context) {
     private val prefs=context.getSharedPreferences("criosrango_push_preferences",Context.MODE_PRIVATE)
-    var newProducts:Boolean get()=prefs.getBoolean("new_products",true) set(v){prefs.edit().putBoolean("new_products",v).apply()}
-    var orderUpdates:Boolean get()=prefs.getBoolean("order_updates",true) set(v){prefs.edit().putBoolean("order_updates",v).apply()}
+    var newProducts: Boolean
+        get() = prefs.getBoolean("new_products", true)
+        set(value) {
+            prefs.edit().putBoolean("new_products", value).apply()
+        }
+    var orderUpdates: Boolean
+        get() = prefs.getBoolean("order_updates", true)
+        set(value) {
+            prefs.edit().putBoolean("order_updates", value).apply()
+        }
 }
 
 object PushNotificationController {
