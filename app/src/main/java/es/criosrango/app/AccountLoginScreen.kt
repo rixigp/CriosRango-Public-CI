@@ -48,6 +48,7 @@ fun AccountLoginScreen(
     padding: PaddingValues,
     vm: AccountViewModel = viewModel(),
     openLoginOnStart: Boolean = false,
+    initialOrderId: Int? = null,
     onAuthenticated: (() -> Unit)? = null,
     onBackFromLogin: (() -> Unit)? = null
 ) {
@@ -67,8 +68,12 @@ fun AccountLoginScreen(
     var selectedInfoPage by remember { mutableStateOf<AccountInfoPage?>(null) }
     val currentUser = user
     var accountSection by remember(currentUser?.id) { mutableStateOf(AccountSection.HOME) }
-    var selectedOrderId by remember { mutableStateOf<Int?>(null) }
+    var selectedOrderId by remember { mutableStateOf<Int?>(initialOrderId) }
     val selectedOrder = orders.firstOrNull { it.id == selectedOrderId }
+
+    LaunchedEffect(currentUser?.id, initialOrderId) {
+        if (currentUser != null && initialOrderId != null) selectedOrderId = initialOrderId
+    }
 
     LaunchedEffect(currentUser?.id) {
         if (currentUser != null) {
