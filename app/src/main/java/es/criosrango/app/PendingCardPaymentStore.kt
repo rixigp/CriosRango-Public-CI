@@ -2,7 +2,6 @@ package es.criosrango.app
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.os.Build
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -76,17 +75,10 @@ class PendingCardPaymentStore internal constructor(private val preferences: Shar
         }
 
         private fun resetEncryptedPreferences(context: Context) {
-            // Clear the cached SharedPreferences instance first. This also keeps
-            // recovery compatible with API 23, where deleteSharedPreferences()
-            // is not available.
-            context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
-                .edit()
-                .clear()
-                .commit()
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                context.deleteSharedPreferences(FILE_NAME)
-            }
+            // API 24 is the app minimum, so delete only this SharedPreferences file.
+            // Do not clear it through EncryptedSharedPreferences: a corrupted file may
+            // fail again while trying to decrypt its contents.
+            context.deleteSharedPreferences(FILE_NAME)
         }
     }
 }
