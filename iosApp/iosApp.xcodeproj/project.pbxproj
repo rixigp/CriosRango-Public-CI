@@ -9,6 +9,7 @@
         A10000010000000000000001 /* iosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000100000000000000001 /* iosApp.swift */; };
         A10000020000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000140000000000000001 /* Assets.xcassets */; };
         A10000030000000000000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A10000150000000000000001 /* PrivacyInfo.xcprivacy */; };
+        A10000040000000000000001 /* PushNotificationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000160000000000000001 /* PushNotificationBridge.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -18,6 +19,7 @@
         A10000130000000000000001 /* CriosRango.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CriosRango.app; sourceTree = BUILT_PRODUCTS_DIR; };
         A10000140000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
         A10000150000000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+        A10000160000000000000001 /* PushNotificationBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationBridge.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -105,7 +107,7 @@
         A10000500000000000000001 /* Sources */ = {
             isa = PBXSourcesBuildPhase;
             buildActionMask = 2147483647;
-            files = (A10000010000000000000001 /* iosApp.swift in Sources */);
+            files = (A10000010000000000000001 /* iosApp.swift in Sources */, A10000040000000000000001 /* PushNotificationBridge.swift in Sources */);
             runOnlyForDeploymentPostprocessing = 0;
         };
 /* End PBXSourcesBuildPhase section */
@@ -141,9 +143,10 @@
                 ARCHS = arm64;
                 PRODUCT_NAME = CriosRango;
                 SWIFT_VERSION = 5.0;
+                CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
                 TARGETED_DEVICE_FAMILY = 1;
-                CURRENT_PROJECT_VERSION = 145;
-                MARKETING_VERSION = 1.0.145;
+                CURRENT_PROJECT_VERSION = 146;
+                MARKETING_VERSION = 1.0.146;
                 INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone = YES;
                 ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
             };
