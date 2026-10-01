@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application android:theme="@style/Theme.CriosRango" android:label="CriosRango" android:icon="@mipmap/ic_launcher_favicon" android:roundIcon="@mipmap/ic_launcher_favicon" android:usesCleartextTraffic="false">
         <activity android:name=".MainActivity" android:exported="true"
             android:launchMode="singleTask">
@@ -68,5 +69,9 @@
             </intent-filter>
 
         </activity>
+            <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="criosrango_general" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_notification" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/notification_accent" />
+        <service android:name=".PushFirebaseMessagingService" android:exported="false"><intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter></service>
     </application>
 </manifest>
