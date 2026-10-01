@@ -55,7 +55,7 @@ final class CriosRango_Push {
     static function order_status($id,$old,$new,$order){
         if(!in_array($new,['processing','completed'],true))return;
         $number=$order->get_order_number();$body=$new==='completed'?'Tu pedido #'.$number.' ha sido completado.':'Hemos recibido tu pedido #'.$number.' y ya está en preparación.';
-        self::event('order_status',(int)$id,$new,['type'=>'order_status','order_id'=>(int)$id,'title'=>$new==='completed'?'Pedido completado':'Pedido recibido','body'=>$body]);
+        self::event('order_status',(int)$id,$new,['type'=>'order_status','order_id'=>(int)$id,'user_id'=>(int)$order->get_customer_id(),'title'=>$new==='completed'?'Pedido completado':'Pedido recibido','body'=>$body]);
     }
     static function event($type,$entity,$state,$payload){
         global $wpdb;$key=$type==='product_published'?'product_published:'.$entity:'order:'.$entity.':'.$state;
@@ -73,8 +73,8 @@ final class CriosRango_Push {
     }
     static function send_event($id){
         global $wpdb;$e=$wpdb->get_row($wpdb->prepare("SELECT * FROM ".self::table('events')." WHERE id=%d",$id));if(!$e)return;
-        $p=json_decode($e->payload,true);$user=$e->entity_id;
-        $devices=$wpdb->get_results($wpdb->prepare("SELECT * FROM ".self::table('devices')." WHERE active=1 AND order_updates=1 AND user_id IN(SELECT customer_id FROM {$wpdb->prefix}wc_customer_lookup WHERE user_id=%d)",$user));
+        $p=json_decode($e->payload,true);$p=json_decode($e->payload,true); $user=(int)($p['user_id']??0);
+        $devices=$wpdb->get_results($wpdb->prepare("SELECT * FROM ".self::table('devices')." WHERE active=1 AND order_updates=1 AND user_id=%d",$user));
         foreach($devices as $d){$r=self::send($d,$p);self::delivery($e->id,$d->id,$r);}
         $wpdb->update(self::table('events'),['sent_gmt'=>gmdate('Y-m-d H:i:s')],['id'=>$id]);
     }
@@ -86,7 +86,7 @@ final class CriosRango_Push {
         if($r['invalid'])$wpdb->update(self::table('devices'),['active'=>0],['id'=>$did]);
     }
     static function fcm($token,$p){
-        $cfg=get_option('criosrango_push_fcm_service_account');if(!$cfg)return['result'=>'config_missing','provider_id'=>'','invalid'=>false];
+        $cfg=defined('CRIOSRANGO_PUSH_FCM_SERVICE_ACCOUNT')?CRIOSRANGO_PUSH_FCM_SERVICE_ACCOUNT:get_option('criosrango_push_fcm_service_account');if(!$cfg)return['result'=>'config_missing','provider_id'=>'','invalid'=>false];
         $c=is_string($cfg)?json_decode($cfg,true):$cfg;if(empty($c['project_id'])||empty($c['client_email'])||empty($c['private_key']))return['result'=>'config_invalid','provider_id'=>'','invalid'=>false];
         $now=time();$b=function($v){return rtrim(strtr(base64_encode($v),'+/','-_'),'=');};$h=$b(wp_json_encode(['alg'=>'RS256','typ'=>'JWT']));$pl=$b(wp_json_encode(['iss'=>$c['client_email'],'scope'=>'https://www.googleapis.com/auth/firebase.messaging','aud'=>'https://oauth2.googleapis.com/token','iat'=>$now,'exp'=>$now+3600]));$sig='';openssl_sign("$h.$pl",$sig,$c['private_key'],OPENSSL_ALGO_SHA256);$jwt="$h.$pl.".$b($sig);
         $r=wp_remote_post('https://oauth2.googleapis.com/token',['body'=>['grant_type'=>'urn:ietf:params:oauth:grant-type:jwt-bearer','assertion'=>$jwt],'timeout'=>15]);if(is_wp_error($r))return['result'=>'oauth_error','provider_id'=>'','invalid'=>false];$access=json_decode(wp_remote_retrieve_body($r),true)['access_token']??'';if(!$access)return['result'=>'oauth_error','provider_id'=>'','invalid'=>false];
@@ -94,8 +94,26 @@ final class CriosRango_Push {
         $r=wp_remote_post('https://fcm.googleapis.com/v1/projects/'.rawurlencode($c['project_id']).'/messages:send',['headers'=>['Authorization'=>'Bearer '.$access,'Content-Type'=>'application/json'],'body'=>wp_json_encode($body),'timeout'=>15]);$code=is_wp_error($r)?0:wp_remote_retrieve_response_code($r);$raw=is_wp_error($r)?'':wp_remote_retrieve_body($r);return['result'=>$code>=200&&$code<300?'sent':'failed','provider_id'=>(string)$code,'invalid'=>$code===404||stripos($raw,'UNREGISTERED')!==false];
     }
     static function apns($token,$p){
-        $key=get_option('criosrango_push_apns_key');$kid=get_option('criosrango_push_apns_key_id');$team=get_option('criosrango_push_apns_team_id');if(!$key||!$kid||!$team)return['result'=>'config_missing','provider_id'=>'','invalid'=>false];
-        return['result'=>'config_missing','provider_id'=>'','invalid'=>false];
+        $key=defined('CRIOSRANGO_PUSH_APNS_KEY')?CRIOSRANGO_PUSH_APNS_KEY:get_option('criosrango_push_apns_key');
+        $kid=defined('CRIOSRANGO_PUSH_APNS_KEY_ID')?CRIOSRANGO_PUSH_APNS_KEY_ID:get_option('criosrango_push_apns_key_id');
+        $team=defined('CRIOSRANGO_PUSH_APNS_TEAM_ID')?CRIOSRANGO_PUSH_APNS_TEAM_ID:get_option('criosrango_push_apns_team_id');
+        $bundle=defined('CRIOSRANGO_PUSH_APNS_BUNDLE_ID')?CRIOSRANGO_PUSH_APNS_BUNDLE_ID:(get_option('criosrango_push_apns_bundle_id')?:'es.criosrango.app');
+        $env=defined('CRIOSRANGO_PUSH_APNS_ENV')?CRIOSRANGO_PUSH_APNS_ENV:(get_option('criosrango_push_apns_environment')?:'development');
+        if(!$key||!$kid||!$team)return['result'=>'config_missing','provider_id'=>'','invalid'=>false];
+        $b=function($v){return rtrim(strtr(base64_encode($v),'+/','-_'),'=');};
+        $h=$b(wp_json_encode(['alg'=>'ES256','kid'=>$kid]));$pl=$b(wp_json_encode(['iss'=>$team,'iat'=>time()]));$der='';
+        $private=str_replace("\\n","\n",$key);
+        if(!openssl_sign("$h.$pl",$der,$private,OPENSSL_ALGO_SHA256))return['result'=>'jwt_error','provider_id'=>'','invalid'=>false];
+        $pos=0;if(ord($der[$pos++])!==0x30)return['result'=>'jwt_error','provider_id'=>'','invalid'=>false];self::der_len($der,$pos);
+        if(ord($der[$pos++])!==0x02)return['result'=>'jwt_error','provider_id'=>'','invalid'=>false];$rl=self::der_len($der,$pos);$rr=substr($der,$pos,$rl);$pos+=$rl;
+        if(ord($der[$pos++])!==0x02)return['result'=>'jwt_error','provider_id'=>'','invalid'=>false];$sl=self::der_len($der,$pos);$ss=substr($der,$pos,$sl);
+        $sig=str_pad(ltrim($rr,"\0"),32,"\0",STR_PAD_LEFT).str_pad(ltrim($ss,"\0"),32,"\0",STR_PAD_LEFT);
+        $jwt="$h.$pl.".$b($sig);$host=$env==='production'?'https://api.push.apple.com':'https://api.sandbox.push.apple.com';
+        $body=['aps'=>['alert'=>['title'=>$p['title'],'body'=>$p['body']],'sound'=>'default'],'type'=>$p['type'],'order_id'=>(string)($p['order_id']??'')];
+        $r=wp_remote_post($host.'/3/device/'.rawurlencode($token),['httpversion'=>'2.0','headers'=>['authorization'=>'bearer '.$jwt,'apns-topic'=>$bundle,'apns-push-type'=>'alert','apns-priority'=>'10','Content-Type'=>'application/json'],'body'=>wp_json_encode($body),'timeout'=>15);
+        $code=is_wp_error($r)?0:wp_remote_retrieve_response_code($r);$raw=is_wp_error($r)?'':wp_remote_retrieve_body($r);
+        return['result'=>$code>=200&&$code<300?'sent':'failed','provider_id'=>(string)$code,'invalid'=>in_array($code,[400,410],true)&& (stripos($raw,'BadDeviceToken')!==false||stripos($raw,'Unregistered')!==false)];
     }
+    static function der_len($d,&$p){$l=ord($d[$p++]);if($l&0x80){$n=$l&0x7f;$l=0;for($i=0;$i<$n;$i++)$l=($l<<8)|ord($d[$p++]);}return $l;}
 }
 CriosRango_Push::init();register_activation_hook(__FILE__,['CriosRango_Push','activate']);
