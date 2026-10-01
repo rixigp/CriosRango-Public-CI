@@ -125,14 +125,20 @@ final class FakeWpdb {
     public function query(string $query): int {
         $this->queries[] = $query;
         if (str_starts_with(trim($query), 'INSERT IGNORE')) {
-            $this->insert_id++;
             if (str_contains($query, "'digest'") && preg_match("/'digest:([^']+)'/", $query, $m)) {
+                $idempotencyKey = 'digest:' . $m[1];
+                if ($this->digestRow && $this->digestRow->idempotency_key === $idempotencyKey) {
+                    return 0;
+                }
+                $this->insert_id++;
                 $this->digestRow = (object)[
                     'id' => $this->insert_id,
-                    'idempotency_key' => 'digest:' . $m[1],
+                    'idempotency_key' => $idempotencyKey,
                     'sent_gmt' => null,
                 ];
+                return 1;
             }
+            $this->insert_id++;
         }
         return 1;
     }
