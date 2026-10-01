@@ -178,7 +178,7 @@ final class FakeWpdb {
     public function query(string $query): int {
         $this->queries[] = $query;
         if (str_starts_with(trim($query), 'INSERT INTO') && str_contains($query, 'criosrango_push_deliveries') && str_contains($query, 'ON DUPLICATE KEY UPDATE')) {
-            preg_match('/VALUES\(([0-9]+),([0-9]+),\'([^\']+)\',\'([^\']*)\',\'([^\']*)\)/', $query, $m);
+            preg_match("/VALUES\(([0-9]+),([0-9]+),'([^']+)','([^']*)','([^']*)'\)/", $query, $m);
             $key = ((int)($m[1] ?? 0)) . ':' . ((int)($m[2] ?? 0));
             $this->deliveries[$key] = $m[3] ?? '';
             $this->insertedDeliveries[$key] = ['result' => $m[3] ?? '', 'provider_id' => $m[4] ?? '', 'created_gmt' => $m[5] ?? ''];
