@@ -2,8 +2,12 @@ package es.criosrango.app
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Build
+import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import java.io.IOException
+import java.security.GeneralSecurityException
 
 data class LastCheckout(val orderId: Int, val orderKey: String, val paymentUrl: String)
 
@@ -33,22 +37,56 @@ class PendingCardPaymentStore internal constructor(private val preferences: Shar
         .commit()
 
     companion object {
+        private const val TAG = "PendingCardPaymentStore"
         private const val FILE_NAME = "criosrango_pending_card_payment"
         private const val KEY_ORDER_ID = "order_id"
         private const val KEY_ORDER_KEY = "order_key"
         private const val KEY_BILLING_EMAIL = "billing_email"
         private const val KEY_PAYMENT_URL = "payment_url"
 
+        @Suppress("DEPRECATION")
         fun create(context: Context): PendingCardPaymentStore {
-            val masterKey = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
-            val prefs = EncryptedSharedPreferences.create(
-                context,
-                FILE_NAME,
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
+            val appContext = context.applicationContext
+            val masterKey = MasterKey.Builder(appContext)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+
+            fun openEncryptedPreferences(): SharedPreferences =
+                EncryptedSharedPreferences.create(
+                    appContext,
+                    FILE_NAME,
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                )
+
+            val prefs = try {
+                openEncryptedPreferences()
+            } catch (error: GeneralSecurityException) {
+                Log.w(TAG, "Encrypted pending-payment state is unreadable; resetting local state", error)
+                resetEncryptedPreferences(appContext)
+                openEncryptedPreferences()
+            } catch (error: IOException) {
+                Log.w(TAG, "Encrypted pending-payment state is malformed; resetting local state", error)
+                resetEncryptedPreferences(appContext)
+                openEncryptedPreferences()
+            }
+
             return PendingCardPaymentStore(prefs)
+        }
+
+        private fun resetEncryptedPreferences(context: Context) {
+            // Clear the cached SharedPreferences instance first. This also keeps
+            // recovery compatible with API 23, where deleteSharedPreferences()
+            // is not available.
+            context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .clear()
+                .commit()
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                context.deleteSharedPreferences(FILE_NAME)
+            }
         }
     }
 }
