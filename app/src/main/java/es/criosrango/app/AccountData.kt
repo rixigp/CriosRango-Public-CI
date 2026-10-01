@@ -140,6 +140,7 @@ class AccountRepository(context: Context) {
         sharedAccountRepository.claimPendingOrder()
 
     suspend fun logout() {
+        PushNotificationController.unregister(getApplication())
         sharedAccountRepository.logout()
     }
 
