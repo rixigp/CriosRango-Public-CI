@@ -6,7 +6,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 @Composable
-private fun IosPushPreferences(){
+fun IosPushPreferences(){
     var newProducts by remember { mutableStateOf(PushPreferencesPlatform.newProducts()) }
     var orderUpdates by remember { mutableStateOf(PushPreferencesPlatform.orderUpdates()) }
     Column(Modifier.fillMaxWidth().padding(vertical=4.dp)){
