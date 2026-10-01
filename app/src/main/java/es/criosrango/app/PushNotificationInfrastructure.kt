@@ -58,11 +58,12 @@ object PushNotificationController {
     fun unregister(context:Context){
         val prefs=context.getSharedPreferences(SESSION,Context.MODE_PRIVATE)
         val token=prefs.getString("criosrango_fcm_token",null)?:return
+        val accountToken=prefs.getString("account_token",null)
         CoroutineScope(SupervisorJob()+Dispatchers.IO).launch{runCatching{
             val json=org.json.JSONObject().put("platform","android").put("token",token)
             val body=okhttp3.RequestBody.create("application/json".toMediaType(),json.toString())
             val b=okhttp3.Request.Builder().url(ENDPOINT).delete(body)
-            prefs.getString("account_token",null)?.let{b.header("Authorization","Bearer $it")}
+            accountToken?.let{b.header("Authorization","Bearer $it")}
             okhttp3.OkHttpClient().newCall(b.build()).execute().close()
         }}
     }
