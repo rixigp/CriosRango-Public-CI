@@ -27,6 +27,7 @@ import android.os.Bundle
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import es.criosrango.shared.PushNotificationContract
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -90,8 +91,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         paymentReturnUriState.value = intent?.data
-        pushTypeState.value = intent?.getStringExtra("push_type")
-        pushOrderIdState.value = intent?.getIntExtra("order_id", 0)?.takeIf { it > 0 }
+        pushTypeState.value = intent?.getStringExtra(PushNotificationContract.TYPE_KEY)
+        pushOrderIdState.value = PushNotificationContract.parseOrderId(intent?.getStringExtra(PushNotificationContract.ORDER_ID_KEY))
         val preferences = getSharedPreferences("criosrango", MODE_PRIVATE)
         val session = StoreSession(preferences)
         val sharedSession = AndroidStoreSessionStore(session)
@@ -112,8 +113,8 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         paymentReturnUriState.value = intent.data
-        pushTypeState.value = intent.getStringExtra("push_type")
-        pushOrderIdState.value = intent.getIntExtra("order_id", 0).takeIf { it > 0 }
+        pushTypeState.value = intent.getStringExtra(PushNotificationContract.TYPE_KEY)
+        pushOrderIdState.value = PushNotificationContract.parseOrderId(intent.getStringExtra(PushNotificationContract.ORDER_ID_KEY))
     }
     override fun onResume() { super.onResume(); PushNotificationController.initialize(this) }
 }
