@@ -311,6 +311,93 @@ function test_daily_digest_and_idempotency(): void {
     push_assert_same(0, $sent - $before, 'zero products must not send anything');
 }
 
+function test_digest_zero_devices_stays_pending(): void {
+    $db = reset_push_harness();
+    $db->productEvents = [(object)['id' => 1, 'sent_gmt' => null]];
+    $db->devices = [];
+
+    $sent = 0;
+    $sender = function($device, $payload) use (&$sent): array {
+        $sent++;
+        return ['result' => 'sent', 'provider_id' => 'zero-device-test', 'invalid' => false];
+    };
+
+    CriosRango_Push::digest($sender);
+
+    push_assert_same(0, $sent, 'zero eligible devices must not attempt delivery');
+    push_assert($db->digestRow !== null && $db->digestRow->sent_gmt === null, 'zero eligible devices must leave the daily digest unresolved');
+    push_assert(count(array_filter($db->queries, fn($q) => str_contains($q, 'SET sent_gmt='))) === 0, 'zero eligible devices must not mark product events as sent');
+}
+
+function test_digest_transient_retry(): void {
+    $db = reset_push_harness();
+    $db->productEvents = [(object)['id' => 1, 'sent_gmt' => null]];
+    $db->devices = [(object)['id' => 10, 'active' => 1, 'new_products' => 1, 'order_updates' => 1, 'user_id' => 0]];
+
+    $attempts = 0;
+    $sender = function($device, $payload) use (&$attempts): array {
+        $attempts++;
+        if ($attempts === 1) {
+            return ['result' => 'failed', 'provider_id' => '500', 'invalid' => false];
+        }
+        return ['result' => 'sent', 'provider_id' => '200', 'invalid' => false];
+    };
+
+    CriosRango_Push::digest($sender);
+    push_assert_same(1, $attempts, 'first digest execution must attempt the eligible device');
+    push_assert($db->digestRow !== null && $db->digestRow->sent_gmt === null, 'transient failure must leave the digest unresolved');
+    push_assert(count(array_filter($db->updates, fn($u) => isset($u[1]['active']))) === 0, 'transient failure must not deactivate the token');
+    push_assert(count(array_filter($db->queries, fn($q) => str_contains($q, 'SET sent_gmt='))) === 0, 'transient failure must leave the product pending');
+
+    CriosRango_Push::digest($sender);
+    push_assert_same(2, $attempts, 'an unresolved digest must retry on a later execution');
+    push_assert($db->digestRow->sent_gmt !== null, 'successful retry must resolve the daily digest');
+    push_assert(count(array_filter($db->queries, fn($q) => str_contains($q, 'SET sent_gmt='))) === 1, 'successful retry must mark the product as sent');
+}
+
+function test_digest_invalid_token_does_not_block_valid(): void {
+    $db = reset_push_harness();
+    $db->productEvents = [(object)['id' => 1, 'sent_gmt' => null]];
+    $db->devices = [
+        (object)['id' => 10, 'active' => 1, 'new_products' => 1, 'order_updates' => 1, 'user_id' => 0],
+        (object)['id' => 11, 'active' => 1, 'new_products' => 1, 'order_updates' => 1, 'user_id' => 0],
+    ];
+
+    $sentDevices = [];
+    $sender = function($device, $payload) use (&$sentDevices): array {
+        $sentDevices[] = $device->id;
+        if ((int)$device->id === 10) {
+            return ['result' => 'failed', 'provider_id' => '404', 'invalid' => true];
+        }
+        return ['result' => 'sent', 'provider_id' => '200', 'invalid' => false];
+    };
+
+    CriosRango_Push::digest($sender);
+
+    push_assert_same([10, 11], $sentDevices, 'an invalid token must not prevent other eligible recipients from being processed');
+    push_assert(count(array_filter($db->updates, fn($u) => ($u[1]['active'] ?? null) === 0)) === 1, 'invalid token must be deactivated');
+    push_assert($db->digestRow !== null && $db->digestRow->sent_gmt !== null, 'a digest resolved by the remaining valid recipient must be completed');
+}
+
+function test_digest_completed_is_idempotent(): void {
+    $db = reset_push_harness();
+    $db->productEvents = [(object)['id' => 1, 'sent_gmt' => null]];
+    $db->devices = [(object)['id' => 10, 'active' => 1, 'new_products' => 1, 'order_updates' => 1, 'user_id' => 0]];
+
+    $sent = 0;
+    $sender = function($device, $payload) use (&$sent): array {
+        $sent++;
+        return ['result' => 'sent', 'provider_id' => '200', 'invalid' => false];
+    };
+
+    CriosRango_Push::digest($sender);
+    push_assert_same(1, $sent, 'completed digest must send once');
+
+    CriosRango_Push::digest($sender);
+    push_assert_same(1, $sent, 'completed digest must not be resent on a later execution');
+    push_assert($db->digestRow !== null && $db->digestRow->sent_gmt !== null, 'completed digest must remain resolved');
+}
+
 function test_order_ownership_and_preferences(): void {
     $db = reset_push_harness();
     $db->eventRow = (object)[
@@ -351,6 +438,10 @@ $tests = [
     'device auth and dedup' => 'test_device_auth_and_dedup',
     'product event detection' => 'test_product_event_detection',
     'daily digest and idempotency' => 'test_daily_digest_and_idempotency',
+    'digest zero devices stays pending' => 'test_digest_zero_devices_stays_pending',
+    'digest transient retry' => 'test_digest_transient_retry',
+    'digest invalid token does not block valid' => 'test_digest_invalid_token_does_not_block_valid',
+    'digest completed is idempotent' => 'test_digest_completed_is_idempotent',
     'order ownership and preferences' => 'test_order_ownership_and_preferences',
     'invalid and transient tokens' => 'test_invalid_and_transient_tokens',
     'action scheduler' => 'test_action_scheduler',

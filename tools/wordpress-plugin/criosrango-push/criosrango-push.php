@@ -77,7 +77,7 @@ final class CriosRango_Push {
         $events=$wpdb->get_results("SELECT * FROM ".self::table('events')." WHERE type='product_published' AND sent_gmt IS NULL ORDER BY created_gmt ASC");
         if(!$events)return;$wpdb->query($wpdb->prepare("INSERT IGNORE INTO ".self::table('events')." (idempotency_key,type,entity_state,payload,created_gmt) VALUES(%s,'digest','daily',%s,%s)",$key,wp_json_encode(['count'=>count($events)]),gmdate('Y-m-d H:i:s')));
         $id=(int)($existing_digest->id??$wpdb->insert_id);$devices=$wpdb->get_results("SELECT * FROM ".self::table('devices')." WHERE active=1 AND new_products=1");
-        $all_ok=true; foreach($devices as $d){
+        $all_ok=!empty($devices); foreach($devices as $d){
             $existing=$wpdb->get_var($wpdb->prepare("SELECT result FROM ".self::table('deliveries')." WHERE event_id=%d AND device_id=%d",$id,$d->id));
             if($existing==='sent')continue;
             $r=$sender($d,['type'=>'new_products','title'=>'¡Hay novedades! 🛍️','body'=>'Hoy hemos añadido '.count($events).' nuevos productos. Échales un vistazo.']);self::delivery($id,$d->id,$r);if(!$r['invalid']&&$r['result']!=='sent')$all_ok=false;
