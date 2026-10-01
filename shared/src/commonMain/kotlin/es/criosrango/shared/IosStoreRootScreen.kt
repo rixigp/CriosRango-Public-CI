@@ -81,7 +81,9 @@ fun CriosRangoIOSRootScreen(
     checkoutStore: StoreCheckoutStore,
     paymentStore: StorePaymentStore,
     onOpenPayment: (String) -> Unit,
-    onOpenExternalUrl: (String) -> Unit
+    onOpenExternalUrl: (String) -> Unit,
+    pushNavigation: IosPushNavigation? = null,
+    onPushNavigationConsumed: () -> Unit = {}
 ) {
     var section by remember { mutableStateOf(IosRootSection.HOME) }
     var checkoutOpen by remember { mutableStateOf(false) }
@@ -90,6 +92,15 @@ fun CriosRangoIOSRootScreen(
     fun openCatalog(page: IosCatalogPage) { if (catalogPage != page) catalogHistory.add(catalogPage); catalogPage = page }
     fun resetCatalog() { catalogHistory.clear(); catalogPage = IosCatalogPage.Root }
     fun backCatalog() { catalogPage = if (catalogHistory.isNotEmpty()) catalogHistory.removeAt(catalogHistory.lastIndex) else IosCatalogPage.Root }
+
+    LaunchedEffect(pushNavigation) {
+        val n = pushNavigation ?: return@LaunchedEffect
+        when (n.type) {
+            PushNotificationType.NEW_PRODUCTS -> { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Novedades) }
+            PushNotificationType.ORDER_STATUS -> section = IosRootSection.ACCOUNT
+        }
+        onPushNavigationConsumed()
+    }
 
     val createdOrder by checkoutStore.createdOrder.collectAsState()
     LaunchedEffect(createdOrder?.orderId, createdOrder?.orderKey) {
@@ -160,6 +171,7 @@ fun CriosRangoIOSRootScreen(
                 IosRootSection.ACCOUNT -> CriosRangoIOSAccountScreen(
                     repository = accountRepository,
                     modifier = Modifier.padding(padding),
+                    initialOrderId = pushNavigation?.orderId,
                     onOpenExternalUrl = onOpenExternalUrl
                 )
             }
