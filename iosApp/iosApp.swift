@@ -1,13 +1,24 @@
 import UIKit
 import Shared
+import UserNotifications
 
 @main
-final class CriosRangoIOSApp: UIResponder, UIApplicationDelegate {
+final class CriosRangoIOSApp: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil
     ) -> Bool {
-        true
+        UNUserNotificationCenter.current().delegate = self
+        PushNotificationBridge.shared.configure()
+        return true
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions { [.banner,.sound,.badge] }
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        let info=response.notification.request.content.userInfo
+        let type=info["type"] as? String
+        let orderId=(info["order_id"] as? String).flatMap{Int32($0)} ?? 0
+        MainViewControllerKt.handleIosPushNotification(type: type, orderId: orderId)
     }
 
     func application(
@@ -35,8 +46,12 @@ final class CriosRangoSceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.window = window
         window.makeKeyAndVisible()
 
-        for context in connectionOptions.urlContexts {
-            handlePaymentURL(context.url)
+        for context in connectionOptions.urlContexts { handlePaymentURL(context.url) }
+        if let response=connectionOptions.notificationResponse {
+            let info=response.notification.request.content.userInfo
+            let type=info["type"] as? String
+            let orderId=(info["order_id"] as? String).flatMap{Int32($0)} ?? 0
+            MainViewControllerKt.handleIosPushNotification(type: type, orderId: orderId)
         }
     }
 
@@ -47,8 +62,12 @@ final class CriosRangoSceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {
+        PushNotificationBridge.shared.refreshRegistration()
         MainViewControllerKt.handleIosPaymentForeground()
     }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) { PushNotificationBridge.shared.didRegister(deviceToken: deviceToken) }
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) { print("APNS_REGISTRATION_FAILED=\(error.localizedDescription)") }
 
     private func handlePaymentURL(_ url: URL) {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
