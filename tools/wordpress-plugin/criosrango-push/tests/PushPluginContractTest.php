@@ -20,8 +20,27 @@ if (!function_exists('wp_json_encode')) {
     }
 }
 
-function add_action(...$args): void {}
-function register_activation_hook(...$args): void {}
+function add_action($hook, $callback, ...$args): void {
+    $GLOBALS['push_test_hooks'][$hook][] = $callback;
+}
+function register_activation_hook($file, $callback): void {
+    $GLOBALS['push_test_activation_callbacks'][] = $callback;
+}
+if (!defined('DAY_IN_SECONDS')) define('DAY_IN_SECONDS', 86400);
+function as_has_scheduled_action($hook, $args = [], $group = ''): bool {
+    foreach ($GLOBALS['push_test_scheduled_actions'] as $action) {
+        if ($action['hook'] === $hook && $action['args'] === $args && $action['group'] === $group) return true;
+    }
+    return false;
+}
+function as_schedule_recurring_action($timestamp, $interval, $hook, $args = [], $group = '', $unique = false): int {
+    $id = count($GLOBALS['push_test_scheduled_actions']) + 1;
+    $GLOBALS['push_test_scheduled_actions'][] = [
+        'id' => $id, 'hook' => $hook, 'timestamp' => $timestamp,
+        'interval' => $interval, 'args' => $args, 'group' => $group, 'unique' => $unique,
+    ];
+    return $id;
+}
 function dbDelta(...$args): void {}
 function is_wp_error(mixed $value): bool { return $value instanceof WP_Error; }
 function rest_ensure_response(mixed $value): mixed { return $value; }
@@ -104,12 +123,24 @@ final class FakeWpdb {
 
     public function query(string $query): int {
         $this->queries[] = $query;
-        if (str_starts_with(trim($query), 'INSERT IGNORE')) $this->insert_id++;
+        if (str_starts_with(trim($query), 'INSERT IGNORE')) {
+            $this->insert_id++;
+            if (str_contains($query, "'digest'") && preg_match("/'digest:([^']+)'/", $query, $m)) {
+                $this->digestRow = (object)[
+                    'id' => $this->insert_id,
+                    'idempotency_key' => 'digest:' . $m[1],
+                    'sent_gmt' => null,
+                ];
+            }
+        }
         return 1;
     }
 
     public function update(string $table, array $data, array $where): int {
         $this->updates[] = [$table, $data, $where];
+        if (str_contains($table, 'criosrango_push_events') && $this->digestRow && (int)($where['id'] ?? 0) === (int)$this->digestRow->id && array_key_exists('sent_gmt', $data)) {
+            $this->digestRow->sent_gmt = $data['sent_gmt'];
+        }
         return 1;
     }
 
@@ -123,6 +154,9 @@ final class FakeWpdb {
 $GLOBALS['wpdb'] = new FakeWpdb();
 $GLOBALS['push_test_user_id'] = 0;
 $GLOBALS['push_test_order'] = new FakeOrder(0);
+$GLOBALS['push_test_hooks'] = [];
+$GLOBALS['push_test_activation_callbacks'] = [];
+$GLOBALS['push_test_scheduled_actions'] = [];
 define('ABSPATH', '/tmp/');
 
 require_once dirname(__DIR__) . '/criosrango-push.php';
@@ -143,6 +177,61 @@ function reset_push_harness(): FakeWpdb {
     $GLOBALS['push_test_user_id'] = 0;
     $GLOBALS['push_test_order'] = new FakeOrder(0);
     return $db;
+}
+
+function test_action_scheduler(): void {
+    $db = reset_push_harness();
+    $GLOBALS['push_test_scheduled_actions'] = [];
+
+    // The real activation callback includes WordPress's upgrade helper; provide only
+    // the empty file needed for the harness's existing dbDelta stub.
+    @mkdir('/tmp/wp-admin/includes', 0777, true);
+    if (!is_file('/tmp/wp-admin/includes/upgrade.php')) {
+        file_put_contents('/tmp/wp-admin/includes/upgrade.php', "<?php\n");
+    }
+    $activation = $GLOBALS['push_test_activation_callbacks'][0] ?? null;
+    push_assert(is_callable($activation), 'plugin activation callback must be registered');
+    $activation();
+
+    push_assert_same(1, count($GLOBALS['push_test_scheduled_actions']), 'activation without a prior job must schedule exactly one digest');
+    $scheduled = $GLOBALS['push_test_scheduled_actions'][0];
+    push_assert_same('criosrango_push_daily_digest', $scheduled['hook'], 'scheduled hook must match the digest callback hook');
+    push_assert_same(CriosRango_Push::GROUP, $scheduled['group'], 'scheduled action must use the plugin group');
+    push_assert_same(DAY_IN_SECONDS, $scheduled['interval'], 'digest recurrence must be daily');
+    push_assert($scheduled['timestamp'] >= time() + DAY_IN_SECONDS - 2 && $scheduled['timestamp'] <= time() + DAY_IN_SECONDS + 2, 'first digest must be scheduled about one day ahead');
+    push_assert_same(true, $scheduled['unique'], 'scheduler request must ask for a unique recurring action');
+
+    // Repeated activation and the action_scheduler_init callback must not duplicate it.
+    $activation();
+    CriosRango_Push::ensure_schedule();
+    push_assert_same(1, count($GLOBALS['push_test_scheduled_actions']), 'repeated activation/registration must not create a duplicate');
+
+    // A pre-existing matching action must also suppress scheduling.
+    $GLOBALS['push_test_scheduled_actions'] = [[
+        'id' => 99, 'hook' => 'criosrango_push_daily_digest', 'timestamp' => time() + DAY_IN_SECONDS,
+        'interval' => DAY_IN_SECONDS, 'args' => [], 'group' => CriosRango_Push::GROUP, 'unique' => true,
+    ]];
+    CriosRango_Push::ensure_schedule();
+    push_assert_same(1, count($GLOBALS['push_test_scheduled_actions']), 'an existing digest job must not be rescheduled');
+
+    $callbacks = $GLOBALS['push_test_hooks']['criosrango_push_daily_digest'] ?? [];
+    push_assert_same([['CriosRango_Push', 'digest']], $callbacks, 'scheduled hook must be registered to the real digest callback');
+
+    // Invoke the callback captured from the plugin's actual add_action registration.
+    $db->productEvents = [(object)['id' => 1, 'sent_gmt' => null]];
+    $db->devices = [(object)['id' => 10, 'active' => 1, 'new_products' => 1, 'order_updates' => 1, 'user_id' => 0]];
+    $sent = 0;
+    $sender = function($device, $payload) use (&$sent): array {
+        $sent++;
+        return ['result' => 'sent', 'provider_id' => 'scheduler-test', 'invalid' => false];
+    };
+    $callback = $callbacks[0];
+    call_user_func($callback, $sender);
+    push_assert_same(1, $sent, 'scheduler callback must run the real digest and send once');
+    push_assert($db->digestRow !== null && $db->digestRow->sent_gmt !== null, 'successful callback must persist the digest:<date> sent marker');
+
+    $callback[0]::$callback[1]($sender);
+    push_assert_same(1, $sent, 'running the callback twice must not send the same daily digest twice');
 }
 
 function reset_push_request_auth(): void {
@@ -263,6 +352,7 @@ $tests = [
     'daily digest and idempotency' => 'test_daily_digest_and_idempotency',
     'order ownership and preferences' => 'test_order_ownership_and_preferences',
     'invalid and transient tokens' => 'test_invalid_and_transient_tokens',
+    'action scheduler' => 'test_action_scheduler',
 ];
 
 foreach ($tests as $name => $fn) {
