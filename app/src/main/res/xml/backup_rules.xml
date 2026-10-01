@@ -3,4 +3,5 @@
     <!-- EncryptedSharedPreferences key material is tied to Android Keystore and must not be restored. -->
     <exclude domain="sharedpref" path="criosrango_pending_card_payment.xml" />
     <exclude domain="sharedpref" path="criosrango_account_session.xml" />
+    <exclude domain="sharedpref" path="criosrango_account_session_v2.xml" />
 </full-backup-content>

@@ -165,7 +165,11 @@ private fun CriosRangoApp(
 
     LaunchedEffect(pushType, pushOrderId) {
         when (pushType) {
-            "new_products" -> { tab = AppTab.HOME; homeShowAll = true }
+            "new_products" -> {
+                viewModel.refreshHome()
+                tab = AppTab.HOME
+                homeShowAll = true
+            }
             "order_status" -> { tab = AppTab.ACCOUNT }
         }
         if (pushType != null) { pushTypeState.value = null; pushOrderIdState.value = null }
