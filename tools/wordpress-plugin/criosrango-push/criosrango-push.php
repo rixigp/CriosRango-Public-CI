@@ -28,11 +28,44 @@ final class CriosRango_Push {
     }
     static function ensure_schedule(){self::schedule();}
     static function authenticated_user_id($r){
-        $header=trim((string)$r->get_header('authorization'));
-        if($header==='') return 0;
-        if(!preg_match('/^Bearer\\s+.+$/i',$header)) return new WP_Error('push_invalid_auth','Autenticación no válida',['status'=>401]);
-        $user=(int)get_current_user_id();
-        return $user>0?$user:new WP_Error('push_auth_required','No se ha podido autenticar la cuenta.',['status'=>401]);
+    $header = trim((string)$r->get_header('authorization'));
+
+    if ($header === '') {
+        return 0;
+    }
+
+    if (!preg_match('/^Bearer\s+.+$/i', $header)) {
+        return new WP_Error(
+            'push_invalid_auth',
+            'Autenticación no válida',
+            ['status' => 401]
+        );
+    }
+
+    $me_request = new WP_REST_Request('GET', '/criosrango/v1/me');
+    $me_request->set_header('Authorization', $header);
+    $me_response = rest_do_request($me_request);
+
+    if ($me_response->get_status() !== 200) {
+        return new WP_Error(
+            'push_auth_required',
+            'No se ha podido autenticar la cuenta.',
+            ['status' => 401]
+        );
+    }
+
+    $data = $me_response->get_data();
+    $user_id = absint($data['user']['id'] ?? 0);
+
+    if ($user_id <= 0) {
+        return new WP_Error(
+            'push_auth_required',
+            'No se ha podido autenticar la cuenta.',
+            ['status' => 401]
+        );
+    }
+
+    return $user_id;
     }
     static function routes(){
         register_rest_route(self::NS,'/push/device',[
