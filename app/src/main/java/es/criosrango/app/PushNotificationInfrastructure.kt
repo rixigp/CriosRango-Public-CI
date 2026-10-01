@@ -44,6 +44,17 @@ object PushNotificationController {
             client.newCall(builder.build()).execute().close()
         }}
     }
+    fun unregister(context:Context){
+        val prefs=context.getSharedPreferences(SESSION,Context.MODE_PRIVATE)
+        val token=prefs.getString("criosrango_fcm_token",null)?:return
+        CoroutineScope(SupervisorJob()+Dispatchers.IO).launch{runCatching{
+            val json=org.json.JSONObject().put("platform","android").put("token",token)
+            val body=okhttp3.RequestBody.create(okhttp3.MediaType.get("application/json"),json.toString())
+            val b=okhttp3.Request.Builder().url(ENDPOINT).delete(body)
+            prefs.getString("account_token",null)?.let{b.header("Authorization","Bearer $it")}
+            okhttp3.OkHttpClient().newCall(b.build()).execute().close()
+        }}
+    }
     fun createChannels(context:Context){if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.O)context.getSystemService(NotificationManager::class.java).createNotificationChannels(listOf(NotificationChannel("criosrango_general","Críos&Rango",NotificationManager.IMPORTANCE_DEFAULT),NotificationChannel("criosrango_orders","Pedidos",NotificationManager.IMPORTANCE_DEFAULT)))}
     fun notificationsAllowed(context:Context)=Build.VERSION.SDK_INT<33||ContextCompat.checkSelfPermission(context,Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED
 }
