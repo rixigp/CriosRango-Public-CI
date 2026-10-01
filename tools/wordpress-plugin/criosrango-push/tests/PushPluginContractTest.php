@@ -14,6 +14,38 @@ final class WP_Error {
     ) {}
 }
 
+final class WP_REST_Request {
+    private array $headers = [];
+
+    public function __construct(
+        private string $method = 'GET',
+        private string $route = ''
+    ) {}
+
+    public function set_header($key, $value): void {
+        $this->headers[strtolower((string)$key)] = (string)$value;
+    }
+
+    public function get_header($key): string {
+        return $this->headers[strtolower((string)$key)] ?? '';
+    }
+}
+
+final class FakeRestResponse {
+    public function __construct(
+        private int $status,
+        private array $data = []
+    ) {}
+
+    public function get_status(): int {
+        return $this->status;
+    }
+
+    public function get_data(): array {
+        return $this->data;
+    }
+}
+
 function rest_do_request($request): FakeRestResponse {
     $authorization = trim((string)$request->get_header('authorization'));
     $user_id = (int)($GLOBALS['push_test_user_id'] ?? 0);
