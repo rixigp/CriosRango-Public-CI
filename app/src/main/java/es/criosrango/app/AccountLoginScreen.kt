@@ -447,6 +447,8 @@ private fun AccountProfileContent(loading: Boolean, onBack: () -> Unit, onPerson
         contentColor = AccountDeletion.accent
     )
     Spacer(Modifier.height(22.dp))
+    PushNotificationPreferences()
+    Spacer(Modifier.height(22.dp))
     Card(Modifier.fillMaxWidth().clickable(enabled = !loading, onClick = onLogout), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFECEF))) { Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.AutoMirrored.Outlined.Logout, null, tint = Color(0xFFC73B4C)); Spacer(Modifier.width(14.dp)); Text("Cerrar sesión", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = Color(0xFFC73B4C)) } }
 
     if (showDeleteConfirmation) {
