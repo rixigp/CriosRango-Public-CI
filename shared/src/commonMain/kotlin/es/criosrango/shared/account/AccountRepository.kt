@@ -119,6 +119,7 @@ class AccountRepository(
         try {
             if (token != null) client.logout(token)
         } finally {
+            runCatching { PushDeviceRegistration.unregisterCurrentDevice() }
             tokenStore.clear()
         }
     }
