@@ -52,17 +52,27 @@ private enum class IosAccountPage { HOME, LOGIN, REGISTER, FORGOT, PROFILE, DATA
 fun CriosRangoIOSAccountScreen(
     repository: AccountRepository,
     modifier: Modifier = Modifier,
-    onOpenExternalUrl: (String) -> Unit
+    onOpenExternalUrl: (String) -> Unit,
+    initialOrderId: Int? = null
 ) {
     var page by remember { mutableStateOf(IosAccountPage.HOME) }
     var user by remember { mutableStateOf<AccountUser?>(null) }
     var startup by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var selectedOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
+    var pendingPushOrderId by remember { mutableStateOf(initialOrderId) }
     var selectedInfoPage by remember { mutableStateOf<AccountInfoPage?>(null) }
     var forgotReturnPage by remember { mutableStateOf(IosAccountPage.LOGIN) }
     var addressReturnPage by remember { mutableStateOf(IosAccountPage.HOME) }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(user?.id, pendingPushOrderId) {
+        val id = pendingPushOrderId ?: return@LaunchedEffect
+        if (user == null) return@LaunchedEffect
+        selectedOrder = runCatching { repository.orders() }.getOrNull()?.firstOrNull { it.id == id }
+        if (selectedOrder != null) page = IosAccountPage.ORDER_DETAIL
+        pendingPushOrderId = null
+    }
 
     fun finishAuthentication(authenticatedUser: AccountUser) {
         user = authenticatedUser
@@ -410,6 +420,7 @@ private fun IosProfileMenuScreen(
             IosProfileActionRow("Datos personales", "👤", onPersonalData)
             IosProfileActionRow("Dirección de entrega", "⌖", onAddress)
             IosProfileActionRow("Cambiar contraseña", "🔒", onPassword)
+            IosPushPreferences()
             IosProfileActionRow(
                 AccountDeletion.TITLE,
                 "🗑",
