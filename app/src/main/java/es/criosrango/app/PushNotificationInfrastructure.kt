@@ -58,7 +58,7 @@ object PushNotificationController {
         val token=prefs.getString("criosrango_fcm_token",null)?:return
         CoroutineScope(SupervisorJob()+Dispatchers.IO).launch{runCatching{
             val json=org.json.JSONObject().put("platform","android").put("token",token)
-            val body=okhttp3.RequestBody.create(okhttp3.MediaType.get("application/json"),json.toString())
+            val body=okhttp3.RequestBody.create("application/json".toMediaType(),json.toString())
             val b=okhttp3.Request.Builder().url(ENDPOINT).delete(body)
             prefs.getString("account_token",null)?.let{b.header("Authorization","Bearer $it")}
             okhttp3.OkHttpClient().newCall(b.build()).execute().close()
@@ -73,14 +73,13 @@ class PushFirebaseMessagingService:FirebaseMessagingService(){
     override fun onNewToken(token:String){PushNotificationController.register(this,token)}
     override fun onMessageReceived(message:RemoteMessage){
         val type=message.data["type"]?:return
-        val orderId=message.data["order_id"]?.toIntOrNull()
-        val title=message.notification?.title?:message.data["title"]?:"Críos&Rango"
-        val body=message.notification?.body?:message.data["body"]?:return
-        if(!PushNotificationController.notificationsAllowed(this))return
-        val intent=Intent(this,MainActivity::class.java).apply{putExtra("push_type",type);orderId?.let{putExtra("order_id",it)};flags=Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP}
-        val pending=PendingIntent.getActivity(this,type.hashCode()*31+(orderId?:0),intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val orderId=message.data["order_id"]
+        val title=message.data["title"]?:"Críos&Rango"
+        val body=message.data["body"]?:"Tienes una nueva notificación"
         val channel=if(type=="order_status")"criosrango_orders" else "criosrango_general"
-        val n=NotificationCompat.Builder(this,channel).setSmallIcon(R.drawable.ic_stat_notification).setContentTitle(title).setContentText(body).setAutoCancel(true).setContentIntent(pending).setPriority(NotificationCompat.PRIORITY_DEFAULT).build()
-        getSystemService(NotificationManager::class.java).notify((System.currentTimeMillis() and 0x7fffffff).toInt(),n)
+        val intent=Intent(this,MainActivity::class.java).apply{flags=Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP;putExtra("push_type",type);orderId?.let{putExtra("push_order_id",it)}}
+        val pending=PendingIntent.getActivity(this,orderId?.hashCode()?:type.hashCode(),intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val notification=NotificationCompat.Builder(this,channel).setSmallIcon(es.criosrango.app.R.drawable.ic_stat_notification).setContentTitle(title).setContentText(body).setAutoCancel(true).setContentIntent(pending).build()
+        androidx.core.app.NotificationManagerCompat.from(this).notify(orderId?.hashCode()?:type.hashCode(),notification)
     }
 }
