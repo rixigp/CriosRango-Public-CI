@@ -19,7 +19,7 @@ function register_activation_hook(...$args): void {}
 function dbDelta(...$args): void {}
 function is_wp_error(mixed $value): bool { return $value instanceof WP_Error; }
 function rest_ensure_response(mixed $value): mixed { return $value; }
-function sanitize_key($value): string { return preg_replace('/[^a-z0-9_\\-]/', '', strtolower((string)$value)); }
+function sanitize_key($value): string { return preg_replace('/[^a-z0-9_\-]/', '', strtolower((string)$value)); }
 function get_post_meta($id, $key, $single = false): string { return ''; }
 function update_post_meta($id, $key, $value): void {}
 function wp_date($format): string { return '2026-10-01'; }
@@ -115,6 +115,8 @@ final class FakeWpdb {
 }
 
 $GLOBALS['wpdb'] = new FakeWpdb();
+$GLOBALS['push_test_user_id'] = 0;
+$GLOBALS['push_test_order'] = new FakeOrder(0);
 define('ABSPATH', '/tmp/');
 
 require_once dirname(__DIR__) . '/criosrango-push.php';
@@ -129,14 +131,16 @@ function push_assert_same(mixed $expected, mixed $actual, string $message): void
     }
 }
 
-function reset_push_db(): FakeWpdb {
+function reset_push_harness(): FakeWpdb {
     $db = new FakeWpdb();
     $GLOBALS['wpdb'] = $db;
+    $GLOBALS['push_test_user_id'] = 0;
+    $GLOBALS['push_test_order'] = new FakeOrder(0);
     return $db;
 }
 
 function test_device_auth_and_dedup(): void {
-    $db = reset_push_db();
+    $db = reset_push_harness();
     $GLOBALS['push_test_user_id'] = 42;
     $response = CriosRango_Push::register(new FakeRequest(
         ['platform' => 'android', 'token' => 'token-A'],
@@ -165,8 +169,7 @@ function test_device_auth_and_dedup(): void {
 }
 
 function test_product_event_detection(): void {
-    $db = reset_push_db();
-    $GLOBALS['push_test_user_id'] = 0;
+    $db = reset_push_harness();
     CriosRango_Push::product_publish('publish', 'draft', (object)['post_type' => 'product', 'ID' => 101]);
     push_assert(count($db->queries) === 1, 'first publication must create exactly one event');
     push_assert(str_contains($db->queries[0], 'product_published:101'), 'product event must be idempotent by product id');
@@ -177,7 +180,7 @@ function test_product_event_detection(): void {
 }
 
 function test_daily_digest_and_idempotency(): void {
-    $db = reset_push_db();
+    $db = reset_push_harness();
     $db->productEvents = [
         (object)['id' => 1, 'sent_gmt' => null],
         (object)['id' => 2, 'sent_gmt' => null],
@@ -197,14 +200,14 @@ function test_daily_digest_and_idempotency(): void {
     CriosRango_Push::digest($sender);
     push_assert_same($before, $sent, 'a sent digest must never be sent twice');
 
-    $db = reset_push_db();
+    $db = reset_push_harness();
     $db->productEvents = [];
     CriosRango_Push::digest($sender);
     push_assert_same(0, $sent - $before, 'zero products must not send anything');
 }
 
 function test_order_ownership_and_preferences(): void {
-    $db = reset_push_db();
+    $db = reset_push_harness();
     $db->eventRow = (object)[
         'id' => 50,
         'entity_id' => 700,
@@ -230,11 +233,11 @@ function test_order_ownership_and_preferences(): void {
 }
 
 function test_invalid_and_transient_tokens(): void {
-    $db = reset_push_db();
+    $db = reset_push_harness();
     CriosRango_Push::delivery(20, 30, ['result' => 'failed', 'provider_id' => '404', 'invalid' => true]);
     push_assert(count(array_filter($db->updates, fn($u) => ($u[1]['active'] ?? null) === 0)) === 1, 'invalid provider token must be deactivated');
 
-    $db = reset_push_db();
+    $db = reset_push_harness();
     CriosRango_Push::delivery(20, 30, ['result' => 'failed', 'provider_id' => '500', 'invalid' => false]);
     push_assert(count(array_filter($db->updates, fn($u) => isset($u[1]['active']))) === 0, 'transient provider error must not deactivate a valid token');
 }
