@@ -1,5 +1,7 @@
 package es.criosrango.shared.account
 
+import es.criosrango.shared.PushDeviceRegistration
+
 import io.ktor.client.plugins.ResponseException
 import io.ktor.http.HttpStatusCode
 
