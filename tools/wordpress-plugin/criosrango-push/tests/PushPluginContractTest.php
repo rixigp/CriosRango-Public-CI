@@ -231,7 +231,7 @@ function test_action_scheduler(): void {
     push_assert_same(1, $sent, 'scheduler callback must run the real digest and send once');
     push_assert($db->digestRow !== null && $db->digestRow->sent_gmt !== null, 'successful callback must persist the digest:<date> sent marker');
 
-    $callback[0]::$callback[1]($sender);
+    call_user_func($callback, $sender);
     push_assert_same(1, $sent, 'running the callback twice must not send the same daily digest twice');
 }
 
