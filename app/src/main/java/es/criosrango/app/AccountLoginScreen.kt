@@ -58,6 +58,7 @@ fun AccountLoginScreen(
     val loading by vm.loading.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val accountError by vm.accountError.collectAsStateWithLifecycle()
+    val notificationContext = LocalContext.current
     val notice by vm.notice.collectAsStateWithLifecycle()
     val address by vm.address.collectAsStateWithLifecycle()
     var login by remember { mutableStateOf("") }
@@ -154,7 +155,7 @@ fun AccountLoginScreen(
                     onInfoPage = { selectedInfoPage = it }
                 )
                 AccountSection.ORDERS -> AccountOrdersContent(orders, loading, accountError, { accountSection = AccountSection.HOME }, { selectedOrderId = it }, vm::refreshOrders)
-                AccountSection.PROFILE -> AccountProfileContent(loading, { accountSection = AccountSection.HOME }, { accountSection = AccountSection.DATA }, { accountSection = AccountSection.ADDRESSES }, { vm.clearAccountMessages(); showForgot = true }, vm::logout)
+                AccountSection.PROFILE -> AccountProfileContent(loading, { accountSection = AccountSection.HOME }, { accountSection = AccountSection.DATA }, { accountSection = AccountSection.ADDRESSES }, { vm.clearAccountMessages(); showForgot = true }, { PushNotificationController.unregister(notificationContext); vm.logout() })
                 AccountSection.DATA -> AccountPersonalDataContent(vm, currentUser) { accountSection = AccountSection.PROFILE }
                 AccountSection.ADDRESSES -> AccountAddressContent(vm, address) { accountSection = AccountSection.PROFILE }
                 AccountSection.HELP -> AccountHelpContent { accountSection = AccountSection.HOME }
