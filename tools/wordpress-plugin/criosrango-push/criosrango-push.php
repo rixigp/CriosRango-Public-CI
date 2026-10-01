@@ -27,6 +27,13 @@ final class CriosRango_Push {
             as_schedule_recurring_action(time()+DAY_IN_SECONDS,DAY_IN_SECONDS,'criosrango_push_daily_digest',[],self::GROUP,true);
     }
     static function ensure_schedule(){self::schedule();}
+    static function authenticated_user_id($r){
+        $header=trim((string)$r->get_header('authorization'));
+        if($header==='') return 0;
+        if(!preg_match('/^Bearer\\s+.+$/i',$header)) return new WP_Error('push_invalid_auth','Autenticación no válida',['status'=>401]);
+        $user=(int)get_current_user_id();
+        return $user>0?$user:new WP_Error('push_auth_required','No se ha podido autenticar la cuenta.',['status'=>401]);
+    }
     static function routes(){
         register_rest_route(self::NS,'/push/device',[
             ['methods'=>WP_REST_Server::CREATABLE,'callback'=>[__CLASS__,'register'],'permission_callback'=>'__return_true'],
@@ -36,14 +43,15 @@ final class CriosRango_Push {
     static function register($r){
         global $wpdb; $platform=sanitize_key($r->get_param('platform')); $token=trim((string)$r->get_param('token'));
         if(!in_array($platform,['android','ios'],true)||$token==='') return new WP_Error('invalid_push_device','Datos no válidos',['status'=>400]);
+        $user=self::authenticated_user_id($r); if(is_wp_error($user)) return $user;
         $hash=hash('sha256',$platform.':'.$token); $now=gmdate('Y-m-d H:i:s'); $table=self::table('devices');
-        $data=['token_hash'=>$hash,'token'=>$token,'platform'=>$platform,'user_id'=>max(0,(int)get_current_user_id()),'new_products'=>$r->get_param('new_products')===null?1:(bool)$r->get_param('new_products'),'order_updates'=>$r->get_param('order_updates')===null?1:(bool)$r->get_param('order_updates'),'active'=>1,'last_seen_gmt'=>$now,'updated_gmt'=>$now];
+        $data=['token_hash'=>$hash,'token'=>$token,'platform'=>$platform,'user_id'=>(int)$user,'new_products'=>$r->get_param('new_products')===null?1:(bool)$r->get_param('new_products'),'order_updates'=>$r->get_param('order_updates')===null?1:(bool)$r->get_param('order_updates'),'active'=>1,'last_seen_gmt'=>$now,'updated_gmt'=>$now];
         $id=$wpdb->get_var($wpdb->prepare("SELECT id FROM $table WHERE token_hash=%s",$hash));
         if($id)$wpdb->update($table,$data,['id'=>(int)$id]);else{$data['created_gmt']=$now;$wpdb->insert($table,$data);}
         return rest_ensure_response(['success'=>true]);
     }
     static function unregister($r){
-        global $wpdb; $platform=sanitize_key($r->get_param('platform'));$token=trim((string)$r->get_param('token'));$hash=hash('sha256',$platform.':'.$token);
+        global $wpdb; $platform=sanitize_key($r->get_param('platform'));$token=trim((string)$r->get_param('token'));if(!in_array($platform,['android','ios'],true)||$token==='') return new WP_Error('invalid_push_device','Datos no válidos',['status'=>400]);$hash=hash('sha256',$platform.':'.$token);
         $wpdb->update(self::table('devices'),['active'=>0,'user_id'=>0,'updated_gmt'=>gmdate('Y-m-d H:i:s')],['token_hash'=>$hash]);
         return rest_ensure_response(['success'=>true]);
     }
@@ -53,7 +61,7 @@ final class CriosRango_Push {
         self::event('product_published',(int)$post->ID,'publish',['product_id'=>(int)$post->ID]);
     }
     static function order_status($id,$old,$new,$order){
-        if(!in_array($new,['processing','completed'],true))return;
+        if($old===$new||!in_array($new,['processing','completed'],true))return;
         $number=$order->get_order_number();$body=$new==='completed'?'Tu pedido #'.$number.' ha sido completado.':'Hemos recibido tu pedido #'.$number.' y ya está en preparación.';
         self::event('order_status',(int)$id,$new,['type'=>'order_status','order_id'=>(int)$id,'user_id'=>(int)$order->get_customer_id(),'title'=>$new==='completed'?'Pedido completado':'Pedido recibido','body'=>$body]);
     }
@@ -64,19 +72,31 @@ final class CriosRango_Push {
     }
     static function digest(){
         global $wpdb;$key='digest:'.wp_date('Y-m-d');
-        if($wpdb->get_var($wpdb->prepare("SELECT id FROM ".self::table('events')." WHERE idempotency_key=%s",$key)))return;
+        $existing_digest=$wpdb->get_row($wpdb->prepare("SELECT * FROM ".self::table('events')." WHERE idempotency_key=%s",$key));
+        if($existing_digest && $existing_digest->sent_gmt)return;
         $events=$wpdb->get_results("SELECT * FROM ".self::table('events')." WHERE type='product_published' AND sent_gmt IS NULL ORDER BY created_gmt ASC");
         if(!$events)return;$wpdb->query($wpdb->prepare("INSERT IGNORE INTO ".self::table('events')." (idempotency_key,type,entity_state,payload,created_gmt) VALUES(%s,'digest','daily',%s,%s)",$key,wp_json_encode(['count'=>count($events)]),gmdate('Y-m-d H:i:s')));
-        $id=(int)$wpdb->insert_id;$devices=$wpdb->get_results("SELECT * FROM ".self::table('devices')." WHERE active=1 AND new_products=1");
-        foreach($devices as $d){$r=self::send($d,['type'=>'new_products','title'=>'¡Hay novedades! 🛍️','body'=>'Hoy hemos añadido '.count($events).' nuevos productos. Échales un vistazo.']);self::delivery($id,$d->id,$r);}
-        $ids=implode(',',array_map('intval',wp_list_pluck($events,'id')));$wpdb->query("UPDATE ".self::table('events')." SET sent_gmt='".gmdate('Y-m-d H:i:s')."' WHERE id IN ($ids)");
+        $id=(int)($existing_digest->id??$wpdb->insert_id);$devices=$wpdb->get_results("SELECT * FROM ".self::table('devices')." WHERE active=1 AND new_products=1");
+        $all_ok=true; foreach($devices as $d){
+            $existing=$wpdb->get_var($wpdb->prepare("SELECT result FROM ".self::table('deliveries')." WHERE event_id=%d AND device_id=%d",$id,$d->id));
+            if($existing==='sent')continue;
+            $r=self::send($d,['type'=>'new_products','title'=>'¡Hay novedades! 🛍️','body'=>'Hoy hemos añadido '.count($events).' nuevos productos. Échales un vistazo.']);self::delivery($id,$d->id,$r);if(!$r['invalid']&&$r['result']!=='sent')$all_ok=false;
+        }
+        if($all_ok){$now=gmdate('Y-m-d H:i:s');$wpdb->update(self::table('events'),['sent_gmt'=>$now],['id'=>$id]);$ids=implode(',',array_map('intval',wp_list_pluck($events,'id')));$wpdb->query("UPDATE ".self::table('events')." SET sent_gmt='$now' WHERE id IN ($ids)");}
     }
     static function send_event($id){
         global $wpdb;$e=$wpdb->get_row($wpdb->prepare("SELECT * FROM ".self::table('events')." WHERE id=%d",$id));if(!$e)return;
-        $p=json_decode($e->payload,true);$p=json_decode($e->payload,true); $user=(int)($p['user_id']??0);
+        $p=json_decode($e->payload,true);
+        $order=function_exists('wc_get_order')?wc_get_order((int)$e->entity_id):null;
+        $user=$order?(int)$order->get_customer_id():0;
+        if($user<=0){return;}
         $devices=$wpdb->get_results($wpdb->prepare("SELECT * FROM ".self::table('devices')." WHERE active=1 AND order_updates=1 AND user_id=%d",$user));
-        foreach($devices as $d){$r=self::send($d,$p);self::delivery($e->id,$d->id,$r);}
-        $wpdb->update(self::table('events'),['sent_gmt'=>gmdate('Y-m-d H:i:s')],['id'=>$id]);
+        $all_ok=true; foreach($devices as $d){
+            $existing=$wpdb->get_var($wpdb->prepare("SELECT result FROM ".self::table('deliveries')." WHERE event_id=%d AND device_id=%d",$e->id,$d->id));
+            if($existing==='sent')continue;
+            $r=self::send($d,$p);self::delivery($e->id,$d->id,$r);if(!$r['invalid']&&$r['result']!=='sent')$all_ok=false;
+        }
+        if($all_ok)$wpdb->update(self::table('events'),['sent_gmt'=>gmdate('Y-m-d H:i:s')],['id'=>$id]);
     }
     static function send($d,$p){
         if($d->platform==='android')return self::fcm($d->token,$p); return self::apns($d->token,$p);
