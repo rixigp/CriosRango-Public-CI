@@ -72,7 +72,7 @@ fun openIosExternalUrl(url: String) {
     )
 }
 
-fun handleIosPushNotification(type: String?, orderId: Int32) {
+fun handleIosPushNotification(type: String?, orderId: Int) {
     val t = type?.lowercase() ?: return
     if (t == PushNotificationType.NEW_PRODUCTS || t == PushNotificationType.ORDER_STATUS) iosPushNavigation.value = IosPushNavigation(t, orderId.takeIf { it > 0 }?.toInt())
 }
