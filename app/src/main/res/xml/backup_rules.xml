@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- EncryptedSharedPreferences key material is tied to Android Keystore and must not be restored. -->
+    <exclude domain="sharedpref" path="criosrango_pending_card_payment.xml" />
+    <exclude domain="sharedpref" path="criosrango_account_session.xml" />
+</full-backup-content>
