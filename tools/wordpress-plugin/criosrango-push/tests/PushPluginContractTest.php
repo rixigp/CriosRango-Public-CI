@@ -163,6 +163,7 @@ function test_device_auth_and_dedup(): void {
     ));
     push_assert_same(42, $db->lastInsertData['user_id'], 'refresh must keep the authenticated user');
 
+    $db->existingDeviceId = null;
     reset_push_request_auth();
     $anonymous = CriosRango_Push::register(new FakeRequest(['platform' => 'ios', 'token' => 'token-G']));
     push_assert(!is_wp_error($anonymous), 'anonymous device may register');
