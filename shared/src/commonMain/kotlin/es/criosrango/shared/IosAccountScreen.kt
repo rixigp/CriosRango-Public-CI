@@ -69,7 +69,7 @@ fun CriosRangoIOSAccountScreen(
     LaunchedEffect(user?.id, pendingPushOrderId) {
         val id = pendingPushOrderId ?: return@LaunchedEffect
         if (user == null) return@LaunchedEffect
-        selectedOrder = runCatching { repository.orders() }.getOrNull()?.firstOrNull { it.id == id }
+        selectedOrder = runCatching { repository.orders().orders }.getOrNull()?.firstOrNull { it.id == id }
         if (selectedOrder != null) page = IosAccountPage.ORDER_DETAIL
         pendingPushOrderId = null
     }
