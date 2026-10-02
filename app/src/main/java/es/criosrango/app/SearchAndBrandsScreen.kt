@@ -603,7 +603,8 @@ internal fun SearchScreen(
                 SortableProductGrid(
                     products = displayedProducts,
                     modifier = Modifier.fillMaxSize(),
-                    onProduct = onProduct
+                    onProduct = onProduct,
+                    resetKey = normalizedQuery
                 )
             }
         }
@@ -662,12 +663,15 @@ internal fun ProductGrid(
         androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     val categoryStatus by categoryCatalogLoadStatus.collectAsStateWithLifecycle()
 
-    val productOrder = products.map { it.id }
-    val effectiveResetKey = resetKey ?: productOrder
+    val effectiveResetKey = resetKey
+    var previousResetKey by remember { mutableStateOf(effectiveResetKey) }
 
     LaunchedEffect(effectiveResetKey) {
-        if (products.isNotEmpty()) {
-            gridState.scrollToItem(0)
+        if (previousResetKey != effectiveResetKey) {
+            if (products.isNotEmpty()) {
+                gridState.scrollToItem(0)
+            }
+            previousResetKey = effectiveResetKey
         }
     }
 

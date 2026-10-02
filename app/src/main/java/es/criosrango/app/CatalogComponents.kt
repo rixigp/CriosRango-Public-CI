@@ -198,13 +198,19 @@ internal fun ProductSortControl(mode: ProductSortMode, onMode: (ProductSortMode)
 internal fun SortableProductGrid(
     products: List<StoreProduct>,
     modifier: Modifier = Modifier,
-    onProduct: (StoreProduct) -> Unit
+    onProduct: (StoreProduct) -> Unit,
+    resetKey: Any? = null
 ) {
     var sortMode by remember { mutableStateOf(ProductSortMode.RECENT) }
     val sorted = sortProducts(products, sortMode)
     Column(modifier) {
         ProductSortControl(mode = sortMode, onMode = { sortMode = it })
-        ProductGrid(sorted, Modifier.weight(1f), onProduct)
+        ProductGrid(
+            sorted,
+            Modifier.weight(1f),
+            onProduct,
+            resetKey = listOf(resetKey, sortMode)
+        )
     }
 }
 
