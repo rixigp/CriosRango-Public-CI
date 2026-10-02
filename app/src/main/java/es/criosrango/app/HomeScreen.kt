@@ -686,6 +686,7 @@ internal fun HomeScreen(
     showAll: Boolean,
     onShowAllChange: (Boolean) -> Unit,
     isRefreshing: Boolean,
+    homeCategoriesLoading: Boolean,
     onRefresh: () -> Unit,
     onEnterNovedades: () -> Unit,
     brands: List<BrandTerm>,
@@ -731,12 +732,21 @@ internal fun HomeScreen(
         }
 
         item {
-            CategoryPage(
-                categories = rootCategories,
-                allCategories = roots,
-                allProducts = allProducts,
-                onCategory = onCategory
-            )
+            when (homeCategoryContentState(rootCategories.isNotEmpty(), homeCategoriesLoading)) {
+                HomeCategoryContentState.CONTENT -> CategoryPage(
+                    categories = rootCategories,
+                    allCategories = roots,
+                    allProducts = allProducts,
+                    onCategory = onCategory
+                )
+                HomeCategoryContentState.SKELETON -> HomeCategorySkeletonGrid()
+                HomeCategoryContentState.EMPTY -> Text(
+                    text = "No hay categorías disponibles",
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
 
         item {
@@ -764,6 +774,53 @@ item {
         }
     }
     }
+    }
+}
+
+internal enum class HomeCategoryContentState { CONTENT, SKELETON, EMPTY }
+
+internal fun homeCategoryContentState(hasCategories: Boolean, loading: Boolean): HomeCategoryContentState =
+    when {
+        hasCategories -> HomeCategoryContentState.CONTENT
+        loading -> HomeCategoryContentState.SKELETON
+        else -> HomeCategoryContentState.EMPTY
+    }
+
+@Composable
+internal fun HomeCategorySkeletonGrid() {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        repeat(2) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                repeat(3) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(0.68f)
+                                .height(10.dp)
+                                .clip(RoundedCornerShape(5.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
