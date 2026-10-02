@@ -11,28 +11,28 @@ class ProductDetailAddButtonPolicyTest {
     @Test
     fun toggleSelectsAvailableOption() {
         val selected = mutableMapOf<String, String>()
-        productDetailToggleAttributeSelection(selected, "Color", "azul", chosen = false, available = true)
+        productDetailToggleAttributeSelection(selected, "Color", "azul", chosen = false, existsGlobally = true)
         assertEquals("azul", selected["Color"])
     }
 
     @Test
     fun toggleDeselectsChosenOption() {
         val selected = mutableMapOf("Color" to "azul")
-        productDetailToggleAttributeSelection(selected, "Color", "azul", chosen = true, available = true)
+        productDetailToggleAttributeSelection(selected, "Color", "azul", chosen = true, existsGlobally = true)
         assertFalse(selected.containsKey("Color"))
     }
 
     @Test
     fun chosenOptionCanBeDeselectedWhenUnavailable() {
         val selected = mutableMapOf("Color" to "azul")
-        productDetailToggleAttributeSelection(selected, "Color", "azul", chosen = true, available = false)
+        productDetailToggleAttributeSelection(selected, "Color", "azul", chosen = true, existsGlobally = false)
         assertFalse(selected.containsKey("Color"))
     }
 
     @Test
     fun deselectingColorKeepsSizeSelection() {
         val selected = mutableMapOf("Color" to "azul", "Talla" to "M")
-        productDetailToggleAttributeSelection(selected, "Color", "azul", chosen = true, available = false)
+        productDetailToggleAttributeSelection(selected, "Color", "azul", chosen = true, existsGlobally = false)
         assertEquals("M", selected["Talla"])
         assertFalse(selected.containsKey("Color"))
     }
@@ -40,7 +40,7 @@ class ProductDetailAddButtonPolicyTest {
     @Test
     fun deselectingSizeKeepsColorSelection() {
         val selected = mutableMapOf("Color" to "azul", "Talla" to "M")
-        productDetailToggleAttributeSelection(selected, "Talla", "M", chosen = true, available = false)
+        productDetailToggleAttributeSelection(selected, "Talla", "M", chosen = true, existsGlobally = false)
         assertEquals("azul", selected["Color"])
         assertFalse(selected.containsKey("Talla"))
     }
@@ -48,8 +48,8 @@ class ProductDetailAddButtonPolicyTest {
     @Test
     fun deselectThenSelectAnotherOptionWorks() {
         val selected = mutableMapOf("Color" to "azul")
-        productDetailToggleAttributeSelection(selected, "Color", "azul", chosen = true, available = false)
-        productDetailToggleAttributeSelection(selected, "Color", "rojo", chosen = false, available = true)
+        productDetailToggleAttributeSelection(selected, "Color", "azul", chosen = true, existsGlobally = false)
+        productDetailToggleAttributeSelection(selected, "Color", "rojo", chosen = false, existsGlobally = true)
         assertEquals("rojo", selected["Color"])
     }
 
@@ -113,8 +113,7 @@ class ProductDetailAddButtonPolicyTest {
         val selected = mutableMapOf("Color" to "marron", "Tallas" to "50")
         val variations = listOf(
             variation("Color" to "marron", "Tallas" to "50"),
-            variation("Color" to "granate", "Tallas" to "52"),
-            variation("Color" to "marron", "Tallas" to "52")
+            variation("Color" to "granate", "Tallas" to "52")
         )
 
         productDetailSelectAttributeOption(
@@ -133,7 +132,8 @@ class ProductDetailAddButtonPolicyTest {
     fun globallyUnavailableOption_remainsDisabled() {
         val variations = listOf(
             variation("Color" to "granate", "Tallas" to "50"),
-            variation("Color" to "marron", "Tallas" to "52")
+            variation("Color" to "marron", "Tallas" to "52"),
+            variation("Color" to "azul", "Tallas" to "50", available = false)
         )
         val state = productDetailAttributeOptionState(
             variations = variations,
