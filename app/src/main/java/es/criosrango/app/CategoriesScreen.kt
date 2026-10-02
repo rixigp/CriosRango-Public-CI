@@ -1368,7 +1368,8 @@ internal fun CatalogFilteredProductGrid(
     onProduct: (StoreProduct) -> Unit,
     pagingState: es.criosrango.shared.CatalogPagingState<StoreProduct>? = null,
     onLoadNextPage: (() -> Unit)? = null,
-    pagingKey: Any? = null
+    pagingKey: Any? = null,
+    allowBrandFilter: Boolean = true
 ) {
     var filtersOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var sortMode by androidx.compose.runtime.saveable.rememberSaveable {
@@ -1389,12 +1390,12 @@ internal fun CatalogFilteredProductGrid(
         .distinct().sorted()
 
     val possibleSizes = products
-        .filter { it.matchesCatalogFilters(emptySet(), selectedColors, selectedBrands) }
+        .filter { it.matchesCatalogFilters(emptySet(), selectedColors, if (allowBrandFilter) selectedBrands else emptySet()) }
         .flatMap { it.filterValues("Tallas") }
         .toSet()
 
     val possibleColors = products
-        .filter { it.matchesCatalogFilters(selectedSizes, emptySet(), selectedBrands) }
+        .filter { it.matchesCatalogFilters(selectedSizes, emptySet(), if (allowBrandFilter) selectedBrands else emptySet()) }
         .flatMap { it.filterValues("Color") }
         .toSet()
 
@@ -1404,11 +1405,14 @@ internal fun CatalogFilteredProductGrid(
         .toSet()
 
 
+    val effectiveSelectedBrands =
+        if (allowBrandFilter) selectedBrands else emptySet()
+
     val filteredBase = products.filter {
         it.matchesCatalogFilters(
             selectedSizes,
             selectedColors,
-            selectedBrands
+            effectiveSelectedBrands
         )
     }
 
@@ -1418,7 +1422,8 @@ internal fun CatalogFilteredProductGrid(
             sortMode
         )
 
-    val active = selectedSizes.size + selectedColors.size + selectedBrands.size
+    val active = selectedSizes.size + selectedColors.size +
+        if (allowBrandFilter) selectedBrands.size else 0
 
     Column(modifier) {
         Row(
@@ -1465,7 +1470,7 @@ internal fun CatalogFilteredProductGrid(
 
                     CatalogFilterChoices("Color", colors, selectedColors, possibleColors) { selectedColors = it }
 
-                    if (brands.isNotEmpty()) {
+                    if (allowBrandFilter && brands.isNotEmpty()) {
                         Spacer(Modifier.height(20.dp))
 
                         CatalogFilterChoices("Marca", brands, selectedBrands, possibleBrands) { selectedBrands = it }
@@ -1482,7 +1487,9 @@ internal fun CatalogFilteredProductGrid(
                     onClick = {
                         selectedSizes = emptySet()
                         selectedColors = emptySet()
-                        selectedBrands = emptySet()
+                        if (allowBrandFilter) {
+                            selectedBrands = emptySet()
+                        }
                     }
                 ) {
                     Text("Limpiar")

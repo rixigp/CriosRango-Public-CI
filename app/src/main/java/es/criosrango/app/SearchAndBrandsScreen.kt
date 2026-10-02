@@ -196,28 +196,10 @@ internal fun BrandProductsScreen(
 
     val shopViewModel: ShopViewModel = viewModel()
     val pagingState by shopViewModel.brandPagingState.collectAsStateWithLifecycle()
-    val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     val displayedProducts = pagingState.items
-    val prefetchDistance = es.criosrango.shared.CatalogPaginator.PREFETCH_DISTANCE
 
-    LaunchedEffect(brand.slug, gridState) {
-        androidx.compose.runtime.snapshotFlow {
-            val itemsSize = shopViewModel.brandPagingState.value.items.size
-            val lastVisibleIndex = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-            val state = shopViewModel.brandPagingState.value
-            itemsSize > 0 &&
-                !state.isInitialLoading &&
-                !state.isAppending &&
-                state.hasMore &&
-                lastVisibleIndex >= itemsSize - 1 - prefetchDistance
-        }.collect { shouldLoad ->
-            if (shouldLoad) {
-                shopViewModel.loadNextBrandPage()
-            }
-        }
-    }
-
-    val initialLoading = pagingState.isInitialLoading || (loading && displayedProducts.isEmpty())
+    val initialLoading =
+        pagingState.isInitialLoading || (loading && displayedProducts.isEmpty())
 
     Column(
         modifier = Modifier
@@ -247,55 +229,26 @@ internal fun BrandProductsScreen(
                 modifier = Modifier.weight(1f)
             )
         }
+
         if (initialLoading && displayedProducts.isEmpty()) {
             ProductSkeletonGrid(Modifier.fillMaxSize())
         } else if (displayedProducts.isEmpty()) {
-            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.fillMaxWidth().weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
                 Text("No hay productos disponibles de esta marca")
             }
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                state = gridState,
+            CatalogFilteredProductGrid(
+                products = displayedProducts,
                 modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp),
-                contentPadding = PaddingValues(bottom = 24.dp)
-            ) {
-                items(displayedProducts, key = { it.id }) { product ->
-                    ProductCard(
-                        product = product,
-                        onProduct = onProduct
-                    )
-                }
-
-                if (pagingState.isAppending) {
-                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 12.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(modifier = Modifier.size(22.dp))
-                        }
-                    }
-                } else if (pagingState.appendError != null && pagingState.hasMore) {
-                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 12.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            TextButton(onClick = { shopViewModel.loadNextBrandPage() }) {
-                                Text("Reintentar")
-                            }
-                        }
-                    }
-                }
-            }
+                onProduct = onProduct,
+                pagingState = pagingState,
+                onLoadNextPage = shopViewModel::loadNextBrandPage,
+                pagingKey = brand.slug.trim().lowercase(),
+                allowBrandFilter = false
+            )
         }
     }
 }
