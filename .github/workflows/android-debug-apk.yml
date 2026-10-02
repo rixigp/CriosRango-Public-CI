@@ -1,6 +1,9 @@
 name: Android debug APK
 
 on:
+  push:
+    branches:
+      - kmp-migration
   workflow_dispatch:
 
 permissions:
