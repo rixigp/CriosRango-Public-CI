@@ -19,6 +19,20 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+internal class OrdersLoadGate {
+    private var inFlight = false
+
+    fun tryAcquire(): Boolean {
+        if (inFlight) return false
+        inFlight = true
+        return true
+    }
+
+    fun release() {
+        inFlight = false
+    }
+}
+
 class AccountSessionStore(context: Context) : AccountTokenStore {
     private companion object {
         const val TOKEN = "account_token"
@@ -170,6 +184,11 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     private val _loading = MutableStateFlow(false)
     val loading = _loading.asStateFlow()
 
+    private val _ordersRefreshing = MutableStateFlow(false)
+    val ordersRefreshing = _ordersRefreshing.asStateFlow()
+    private val ordersLoadGate = OrdersLoadGate()
+
+
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
 
@@ -271,13 +290,19 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                     if (handleAuthenticatedHttpError(exception, "No hemos podido cargar tus datos de cuenta.")) return@launch
                 }
 
-                try {
-                    val loadedOrders = repository.orders()
-                    if (generation == accountGeneration) _orders.value = loadedOrders
-                } catch (exception: Exception) {
-                    if (generation != accountGeneration) return@launch
-                    logOrdersException(exception)
-                    if (handleAuthenticatedHttpError(exception, "No hemos podido cargar tus pedidos.")) return@launch
+                if (ordersLoadGate.tryAcquire()) {
+                    try {
+                        try {
+                            val loadedOrders = repository.orders()
+                            if (generation == accountGeneration) _orders.value = loadedOrders
+                        } catch (exception: Exception) {
+                            if (generation != accountGeneration) return@launch
+                            logOrdersException(exception)
+                            if (handleAuthenticatedHttpError(exception, "No hemos podido cargar tus pedidos.")) return@launch
+                        }
+                    } finally {
+                        ordersLoadGate.release()
+                    }
                 }
                 if (generation == accountGeneration) claimPendingOrderIfAuthenticated()
             } catch (exception: Exception) {
@@ -396,12 +421,18 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                     null
                 }
                 _address.value = loadedAddress
-                _orders.value = try { repository.orders() } catch (exception: Exception) {
-                    if (exception is HttpException && exception.code() == 401) {
-                        invalidateSession()
-                        return@launch
+                if (ordersLoadGate.tryAcquire()) {
+                    try {
+                        _orders.value = try { repository.orders() } catch (exception: Exception) {
+                            if (exception is HttpException && exception.code() == 401) {
+                                invalidateSession()
+                                return@launch
+                            }
+                            emptyList()
+                        }
+                    } finally {
+                        ordersLoadGate.release()
                     }
-                    emptyList()
                 }
                 if (_authState.value == AccountAuthState.AUTHENTICATED) claimPendingOrderIfAuthenticated()
             } catch (e: HttpException) {
@@ -460,7 +491,13 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 _authState.value = AccountAuthState.AUTHENTICATED
                 val loadedAddress = repository.customerAddress()
                 _address.value = loadedAddress
-                _orders.value = repository.orders()
+                if (ordersLoadGate.tryAcquire()) {
+                    try {
+                        _orders.value = repository.orders()
+                    } finally {
+                        ordersLoadGate.release()
+                    }
+                }
                 claimPendingOrderIfAuthenticated()
             } catch (e: HttpException) {
                 _authState.value = if (repository.hasSession) AccountAuthState.CHECKING else AccountAuthState.UNAUTHENTICATED
@@ -483,7 +520,13 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             try {
                 repository.claimPendingOrder()
-                if (generation == accountGeneration) _orders.value = repository.orders()
+                if (ordersLoadGate.tryAcquire()) {
+                    try {
+                        if (generation == accountGeneration) _orders.value = repository.orders()
+                    } finally {
+                        ordersLoadGate.release()
+                    }
+                }
             } catch (exception: Exception) {
                 if (generation != accountGeneration) return@launch
                 if (!handleAuthenticatedHttpError(exception, "No se ha podido actualizar el pedido.")) {
@@ -574,10 +617,11 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
 
     fun refreshOrders() {
         if (_user.value == null || _authState.value != AccountAuthState.AUTHENTICATED) return
+        if (!ordersLoadGate.tryAcquire()) return
 
         val generation = accountGeneration
+        _ordersRefreshing.value = true
         viewModelScope.launch {
-            _loading.value = true
             _error.value = null
             _accountError.value = null
             try {
@@ -589,7 +633,8 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                     handleAuthenticatedHttpError(exception, "No hemos podido actualizar tus pedidos.")
                 }
             } finally {
-                if (generation == accountGeneration) _loading.value = false
+                _ordersRefreshing.value = false
+                ordersLoadGate.release()
             }
         }
     }

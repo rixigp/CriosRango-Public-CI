@@ -12,6 +12,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Sell
 import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountLoginScreen(
     padding: PaddingValues,
@@ -56,6 +60,7 @@ fun AccountLoginScreen(
     val user by vm.user.collectAsStateWithLifecycle()
     val orders by vm.orders.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
+    val ordersRefreshing by vm.ordersRefreshing.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val accountError by vm.accountError.collectAsStateWithLifecycle()
     val notificationContext = LocalContext.current
@@ -80,8 +85,13 @@ fun AccountLoginScreen(
         if (currentUser != null) {
             showLogin = false
             PushNotificationController.initialize(notificationContext)
-            vm.refreshOrders()
             onAuthenticated?.invoke()
+        }
+    }
+
+    LaunchedEffect(currentUser?.id, accountSection) {
+        if (currentUser != null && accountSection == AccountSection.ORDERS) {
+            vm.refreshOrders()
         }
     }
 
@@ -143,25 +153,40 @@ fun AccountLoginScreen(
 
     if (currentUser != null) {
         val fullName = listOf(currentUser.firstName, currentUser.lastName).filter { it.isNotBlank() }.joinToString(" ")
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
-            Spacer(Modifier.height(20.dp))
-            when (accountSection) {
-                AccountSection.HOME -> AccountHomeContentV2(
-                    fullName = fullName,
-                    email = currentUser.email,
-                    onOrders = { accountSection = AccountSection.ORDERS },
-                    onProfile = { accountSection = AccountSection.PROFILE },
-                    onLogin = { showLogin = true },
-                    onHelp = { accountSection = AccountSection.HELP },
-                    onInfoPage = { selectedInfoPage = it }
-                )
-                AccountSection.ORDERS -> AccountOrdersContent(orders, loading, accountError, { accountSection = AccountSection.HOME }, { selectedOrderId = it }, vm::refreshOrders)
-                AccountSection.PROFILE -> AccountProfileContent(loading, { accountSection = AccountSection.HOME }, { accountSection = AccountSection.DATA }, { accountSection = AccountSection.ADDRESSES }, { vm.clearAccountMessages(); showForgot = true }, { PushNotificationController.unregister(notificationContext); vm.logout() })
-                AccountSection.DATA -> AccountPersonalDataContent(vm, currentUser) { accountSection = AccountSection.PROFILE }
-                AccountSection.ADDRESSES -> AccountAddressContent(vm, address) { accountSection = AccountSection.PROFILE }
-                AccountSection.HELP -> AccountHelpContent { accountSection = AccountSection.HOME }
+        if (accountSection == AccountSection.ORDERS) {
+            PullToRefreshBox(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                isRefreshing = ordersRefreshing,
+                onRefresh = vm::refreshOrders
+            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
+                    contentPadding = PaddingValues(top = 20.dp, bottom = 24.dp)
+                ) {
+                    AccountOrdersContent(orders, loading, accountError, { accountSection = AccountSection.HOME }, { selectedOrderId = it }, vm::refreshOrders)
+                }
             }
-            Spacer(Modifier.height(24.dp))
+        } else {
+            Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
+                Spacer(Modifier.height(20.dp))
+                when (accountSection) {
+                    AccountSection.HOME -> AccountHomeContentV2(
+                        fullName = fullName,
+                        email = currentUser.email,
+                        onOrders = { accountSection = AccountSection.ORDERS },
+                        onProfile = { accountSection = AccountSection.PROFILE },
+                        onLogin = { showLogin = true },
+                        onHelp = { accountSection = AccountSection.HELP },
+                        onInfoPage = { selectedInfoPage = it }
+                    )
+                    AccountSection.PROFILE -> AccountProfileContent(loading, { accountSection = AccountSection.HOME }, { accountSection = AccountSection.DATA }, { accountSection = AccountSection.ADDRESSES }, { vm.clearAccountMessages(); showForgot = true }, { PushNotificationController.unregister(notificationContext); vm.logout() })
+                    AccountSection.DATA -> AccountPersonalDataContent(vm, currentUser) { accountSection = AccountSection.PROFILE }
+                    AccountSection.ADDRESSES -> AccountAddressContent(vm, address) { accountSection = AccountSection.PROFILE }
+                    AccountSection.HELP -> AccountHelpContent { accountSection = AccountSection.HOME }
+                    AccountSection.ORDERS -> Unit
+                }
+                Spacer(Modifier.height(24.dp))
+            }
         }
         if (showForgot) AccountForgotPasswordDialog(login, loading, error, notice, { showForgot = false; vm.clearAccountMessages() }, vm::forgotPassword)
     } else if (!showLogin) {
@@ -400,31 +425,79 @@ private fun HelpContactRow(title: String, value: String, icon: ImageVector, onCl
     }
 }
 
-@Composable
-private fun AccountOrdersContent(orders: List<AccountOrderSummary>, loading: Boolean, accountError: StoreUiError?, onBack: () -> Unit, onOrderClick: (Int) -> Unit, onRefresh: () -> Unit) {
-    AccountSectionHeader("Pedidos", onBack); Spacer(Modifier.height(16.dp))
-    if (loading && orders.isEmpty()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() }
-    else if (accountError != null && accountError.type != StoreErrorType.SESSION_EXPIRED && orders.isEmpty()) StoreErrorState(accountError, PaddingValues(0.dp), onRefresh)
-    else if (orders.isEmpty()) Text("Todavía no tienes pedidos.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-    else if (accountError != null && accountError.type != StoreErrorType.SESSION_EXPIRED) {
-        Text(accountError.title, color = MaterialTheme.colorScheme.error)
-        Text(accountError.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        TextButton(onClick = onRefresh, enabled = !loading) { Text("Reintentar") }
+private fun LazyListScope.AccountOrdersContent(
+    orders: List<AccountOrderSummary>,
+    loading: Boolean,
+    accountError: StoreUiError?,
+    onBack: () -> Unit,
+    onOrderClick: (Int) -> Unit,
+    onRefresh: () -> Unit
+) {
+    item {
+        AccountSectionHeader("Pedidos", onBack)
+        Spacer(Modifier.height(16.dp))
     }
-    else orders.forEach { order ->
-        Card(Modifier.fillMaxWidth().clickable { onOrderClick(order.id) }) {
-            Column(Modifier.padding(16.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Pedido #${order.number.ifBlank { order.id.toString() }}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium); OrderStatusBadge(order.status, order.statusLabel) }
-                order.dateCreated?.takeIf { it.isNotBlank() }?.let { rawDate -> val p = rawDate.take(10).split("-"); Spacer(Modifier.height(8.dp)); Text("Fecha: ${if (p.size == 3) "${p[2]}-${p[1]}-${p[0]}" else rawDate.take(10)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                if (order.items.isNotEmpty()) { Spacer(Modifier.height(10.dp)); order.items.forEach { item -> Text("${item.quantity} × ${item.name}"); val variationText = item.variations.filter { it.name.isNotBlank() && it.value.isNotBlank() }.joinToString(" · ") { "${if (it.name.equals("Tallas", true)) "Talla" else it.name}: ${it.value}" }; if (variationText.isNotBlank()) Text(variationText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.height(5.dp)) } }
-                if (order.paymentMethodTitle.isNotBlank()) { Spacer(Modifier.height(6.dp)); Text(if (order.paymentMethodTitle.contains("bizum", true)) "Pago con Bizum" else "Pago con tarjeta") }
-                if (order.total.isNotBlank()) { Spacer(Modifier.height(8.dp)); Text(if (order.currency == "EUR") "Total: ${order.total.replace('.', ',')} €" else "${order.total} ${order.currency}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium) }
+    if (loading && orders.isEmpty()) {
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                CircularProgressIndicator()
             }
         }
-        Spacer(Modifier.height(12.dp))
-    }
-    if (accountError == null || accountError.type == StoreErrorType.SESSION_EXPIRED) {
-        Spacer(Modifier.height(12.dp)); OutlinedButton(onRefresh, enabled = !loading, modifier = Modifier.fillMaxWidth()) { Text("Actualizar pedidos") }
+    } else if (accountError != null && accountError.type != StoreErrorType.SESSION_EXPIRED && orders.isEmpty()) {
+        item {
+            StoreErrorState(accountError, PaddingValues(0.dp), onRefresh)
+        }
+    } else if (orders.isEmpty()) {
+        item {
+            Text("Todavía no tienes pedidos.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    } else if (accountError != null && accountError.type != StoreErrorType.SESSION_EXPIRED) {
+        item {
+            Text(accountError.title, color = MaterialTheme.colorScheme.error)
+            Text(accountError.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton(onClick = onRefresh, enabled = !loading) { Text("Reintentar") }
+        }
+    } else {
+        items(orders.size) { index ->
+            val order = orders[index]
+            Card(Modifier.fillMaxWidth().clickable { onOrderClick(order.id) }) {
+                Column(Modifier.padding(16.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Pedido #${order.number.ifBlank { order.id.toString() }}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                        OrderStatusBadge(order.status, order.statusLabel)
+                    }
+                    order.dateCreated?.takeIf { it.isNotBlank() }?.let { rawDate ->
+                        val p = rawDate.take(10).split("-")
+                        Spacer(Modifier.height(8.dp))
+                        Text("Fecha: ${if (p.size == 3) "${p[2]}-${p[1]}-${p[0]}" else rawDate.take(10)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (order.items.isNotEmpty()) {
+                        Spacer(Modifier.height(10.dp))
+                        order.items.forEach { item ->
+                            Text("${item.quantity} × ${item.name}")
+                            val variationText = item.variations.filter { it.name.isNotBlank() && it.value.isNotBlank() }.joinToString(" · ") {
+                                "${if (it.name.equals("Tallas", true)) "Talla" else it.name}: ${it.value}"
+                            }
+                            if (variationText.isNotBlank()) Text(variationText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(5.dp))
+                        }
+                    }
+                    if (order.paymentMethodTitle.isNotBlank()) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(if (order.paymentMethodTitle.contains("bizum", true)) "Pago con Bizum" else "Pago con tarjeta")
+                    }
+                    if (order.total.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            if (order.currency == "EUR") "Total: ${order.total.replace('.', ',')} €" else "${order.total} ${order.currency}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
     }
 }
 
