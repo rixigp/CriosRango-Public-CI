@@ -5,8 +5,9 @@ package es.criosrango.app
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -258,7 +260,30 @@ fun RedesignedCheckoutScreen(
                     !error.isNullOrBlank() -> Text(error, color = MaterialTheme.colorScheme.error)
                     lastValidAddress == null -> Unit
                     shippingOptions.isEmpty() -> Text("No encontramos una opción de entrega para esta dirección.", color = Color.Gray)
-                    else -> Column { visibleShipping.forEach { pack -> pack.rates.forEach { rate -> Row(Modifier.fillMaxWidth().clickable { selectedShipping = rate.rateId; selectShipping(pack.packageId, rate.rateId) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) { RadioButton(selectedShipping == rate.rateId, { selectedShipping = rate.rateId; selectShipping(pack.packageId, rate.rateId) }); Text(if (rate.displayShippingName().contains("CORREOS EXPRESS", true)) "CORREOS EXPRESS" else rate.displayShippingName(), Modifier.weight(1f), fontWeight = FontWeight.SemiBold); Text(if (rate.price.toBigDecimalOrNull() == BigDecimal.ZERO) "Gratis" else formatMinorUnits(rate.price, rate.currencyMinorUnit, rate.currencySymbol), color = CheckoutUiGreen, fontWeight = FontWeight.SemiBold) } } } }
+                    else -> Column(Modifier.selectableGroup()) { visibleShipping.forEach { pack -> pack.rates.forEach { rate ->
+                        val selected = selectedShipping == rate.rateId
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .selectable(
+                                    selected = selected,
+                                    role = Role.RadioButton,
+                                    onClick = {
+                                        selectedShipping = rate.rateId
+                                        selectShipping(pack.packageId, rate.rateId)
+                                    }
+                                )
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selected,
+                                onClick = null
+                            )
+                            Text(if (rate.displayShippingName().contains("CORREOS EXPRESS", true)) "CORREOS EXPRESS" else rate.displayShippingName(), Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                            Text(if (rate.price.toBigDecimalOrNull() == BigDecimal.ZERO) "Gratis" else formatMinorUnits(rate.price, rate.currencyMinorUnit, rate.currencySymbol), color = CheckoutUiGreen, fontWeight = FontWeight.SemiBold)
+                        }
+                    } } } }
                 }
             }
             item { CheckoutSection(3, "Resumen") }
@@ -284,7 +309,7 @@ fun RedesignedCheckoutScreen(
             }
             item { CheckoutSection(4, "Pago") }
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     paymentOptions.forEach { option ->
                         val method = option.gatewayId
                         val selected = selectedPayment == method
@@ -392,7 +417,11 @@ private fun CheckoutPaymentOption(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 82.dp)
-            .clickable(onClick = onClick),
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = onClick
+            ),
         shape = RoundedCornerShape(16.dp),
         color = if (selected) Color(0xFFE4F1ED) else Color.Transparent,
         border = BorderStroke(1.dp, Color(0xFFD0C9D0))
@@ -405,7 +434,7 @@ private fun CheckoutPaymentOption(
         ) {
             RadioButton(
                 selected = selected,
-                onClick = onClick,
+                onClick = null,
                 colors = RadioButtonDefaults.colors(selectedColor = CheckoutUiGreen)
             )
             Spacer(Modifier.width(14.dp))

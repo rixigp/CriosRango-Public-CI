@@ -81,6 +81,38 @@ import compose.icons.tablericons.Shirt
 import compose.icons.tablericons.Tag
 import kotlinx.coroutines.launch
 
+internal fun productCombinationSelectionKey(
+    productId: Int,
+    variationId: Int?,
+    selectedAttributes: Map<String, String>
+): String = buildString {
+    append(productId)
+    append("|")
+    append(variationId ?: 0)
+    selectedAttributes
+        .toSortedMap()
+        .forEach { (name, value) ->
+            append("|")
+            append(name)
+            append("=")
+            append(value)
+        }
+}
+
+internal fun productDetailAddButtonEnabled(
+    currentCombinationAdded: Boolean,
+    canAdd: Boolean,
+    quantity: Int,
+    minimumQuantity: Int,
+    multipleOf: Int,
+    availableMaximum: Int?
+): Boolean =
+    !currentCombinationAdded &&
+        canAdd &&
+        quantity >= minimumQuantity &&
+        (quantity - minimumQuantity) % multipleOf == 0 &&
+        (availableMaximum == null || quantity <= availableMaximum)
+
 internal fun productSizeSortKey(value: String): Int {
     val clean = value
         .uppercase()
@@ -142,20 +174,11 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
         it.selectedAttributes == selectedAttributes
     }
 
-    val currentSelectionKey = buildString {
-        append(product.id)
-        append("|")
-        append(matching?.id ?: 0)
-
+    val currentSelectionKey = productCombinationSelectionKey(
+        product.id,
+        matching?.id,
         selectedAttributes
-            .toSortedMap()
-            .forEach { (name, value) ->
-                append("|")
-                append(name)
-                append("=")
-                append(value)
-            }
-    }
+    )
 
     var lastAddedSelectionKey by remember(product.id) {
         mutableStateOf<String?>(null)
@@ -244,12 +267,14 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
             ) {
                 Button(
                     onClick = addCurrentProductToCart,
-                    enabled =
-                        canAdd &&
-                        quantity >= minimumQuantity &&
-                        (quantity - minimumQuantity) % multipleOf == 0 &&
-                        (availableMaximum == null ||
-                            quantity <= availableMaximum),
+                    enabled = productDetailAddButtonEnabled(
+                        currentCombinationAdded = currentCombinationAdded,
+                        canAdd = canAdd,
+                        quantity = quantity,
+                        minimumQuantity = minimumQuantity,
+                        multipleOf = multipleOf,
+                        availableMaximum = availableMaximum
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
