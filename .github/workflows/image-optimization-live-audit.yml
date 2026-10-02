@@ -1,0 +1,42 @@
+name: Image optimization live audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image-optimization-live-audit:
+    name: Image optimization live audit
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Create ephemeral debug keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -v -keystore "$RUNNER_TEMP/audit-debug.jks" -storepass audit-pass -alias audit -keypass audit-pass -keyalg RSA -keysize 2048 -validity 1 -dname "CN=Image optimization live audit"
+          {
+            echo "CRIOSRANGO_DEBUG_KEYSTORE_FILE=$RUNNER_TEMP/audit-debug.jks"
+            echo "CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD=audit-pass"
+            echo "CRIOSRANGO_DEBUG_KEY_ALIAS=audit"
+            echo "CRIOSRANGO_DEBUG_KEY_PASSWORD=audit-pass"
+          } >> "$GITHUB_ENV"
+
+      - name: Run live image audit
+        run: ./gradlew :app:testDebugUnitTest --tests es.criosrango.app.LiveImageOptimizationAuditTest --stacktrace
+
+      - name: Cleanup
+        if: always()
+        run: rm -f "$RUNNER_TEMP/audit-debug.jks"
