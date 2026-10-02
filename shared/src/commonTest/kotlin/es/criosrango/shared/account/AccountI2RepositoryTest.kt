@@ -92,14 +92,17 @@ class AccountI2RepositoryTest {
     }
 
     @Test
-    fun customerAddress401_clearsOnlyAccountToken() = runBlocking {
+    fun customerAddress401_clearsTokenAndPendingClaim() = runBlocking {
         val store = FakeI2TokenStore("tok")
+        val pending = FakeClaimOrderStore(PendingClaimOrder(42, "key"))
         val repo = AccountRepository(
             store,
-            client = client("""{"message":"unauthorized"}""", HttpStatusCode.Unauthorized)
+            client = client("""{"message":"unauthorized"}""", HttpStatusCode.Unauthorized),
+            claimOrderStore = pending
         )
         assertFailsWith<Exception> { repo.customerAddress() }
         assertNull(store.load())
+        assertNull(pending.load())
     }
 
     @Test
@@ -204,7 +207,7 @@ class AccountI2RepositoryTest {
     }
 
     @Test
-    fun claimUnauthorized_clearsAccountSessionAndLeavesPendingIdentity() = runBlocking {
+    fun claimUnauthorized_clearsAccountSessionAndPendingIdentity() = runBlocking {
         val tokenStore = FakeI2TokenStore("tok")
         val pending = FakeClaimOrderStore(PendingClaimOrder(42, "key"))
         val repo = AccountRepository(
@@ -215,7 +218,7 @@ class AccountI2RepositoryTest {
 
         assertFailsWith<Exception> { repo.claimPendingOrder() }
         assertNull(tokenStore.load())
-        assertEquals(PendingClaimOrder(42, "key"), pending.load())
+        assertNull(pending.load())
     }
 
     @Test

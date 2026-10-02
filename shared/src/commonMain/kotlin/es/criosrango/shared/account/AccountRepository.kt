@@ -65,7 +65,7 @@ class AccountRepository(
             client.me(token).user
         } catch (exception: ResponseException) {
             if (exception.response.status == HttpStatusCode.Unauthorized) {
-                tokenStore.clear()
+                clearAuthenticationState()
             }
             throw exception
         }
@@ -105,7 +105,7 @@ class AccountRepository(
             }
             response
         } catch (exception: ResponseException) {
-            if (exception.response.status == HttpStatusCode.Unauthorized) tokenStore.clear()
+            if (exception.response.status == HttpStatusCode.Unauthorized) clearAuthenticationState()
             throw exception
         }
     }
@@ -122,12 +122,12 @@ class AccountRepository(
             if (token != null) client.logout(token)
         } finally {
             runCatching { PushDeviceRegistration.unregisterCurrentDevice() }
-            tokenStore.clear()
+            clearAuthenticationState()
         }
     }
 
     fun clearLocalSession() {
-        tokenStore.clear()
+        clearAuthenticationState()
     }
 
     private suspend fun <T> authenticated(block: suspend (String) -> T): T {
@@ -136,10 +136,15 @@ class AccountRepository(
             block(token)
         } catch (exception: ResponseException) {
             if (exception.response.status == HttpStatusCode.Unauthorized) {
-                tokenStore.clear()
+                clearAuthenticationState()
             }
             throw exception
         }
+    }
+
+    private fun clearAuthenticationState() {
+        tokenStore.clear()
+        claimOrderStore?.clear()
     }
 
     private fun requireToken(): String =
