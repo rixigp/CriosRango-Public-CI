@@ -741,12 +741,6 @@ internal fun ProductCard(product: StoreProduct, onProduct: (StoreProduct) -> Uni
                 ContentScale.Crop,
                 onImageReady
             )
-            ProductColorSwatches(
-                product = product,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(8.dp)
-            )
             if (product.onSale) {
                 Text(
                     "OFERTA",
