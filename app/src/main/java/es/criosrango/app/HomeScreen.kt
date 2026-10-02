@@ -52,6 +52,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -671,7 +672,7 @@ internal fun NovedadesScreen(
 // NOVEDADES_V2_END
 
 @Composable
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 internal fun HomeScreen(
     products: List<StoreProduct>,
     allProducts: List<StoreProduct>,
@@ -683,8 +684,10 @@ internal fun HomeScreen(
     onOutlet: (ProductCategory) -> Unit,
     homeListState: androidx.compose.foundation.lazy.LazyListState,
     showAll: Boolean,
-    onShowAllChange: (Boolean) -> Unit
-,
+    onShowAllChange: (Boolean) -> Unit,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    onEnterNovedades: () -> Unit,
     brands: List<BrandTerm>,
     onBrand: (BrandTerm) -> Unit,
     onAllBrands: () -> Unit,
@@ -700,6 +703,11 @@ internal fun HomeScreen(
         }
         .distinctBy { it.id }
     val novedades = remember(products) { products.shuffled().take(8) }
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
+        modifier = Modifier.fillMaxSize()
+    ) {
     if (showAll) {
         NovedadesScreen(
             products = products,
@@ -708,9 +716,7 @@ internal fun HomeScreen(
             onBack = { onShowAllChange(false) },
             onProduct = onProduct
         )
-        return
-    }
-
+    } else {
     LazyColumn(
         state = homeListState,
         modifier = Modifier.padding(bottom = padding.calculateBottomPadding()).background(MaterialTheme.colorScheme.background), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -737,7 +743,7 @@ internal fun HomeScreen(
             Spacer(Modifier.height(18.dp))
         }
 
-        item { HomeSectionTitle("Novedades", "Ver todo") { onShowAllChange(true) } }
+        item { HomeSectionTitle("Novedades", "Ver todo") { onEnterNovedades() } }
             item { ProductCarousel(novedades, onProduct) }
             item {
     HomeOutletSection(
@@ -756,6 +762,8 @@ item {
     )
 }
         }
+    }
+    }
     }
 }
 
