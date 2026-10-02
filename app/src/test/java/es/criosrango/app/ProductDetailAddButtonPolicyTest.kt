@@ -53,6 +53,180 @@ class ProductDetailAddButtonPolicyTest {
         assertEquals("rojo", selected["Color"])
     }
 
+    private fun variation(
+        vararg attributes: Pair<String, String>,
+        available: Boolean = true
+    ) = ProductDetailVariationSnapshot(
+        availableForPurchase = available,
+        attributes = attributes.toList()
+    )
+
+    @Test
+    fun selectedColor_canBeDeselected() {
+        val selected = mutableMapOf("Color" to "granate")
+        productDetailToggleAttributeSelection(
+            selected = selected,
+            attributeName = "Color",
+            termSlug = "granate",
+            chosen = true,
+            existsGlobally = true
+        )
+        assertFalse(selected.containsKey("Color"))
+    }
+
+    @Test
+    fun selectedSize_canBeDeselected() {
+        val selected = mutableMapOf("Tallas" to "50")
+        productDetailToggleAttributeSelection(
+            selected = selected,
+            attributeName = "Tallas",
+            termSlug = "50",
+            chosen = true,
+            existsGlobally = true
+        )
+        assertFalse(selected.containsKey("Tallas"))
+    }
+
+    @Test
+    fun incompatibleColor_replacesColorAndClearsConflictingSize() {
+        val selected = mutableMapOf("Color" to "granate", "Tallas" to "50")
+        val variations = listOf(
+            variation("Color" to "granate", "Tallas" to "50"),
+            variation("Color" to "granate", "Tallas" to "52"),
+            variation("Color" to "marron", "Tallas" to "52")
+        )
+
+        productDetailSelectAttributeOption(
+            selected = selected,
+            attributeName = "Color",
+            termSlug = "marron",
+            termName = "Marrón",
+            variations = variations
+        )
+
+        assertEquals("marron", selected["Color"])
+        assertFalse(selected.containsKey("Tallas"))
+    }
+
+    @Test
+    fun incompatibleSize_replacesSizeAndClearsConflictingColor() {
+        val selected = mutableMapOf("Color" to "marron", "Tallas" to "50")
+        val variations = listOf(
+            variation("Color" to "marron", "Tallas" to "50"),
+            variation("Color" to "granate", "Tallas" to "52"),
+            variation("Color" to "marron", "Tallas" to "52")
+        )
+
+        productDetailSelectAttributeOption(
+            selected = selected,
+            attributeName = "Tallas",
+            termSlug = "52",
+            termName = "52",
+            variations = variations
+        )
+
+        assertEquals("52", selected["Tallas"])
+        assertEquals("marron", selected["Color"])
+    }
+
+    @Test
+    fun globallyUnavailableOption_remainsDisabled() {
+        val variations = listOf(
+            variation("Color" to "granate", "Tallas" to "50"),
+            variation("Color" to "marron", "Tallas" to "52")
+        )
+        val state = productDetailAttributeOptionState(
+            variations = variations,
+            selected = mapOf("Color" to "granate", "Tallas" to "50"),
+            attributeName = "Color",
+            termSlug = "azul",
+            termName = "Azul"
+        )
+
+        assertFalse(state.existsGlobally)
+        assertFalse(state.compatibleWithCurrentSelection)
+        assertFalse(productDetailAttributeOptionClickable(chosen = false, existsGlobally = state.existsGlobally))
+    }
+
+    @Test
+    fun globallyExistingButCurrentlyIncompatibleOption_remainsClickable() {
+        val variations = listOf(
+            variation("Color" to "granate", "Tallas" to "50"),
+            variation("Color" to "marron", "Tallas" to "52")
+        )
+        val state = productDetailAttributeOptionState(
+            variations = variations,
+            selected = mapOf("Color" to "granate", "Tallas" to "50"),
+            attributeName = "Color",
+            termSlug = "marron",
+            termName = "Marrón"
+        )
+
+        assertTrue(state.existsGlobally)
+        assertFalse(state.compatibleWithCurrentSelection)
+        assertTrue(productDetailAttributeOptionClickable(chosen = false, existsGlobally = state.existsGlobally))
+    }
+
+    @Test
+    fun nonConflictingSelection_isPreserved() {
+        val selected = mutableMapOf("Color" to "granate", "Tallas" to "50")
+        val variations = listOf(
+            variation("Color" to "granate", "Tallas" to "50"),
+            variation("Color" to "marron", "Tallas" to "50"),
+            variation("Color" to "marron", "Tallas" to "52")
+        )
+
+        productDetailSelectAttributeOption(
+            selected = selected,
+            attributeName = "Color",
+            termSlug = "marron",
+            termName = "Marrón",
+            variations = variations
+        )
+
+        assertEquals(mapOf("Color" to "marron", "Tallas" to "50"), selected)
+    }
+
+    @Test
+    fun switchingAtoBtoA_keepsSelectionFlowWorking() {
+        val selected = mutableMapOf("Color" to "azul")
+        val variations = listOf(
+            variation("Color" to "azul", "Tallas" to "M"),
+            variation("Color" to "rojo", "Tallas" to "M")
+        )
+
+        productDetailSelectAttributeOption(
+            selected = selected,
+            attributeName = "Color",
+            termSlug = "rojo",
+            termName = "Rojo",
+            variations = variations
+        )
+        productDetailSelectAttributeOption(
+            selected = selected,
+            attributeName = "Color",
+            termSlug = "azul",
+            termName = "Azul",
+            variations = variations
+        )
+
+        assertEquals("azul", selected["Color"])
+    }
+
+    @Test
+    fun currentCombinationAdded_stillBlocksAdd() {
+        assertFalse(
+            productDetailAddButtonEnabled(
+                currentCombinationAdded = true,
+                canAdd = true,
+                quantity = 1,
+                minimumQuantity = 1,
+                multipleOf = 1,
+                availableMaximum = null
+            )
+        )
+    }
+
     @Test
     fun addedCombination_cannotBeAddedAgain() {
         assertFalse(
