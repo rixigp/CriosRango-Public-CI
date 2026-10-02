@@ -283,7 +283,7 @@ fun RedesignedCheckoutScreen(
                             Text(if (rate.displayShippingName().contains("CORREOS EXPRESS", true)) "CORREOS EXPRESS" else rate.displayShippingName(), Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                             Text(if (rate.price.toBigDecimalOrNull() == BigDecimal.ZERO) "Gratis" else formatMinorUnits(rate.price, rate.currencyMinorUnit, rate.currencySymbol), color = CheckoutUiGreen, fontWeight = FontWeight.SemiBold)
                         }
-                    } } } }
+                    } } }
                 }
             }
             item { CheckoutSection(3, "Resumen") }
