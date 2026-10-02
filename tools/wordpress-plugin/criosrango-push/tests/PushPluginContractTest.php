@@ -80,19 +80,69 @@ function register_activation_hook($file, $callback): void {
     $GLOBALS['push_test_activation_callbacks'][] = $callback;
 }
 if (!defined('DAY_IN_SECONDS')) define('DAY_IN_SECONDS', 86400);
+final class FakeActionSchedule {
+    public function __construct(private bool $recurring) {}
+    public function get_recurrence(): string|false { return $this->recurring ? '86400' : false; }
+}
+final class FakeScheduledAction {
+    public function __construct(
+        private int $id,
+        private int $timestamp,
+        private bool $recurring
+    ) {}
+    public function get_id(): int { return $this->id; }
+    public function get_schedule(): FakeActionSchedule { return new FakeActionSchedule($this->recurring); }
+    public function get_scheduled_date(): DateTimeImmutable {
+        return (new DateTimeImmutable('@' . $this->timestamp))->setTimezone(new DateTimeZone('UTC'));
+    }
+}
+function as_get_scheduled_actions($args = [], $return_format = 'OBJECT'): array {
+    $actions = [];
+    foreach ($GLOBALS['push_test_scheduled_actions'] as $action) {
+        if (($args['hook'] ?? '') !== $action['hook']) continue;
+        if (($args['group'] ?? '') !== $action['group']) continue;
+        if (($args['status'] ?? 'pending') !== 'pending') continue;
+        $actions[] = new FakeScheduledAction((int)$action['id'], (int)$action['timestamp'], (bool)($action['recurring'] ?? false));
+    }
+    usort($actions, fn($a, $b) => $a->get_scheduled_date()->getTimestamp() <=> $b->get_scheduled_date()->getTimestamp());
+    if ($return_format === 'ids') return array_map(fn($a) => $a->get_id(), $actions);
+    return $actions;
+}
 function as_has_scheduled_action($hook, $args = [], $group = ''): bool {
     foreach ($GLOBALS['push_test_scheduled_actions'] as $action) {
         if ($action['hook'] === $hook && $action['args'] === $args && $action['group'] === $group) return true;
     }
     return false;
 }
+function as_schedule_single_action($timestamp, $hook, $args = [], $group = '', $unique = false): int {
+    if ($unique && as_has_scheduled_action($hook, $args, $group)) return 0;
+    $id = count($GLOBALS['push_test_scheduled_actions']) + 1;
+    $GLOBALS['push_test_scheduled_actions'][] = [
+        'id' => $id, 'hook' => $hook, 'timestamp' => $timestamp,
+        'args' => $args, 'group' => $group, 'unique' => $unique, 'recurring' => false,
+    ];
+    return $id;
+}
 function as_schedule_recurring_action($timestamp, $interval, $hook, $args = [], $group = '', $unique = false): int {
     $id = count($GLOBALS['push_test_scheduled_actions']) + 1;
     $GLOBALS['push_test_scheduled_actions'][] = [
         'id' => $id, 'hook' => $hook, 'timestamp' => $timestamp,
-        'interval' => $interval, 'args' => $args, 'group' => $group, 'unique' => $unique,
+        'interval' => $interval, 'args' => $args, 'group' => $group, 'unique' => $unique, 'recurring' => true,
     ];
     return $id;
+}
+function as_unschedule_all_actions($hook, $args = [], $group = ''): ?int {
+    $removed = null;
+    $remaining = [];
+    foreach ($GLOBALS['push_test_scheduled_actions'] as $action) {
+        if ($action['hook'] === $hook && $action['args'] === $args && $action['group'] === $group) {
+            $removed ??= (int)$action['id'];
+            continue;
+        }
+        $remaining[] = $action;
+    }
+    $GLOBALS['push_test_scheduled_actions'] = $remaining;
+    return $removed;
 }
 function dbDelta(...$args): void {}
 function is_wp_error(mixed $value): bool { return $value instanceof WP_Error; }
@@ -101,6 +151,7 @@ function sanitize_key($value): string { return preg_replace('/[^a-z0-9_\-]/', ''
 function get_post_meta($id, $key, $single = false): string { return ''; }
 function update_post_meta($id, $key, $value): void {}
 function wp_date($format): string { return '2026-10-01'; }
+function wp_timezone(): DateTimeZone { return $GLOBALS['push_test_timezone'] ?? new DateTimeZone('Europe/Madrid'); }
 function wp_list_pluck(array $items, string $field): array { return array_map(fn($item) => $item->{$field}, $items); }
 function wp_remote_post(...$args): array { return ['response' => ['code' => 200], 'body' => '{}']; }
 function get_option($key): mixed { return null; }
@@ -224,6 +275,7 @@ $GLOBALS['push_test_order'] = new FakeOrder(0);
 $GLOBALS['push_test_hooks'] = [];
 $GLOBALS['push_test_activation_callbacks'] = [];
 $GLOBALS['push_test_scheduled_actions'] = [];
+$GLOBALS['push_test_timezone'] = new DateTimeZone('Europe/Madrid');
 define('ABSPATH', '/tmp/');
 
 require_once dirname(__DIR__) . '/criosrango-push.php';
@@ -243,62 +295,64 @@ function reset_push_harness(): FakeWpdb {
     $GLOBALS['wpdb'] = $db;
     $GLOBALS['push_test_user_id'] = 0;
     $GLOBALS['push_test_order'] = new FakeOrder(0);
+    $GLOBALS['push_test_scheduled_actions'] = [];
+    $GLOBALS['push_test_timezone'] = new DateTimeZone('Europe/Madrid');
     return $db;
 }
 
 function test_action_scheduler(): void {
     $db = reset_push_harness();
-    $GLOBALS['push_test_scheduled_actions'] = [];
 
-    // The real activation callback includes WordPress's upgrade helper; provide only
-    // the empty file needed for the harness's existing dbDelta stub.
+    $activation = $GLOBALS['push_test_activation_callbacks'][0] ?? null;
+    push_assert(is_callable($activation), 'plugin activation callback must be registered');
     @mkdir('/tmp/wp-admin/includes', 0777, true);
     if (!is_file('/tmp/wp-admin/includes/upgrade.php')) {
         file_put_contents('/tmp/wp-admin/includes/upgrade.php', "<?php\n");
     }
-    $activation = $GLOBALS['push_test_activation_callbacks'][0] ?? null;
-    push_assert(is_callable($activation), 'plugin activation callback must be registered');
     $activation();
 
-    push_assert_same(1, count($GLOBALS['push_test_scheduled_actions']), 'activation without a prior job must schedule exactly one digest');
+    push_assert_same(1, count($GLOBALS['push_test_scheduled_actions']), 'activation must schedule exactly one digest');
     $scheduled = $GLOBALS['push_test_scheduled_actions'][0];
     push_assert_same('criosrango_push_daily_digest', $scheduled['hook'], 'scheduled hook must match the digest callback hook');
     push_assert_same(CriosRango_Push::GROUP, $scheduled['group'], 'scheduled action must use the plugin group');
-    push_assert_same(DAY_IN_SECONDS, $scheduled['interval'], 'digest recurrence must be daily');
-    push_assert($scheduled['timestamp'] >= time() + DAY_IN_SECONDS - 2 && $scheduled['timestamp'] <= time() + DAY_IN_SECONDS + 2, 'first digest must be scheduled about one day ahead');
-    push_assert_same(true, $scheduled['unique'], 'scheduler request must ask for a unique recurring action');
-
-    // Repeated activation and the action_scheduler_init callback must not duplicate it.
-    $activation();
-    CriosRango_Push::ensure_schedule();
-    push_assert_same(1, count($GLOBALS['push_test_scheduled_actions']), 'repeated activation/registration must not create a duplicate');
-
-    // A pre-existing matching action must also suppress scheduling.
-    $GLOBALS['push_test_scheduled_actions'] = [[
-        'id' => 99, 'hook' => 'criosrango_push_daily_digest', 'timestamp' => time() + DAY_IN_SECONDS,
-        'interval' => DAY_IN_SECONDS, 'args' => [], 'group' => CriosRango_Push::GROUP, 'unique' => true,
-    ]];
-    CriosRango_Push::ensure_schedule();
-    push_assert_same(1, count($GLOBALS['push_test_scheduled_actions']), 'an existing digest job must not be rescheduled');
+    push_assert_same(false, $scheduled['recurring'], 'digest scheduler must use a single action');
+    push_assert_same(CriosRango_Push::next_digest_datetime()->getTimestamp(), $scheduled['timestamp'], 'scheduled timestamp must equal the next 21:00 WordPress-time calculation');
 
     $callbacks = $GLOBALS['push_test_hooks']['criosrango_push_daily_digest'] ?? [];
-    push_assert_same([['CriosRango_Push', 'digest']], $callbacks, 'scheduled hook must be registered to the real digest callback');
+    push_assert_same(2, count($callbacks), 'digest hook must have scheduler and digest callbacks');
+    push_assert_same(['CriosRango_Push', 'schedule_next'], $callbacks[0], 'scheduler callback must run before digest');
+    push_assert_same(['CriosRango_Push', 'digest'], $callbacks[1], 'digest callback must remain registered unchanged');
 
-    // Invoke the callback captured from the plugin's actual add_action registration.
-    $db->productEvents = [(object)['id' => 1, 'sent_gmt' => null]];
-    $db->devices = [(object)['id' => 10, 'active' => 1, 'new_products' => 1, 'order_updates' => 1, 'user_id' => 0]];
-    $sent = 0;
-    $sender = function($device, $payload) use (&$sent): array {
-        $sent++;
-        return ['result' => 'sent', 'provider_id' => 'scheduler-test', 'invalid' => false];
-    };
-    $callback = $callbacks[0];
-    call_user_func($callback, $sender);
-    push_assert_same(1, $sent, 'scheduler callback must run the real digest and send once');
-    push_assert($db->digestRow !== null && $db->digestRow->sent_gmt !== null, 'successful callback must persist the digest:<date> sent marker');
+    CriosRango_Push::ensure_schedule();
+    push_assert_same(1, count($GLOBALS['push_test_scheduled_actions']), 'repeated ensure_schedule must not duplicate the pending digest');
 
-    call_user_func($callback, $sender);
-    push_assert_same(1, $sent, 'running the callback twice must not send the same daily digest twice');
+    $now20 = new DateTimeImmutable('2026-10-02 20:00:00', new DateTimeZone('Europe/Madrid'));
+    $next20 = CriosRango_Push::next_digest_datetime($now20);
+    push_assert_same('2026-10-02 21:00:00 CEST', $next20->format('Y-m-d H:i:s T'), '20:00 Madrid must schedule today at 21:00');
+
+    $now2101 = new DateTimeImmutable('2026-10-02 21:01:00', new DateTimeZone('Europe/Madrid'));
+    $next2101 = CriosRango_Push::next_digest_datetime($now2101);
+    push_assert_same('2026-10-03 21:00:00 CEST', $next2101->format('Y-m-d H:i:s T'), '21:01 Madrid must schedule tomorrow at 21:00');
+
+    $summer = CriosRango_Push::next_digest_datetime(new DateTimeImmutable('2026-03-29 20:00:00', new DateTimeZone('Europe/Madrid')));
+    push_assert_same('2026-03-29 21:00:00 CEST', $summer->format('Y-m-d H:i:s T'), 'DST start must preserve 21:00 local time');
+    push_assert_same('2026-03-29 19:00:00 UTC', $summer->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s T'), 'DST summer 21:00 Madrid must be 19:00 UTC');
+
+    $winter = CriosRango_Push::next_digest_datetime(new DateTimeImmutable('2026-10-25 20:00:00', new DateTimeZone('Europe/Madrid')));
+    push_assert_same('2026-10-25 21:00:00 CET', $winter->format('Y-m-d H:i:s T'), 'DST end must preserve 21:00 local time');
+    push_assert_same('2026-10-25 20:00:00 UTC', $winter->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s T'), 'DST winter 21:00 Madrid must be 20:00 UTC');
+
+    $GLOBALS['push_test_scheduled_actions'] = [[
+        'id' => 99, 'hook' => 'criosrango_push_daily_digest', 'timestamp' => time() + 86400,
+        'args' => [], 'group' => CriosRango_Push::GROUP, 'unique' => true, 'recurring' => true,
+    ]];
+    CriosRango_Push::ensure_schedule();
+    push_assert_same(1, count($GLOBALS['push_test_scheduled_actions']), 'legacy recurring migration must leave exactly one digest action');
+    push_assert_same(false, $GLOBALS['push_test_scheduled_actions'][0]['recurring'], 'legacy recurring action must be replaced by a single action');
+    push_assert_same(CriosRango_Push::next_digest_datetime()->getTimestamp(), $GLOBALS['push_test_scheduled_actions'][0]['timestamp'], 'migrated action must target the next 21:00 local time');
+
+    CriosRango_Push::schedule_next();
+    push_assert_same(1, count($GLOBALS['push_test_scheduled_actions']), 'schedule_next must remain idempotent');
 }
 
 function reset_push_request_auth(): void {

@@ -11,7 +11,8 @@ final class CriosRango_Push {
         add_action('rest_api_init',[__CLASS__,'routes']);
         add_action('transition_post_status',[__CLASS__,'product_publish'],10,3);
         add_action('woocommerce_order_status_changed',[__CLASS__,'order_status'],10,4);
-        add_action('criosrango_push_daily_digest',[__CLASS__,'digest']);
+        add_action('criosrango_push_daily_digest',[__CLASS__,'schedule_next'],5);
+        add_action('criosrango_push_daily_digest',[__CLASS__,'digest'],10);
         add_action('action_scheduler_init',[__CLASS__,'ensure_schedule']);
     }
     static function table($n){global $wpdb;return $wpdb->prefix.'criosrango_push_'.$n;}
@@ -22,10 +23,50 @@ final class CriosRango_Push {
         dbDelta("CREATE TABLE ".self::table('deliveries')." (id bigint unsigned NOT NULL AUTO_INCREMENT,event_id bigint unsigned NOT NULL,device_id bigint unsigned NOT NULL,result varchar(30) NOT NULL,provider_id varchar(255) NOT NULL DEFAULT '',created_gmt datetime NOT NULL,PRIMARY KEY(id),UNIQUE KEY event_device(event_id,device_id)) $c;");
         self::schedule();
     }
-    static function schedule(){
-        if(function_exists('as_has_scheduled_action') && function_exists('as_schedule_recurring_action') && !as_has_scheduled_action('criosrango_push_daily_digest',[],self::GROUP))
-            as_schedule_recurring_action(time()+DAY_IN_SECONDS,DAY_IN_SECONDS,'criosrango_push_daily_digest',[],self::GROUP,true);
+    static function next_digest_datetime(?DateTimeImmutable $now=null): DateTimeImmutable{
+        $timezone=wp_timezone();
+        $now=($now?:new DateTimeImmutable('now',$timezone))->setTimezone($timezone);
+        $target=$now->setTime(21,0,0);
+        if($now >= $target)$target=$target->modify('+1 day');
+        return $target;
     }
+    static function pending_digest_actions(): array{
+        if(!function_exists('as_get_scheduled_actions'))return[];
+        return as_get_scheduled_actions([
+            'hook'=>'criosrango_push_daily_digest',
+            'args'=>[],
+            'group'=>self::GROUP,
+            'status'=>'pending',
+            'per_page'=>-1,
+            'orderby'=>'date',
+            'order'=>'ASC',
+        ]);
+    }
+    static function schedule(){
+        if(!function_exists('as_schedule_single_action'))return;
+        $actions=self::pending_digest_actions();
+        $has_legacy_recurring=false;
+        foreach($actions as $action){
+            $schedule=method_exists($action,'get_schedule')?$action->get_schedule():null;
+            if($schedule && method_exists($schedule,'get_recurrence') && $schedule->get_recurrence()){
+                $has_legacy_recurring=true;
+                break;
+            }
+        }
+        if($has_legacy_recurring){
+            if(function_exists('as_unschedule_all_actions'))
+                as_unschedule_all_actions('criosrango_push_daily_digest',[],self::GROUP);
+            $actions=[];
+        }
+        if(count($actions)>1){
+            if(function_exists('as_unschedule_all_actions'))
+                as_unschedule_all_actions('criosrango_push_daily_digest',[],self::GROUP);
+            $actions=[];
+        }
+        if($actions)return;
+        as_schedule_single_action(self::next_digest_datetime()->getTimestamp(),'criosrango_push_daily_digest',[],self::GROUP,true);
+    }
+    static function schedule_next(){self::schedule();}
     static function ensure_schedule(){self::schedule();}
     static function authenticated_user_id($r){
     $header = trim((string)$r->get_header('authorization'));
