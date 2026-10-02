@@ -109,6 +109,11 @@ internal data class ProductDetailAttributeOptionState(
     val compatibleWithCurrentSelection: Boolean
 )
 
+internal fun productDetailAttributeOptionClickable(
+    chosen: Boolean,
+    existsGlobally: Boolean
+): Boolean = chosen || existsGlobally
+
 private fun variationHasAttributeValue(
     variation: ProductDetailVariationSnapshot,
     attributeName: String,
@@ -777,7 +782,7 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                         termName = term.name
                     )
                     val existsGlobally = optionState.existsGlobally
-                    val clickable = chosen || existsGlobally
+                    val clickable = productDetailAttributeOptionClickable(chosen, existsGlobally)
                     if (attribute.name.equals("Color", true)) {
                         val swatch = productColorSwatch(term.name)
 
