@@ -34,6 +34,36 @@ jobs:
             echo "CRIOSRANGO_DEBUG_KEY_PASSWORD=audit-pass"
           } >> "$GITHUB_ENV"
 
+      - name: Create ephemeral Google Services config
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app
+          cat > app/google-services.json <<'JSON'
+          {
+            "project_info": {
+              "project_number": "000000000000",
+              "project_id": "criosrango-image-audit"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000",
+                  "android_client_info": {
+                    "package_name": "es.criosrango.app"
+                  }
+                },
+                "api_key": [
+                  {
+                    "current_key": "AIzaSyA-audit-only-placeholder"
+                  }
+                ]
+              }
+            ],
+            "configuration_version": "1"
+          }
+          JSON
+
       - name: Run live image audit
         run: ./gradlew :app:testDebugUnitTest --tests es.criosrango.app.LiveImageOptimizationAuditTest --stacktrace
 
