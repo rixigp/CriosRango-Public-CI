@@ -1,54 +1,41 @@
 package es.criosrango.app
 
-import android.content.Context
-import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.xmlpull.v1.XmlPullParser
+import org.w3c.dom.Element
+import java.io.File
+import javax.xml.parsers.DocumentBuilderFactory
 
-@RunWith(RobolectricTestRunner::class)
 class BackupRulesTest {
-    private val context: Context = ApplicationProvider.getApplicationContext()
-
     @Test
     fun backupRulesExcludeAccountSessionV2() {
-        assertTrue(hasSharedPrefExclusion(context.resources.getXml(R.xml.backup_rules), "criosrango_account_session_v2.xml"))
+        assertTrue(hasSharedPrefExclusion("src/main/res/xml/backup_rules.xml", null))
     }
 
     @Test
     fun dataExtractionRulesExcludeAccountSessionV2FromCloudBackup() {
-        assertTrue(hasSharedPrefExclusionInSection(context.resources.getXml(R.xml.data_extraction_rules), "cloud-backup", "criosrango_account_session_v2.xml"))
+        assertTrue(hasSharedPrefExclusion("src/main/res/xml/data_extraction_rules.xml", "cloud-backup"))
     }
 
     @Test
     fun dataExtractionRulesExcludeAccountSessionV2FromDeviceTransfer() {
-        assertTrue(hasSharedPrefExclusionInSection(context.resources.getXml(R.xml.data_extraction_rules), "device-transfer", "criosrango_account_session_v2.xml"))
+        assertTrue(hasSharedPrefExclusion("src/main/res/xml/data_extraction_rules.xml", "device-transfer"))
     }
 
-    private fun hasSharedPrefExclusion(parser: XmlPullParser, path: String): Boolean =
-        findExclusion(parser, null, path)
+    private fun hasSharedPrefExclusion(filePath: String, requiredSection: String?): Boolean {
+        val document = DocumentBuilderFactory.newInstance()
+            .newDocumentBuilder()
+            .parse(File(filePath))
+        val exclusions = document.getElementsByTagName("exclude")
+        for (index in 0 until exclusions.length) {
+            val element = exclusions.item(index) as Element
+            if (element.getAttribute("domain") != "sharedpref" ||
+                element.getAttribute("path") != "criosrango_account_session_v2.xml"
+            ) continue
 
-    private fun hasSharedPrefExclusionInSection(parser: XmlPullParser, section: String, path: String): Boolean =
-        findExclusion(parser, section, path)
-
-    private fun findExclusion(parser: XmlPullParser, section: String?, path: String): Boolean {
-        var currentSection: String? = null
-        var event = parser.eventType
-        while (event != XmlPullParser.END_DOCUMENT) {
-            if (event == XmlPullParser.START_TAG) {
-                val name = parser.name
-                if (name == "cloud-backup" || name == "device-transfer") currentSection = name
-                if (name == "exclude" &&
-                    parser.getAttributeValue(null, "domain") == "sharedpref" &&
-                    parser.getAttributeValue(null, "path") == path &&
-                    (section == null || currentSection == section)
-                ) return true
-            } else if (event == XmlPullParser.END_TAG) {
-                if (parser.name == "cloud-backup" || parser.name == "device-transfer") currentSection = null
+            if (requiredSection == null || element.parentNode.nodeName == requiredSection) {
+                return true
             }
-            event = parser.next()
         }
         return false
     }
