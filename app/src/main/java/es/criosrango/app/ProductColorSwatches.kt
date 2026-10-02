@@ -22,7 +22,10 @@ internal fun productColorSwatch(value: String): Color? {
     val key = java.text.Normalizer.normalize(value.lowercase().trim(), java.text.Normalizer.Form.NFD)
         .replace("\\p{Mn}+".toRegex(), "")
     return when {
-        key.startsWith("#") && key.length == 7 -> runCatching { Color(android.graphics.Color.parseColor(key)) }.getOrNull()
+        key.startsWith("#") && key.length == 7 -> runCatching {
+            val rgb = key.substring(1).toLong(16).toInt()
+            Color(0xFF000000.toInt() or rgb)
+        }.getOrNull()
         "azul pavo" in key -> Color(0xFF315D66)
         "marino" in key -> Color(0xFF1F2D4D)
         "azul" in key -> Color(0xFF527DA8)
