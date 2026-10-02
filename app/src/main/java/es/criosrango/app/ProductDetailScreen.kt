@@ -99,6 +99,20 @@ internal fun productCombinationSelectionKey(
         }
 }
 
+internal fun productDetailToggleAttributeSelection(
+    selected: MutableMap<String, String>,
+    attributeName: String,
+    termSlug: String,
+    chosen: Boolean,
+    available: Boolean
+) {
+    if (chosen) {
+        selected.remove(attributeName)
+    } else if (available) {
+        selected[attributeName] = termSlug
+    }
+}
+
 internal fun productDetailAddButtonEnabled(
     currentCombinationAdded: Boolean,
     canAdd: Boolean,
@@ -665,11 +679,9 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
 
                         OutlinedButton(
                             onClick = {
-                                if (available) {
-                                    selected[attribute.name] = term.slug
-                                }
+                                productDetailToggleAttributeSelection(selected, attribute.name, term.slug, chosen, available)
                             },
-                            enabled = available,
+                            enabled = chosen || available,
                             shape = RoundedCornerShape(50.dp),
                             border = androidx.compose.foundation.BorderStroke(
                                 if (chosen) 2.dp else 1.dp,
