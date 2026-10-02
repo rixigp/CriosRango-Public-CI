@@ -125,7 +125,7 @@ class ProductDetailAddButtonPolicyTest {
         )
 
         assertEquals("52", selected["Tallas"])
-        assertEquals("marron", selected["Color"])
+        assertFalse(selected.containsKey("Color"))
     }
 
     @Test
