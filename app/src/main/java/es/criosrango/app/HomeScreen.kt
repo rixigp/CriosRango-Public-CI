@@ -104,6 +104,20 @@ internal val CATEGORY_PREVIEW_IMAGES = mapOf(
     560 to "https://www.criosrango.es/wp-content/uploads/2026/02/633312_0003Y.jpg"
 )
 
+internal val HOME_ROOT_CATEGORIES = listOf(
+    ProductCategory(id = 560, parent = 0, name = "Bautizo", count = 0, slug = ""),
+    ProductCategory(id = 292, parent = 0, name = "Bebe niña", count = 0, slug = ""),
+    ProductCategory(id = 294, parent = 0, name = "Bebé niño", count = 0, slug = ""),
+    ProductCategory(id = 420, parent = 0, name = "Calzado", count = 0, slug = ""),
+    ProductCategory(id = 504, parent = 0, name = "Comunión niña", count = 0, slug = ""),
+    ProductCategory(id = 509, parent = 0, name = "Comunión niño", count = 0, slug = ""),
+    ProductCategory(id = 70, parent = 0, name = "Hombre", count = 0, slug = ""),
+    ProductCategory(id = 71, parent = 0, name = "Mujer", count = 0, slug = ""),
+    ProductCategory(id = 68, parent = 0, name = "Niña", count = 0, slug = ""),
+    ProductCategory(id = 310, parent = 0, name = "Niño", count = 0, slug = ""),
+    ProductCategory(id = 67, parent = 0, name = "Recién nacido", count = 0, slug = "")
+)
+
 internal enum class HomeOutletSeason {
     WINTER,
     SUMMER
@@ -686,7 +700,6 @@ internal fun HomeScreen(
     showAll: Boolean,
     onShowAllChange: (Boolean) -> Unit,
     isRefreshing: Boolean,
-    homeCategoriesLoading: Boolean,
     onRefresh: () -> Unit,
     onEnterNovedades: () -> Unit,
     brands: List<BrandTerm>,
@@ -696,13 +709,6 @@ internal fun HomeScreen(
     onOutletSummer: () -> Unit,
     onOutletAll: () -> Unit) {
     val outlet = roots.firstOrNull { it.name.normalizedKey().contains("outlet") }
-    val rootCategories = roots
-        .filter {
-            it.parent == 0 &&
-            !it.name.equals("Outlet", ignoreCase = true) &&
-            !it.slug.equals("outlet", ignoreCase = true)
-        }
-        .distinctBy { it.id }
     val novedades = remember(products) { products.shuffled().take(8) }
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -732,21 +738,12 @@ internal fun HomeScreen(
         }
 
         item {
-            when (homeCategoryContentState(rootCategories.isNotEmpty(), homeCategoriesLoading)) {
-                HomeCategoryContentState.CONTENT -> CategoryPage(
-                    categories = rootCategories,
-                    allCategories = roots,
-                    allProducts = allProducts,
-                    onCategory = onCategory
-                )
-                HomeCategoryContentState.SKELETON -> HomeCategorySkeletonGrid()
-                HomeCategoryContentState.EMPTY -> Text(
-                    text = "No hay categorías disponibles",
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            CategoryPage(
+                categories = HOME_ROOT_CATEGORIES,
+                allCategories = roots,
+                allProducts = allProducts,
+                onCategory = onCategory
+            )
         }
 
         item {
@@ -774,53 +771,6 @@ item {
         }
     }
     }
-    }
-}
-
-internal enum class HomeCategoryContentState { CONTENT, SKELETON, EMPTY }
-
-internal fun homeCategoryContentState(hasCategories: Boolean, loading: Boolean): HomeCategoryContentState =
-    when {
-        hasCategories -> HomeCategoryContentState.CONTENT
-        loading -> HomeCategoryContentState.SKELETON
-        else -> HomeCategoryContentState.EMPTY
-    }
-
-@Composable
-internal fun HomeCategorySkeletonGrid() {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        repeat(2) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                repeat(3) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(0.68f)
-                                .height(10.dp)
-                                .clip(RoundedCornerShape(5.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                        )
-                    }
-                }
-            }
-        }
     }
 }
 

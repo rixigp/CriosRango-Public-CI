@@ -76,9 +76,6 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private var categoryStateSyncJob: Job? = null
     private val _categories = MutableStateFlow<List<ProductCategory>>(emptyList())
     val categories: StateFlow<List<ProductCategory>> = _categories.asStateFlow()
-    private val _homeCategoriesLoading = MutableStateFlow(false)
-    val homeCategoriesLoading: StateFlow<Boolean> = _homeCategoriesLoading.asStateFlow()
-    private var homeCategoriesRequestVersion = 0
     private val _homeProducts = MutableStateFlow<List<StoreProduct>>(emptyList())
     val homeProducts: StateFlow<List<StoreProduct>> = _homeProducts.asStateFlow()
     private val _brands = MutableStateFlow<List<BrandTerm>>(APP_BRANDS)
@@ -119,20 +116,12 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     fun refreshHome() {
         lastCatalogOperation = CatalogOperation.Home
         val requestVersion = ++productsRequestVersion
-        val categoryRequestVersion = ++homeCategoriesRequestVersion
-        _homeCategoriesLoading.value = true
         categoryCatalogLoadStatus.value = CategoryLoadStatus()
         viewModelScope.launch {
             _isLoading.value = true; _error.value = null
             supervisorScope {
                 val result = async { runCatching { repository.products() } }
-                val categoryResult = async {
-                    try {
-                        runCatching { repository.categories() }
-                    } finally {
-                        if (categoryRequestVersion == homeCategoriesRequestVersion) _homeCategoriesLoading.value = false
-                    }
-                }
+                val categoryResult = async { runCatching { repository.categories() } }
                 val recentResult = async { runCatching { repository.recentProducts() } }
                 val loadedProductsResult = result.await()
                 val loadedRecentResult = recentResult.await()
