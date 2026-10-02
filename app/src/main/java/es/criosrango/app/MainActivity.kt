@@ -13,9 +13,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
 import android.view.TextureView
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.viewinterop.AndroidView
@@ -32,7 +30,6 @@ import android.util.Log
 import es.criosrango.shared.PushNotificationContract
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
@@ -85,7 +82,6 @@ import compose.icons.tablericons.Tag
 import kotlinx.coroutines.launch
 
 enum class BrandOrigin { HOME, ALL_BRANDS }
-enum class ProductOrigin { HOME, CATEGORY, OUTLET, SEARCH, BRAND, CART, DEEP_LINK }
 enum class AppTab(val label: String) { HOME("Inicio"), CATEGORIES("Categorías"), OUTLET("Outlet"), SEARCH("Buscar"), CART("Carrito"), ACCOUNT("Cuenta") }
 private val paymentReturnUriState = androidx.compose.runtime.mutableStateOf<android.net.Uri?>(null)
 private val pushTypeState = androidx.compose.runtime.mutableStateOf<String?>(null)
@@ -166,7 +162,6 @@ private fun CriosRangoApp(
     var tab by remember { mutableStateOf(AppTab.HOME) }
     var returnToCartAfterLogin by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var homeShowAll by remember { mutableStateOf(false) }
-    var productOrigin by rememberSaveable { mutableStateOf<ProductOrigin?>(null) }
 
     LaunchedEffect(pushType, pushOrderId) {
         when (pushType) {
@@ -201,9 +196,9 @@ private fun CriosRangoApp(
         Surface(Modifier.fillMaxSize(), color = Color(0xFFFCFAF7)) {
             if (checkoutOpen) {
                 RedesignedCheckoutScreen(remoteCart, checkout, checkoutLoading, checkoutError, checkoutPhase, { checkoutOpen = false; viewModel.abandonCheckout() }, viewModel::loadCheckout, viewModel::selectShippingRate, viewModel::createOrder, viewModel.deliveryAddressStore)
-            } else {
-                Box(Modifier.fillMaxSize()) {
-                    Scaffold(
+            } else if (selectedProduct != null) {
+                ProductDetail(selectedProduct!!, selectedVariation, cartItems, viewModel::loadVariation, viewModel::closeProduct, { tab = AppTab.CART; viewModel.closeProduct() }, viewModel::addToCart)
+            } else Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
                 topBar = { StoreTopBar(tab, remoteCart.itemsCount, { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH }, { tab = AppTab.CART }) },
                 bottomBar = {
@@ -230,12 +225,12 @@ private fun CriosRangoApp(
                 when {
                     error != null && tab != AppTab.ACCOUNT && tab != AppTab.CART && !catalogHasUsableContent(tab, products, homeProducts, activeCategoryProducts) -> StoreErrorState(error!!, padding, viewModel::retryLastOperation)
                     showAllBrands -> AllBrandsScreen(brands = APP_BRANDS, padding = padding, onBrand = { brand -> brandOrigin = BrandOrigin.ALL_BRANDS; showAllBrands = false; selectedBrand = brand; viewModel.loadBrand(brand) }, onBack = { showAllBrands = false; selectedBrand = null; tab = AppTab.HOME })
-                    selectedBrand != null -> BrandProductsScreen(brand = selectedBrand!!, products = activeBrandProducts, loading = loading, padding = padding, onBack = { selectedBrand = null; when (brandOrigin) { BrandOrigin.HOME -> { showAllBrands = false; tab = AppTab.HOME }; BrandOrigin.ALL_BRANDS -> { showAllBrands = true; tab = AppTab.HOME } } }, onProduct = { productOrigin = ProductOrigin.BRAND; viewModel.openProduct(it) })
+                    selectedBrand != null -> BrandProductsScreen(brand = selectedBrand!!, products = activeBrandProducts, loading = loading, padding = padding, onBack = { selectedBrand = null; when (brandOrigin) { BrandOrigin.HOME -> { showAllBrands = false; tab = AppTab.HOME }; BrandOrigin.ALL_BRANDS -> { showAllBrands = true; tab = AppTab.HOME } } }, onProduct = viewModel::openProduct)
                     loading && products.isEmpty() && tab != AppTab.SEARCH && tab != AppTab.CATEGORIES && tab != AppTab.OUTLET -> LoadingState(padding)
-                    tab == AppTab.HOME -> HomeScreen(products = homeProducts, allProducts = products, roots = categories, brands = normalizedBrands, padding = padding, onProduct = { productOrigin = ProductOrigin.HOME; viewModel.openProduct(it) }, onAllCategories = { categoryPath.clear(); tab = AppTab.CATEGORIES }, onCategory = { category -> categoryPath.clear(); categoryPath += category.id; tab = AppTab.CATEGORIES }, onOutlet = { category -> outletSeasonFilter = null; categoryPath.clear(); categoryPath += category.id; tab = AppTab.OUTLET }, onBrand = { brand -> brandOrigin = BrandOrigin.HOME; selectedBrand = brand; showAllBrands = false; viewModel.loadBrand(brand) }, onAllBrands = { brandOrigin = BrandOrigin.HOME; selectedBrand = null; showAllBrands = true }, onOutletWinter = { outletSeasonFilter = HomeOutletSeason.WINTER; categoryPath.clear(); categoryPath += 445; tab = AppTab.OUTLET }, onOutletSummer = { outletSeasonFilter = HomeOutletSeason.SUMMER; categoryPath.clear(); categoryPath += 445; tab = AppTab.OUTLET }, onOutletAll = { outletSeasonFilter = null; categoryPath.clear(); categoryPath += 445; tab = AppTab.OUTLET }, homeListState = homeListState, showAll = homeShowAll, onShowAllChange = { homeShowAll = it }, isRefreshing = loading, onRefresh = { viewModel.refreshHome() }, onEnterNovedades = { viewModel.refreshHome(); homeShowAll = true })
-                    tab == AppTab.CATEGORIES -> CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = { productOrigin = ProductOrigin.CATEGORY; viewModel.openProduct(it) }, availabilityStore = outletAvailabilityStore, onRootBack = { categoryPath.clear(); tab = AppTab.HOME }, onOpen = { category: ProductCategory -> categoryPath += category.id }, outletSeasonFilter = null)
-                    tab == AppTab.OUTLET -> CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = { productOrigin = ProductOrigin.OUTLET; viewModel.openProduct(it) }, availabilityStore = outletAvailabilityStore, onRootBack = { categoryPath.clear(); outletSeasonFilter = null; tab = AppTab.HOME }, onOpen = { category: ProductCategory -> categoryPath += category.id; tab = AppTab.OUTLET }, outletSeasonFilter = outletSeasonFilter, onSingleLevelBack = if (outletSeasonFilter != null) { { outletSeasonFilter = null } } else { { categoryPath.clear(); tab = AppTab.HOME } })
-                    tab == AppTab.SEARCH -> SearchScreen(products = products, allProducts = homeProducts, categories = categories, brands = normalizedBrands, padding = padding, search = viewModel::search, onProduct = { productOrigin = ProductOrigin.SEARCH; viewModel.openProduct(it) }, onCategory = { category -> categoryPath.clear(); categoryPath += category.id; tab = AppTab.CATEGORIES }, loading = loading)
+                    tab == AppTab.HOME -> HomeScreen(products = homeProducts, allProducts = products, roots = categories, brands = normalizedBrands, padding = padding, onProduct = viewModel::openProduct, onAllCategories = { categoryPath.clear(); tab = AppTab.CATEGORIES }, onCategory = { category -> categoryPath.clear(); categoryPath += category.id; tab = AppTab.CATEGORIES }, onOutlet = { category -> outletSeasonFilter = null; categoryPath.clear(); categoryPath += category.id; tab = AppTab.OUTLET }, onBrand = { brand -> brandOrigin = BrandOrigin.HOME; selectedBrand = brand; showAllBrands = false; viewModel.loadBrand(brand) }, onAllBrands = { brandOrigin = BrandOrigin.HOME; selectedBrand = null; showAllBrands = true }, onOutletWinter = { outletSeasonFilter = HomeOutletSeason.WINTER; categoryPath.clear(); categoryPath += 445; tab = AppTab.OUTLET }, onOutletSummer = { outletSeasonFilter = HomeOutletSeason.SUMMER; categoryPath.clear(); categoryPath += 445; tab = AppTab.OUTLET }, onOutletAll = { outletSeasonFilter = null; categoryPath.clear(); categoryPath += 445; tab = AppTab.OUTLET }, homeListState = homeListState, showAll = homeShowAll, onShowAllChange = { homeShowAll = it }, isRefreshing = loading, onRefresh = { viewModel.refreshHome() }, onEnterNovedades = { viewModel.refreshHome(); homeShowAll = true })
+                    tab == AppTab.CATEGORIES -> CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = viewModel::openProduct, availabilityStore = outletAvailabilityStore, onRootBack = { categoryPath.clear(); tab = AppTab.HOME }, onOpen = { category: ProductCategory -> categoryPath += category.id }, outletSeasonFilter = null)
+                    tab == AppTab.OUTLET -> CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = viewModel::openProduct, availabilityStore = outletAvailabilityStore, onRootBack = { categoryPath.clear(); outletSeasonFilter = null; tab = AppTab.HOME }, onOpen = { category: ProductCategory -> categoryPath += category.id; tab = AppTab.OUTLET }, outletSeasonFilter = outletSeasonFilter, onSingleLevelBack = if (outletSeasonFilter != null) { { outletSeasonFilter = null } } else { { categoryPath.clear(); tab = AppTab.HOME } })
+                    tab == AppTab.SEARCH -> SearchScreen(products = products, allProducts = homeProducts, categories = categories, brands = normalizedBrands, padding = padding, search = viewModel::search, onProduct = viewModel::openProduct, onCategory = { category -> categoryPath.clear(); categoryPath += category.id; tab = AppTab.CATEGORIES }, loading = loading)
                     tab == AppTab.ACCOUNT -> AccountLoginScreen(
                         padding = padding,
                         vm = accountViewModel,
@@ -264,7 +259,7 @@ private fun CriosRangoApp(
                         increment = viewModel::cartIncrement,
                         removeLine = viewModel::removeCartLine,
                         clearCart = viewModel::clearCart,
-                        openLine = { item -> productOrigin = ProductOrigin.CART; viewModel.openCartLine(item) },
+                        openLine = viewModel::openCartLine,
                         retry = viewModel::refreshCart,
                         onCheckout = { checkoutOpen = true },
                         accountUserId = accountUser?.id,
@@ -274,27 +269,8 @@ private fun CriosRangoApp(
                         },
                     )
                 }
-                if (selectedProduct != null) {
-                    ProductDetail(
-                        selectedProduct!!,
-                        selectedVariation,
-                        cartItems,
-                        viewModel::loadVariation,
-                        { productOrigin = null; viewModel.closeProduct() },
-                        { tab = AppTab.CART; productOrigin = null; viewModel.closeProduct() },
-                        viewModel::addToCart
-                    )
-                }
-                PredictiveBackHandler(enabled = selectedProduct != null) { progress ->
-                    try {
-                        progress.collect { }
-                        productOrigin = null
-                        viewModel.closeProduct()
-                    } catch (_: CancellationException) { }
-                }
             }
         }
-    }
     }
 
 
@@ -340,7 +316,7 @@ private fun CriosRangoApp(
             }
         }
         val isProductLink = (uri.scheme == "https" || uri.scheme == "http") && (host == "criosrango.es" || host == "www.criosrango.es") && uri.pathSegments.firstOrNull()?.equals("producto", ignoreCase = true) == true
-        if (isProductLink) uri.pathSegments.getOrNull(1)?.takeIf { it.isNotBlank() }?.let { slug -> productOrigin = ProductOrigin.DEEP_LINK; viewModel.openProductBySlug(slug) }
+        if (isProductLink) uri.pathSegments.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(viewModel::openProductBySlug)
         paymentReturnUriState.value = null
     }
     LaunchedEffect(paymentRedirect) {

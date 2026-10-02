@@ -179,23 +179,15 @@ jobs:
             return "$status"
           }
           publish_assets
-          TAG_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/dev-latest" --jq '.object.sha' 2>/dev/null || true)"
-          if [ -z "$TAG_SHA" ]; then
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/dev-latest" -f "sha=$GITHUB_SHA"
-          else
-            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/dev-latest" -f "sha=$GITHUB_SHA" -F force=true >/dev/null
-          fi
-      - name: Verify dev-latest refs
+      - name: Verify dev-latest target
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           TARGET_COMMITISH="$(gh release view dev-latest --json targetCommitish --jq '.targetCommitish')"
-          TAG_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/dev-latest" --jq '.object.sha')"
           test "$TARGET_COMMITISH" = "$GITHUB_SHA"
-          test "$TAG_SHA" = "$GITHUB_SHA"
           echo "dev-latest targetCommitish=$TARGET_COMMITISH"
-          echo "refs/tags/dev-latest=$TAG_SHA"
+
       - name: Cleanup Google Services
         if: always()
         run: rm -f app/google-services.json
