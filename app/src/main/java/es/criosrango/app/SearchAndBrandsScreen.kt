@@ -215,11 +215,6 @@ internal fun BrandProductsScreen(
                 .padding(horizontal = 20.dp, top = 16.dp, bottom = 20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp, bottom = 20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
             IconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
