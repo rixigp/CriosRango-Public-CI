@@ -39,5 +39,6 @@ class ProductColorSwatchesTest {
         assertNotNull(productColorSwatch("Pistacho"), "productColorSwatch devolvió null para 'Pistacho'")
         assertNotNull(productColorSwatch("salmón"), "productColorSwatch devolvió null para 'salmón'")
         assertNotNull(productColorSwatch("#FFFFFF"), "productColorSwatch devolvió null para '#FFFFFF'")
+        assertNotNull(productColorSwatch("#ffffff"), "productColorSwatch devolvió null para '#ffffff'")
     }
 }
