@@ -99,17 +99,121 @@ internal fun productCombinationSelectionKey(
         }
 }
 
+internal data class ProductDetailVariationSnapshot(
+    val availableForPurchase: Boolean,
+    val attributes: List<Pair<String, String>>
+)
+
+internal data class ProductDetailAttributeOptionState(
+    val existsGlobally: Boolean,
+    val compatibleWithCurrentSelection: Boolean
+)
+
+private fun variationHasAttributeValue(
+    variation: ProductDetailVariationSnapshot,
+    attributeName: String,
+    selectedValue: String
+): Boolean =
+    variation.attributes.any { (variationAttributeName, variationValue) ->
+        attributesMatch(variationAttributeName, attributeName) &&
+            attributeValuesMatch(selectedValue, variationValue)
+    }
+
+private fun variationHasTerm(
+    variation: ProductDetailVariationSnapshot,
+    attributeName: String,
+    termSlug: String,
+    termName: String
+): Boolean =
+    variation.attributes.any { (variationAttributeName, variationValue) ->
+        attributesMatch(variationAttributeName, attributeName) &&
+            (attributeValuesMatch(variationValue, termSlug) ||
+                attributeValuesMatch(variationValue, termName))
+    }
+
+internal fun productDetailAttributeOptionState(
+    variations: List<ProductDetailVariationSnapshot>,
+    selected: Map<String, String>,
+    attributeName: String,
+    termSlug: String,
+    termName: String
+): ProductDetailAttributeOptionState {
+    val existsGlobally = variations.any { variation ->
+        variation.availableForPurchase &&
+            variationHasTerm(variation, attributeName, termSlug, termName)
+    }
+
+    val compatibleWithCurrentSelection = variations.any { variation ->
+        variation.availableForPurchase &&
+            variationHasTerm(variation, attributeName, termSlug, termName) &&
+            selected.all { (selectedAttributeName, selectedValue) ->
+                attributesMatch(selectedAttributeName, attributeName) ||
+                    variationHasAttributeValue(
+                        variation,
+                        selectedAttributeName,
+                        selectedValue
+                    )
+            }
+    }
+
+    return ProductDetailAttributeOptionState(
+        existsGlobally = existsGlobally,
+        compatibleWithCurrentSelection = compatibleWithCurrentSelection
+    )
+}
+
+internal fun productDetailSelectAttributeOption(
+    selected: MutableMap<String, String>,
+    attributeName: String,
+    termSlug: String,
+    termName: String,
+    variations: List<ProductDetailVariationSnapshot>
+) {
+    selected[attributeName] = termSlug
+
+    val selectedAfterChange = selected.toMap()
+    val conflictingAttributes = selectedAfterChange
+        .filterKeys { !attributesMatch(it, attributeName) }
+        .filterNot { (selectedAttributeName, selectedValue) ->
+            variations.any { variation ->
+                variation.availableForPurchase &&
+                    variationHasTerm(
+                        variation,
+                        attributeName,
+                        termSlug,
+                        termName
+                    ) &&
+                    variationHasAttributeValue(
+                        variation,
+                        selectedAttributeName,
+                        selectedValue
+                    )
+            }
+        }
+        .keys
+
+    conflictingAttributes.forEach(selected::remove)
+}
+
 internal fun productDetailToggleAttributeSelection(
     selected: MutableMap<String, String>,
     attributeName: String,
     termSlug: String,
     chosen: Boolean,
-    available: Boolean
+    existsGlobally: Boolean,
+    termName: String = termSlug,
+    variations: List<ProductDetailVariationSnapshot> = emptyList()
 ) {
     if (chosen) {
         selected.remove(attributeName)
-    } else if (available) {
-        selected[attributeName] = termSlug
+    } else if (existsGlobally) {
+        productDetailSelectAttributeOption(
+            selected = selected,
+            attributeName = attributeName,
+            termSlug = termSlug,
+            termName = termName,
+            variations = variations
+        )
     }
 }
 
@@ -162,6 +266,12 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
     }
     var quantity by remember(product.id) { mutableIntStateOf(1) }
     val selectableAttributes = product.attributes.filter { it.terms.isNotEmpty() }
+    val variationSnapshots = product.variations.map { candidate ->
+        ProductDetailVariationSnapshot(
+            availableForPurchase = candidate.isAvailableForPurchase(),
+            attributes = candidate.attributes.map { it.name to it.value }
+        )
+    }
     val selectedVariation = product.variations.firstOrNull { candidate ->
             selectableAttributes.all { attribute ->
                 val selectedValue = selected[attribute.name]
@@ -659,29 +769,32 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
 
                     items(orderedTerms) { term ->
                     val chosen = selected[attribute.name]?.let { attributeValuesMatch(it, term.slug) || attributeValuesMatch(it, term.name) } == true
-                    val available = product.variations.any { candidate ->
-                            candidate.isAvailableForPurchase() &&
-                            candidate.attributes.any { variationAttribute ->
-                                attributesMatch(variationAttribute.name, attribute.name) &&
-                                    (attributeValuesMatch(variationAttribute.value, term.slug) || attributeValuesMatch(variationAttribute.value, term.name))
-                            } &&
-                            selectableAttributes.all { selectedAttribute ->
-                                if (attributesMatch(selectedAttribute.name, attribute.name)) true
-                                else selected[selectedAttribute.name]?.let { selectedValue ->
-                                    candidate.attributes.firstOrNull { attributesMatch(it.name, selectedAttribute.name) }?.value?.let { variationValue ->
-                                        attributeValuesMatch(selectedValue, variationValue)
-                                    }
-                                } ?: true
-                            }
-                    }
+                    val optionState = productDetailAttributeOptionState(
+                        variations = variationSnapshots,
+                        selected = selected,
+                        attributeName = attribute.name,
+                        termSlug = term.slug,
+                        termName = term.name
+                    )
+                    val existsGlobally = optionState.existsGlobally
+                    val compatibleWithCurrentSelection = optionState.compatibleWithCurrentSelection
+                    val clickable = chosen || existsGlobally
                     if (attribute.name.equals("Color", true)) {
                         val swatch = productColorSwatch(term.name)
 
                         OutlinedButton(
                             onClick = {
-                                productDetailToggleAttributeSelection(selected, attribute.name, term.slug, chosen, available)
+                                productDetailToggleAttributeSelection(
+                                    selected = selected,
+                                    attributeName = attribute.name,
+                                    termSlug = term.slug,
+                                    chosen = chosen,
+                                    existsGlobally = existsGlobally,
+                                    termName = term.name,
+                                    variations = variationSnapshots
+                                )
                             },
-                            enabled = chosen || available,
+                            enabled = clickable,
                             shape = RoundedCornerShape(50.dp),
                             border = androidx.compose.foundation.BorderStroke(
                                 if (chosen) 2.dp else 1.dp,
@@ -733,19 +846,21 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                     } else if (attribute.name.equals("Tallas", true)) {
                         OutlinedButton(
                             onClick = {
-                                if (available) {
-                                    selected[attribute.name] = term.slug
-                                }
+                                productDetailToggleAttributeSelection(
+                                    selected = selected,
+                                    attributeName = attribute.name,
+                                    termSlug = term.slug,
+                                    chosen = chosen,
+                                    existsGlobally = existsGlobally,
+                                    termName = term.name,
+                                    variations = variationSnapshots
+                                )
                             },
-                            enabled = available,
+                            enabled = clickable,
                             shape = RoundedCornerShape(14.dp),
                             border = androidx.compose.foundation.BorderStroke(
                                 if (chosen) 2.dp else 1.dp,
-                                when {
-                                    chosen -> Color(0xFF183B35)
-                                    available -> Color(0xFF8B878B)
-                                    else -> Color(0xFFD0CDD0)
-                                }
+                                if (chosen) Color(0xFF183B35) else Color(0xFF8B878B)
                             ),
                             colors = ButtonDefaults.outlinedButtonColors(
                                 containerColor =
@@ -769,7 +884,7 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                             Text(
                                 text = term.name,
                                 textDecoration =
-                                    if (!available)
+                                    if (!existsGlobally)
                                         TextDecoration.LineThrough
                                     else
                                         TextDecoration.None
@@ -782,7 +897,7 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                                     selected[attribute.name] = term.slug
                                 }
                             },
-                            enabled = available,
+                            enabled = clickable,
                             colors = ButtonDefaults.outlinedButtonColors(
                                 containerColor =
                                     if (chosen)
