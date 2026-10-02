@@ -741,6 +741,12 @@ internal fun ProductCard(product: StoreProduct, onProduct: (StoreProduct) -> Uni
                 ContentScale.Crop,
                 onImageReady
             )
+            ProductColorSwatches(
+                product = product,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp)
+            )
             if (product.onSale) {
                 Text(
                     "OFERTA",
@@ -756,31 +762,14 @@ internal fun ProductCard(product: StoreProduct, onProduct: (StoreProduct) -> Uni
         }
         Spacer(Modifier.height(8.dp))
         Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.TopStart) {
-            Text(
-                product.name.cleanWooText(),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                fontWeight = FontWeight.SemiBold
-            )
+            Text(product.name.cleanWooText(), maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
         }
         if (product.hasDisplayablePrice) {
-            Row(
-                Modifier.fillMaxWidth().height(24.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    product.displayPrice(),
-                    color = Color(0xFF183B35),
-                    fontWeight = FontWeight.Bold
-                )
+            Row(Modifier.fillMaxWidth().height(24.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(product.displayPrice(), color = Color(0xFF183B35), fontWeight = FontWeight.Bold)
                 if (product.onSale) {
                     Spacer(Modifier.width(8.dp))
-                    Text(
-                        product.regularDisplayPrice(),
-                        color = Color.Gray,
-                        style = MaterialTheme.typography.bodySmall,
-                        textDecoration = TextDecoration.LineThrough
-                    )
+                    Text(product.regularDisplayPrice(), color = Color.Gray, style = MaterialTheme.typography.bodySmall, textDecoration = TextDecoration.LineThrough)
                 }
             }
         }
