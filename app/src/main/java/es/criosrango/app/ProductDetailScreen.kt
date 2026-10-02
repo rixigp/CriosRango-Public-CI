@@ -777,7 +777,6 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                         termName = term.name
                     )
                     val existsGlobally = optionState.existsGlobally
-                    val compatibleWithCurrentSelection = optionState.compatibleWithCurrentSelection
                     val clickable = chosen || existsGlobally
                     if (attribute.name.equals("Color", true)) {
                         val swatch = productColorSwatch(term.name)
@@ -893,9 +892,15 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                     } else {
                         OutlinedButton(
                             onClick = {
-                                if (available) {
-                                    selected[attribute.name] = term.slug
-                                }
+                                productDetailToggleAttributeSelection(
+                                    selected = selected,
+                                    attributeName = attribute.name,
+                                    termSlug = term.slug,
+                                    chosen = chosen,
+                                    existsGlobally = existsGlobally,
+                                    termName = term.name,
+                                    variations = variationSnapshots
+                                )
                             },
                             enabled = clickable,
                             colors = ButtonDefaults.outlinedButtonColors(
