@@ -153,6 +153,51 @@ internal fun CatalogProductControlsRow(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun ActiveFilterChips(
+    filters: List<ActiveFilterChip>,
+    onClearAll: () -> Unit
+) {
+    if (filters.isEmpty()) return
+
+    FlowRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = CatalogHeaderGeometry.horizontalPadding)
+            .padding(bottom = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        filters.forEach { filter ->
+            FilterChip(
+                selected = true,
+                onClick = filter.onRemove,
+                label = { Text(filter.label) },
+                trailingIcon = {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Eliminar " + filter.label,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            )
+        }
+        TextButton(
+            onClick = onClearAll,
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            modifier = Modifier.heightIn(min = 32.dp)
+        ) {
+            Text("Borrar filtros")
+        }
+    }
+}
+
+internal data class ActiveFilterChip(
+    val label: String,
+    val onRemove: () -> Unit
+)
+
 // PRODUCT_SORT_START
 
 internal enum class ProductSortMode(val label: String) {

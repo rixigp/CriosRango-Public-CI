@@ -1425,6 +1425,22 @@ internal fun CatalogFilteredProductGrid(
     val active = selectedSizes.size + selectedColors.size +
         if (allowBrandFilter) selectedBrands.size else 0
 
+    val activeFilterChips = buildList {
+        selectedSizes
+            .sortedWith(compareBy({ productSizeSortKey(it) }, { it }))
+            .forEach { value ->
+                add(ActiveFilterChip("Talla $value") { selectedSizes = selectedSizes - value })
+            }
+        selectedColors.sorted().forEach { value ->
+            add(ActiveFilterChip(value) { selectedColors = selectedColors - value })
+        }
+        if (allowBrandFilter) {
+            selectedBrands.sorted().forEach { value ->
+                add(ActiveFilterChip(value) { selectedBrands = selectedBrands - value })
+            }
+        }
+    }
+
     Column(modifier) {
         Row(
             Modifier
@@ -1443,6 +1459,15 @@ internal fun CatalogFilteredProductGrid(
                 Text(if (active == 0) "Filtros" else "Filtros ($active)")
             }
         }
+
+        ActiveFilterChips(
+            filters = activeFilterChips,
+            onClearAll = {
+                selectedSizes = emptySet()
+                selectedColors = emptySet()
+                if (allowBrandFilter) selectedBrands = emptySet()
+            }
+        )
 
         ProductGrid(
             products = filtered,
@@ -1609,6 +1634,20 @@ internal fun CategoryParentWithFilters(
 
     val active = sizes.size + colors.size + brands.size
 
+    val activeFilterChips = buildList {
+        sizes
+            .sortedWith(compareBy({ productSizeSortKey(it) }, { it }))
+            .forEach { value ->
+                add(ActiveFilterChip("Talla $value") { sizes = sizes - value })
+            }
+        colors.sorted().forEach { value ->
+            add(ActiveFilterChip(value) { colors = colors - value })
+        }
+        brands.sorted().forEach { value ->
+            add(ActiveFilterChip(value) { brands = brands - value })
+        }
+    }
+
     Column(Modifier.fillMaxSize().padding(padding)) {
         CatalogScreenHeader(
             title = title,
@@ -1617,6 +1656,15 @@ internal fun CategoryParentWithFilters(
                 OutlinedButton(onClick = { open = true }) {
                     Text(if (active == 0) "Filtros" else "Filtros ($active)")
                 }
+            }
+        )
+
+        ActiveFilterChips(
+            filters = activeFilterChips,
+            onClearAll = {
+                sizes = emptySet()
+                colors = emptySet()
+                brands = emptySet()
             }
         )
 
