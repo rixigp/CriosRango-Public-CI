@@ -315,7 +315,7 @@ internal fun OutletAwareCatalogGrid(
             }
         }
 
-    var selectedBubbleKey by remember(current.id) {
+    var selectedBubbleKey by androidx.compose.runtime.saveable.rememberSaveable(current.id) {
         mutableStateOf<String?>(null)
     }
 
@@ -1370,13 +1370,13 @@ internal fun CatalogFilteredProductGrid(
     onLoadNextPage: (() -> Unit)? = null,
     pagingKey: Any? = null
 ) {
-    var filtersOpen by remember { mutableStateOf(false) }
-    var sortMode by remember {
+    var filtersOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var sortMode by androidx.compose.runtime.saveable.rememberSaveable {
         mutableStateOf(ProductSortMode.RECENT)
     }
-    var selectedSizes by remember { mutableStateOf(setOf<String>()) }
-    var selectedColors by remember { mutableStateOf(setOf<String>()) }
-    var selectedBrands by remember { mutableStateOf(setOf<String>()) }
+    var selectedSizes by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(setOf<String>()) }
+    var selectedColors by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(setOf<String>()) }
+    var selectedBrands by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(setOf<String>()) }
 
     val sizes = products.flatMap { it.filterValues("Tallas") }
         .distinct().sorted()

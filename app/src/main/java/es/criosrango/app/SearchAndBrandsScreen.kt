@@ -380,22 +380,27 @@ internal fun SearchScreen(
         return
     }
 
-    var query by remember(initialQuery) {
+    var query by androidx.compose.runtime.saveable.rememberSaveable(initialQuery) {
         mutableStateOf(initialQuery)
     }
-    var brandModeActive by remember(initialQuery, selectedBrand) {
+    var brandModeActive by androidx.compose.runtime.saveable.rememberSaveable(initialQuery, selectedBrand) {
         mutableStateOf(selectedBrand != null && initialQuery.isNotBlank())
     }
+
+    var lastSubmittedQuery by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(query, brandModeActive) {
         val clean = query.trim()
         if (brandModeActive && selectedBrand != null && clean == selectedBrand.name) {
             return@LaunchedEffect
         }
+        if (clean == lastSubmittedQuery) return@LaunchedEffect
         if (clean.isBlank()) {
+            lastSubmittedQuery = clean
             search("")
         } else {
             kotlinx.coroutines.delay(350)
+            lastSubmittedQuery = clean
             search(clean)
         }
     }
