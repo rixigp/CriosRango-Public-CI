@@ -205,13 +205,16 @@ internal fun BrandProductsScreen(
         modifier = Modifier
             .fillMaxSize()
             .padding(
-                start = 20.dp,
-                end = 20.dp,
                 top = padding.calculateTopPadding(),
                 bottom = padding.calculateBottomPadding()
             )
     ) {
         Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, top = 16.dp, bottom = 20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 16.dp, bottom = 20.dp),
