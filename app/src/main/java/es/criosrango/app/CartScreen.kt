@@ -65,6 +65,7 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -139,7 +140,23 @@ internal fun CartScreen(
             Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     val openModifier = Modifier.clickable { openLine(item) }
-                    Box(openModifier) { CatalogImage(item.images.firstOrNull()?.src, item.name.cleanWooText(), Modifier.size(78.dp).clip(RoundedCornerShape(10.dp))) }
+                    BoxWithConstraints(openModifier.size(78.dp)) {
+                        val targetWidthPx = with(LocalDensity.current) { maxWidth.roundToPx() }
+                        val image = item.images.firstOrNull()
+                        CatalogImage(
+                            selectResponsiveImageUrl(
+                                src = image?.src.orEmpty(),
+                                thumbnail = image?.thumbnail.orEmpty(),
+                                srcSet = image?.srcSet.orEmpty(),
+                                targetWidthPx = targetWidthPx,
+                                preferThumbnailFallback = true
+                            ),
+                            item.name.cleanWooText(),
+                            Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(10.dp))
+                        )
+                    }
                     Column(openModifier.weight(1f).padding(horizontal = 12.dp)) {
                         Text(item.name.cleanWooText(), fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         if (item.variation.isNotEmpty()) Text(item.variation.joinToString(" · ") { "${it.attribute.removePrefix("pa_")}: ${it.value}" }, style = MaterialTheme.typography.bodySmall, color = Color.Gray)

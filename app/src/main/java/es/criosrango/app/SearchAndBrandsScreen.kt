@@ -65,6 +65,7 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -727,13 +728,20 @@ internal fun ProductCard(product: StoreProduct, onProduct: (StoreProduct) -> Uni
             .fillMaxWidth()
             .clickable { onProduct(product) }
     ) {
-        Box(
+        BoxWithConstraints(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(.78f)
         ) {
+            val targetWidthPx = with(LocalDensity.current) { maxWidth.roundToPx() }
+            val image = product.images.firstOrNull()
             CatalogImage(
-                product.images.firstOrNull()?.src,
+                selectResponsiveImageUrl(
+                    src = image?.src.orEmpty(),
+                    thumbnail = image?.thumbnail.orEmpty(),
+                    srcSet = image?.srcSet.orEmpty(),
+                    targetWidthPx = targetWidthPx
+                ),
                 product.name,
                 Modifier
                     .fillMaxSize()

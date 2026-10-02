@@ -218,9 +218,10 @@ private fun SharedStoreProductExtensions.toAndroid(): StoreProductExtensions = S
     criosrangoOutlet = criosrangoOutlet?.let { OutletOriginExtension(it.originalCategoryIds) }
 )
 
-private fun SharedProductImage.toAndroid(): ProductImage = ProductImage(
+internal fun SharedProductImage.toAndroid(): ProductImage = ProductImage(
     src = src,
     thumbnail = thumbnail,
+    srcSet = srcSet,
     alt = alt
 )
 

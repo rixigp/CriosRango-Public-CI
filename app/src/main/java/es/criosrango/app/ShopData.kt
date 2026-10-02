@@ -77,6 +77,7 @@ data class ProductPrices(
 data class ProductImage(
     val src: String = "",
     val thumbnail: String = "",
+    @SerializedName("srcset") val srcSet: String = "",
     val alt: String = ""
 )
 
