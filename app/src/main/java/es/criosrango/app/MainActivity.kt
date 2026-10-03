@@ -89,7 +89,6 @@ enum class AppTab(val label: String) { HOME("Inicio"), CATEGORIES("Categorías")
 private val paymentReturnUriState = androidx.compose.runtime.mutableStateOf<android.net.Uri?>(null)
 private val pushTypeState = androidx.compose.runtime.mutableStateOf<String?>(null)
 private val pushOrderIdState = androidx.compose.runtime.mutableStateOf<Int?>(null)
-private var startupBrandingConsumedForProcess = false
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -112,8 +111,10 @@ class MainActivity : ComponentActivity() {
         categoryCache.bindRepository(repository)
         val outletAvailabilityStore = OutletAvailabilityStore(repository, preferences)
         val shopViewModel = androidx.lifecycle.ViewModelProvider(this, ShopViewModel.Factory(repository, cartStore, DeliveryAddressStore(preferences), pendingCardPaymentStore))[ShopViewModel::class.java]
-        val coldStartBranding = !startupBrandingConsumedForProcess
-        startupBrandingConsumedForProcess = true
+        val coldStartBranding = !preferences.getBoolean("brandingIntroShown", false)
+        if (coldStartBranding) {
+            preferences.edit().putBoolean("brandingIntroShown", true).apply()
+        }
         setContent { CriosRangoApp(shopViewModel, categoryCache, outletAvailabilityStore, coldStartBranding) }
     }
     override fun onNewIntent(intent: android.content.Intent) {
