@@ -264,6 +264,7 @@ internal fun IosSearchScreen(
     var categories by remember { mutableStateOf(emptyList<StoreCategory>()) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var retryAttempt by remember { mutableStateOf(0) }
     val normalizedQuery = submitted.normalizeForIosSearch()
     val gridState = rememberLazyGridState()
 
@@ -271,7 +272,7 @@ internal fun IosSearchScreen(
         categories = runCatching { storeApi.categories(perPage = 100) }.getOrDefault(emptyList())
     }
 
-    LaunchedEffect(normalizedQuery) {
+    LaunchedEffect(normalizedQuery, retryAttempt) {
         if (normalizedQuery.isBlank()) {
             products = emptyList()
             loading = false
@@ -372,7 +373,7 @@ internal fun IosSearchScreen(
             }
             when {
                 loading -> IosStoreLoading()
-                error != null -> IosStoreError(error!!)
+                error != null -> IosStoreError(error!!) { retryAttempt++ }
                 displayedProducts.isEmpty() -> IosStoreEmpty("No hemos encontrado productos")
                 else -> LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
