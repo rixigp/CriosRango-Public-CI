@@ -38,6 +38,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -63,6 +64,19 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 internal enum class IosRootSection { HOME, CATEGORIES, OUTLET, CART, ACCOUNT }
+internal enum class IosCatalogSortModeState { RECENT, PRICE_ASC, PRICE_DESC, NAME_ASC }
+
+internal data class IosCatalogRestorationState(
+    val queryKey: String,
+    val sortMode: IosCatalogSortModeState,
+    val selectedSizes: Set<String>,
+    val selectedColors: Set<String>,
+    val selectedBrands: Set<String>,
+    val pagingState: CatalogPagingState<StoreProduct>,
+    val firstVisibleItemIndex: Int = 0,
+    val firstVisibleItemOffset: Int = 0
+)
+
 internal sealed class IosCatalogPage {
     data object Novedades : IosCatalogPage()
     data object Search : IosCatalogPage()
@@ -90,8 +104,9 @@ fun CriosRangoIOSRootScreen(
     var catalogPage by remember { mutableStateOf<IosCatalogPage>(IosCatalogPage.Root) }
     var catalogOriginHome by remember { mutableStateOf(false) }
     val catalogHistory = remember { mutableStateListOf<IosCatalogPage>() }
+    val catalogRestoration = remember { mutableStateMapOf<Long, IosCatalogRestorationState>() }
     fun openCatalog(page: IosCatalogPage) { if (catalogPage != page) catalogHistory.add(catalogPage); catalogPage = page }
-    fun resetCatalog() { catalogHistory.clear(); catalogPage = IosCatalogPage.Root; catalogOriginHome = false }
+    fun resetCatalog() { catalogHistory.clear(); catalogRestoration.clear(); catalogPage = IosCatalogPage.Root; catalogOriginHome = false }
     fun backCatalog() { catalogPage = if (catalogHistory.isNotEmpty()) catalogHistory.removeAt(catalogHistory.lastIndex) else IosCatalogPage.Root }
 
     LaunchedEffect(pushNavigation) {
@@ -181,7 +196,8 @@ fun CriosRangoIOSRootScreen(
                                 resetCatalog()
                             }
                         }
-                    }
+                    },
+                    catalogRestoration = catalogRestoration
                 )
                 IosRootSection.CART -> IosCartScreen(cartStore, padding, onCheckout = { checkoutOpen = true }) { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) }
                 IosRootSection.ACCOUNT -> CriosRangoIOSAccountScreen(

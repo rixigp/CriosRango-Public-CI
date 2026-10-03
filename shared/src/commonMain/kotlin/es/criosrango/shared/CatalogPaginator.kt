@@ -131,6 +131,16 @@ class CatalogPaginator<T>(
         }
     }
 
+    /** Restores an already loaded query snapshot without issuing a new page-1 request. */
+    suspend fun restore(queryKey: String, restoredState: CatalogPagingState<T>) {
+        mutex.withLock {
+            generation += 1
+            activeQueryKey = queryKey
+            requestInFlight = false
+            _state.value = restoredState
+        }
+    }
+
     /** Invalidates the current query without starting a request. */
     suspend fun invalidate() {
         mutex.withLock {

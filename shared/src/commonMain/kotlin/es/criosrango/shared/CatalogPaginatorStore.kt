@@ -24,5 +24,7 @@ class CatalogPaginatorStore<T>(
     fun loadNext(loadPage: suspend (page: Int, perPage: Int) -> CatalogPage<T>): Job =
         scope.launch { paginator.loadNext(loadPage) }
 
+    fun restore(queryKey: String, state: CatalogPagingState<T>): Job = scope.launch { paginator.restore(queryKey, state) }
+
     fun invalidate(): Job = scope.launch { paginator.invalidate() }
 }

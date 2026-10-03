@@ -46,11 +46,12 @@ internal fun IosCatalogScreen(
     cartStore: StoreCartStore,
     onOpenCategory: (StoreCategory) -> Unit,
     onOpenProduct: (StoreProduct) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    catalogRestoration: MutableMap<Long, IosCatalogRestorationState>
 ) {
     when (page) {
         IosCatalogPage.Root -> IosCategoryRoot(storeApi, padding, onOpenCategory)
-        is IosCatalogPage.Category -> IosCategoryPage(storeApi, padding, page.category, onOpenCategory, onOpenProduct, onBack, cartStore)
+        is IosCatalogPage.Category -> IosCategoryPage(storeApi, padding, page.category, onOpenCategory, onOpenProduct, onBack, cartStore, catalogRestoration)
         is IosCatalogPage.Product -> IosProductDetail(storeApi, padding, page.product, onBack, cartStore)
         IosCatalogPage.Novedades -> IosNovedadesScreen(storeApi, padding, cartStore, onOpenProduct, onBack)
         IosCatalogPage.Search -> IosSearchScreen(storeApi, padding, cartStore, onOpenProduct, onBack)
@@ -107,7 +108,8 @@ internal fun IosCategoryPage(
     onOpenCategory: (StoreCategory) -> Unit,
     onOpenProduct: (StoreProduct) -> Unit,
     onBack: () -> Unit,
-    cartStore: StoreCartStore
+    cartStore: StoreCartStore,
+    catalogRestoration: MutableMap<Long, IosCatalogRestorationState>
 ) {
     var categories by remember { mutableStateOf<List<StoreCategory>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -159,7 +161,8 @@ internal fun IosCategoryPage(
                 category = category,
                 onOpenProduct = onOpenProduct,
                 onBack = onBack,
-                cartStore = cartStore
+                cartStore = cartStore,
+                catalogRestoration = catalogRestoration
             )
         }
     }
@@ -180,7 +183,8 @@ internal fun IosCategoryProducts(
     category: StoreCategory,
     onOpenProduct: (StoreProduct) -> Unit,
     onBack: () -> Unit,
-    cartStore: StoreCartStore
+    cartStore: StoreCartStore,
+    catalogRestoration: MutableMap<Long, IosCatalogRestorationState>
 ) {
     val scope = rememberCoroutineScope()
     val paginator = remember(category.id) {
@@ -189,11 +193,18 @@ internal fun IosCategoryProducts(
     val pagingState by paginator.state.collectAsState()
     val gridState = rememberLazyGridState()
 
+    val savedState = catalogRestoration[category.id]
+    val initialSortMode = when (savedState?.sortMode) {
+        IosCatalogSortModeState.PRICE_ASC -> IosCatalogSortMode.PRICE_ASC
+        IosCatalogSortModeState.PRICE_DESC -> IosCatalogSortMode.PRICE_DESC
+        IosCatalogSortModeState.NAME_ASC -> IosCatalogSortMode.NAME_ASC
+        else -> IosCatalogSortMode.RECENT
+    }
     var filtersOpen by remember(category.id) { mutableStateOf(false) }
-    var sortMode by remember(category.id) { mutableStateOf(IosCatalogSortMode.RECENT) }
-    var selectedSizes by remember(category.id) { mutableStateOf(setOf<String>()) }
-    var selectedColors by remember(category.id) { mutableStateOf(setOf<String>()) }
-    var selectedBrands by remember(category.id) { mutableStateOf(setOf<String>()) }
+    var sortMode by remember(category.id) { mutableStateOf(initialSortMode) }
+    var selectedSizes by remember(category.id) { mutableStateOf(savedState?.selectedSizes ?: emptySet()) }
+    var selectedColors by remember(category.id) { mutableStateOf(savedState?.selectedColors ?: emptySet()) }
+    var selectedBrands by remember(category.id) { mutableStateOf(savedState?.selectedBrands ?: emptySet()) }
 
     val queryKey = remember(
         category.id,
@@ -240,7 +251,26 @@ internal fun IosCategoryProducts(
     }
 
     LaunchedEffect(queryKey) {
-        paginator.start(queryKey, loadPage)
+        if (savedState?.queryKey == queryKey) paginator.restore(queryKey, savedState.pagingState)
+        else paginator.start(queryKey, loadPage)
+    }
+
+    LaunchedEffect(pagingState, sortMode, selectedSizes, selectedColors, selectedBrands) {
+        val restoredSort = when (sortMode) {
+            IosCatalogSortMode.PRICE_ASC -> IosCatalogSortModeState.PRICE_ASC
+            IosCatalogSortMode.PRICE_DESC -> IosCatalogSortModeState.PRICE_DESC
+            IosCatalogSortMode.NAME_ASC -> IosCatalogSortModeState.NAME_ASC
+            IosCatalogSortMode.RECENT -> IosCatalogSortModeState.RECENT
+        }
+        catalogRestoration[category.id] = IosCatalogRestorationState(
+            queryKey, restoredSort, selectedSizes, selectedColors, selectedBrands,
+            pagingState, gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset
+        )
+    }
+
+    LaunchedEffect(savedState?.firstVisibleItemIndex, savedState?.firstVisibleItemOffset) {
+        val index = savedState?.firstVisibleItemIndex ?: return@LaunchedEffect
+        gridState.scrollToItem(index, savedState.firstVisibleItemOffset)
     }
 
     fun filterValues(product: StoreProduct, attribute: String): Set<String> =
