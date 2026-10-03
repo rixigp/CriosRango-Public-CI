@@ -627,6 +627,7 @@ private fun AccountAddressFields(address: AccountCustomerAddress, onChange: (Acc
 private fun IosOrdersScreen(
     repository: AccountRepository,
     onOpenOrder: (AccountOrderSummary) -> Unit,
+    onSessionExpired: () -> Unit,
     onBack: () -> Unit
 ) {
     var loading by remember { mutableStateOf(true) }
@@ -638,7 +639,7 @@ private fun IosOrdersScreen(
         runCatching { repository.orders().orders }
             .onSuccess { orders = it; error = null; loading = false }
             .onFailure {
-                error = if (!repository.hasSession) {
+                if (!repository.hasSession) {
                     onSessionExpired()
                     return@onFailure
                 }
