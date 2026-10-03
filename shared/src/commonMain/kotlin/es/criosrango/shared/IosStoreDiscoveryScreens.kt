@@ -20,6 +20,84 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
+internal fun String.normalizeForIosSearch(): String =
+    lowercase()
+        .replace(Regex("[áàäâã]"), "a")
+        .replace(Regex("[éèëê]"), "e")
+        .replace(Regex("[íìïî]"), "i")
+        .replace(Regex("[óòöôõ]"), "o")
+        .replace(Regex("[úùüû]"), "u")
+        .replace('ñ', 'n')
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim()
+
+internal fun iosSearchDistance(a: String, b: String): Int {
+    if (a == b) return 0
+    if (a.isEmpty()) return b.length
+    if (b.isEmpty()) return a.length
+    var previous = IntArray(b.length + 1) { it }
+    for (i in a.indices) {
+        val current = IntArray(b.length + 1)
+        current[0] = i + 1
+        for (j in b.indices) {
+            val cost = if (a[i] == b[j]) 0 else 1
+            current[j + 1] = minOf(current[j] + 1, previous[j + 1] + 1, previous[j] + cost)
+        }
+        previous = current
+    }
+    return previous[b.length]
+}
+
+internal fun iosSearchTokenMatches(token: String, text: String): Boolean {
+    if (token.isBlank()) return true
+    if (text.contains(token)) return true
+    if (token.length < 4) return false
+    val maxDistance = if (token.length >= 7) 2 else 1
+    return text.split(" ").any { word ->
+        word.isNotBlank() &&
+            kotlin.math.abs(word.length - token.length) <= maxDistance &&
+            iosSearchDistance(word, token) <= maxDistance
+    }
+}
+
+internal fun iosProductSearchText(product: StoreProduct): String =
+    buildString {
+        append(product.name).append(' ')
+        product.categories.forEach {
+            append(it.name).append(' ')
+            append(it.slug).append(' ')
+        }
+        product.tags.forEach {
+            append(it.name).append(' ')
+            append(it.slug).append(' ')
+        }
+        product.attributes.forEach { attribute ->
+            append(attribute.name).append(' ')
+            attribute.taxonomy?.let { append(it).append(' ') }
+            attribute.terms.forEach {
+                append(it.name).append(' ')
+                append(it.slug).append(' ')
+            }
+        }
+    }.normalizeForIosSearch()
+
+internal fun iosProductMatchesSearch(product: StoreProduct, normalizedQuery: String): Boolean =
+    normalizedQuery.isNotBlank() &&
+        normalizedQuery.split(" ").filter { it.isNotBlank() }.all {
+            iosSearchTokenMatches(it, iosProductSearchText(product))
+        }
+
+internal fun iosSearchRanking(product: StoreProduct, normalizedQuery: String): Int {
+    val name = product.name.normalizeForIosSearch()
+    val tokens = normalizedQuery.split(" ").filter { it.isNotBlank() }
+    return when {
+        name == normalizedQuery -> 1000
+        name.startsWith(normalizedQuery) -> 800
+        name.contains(normalizedQuery) -> 600
+        else -> tokens.count { name.contains(it) } * 100
+    }
+}
+
 internal enum class IosNovedadesAudience(val key: String, val label: String) {
     ALL("all", "Todas"),
     GIRL("girl", "Niña"),
@@ -172,13 +250,143 @@ internal fun IosNovedadesScreen(
 }
 
 @Composable
-internal fun IosSearchScreen(storeApi: StoreApiClient,padding: PaddingValues,cartStore: StoreCartStore,onProduct:(StoreProduct)->Unit,onBack:()->Unit) {
-    var query by remember { mutableStateOf("") }; var submitted by remember { mutableStateOf("") }
+internal fun IosSearchScreen(
+    storeApi: StoreApiClient,
+    padding: PaddingValues,
+    cartStore: StoreCartStore,
+    onProduct: (StoreProduct) -> Unit,
+    onCategory: (StoreCategory) -> Unit,
+    onBack: () -> Unit
+) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var submitted by rememberSaveable { mutableStateOf("") }
+    var products by remember { mutableStateOf(emptyList<StoreProduct>()) }
+    var categories by remember { mutableStateOf(emptyList<StoreCategory>()) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val normalizedQuery = submitted.normalizeForIosSearch()
+    val gridState = rememberLazyGridState()
+
+    LaunchedEffect(Unit) {
+        categories = runCatching { storeApi.categories(perPage = 100) }.getOrDefault(emptyList())
+    }
+
+    LaunchedEffect(normalizedQuery) {
+        if (normalizedQuery.isBlank()) {
+            products = emptyList()
+            loading = false
+            error = null
+            return@LaunchedEffect
+        }
+        loading = true
+        error = null
+        runCatching {
+            val tokens = normalizedQuery.split(" ").filter { it.length >= 2 }.distinct()
+            coroutineScope {
+                if (tokens.size <= 1) {
+                    storeApi.products(perPage = 24, page = 1, search = submitted.trim())
+                } else {
+                    tokens.map { token ->
+                        async { storeApi.products(perPage = 24, page = 1, search = token) }
+                    }.awaitAll().flatten().distinctBy { it.id }
+                }
+            }
+        }.onSuccess {
+            products = it
+            loading = false
+        }.onFailure {
+            products = emptyList()
+            error = it.message ?: "No se ha podido buscar."
+            loading = false
+        }
+    }
+
+    val displayedProducts = remember(products, normalizedQuery) {
+        products
+            .distinctBy { it.id }
+            .filter { iosProductMatchesSearch(it, normalizedQuery) }
+            .sortedByDescending { iosSearchRanking(it, normalizedQuery) }
+    }
+    val categorySuggestions = remember(categories, normalizedQuery) {
+        if (normalizedQuery.length < 2) emptyList()
+        else {
+            val tokens = normalizedQuery.split(" ").filter { it.isNotBlank() }
+            categories.filter { category ->
+                val text = category.name.normalizeForIosSearch()
+                tokens.any { iosSearchTokenMatches(it, text) }
+            }.distinctBy { it.name.normalizeForIosSearch() }.take(2)
+        }
+    }
+    val brandSuggestions = remember(normalizedQuery) {
+        if (normalizedQuery.length < 2) emptyList()
+        else {
+            val tokens = normalizedQuery.split(" ").filter { it.isNotBlank() }
+            storeBrands.filter { brand ->
+                val text = brand.name.normalizeForIosSearch()
+                tokens.any { iosSearchTokenMatches(it, text) }
+            }.take(2)
+        }
+    }
+
     Column(Modifier.fillMaxSize().padding(padding)) {
-        Row(Modifier.fillMaxWidth().padding(12.dp),verticalAlignment=Alignment.CenterVertically){TextButton(onClick=onBack){Text("Atrás")};Text("Buscar",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}
-        OutlinedTextField(query,{query=it},singleLine=true,label={Text("Buscar productos")},modifier=Modifier.fillMaxWidth().padding(horizontal=16.dp),trailingIcon={TextButton(onClick={submitted=query.trim()}){Text("Buscar")}})
-        if(submitted.isBlank()) IosStoreEmpty("Introduce un término de búsqueda.") else
-            IosPagedProductScreen("",PaddingValues(),cartStore,onProduct,{}, {p,n->storeApi.products(p,n,search=submitted)},"search:$submitted")
+        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onBack) { Text("Atrás") }
+            Text("Buscar", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        }
+        OutlinedTextField(
+            query,
+            { query = it },
+            singleLine = true,
+            label = { Text("Buscar productos") },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            trailingIcon = { TextButton(onClick = { submitted = query.trim() }) { Text("Buscar") } }
+        )
+        if (submitted.isBlank()) {
+            IosStoreEmpty("Introduce un término de búsqueda.")
+        } else {
+            if (categorySuggestions.isNotEmpty() || brandSuggestions.isNotEmpty() || displayedProducts.isNotEmpty()) {
+                Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                    Text("Sugerencias", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    categorySuggestions.forEach { category ->
+                        TextButton(
+                            modifier = Modifier.height(30.dp),
+                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                            onClick = { onCategory(category) }
+                        ) { Text("Categoría · ${category.name}") }
+                    }
+                    brandSuggestions.forEach { brand ->
+                        TextButton(
+                            modifier = Modifier.height(30.dp),
+                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                            onClick = { query = brand.name; submitted = brand.name }
+                        ) { Text("Marca · ${brand.name}") }
+                    }
+                    displayedProducts.take(2).forEach { product ->
+                        TextButton(
+                            modifier = Modifier.height(30.dp),
+                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                            onClick = { onProduct(product) }
+                        ) { Text(product.name) }
+                    }
+                }
+            }
+            when {
+                loading -> IosStoreLoading()
+                error != null -> IosStoreError(error!!)
+                displayedProducts.isEmpty() -> IosStoreEmpty("No hemos encontrado productos")
+                else -> LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    state = gridState,
+                    contentPadding = PaddingValues(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    items(displayedProducts, key = { it.id }) {
+                        IosProductCard(it, onProduct, cartStore)
+                    }
+                }
+            }
+        }
     }
 }
 
