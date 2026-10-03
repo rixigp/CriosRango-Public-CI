@@ -560,7 +560,13 @@ private fun IosAddressScreen(repository: AccountRepository, onBack: () -> Unit) 
                 onClick = {
                     busy = true; error = null; notice = null
                     scope.launch {
-                        runCatching { repository.saveCustomerAddress(address) }
+                        runCatching {
+                            val clean = address.copy(firstName = address.firstName.trim(), lastName = address.lastName.trim(), address1 = address.address1.trim(), address2 = address.address2.trim(), postcode = address.postcode.trim(), city = address.city.trim(), state = address.state.trim(), country = "ES")
+                            require(clean.firstName.isNotBlank() && clean.lastName.isNotBlank() && clean.address1.isNotBlank() && clean.postcode.isNotBlank() && clean.city.isNotBlank() && clean.state.isNotBlank()) { "Completa todos los campos obligatorios." }
+                            require(clean.postcode.length == 5 && clean.postcode.all { it.isDigit() }) { "Introduce un código postal válido." }
+                            require(SPANISH_PROVINCES.any { it.code.equals(clean.state, ignoreCase = true) }) { "Selecciona una provincia." }
+                            repository.saveCustomerAddress(clean)
+                        }
                             .onSuccess { notice = "Dirección actualizada" }
                             .onFailure {
                                 if (!repository.hasSession) {
@@ -624,10 +630,10 @@ private fun IosOrdersScreen(
             .onSuccess { orders = it; error = null; loading = false }
             .onFailure {
                 error = if (!repository.hasSession) {
-                    "La sesión ha caducado. Vuelve a iniciar sesión."
-                } else {
-                    it.message ?: "No se han podido cargar tus pedidos."
+                    onSessionExpired()
+                    return@onFailure
                 }
+                error = it.message ?: "No se han podido cargar tus pedidos."
                 loading = false
             }
     }
