@@ -46,6 +46,8 @@ import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.account.AccountUser
 import kotlinx.coroutines.launch
 
+private val SPANISH_PROVINCE_CODES = setOf("C","VI","AB","A","AL","O","AV","BA","B","BI","BU","CC","CA","S","CS","CE","CR","CO","CU","GI","GR","GU","SS","H","HU","J","LE","L","LO","LU","M","MA","ML","MU","NA","OR","P","GC","PO","SA","TF","SG","SE","SO","T","TE","TO","V","VA","ZA","Z")
+
 private enum class IosAccountPage { HOME, LOGIN, REGISTER, FORGOT, PROFILE, DATA, ADDRESS, ORDERS, INFO, HELP, ORDER_DETAIL }
 
 @Composable
@@ -65,6 +67,7 @@ fun CriosRangoIOSAccountScreen(
     var forgotReturnPage by remember { mutableStateOf(IosAccountPage.LOGIN) }
     var addressReturnPage by remember { mutableStateOf(IosAccountPage.HOME) }
     val scope = rememberCoroutineScope()
+    fun invalidateExpiredSession() { repository.clearLocalSession(); user = null; selectedOrder = null; error = null; page = IosAccountPage.HOME }
 
     LaunchedEffect(user?.id, pendingPushOrderId) {
         val id = pendingPushOrderId ?: return@LaunchedEffect
@@ -159,9 +162,9 @@ fun CriosRangoIOSAccountScreen(
                     },
                     onBack = { page = IosAccountPage.HOME }
                 )
-                IosAccountPage.DATA -> IosProfileScreen(repository, user, { user = it }) { page = IosAccountPage.PROFILE }
-                IosAccountPage.ADDRESS -> IosAddressScreen(repository) { page = addressReturnPage }
-                IosAccountPage.ORDERS -> IosOrdersScreen(repository, { selectedOrder = it; page = IosAccountPage.ORDER_DETAIL }) { page = IosAccountPage.HOME }
+                IosAccountPage.DATA -> IosProfileScreen(repository, user, { user = it }, ::invalidateExpiredSession) { page = IosAccountPage.PROFILE }
+                IosAccountPage.ADDRESS -> IosAddressScreen(repository, ::invalidateExpiredSession) { page = addressReturnPage }
+                IosAccountPage.ORDERS -> IosOrdersScreen(repository, { selectedOrder = it; page = IosAccountPage.ORDER_DETAIL }, ::invalidateExpiredSession) { page = IosAccountPage.HOME }
                 IosAccountPage.INFO -> selectedInfoPage?.let { infoPage -> IosInformationPageScreen(infoPage) { page = IosAccountPage.HOME } }
                 IosAccountPage.HELP -> IosHelpScreen { page = IosAccountPage.HOME }
                 IosAccountPage.ORDER_DETAIL -> selectedOrder?.let { IosOrderDetailScreen(it) { page = IosAccountPage.ORDERS } }
@@ -485,6 +488,7 @@ private fun IosProfileScreen(
     repository: AccountRepository,
     user: AccountUser?,
     onUserChanged: (AccountUser?) -> Unit,
+    onSessionExpired: () -> Unit,
     onBack: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -503,19 +507,24 @@ private fun IosProfileScreen(
             enabled = !busy,
             onClick = {
                 busy = true; error = null; notice = null
+                val cleanFirstName = firstName.trim()
+                val cleanLastName = lastName.trim()
+                if (cleanFirstName.isBlank() || cleanLastName.isBlank()) {
+                    error = "Introduce tu nombre y apellidos."
+                    busy = false
+                    return@Button
+                }
                 scope.launch {
                     runCatching {
                         val current = repository.customerAddress()
-                        repository.saveCustomerAddress(current.copy(firstName = firstName.trim(), lastName = lastName.trim()))
+                        repository.saveCustomerAddress(current.copy(firstName = cleanFirstName, lastName = cleanLastName))
                         repository.me()
                     }.onSuccess {
                         onUserChanged(it)
                         notice = "Datos actualizados"
                     }.onFailure {
                         if (!repository.hasSession) {
-                            onUserChanged(null)
-                            notice = null
-                            error = "La sesión ha caducado. Vuelve a iniciar sesión."
+                            onSessionExpired()
                         } else {
                             error = it.message ?: "No se han podido guardar los datos."
                         }
@@ -541,7 +550,7 @@ private fun IosAddressScreen(repository: AccountRepository, onBack: () -> Unit) 
             .onSuccess { address = it; error = null; loaded = true }
             .onFailure {
                 if (!repository.hasSession) {
-                    error = "La sesión ha caducado. Vuelve a iniciar sesión."
+                    onSessionExpired()
                 } else {
                     error = it.message ?: "No se ha podido cargar la dirección."
                 }
@@ -564,7 +573,7 @@ private fun IosAddressScreen(repository: AccountRepository, onBack: () -> Unit) 
                             val clean = address.copy(firstName = address.firstName.trim(), lastName = address.lastName.trim(), address1 = address.address1.trim(), address2 = address.address2.trim(), postcode = address.postcode.trim(), city = address.city.trim(), state = address.state.trim(), country = "ES")
                             require(clean.firstName.isNotBlank() && clean.lastName.isNotBlank() && clean.address1.isNotBlank() && clean.postcode.isNotBlank() && clean.city.isNotBlank() && clean.state.isNotBlank()) { "Completa todos los campos obligatorios." }
                             require(clean.postcode.length == 5 && clean.postcode.all { it.isDigit() }) { "Introduce un código postal válido." }
-                            require(SPANISH_PROVINCES.any { it.code.equals(clean.state, ignoreCase = true) }) { "Selecciona una provincia." }
+                            require(SPANISH_PROVINCE_CODES.any { it.equals(clean.state, ignoreCase = true) }) { "Selecciona una provincia." }
                             repository.saveCustomerAddress(clean)
                         }
                             .onSuccess { notice = "Dirección actualizada" }
