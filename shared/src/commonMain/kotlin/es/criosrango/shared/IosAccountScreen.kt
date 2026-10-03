@@ -538,7 +538,7 @@ private fun IosProfileScreen(
 }
 
 @Composable
-private fun IosAddressScreen(repository: AccountRepository, onBack: () -> Unit) {
+private fun IosAddressScreen(repository: AccountRepository, onSessionExpired: () -> Unit, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var address by remember { mutableStateOf(AccountCustomerAddress()) }
     var loaded by remember { mutableStateOf(false) }
