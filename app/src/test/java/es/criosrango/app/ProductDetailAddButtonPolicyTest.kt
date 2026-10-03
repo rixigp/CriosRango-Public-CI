@@ -7,6 +7,32 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class ProductDetailAddButtonPolicyTest {
+    @Test
+    fun sizeSelectionToggle_selectsThenDeselects() {
+        val selected = mutableMapOf<String, String>()
+        productDetailToggleAttributeSelection(
+            selected, "Tallas", "m", chosen = false, existsGlobally = true
+        )
+        assertEquals("m", selected["Tallas"])
+
+        productDetailToggleAttributeSelection(
+            selected, "Tallas", "m", chosen = true, existsGlobally = true
+        )
+        assertFalse(selected.containsKey("Tallas"))
+    }
+
+    @Test
+    fun sizeSelection_chosenRemainsClickableAfterCombinationChanges() {
+        val selected = mutableMapOf("Color" to "azul", "Tallas" to "m")
+        val chosen = selected["Tallas"] == "m"
+        assertTrue(productDetailAttributeOptionClickable(chosen, existsGlobally = false))
+        productDetailToggleAttributeSelection(
+            selected, "Tallas", "m", chosen = true, existsGlobally = false
+        )
+        assertFalse(selected.containsKey("Tallas"))
+        assertEquals("azul", selected["Color"])
+    }
+
 
     @Test
     fun toggleSelectsAvailableOption() {
