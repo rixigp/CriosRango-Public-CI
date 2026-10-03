@@ -782,6 +782,7 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                         termName = term.name
                     )
                     val existsGlobally = optionState.existsGlobally
+                    val compatibleNow = optionState.compatibleWithCurrentSelection
                     val clickable = productDetailAttributeOptionClickable(chosen, existsGlobally)
                     if (attribute.name.equals("Color", true)) {
                         val swatch = productColorSwatch(term.name)
@@ -802,10 +803,11 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                             shape = RoundedCornerShape(50.dp),
                             border = androidx.compose.foundation.BorderStroke(
                                 if (chosen) 2.dp else 1.dp,
-                                if (chosen)
-                                    Color(0xFF183B35)
-                                else
-                                    Color(0xFF8B878B)
+                                when {
+                                    chosen -> Color(0xFF183B35)
+                                    existsGlobally && !compatibleNow -> Color(0xFFD0CDD0)
+                                    else -> Color(0xFF8B878B)
+                                }
                             ),
                             colors = ButtonDefaults.outlinedButtonColors(
                                 containerColor =
@@ -827,6 +829,9 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                                             swatch,
                                             RoundedCornerShape(50)
                                         )
+                                        .graphicsLayer {
+                                            alpha = if (existsGlobally && !compatibleNow) 0.55f else 1f
+                                        }
                                         .then(
                                             if (
                                                 term.name.contains(
@@ -845,7 +850,13 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                                 Spacer(Modifier.width(8.dp))
                             }
 
-                            Text(term.name)
+                            Text(
+                                term.name,
+                                color = if (existsGlobally && !compatibleNow)
+                                    Color(0xFF777277)
+                                else
+                                    LocalContentColor.current
+                            )
                         }
                     } else if (attribute.name.equals("Tallas", true)) {
                         OutlinedButton(
@@ -866,7 +877,11 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                             shape = RoundedCornerShape(14.dp),
                             border = androidx.compose.foundation.BorderStroke(
                                 if (chosen) 2.dp else 1.dp,
-                                if (chosen) Color(0xFF183B35) else Color(0xFF8B878B)
+                                when {
+                                    chosen -> Color(0xFF183B35)
+                                    existsGlobally && !compatibleNow -> Color(0xFFD0CDD0)
+                                    else -> Color(0xFF8B878B)
+                                }
                             ),
                             colors = ButtonDefaults.outlinedButtonColors(
                                 containerColor =
@@ -875,10 +890,11 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                                     else
                                         Color.Transparent,
                                 contentColor =
-                                    if (chosen)
-                                        Color.White
-                                    else
-                                        Color(0xFF353235),
+                                    when {
+                                        chosen -> Color.White
+                                        existsGlobally && !compatibleNow -> Color(0xFF777277)
+                                        else -> Color(0xFF353235)
+                                    },
                                 disabledContentColor =
                                     Color(0xFFAAA6AA)
                             ),
