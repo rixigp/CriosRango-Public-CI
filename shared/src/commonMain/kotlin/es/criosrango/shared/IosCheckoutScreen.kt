@@ -97,7 +97,8 @@ fun IosCheckoutScreen(
         StoreCardPaymentState.RECONCILING
     )
     val checkoutBusy = phase == StoreCheckoutPhase.LOADING || phase == StoreCheckoutPhase.CREATING_ORDER
-    val canSubmit = phase == StoreCheckoutPhase.READY &&
+    val canSubmit = cart.items.isNotEmpty() &&
+        phase == StoreCheckoutPhase.READY &&
         selectedShipping != null &&
         selectedPayment.isNotBlank() &&
         addressError == null &&

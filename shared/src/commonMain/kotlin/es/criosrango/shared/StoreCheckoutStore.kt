@@ -69,12 +69,34 @@ class StoreCheckoutStore(
                         runCatching { accountRepository.customerAddress().toCustomerAddress() }.getOrNull()
                     } else null
                     _accountAddress.value = address
-                    val currentCart = api.cart()
+                    var currentCart = api.cart()
+                    if (currentCart.errors.isNotEmpty()) {
+                        throw IllegalStateException(currentCart.errors.joinToString("\n") { it.message })
+                    }
+                    val checkoutResponse = api.checkout()
+                    if (checkoutResponse.errors.isNotEmpty()) {
+                        throw IllegalStateException(checkoutResponse.errors.joinToString("\n") { it.message })
+                    }
+                    val visibleRates = currentCart.shippingRates
+                        .filter { it.destination?.country.isNullOrBlank() || it.destination?.country == address?.country }
+                    val selectedRate = visibleRates.firstOrNull { pack -> pack.rates.any { it.selected } }
+                    val fallbackRate = visibleRates.firstOrNull { it.rates.isNotEmpty() }?.let { it to it.rates.first() }
+                    val finalCheckout = if (selectedRate == null && fallbackRate != null) {
+                        val (pack, rate) = fallbackRate
+                        currentCart = api.selectShippingRate(SelectShippingRateRequest(pack.packageId, rate.rateId))
+                        if (currentCart.errors.isNotEmpty()) {
+                            throw IllegalStateException(currentCart.errors.joinToString("\n") { it.message })
+                        }
+                        val requoted = api.checkout()
+                        if (requoted.errors.isNotEmpty()) {
+                            throw IllegalStateException(requoted.errors.joinToString("\n") { it.message })
+                        }
+                        requoted
+                    } else checkoutResponse
                     _cart.value = currentCart
-                    api.checkout()
+                    finalCheckout
                 }.onSuccess {
                     _checkout.value = it
-                    _cart.value = cartStore.cart.value
                     _phase.value = StoreCheckoutPhase.READY
                 }.onFailure { fail(it) }
             }
@@ -92,12 +114,28 @@ class StoreCheckoutStore(
                             accountRepository.saveCustomerAddress(address.toAccountCustomerAddress())
                         }
                     }
-                    val updatedCart = api.updateCustomer(es.criosrango.shared.model.UpdateCustomerRequest(address, address))
+                    var updatedCart = api.updateCustomer(es.criosrango.shared.model.UpdateCustomerRequest(address, address))
+                    if (updatedCart.errors.isNotEmpty()) {
+                        throw IllegalStateException(updatedCart.errors.joinToString("\n") { it.message })
+                    }
+                    val visibleRates = updatedCart.shippingRates
+                    val hasSelectedRate = visibleRates.any { pack -> pack.rates.any { it.selected } }
+                    val fallbackRate = visibleRates.firstOrNull { it.rates.isNotEmpty() }?.let { it to it.rates.first() }
+                    val checkoutResponse = if (!hasSelectedRate && fallbackRate != null) {
+                        val (pack, rate) = fallbackRate
+                        updatedCart = api.selectShippingRate(SelectShippingRateRequest(pack.packageId, rate.rateId))
+                        if (updatedCart.errors.isNotEmpty()) {
+                            throw IllegalStateException(updatedCart.errors.joinToString("\n") { it.message })
+                        }
+                        api.checkout()
+                    } else api.checkout()
+                    if (checkoutResponse.errors.isNotEmpty()) {
+                        throw IllegalStateException(checkoutResponse.errors.joinToString("\n") { it.message })
+                    }
                     _cart.value = updatedCart
-                    api.checkout()
+                    checkoutResponse
                 }.onSuccess {
                     _checkout.value = it
-                    _cart.value = cartStore.cart.value
                     _phase.value = StoreCheckoutPhase.READY
                 }.onFailure { fail(it) }
             }
@@ -111,10 +149,16 @@ class StoreCheckoutStore(
                 _error.value = null
                 runCatching {
                     val updatedCart = api.selectShippingRate(SelectShippingRateRequest(packageId, rateId))
+                    if (updatedCart.errors.isNotEmpty()) {
+                        throw IllegalStateException(updatedCart.errors.joinToString("\n") { it.message })
+                    }
                     _cart.value = updatedCart
-                    api.checkout()
+                    val checkoutResponse = api.checkout()
+                    if (checkoutResponse.errors.isNotEmpty()) {
+                        throw IllegalStateException(checkoutResponse.errors.joinToString("\n") { it.message })
+                    }
+                    checkoutResponse
                 }.onSuccess {
-                    _cart.value = cartStore.cart.value
                     _checkout.value = it
                     _phase.value = StoreCheckoutPhase.READY
                 }.onFailure { fail(it) }
@@ -134,7 +178,24 @@ class StoreCheckoutStore(
                 mutex.withLock {
                     _phase.value = StoreCheckoutPhase.CREATING_ORDER
                     _error.value = null
-                    val currentCart = cartStore.cart.value
+                    var currentCart = _cart.value
+                    val selectedPackage = currentCart.shippingRates.firstOrNull { pack ->
+                        pack.rates.any { it.rateId == shippingRateId }
+                    }
+                    if (selectedPackage != null && selectedPackage.rates.none { it.rateId == shippingRateId && it.selected }) {
+                        _phase.value = StoreCheckoutPhase.LOADING
+                        currentCart = api.selectShippingRate(
+                            SelectShippingRateRequest(selectedPackage.packageId, shippingRateId)
+                        )
+                        if (currentCart.errors.isNotEmpty()) {
+                            throw IllegalStateException(currentCart.errors.joinToString("\n") { it.message })
+                        }
+                        val requotedCheckout = api.checkout()
+                        if (requotedCheckout.errors.isNotEmpty()) {
+                            throw IllegalStateException(requotedCheckout.errors.joinToString("\n") { it.message })
+                        }
+                        _checkout.value = requotedCheckout
+                    }
                     val response = api.createCheckout(
                         CreateOrderRequest(
                             paymentMethod = paymentMethod,
