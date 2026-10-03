@@ -142,13 +142,8 @@ private fun StartupBranding() {
             verticalArrangement = Arrangement.Center,
             modifier = Modifier.padding(horizontal = 28.dp)
         ) {
-            val splashPainter = try {
-                painterResource(R.drawable.splash_logo)
-            } catch (_: Exception) {
-                painterResource(R.drawable.criosrango_symbol)
-            }
             Image(
-                painter = splashPainter,
+                painter = painterResource(R.drawable.splash_logo),
                 contentDescription = null,
                 modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp),
                 contentScale = ContentScale.Fit
