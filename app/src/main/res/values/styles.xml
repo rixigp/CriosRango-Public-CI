@@ -10,7 +10,7 @@
     </style>
     <style name="Theme.CriosRango.Starting" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/startup_background</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/criosrango_symbol</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/criosrango_monogram</item>
         <item name="postSplashScreenTheme">@style/Theme.CriosRango</item>
         <item name="android:statusBarColor">@color/startup_background</item>
         <item name="android:navigationBarColor">@color/startup_background</item>

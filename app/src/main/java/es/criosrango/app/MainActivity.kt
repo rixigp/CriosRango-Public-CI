@@ -89,6 +89,7 @@ enum class AppTab(val label: String) { HOME("Inicio"), CATEGORIES("Categorías")
 private val paymentReturnUriState = androidx.compose.runtime.mutableStateOf<android.net.Uri?>(null)
 private val pushTypeState = androidx.compose.runtime.mutableStateOf<String?>(null)
 private val pushOrderIdState = androidx.compose.runtime.mutableStateOf<Int?>(null)
+private var startupBrandingConsumedForProcess = false
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -111,7 +112,9 @@ class MainActivity : ComponentActivity() {
         categoryCache.bindRepository(repository)
         val outletAvailabilityStore = OutletAvailabilityStore(repository, preferences)
         val shopViewModel = androidx.lifecycle.ViewModelProvider(this, ShopViewModel.Factory(repository, cartStore, DeliveryAddressStore(preferences), pendingCardPaymentStore))[ShopViewModel::class.java]
-        setContent { CriosRangoApp(shopViewModel, categoryCache, outletAvailabilityStore) }
+        val coldStartBranding = !startupBrandingConsumedForProcess
+        startupBrandingConsumedForProcess = true
+        setContent { CriosRangoApp(shopViewModel, categoryCache, outletAvailabilityStore, coldStartBranding) }
     }
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
@@ -131,62 +134,30 @@ private fun StartupBranding() {
             .background(Color(0xFFFAF7F0)),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(horizontal = 32.dp)
-        ) {
-            Image(
-                painter = painterResource(R.drawable.criosrango_symbol),
-                contentDescription = null,
-                modifier = Modifier.size(82.dp),
-                contentScale = ContentScale.Fit
-            )
-            Spacer(Modifier.height(28.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "Críos",
-                    fontFamily = FontFamily.Serif,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = Color(0xFF123F36)
-                )
-                Text(
-                    text = " & ",
-                    fontFamily = FontFamily.Serif,
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = Color(0xFFB28A50)
-                )
-                Text(
-                    text = "Rango",
-                    fontFamily = FontFamily.Serif,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = Color(0xFF123F36)
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-            Text(
-                text = "MODA PARA TODAS LAS EDADES",
-                fontSize = 10.5.sp,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = 3.1.sp,
-                color = Color(0xFF6B625E),
-                textAlign = TextAlign.Center
-            )
-        }
+        Image(
+            painter = painterResource(R.drawable.criosrango_branding),
+            contentDescription = "Críos & Rango",
+            modifier = Modifier
+                .fillMaxWidth(0.90f)
+                .widthIn(max = 360.dp)
+                .aspectRatio(4f / 3f),
+            contentScale = ContentScale.Fit
+        )
     }
 }
+
+internal fun shouldShowStartupBranding(
+    coldStart: Boolean,
+    minimumDurationReached: Boolean,
+    appReady: Boolean
+): Boolean = coldStart && (!minimumDurationReached || !appReady)
 
 @Composable
 private fun CriosRangoApp(
     viewModel: ShopViewModel,
     categoryCache: CategoryCatalogCache,
-    outletAvailabilityStore: OutletAvailabilityStore
+    outletAvailabilityStore: OutletAvailabilityStore,
+    coldStartBranding: Boolean
 ) {
     val accountViewModel: AccountViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val accountUser by accountViewModel.user.collectAsStateWithLifecycle()
@@ -220,6 +191,7 @@ private fun CriosRangoApp(
     val context = LocalContext.current
     val cartItems = remoteCart.items.map { line -> CartItem(lineKey = line.key, productId = line.parentProductId ?: line.id, name = line.name.cleanWooText(), imageUrl = line.images.firstOrNull()?.src.orEmpty(), unitPrice = line.prices.price, variationId = line.id, quantity = line.quantity) }
     val loading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val initialLoading by viewModel.initialLoading.collectAsStateWithLifecycle()
     val activeBrandProducts by viewModel.activeBrandProducts.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(AppTab.HOME) }
@@ -256,12 +228,25 @@ private fun CriosRangoApp(
         }
     }
 
-    val showStartupBranding = loading && products.isEmpty() && homeProducts.isEmpty() && error == null
+    var startupMinimumDurationReached by remember(coldStartBranding) { mutableStateOf(!coldStartBranding) }
+    LaunchedEffect(coldStartBranding) {
+        if (coldStartBranding) {
+            delay(3_000)
+            startupMinimumDurationReached = true
+        }
+    }
+    val startupReady = !initialLoading || error != null
+    val showStartupBranding = shouldShowStartupBranding(coldStartBranding, startupMinimumDurationReached, startupReady)
 
     MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF183B35), secondary = Color(0xFFD18162))) {
-        if (showStartupBranding) {
-            StartupBranding()
-        } else Surface(Modifier.fillMaxSize(), color = Color(0xFFFCFAF7)) {
+        Crossfade(
+            targetState = showStartupBranding,
+            animationSpec = tween(durationMillis = 250),
+            label = "startup-branding"
+        ) { brandingVisible ->
+            if (brandingVisible) {
+                StartupBranding()
+            } else Surface(Modifier.fillMaxSize(), color = Color(0xFFFCFAF7)) {
             if (checkoutOpen) {
                 RedesignedCheckoutScreen(remoteCart, checkout, checkoutLoading, checkoutError, checkoutPhase, { checkoutOpen = false; viewModel.abandonCheckout() }, viewModel::loadCheckout, viewModel::selectShippingRate, viewModel::createOrder, viewModel.deliveryAddressStore)
             } else if (selectedProduct != null) {
@@ -339,6 +324,8 @@ private fun CriosRangoApp(
                 }
             }
         }
+            }
+        }
     }
 
 
@@ -408,11 +395,10 @@ private fun CriosRangoApp(
 private fun StoreTopBar(tab: AppTab, cartQuantity: Int, onSearch: () -> Unit, onCart: () -> Unit) = TopAppBar(
     title = {},
     navigationIcon = {
-        val logoModifier = Modifier.width(92.dp).height(32.dp)
         Image(
-            painterResource(R.drawable.criosrango_logo),
-            "Crios&Rango",
-            logoModifier,
+            painter = painterResource(R.drawable.criosrango_monogram),
+            contentDescription = "Críos & Rango",
+            modifier = Modifier.size(34.dp),
             contentScale = ContentScale.Fit
         )
     },
