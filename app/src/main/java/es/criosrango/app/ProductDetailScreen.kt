@@ -9,6 +9,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.outlined.LocalOffer
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.drawWithContent
 
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.animation.Crossfade
@@ -61,6 +62,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.layout.ContentScale
@@ -218,6 +221,25 @@ internal fun productDetailToggleAttributeSelection(
             termSlug = termSlug,
             termName = termName,
             variations = variations
+        )
+    }
+}
+
+private fun Modifier.productDetailIncompatibleSlash(
+    show: Boolean,
+    shape: androidx.compose.ui.graphics.Shape,
+    color: Color = Color(0xFF8B878B)
+): Modifier = if (!show) {
+    this
+} else {
+    clip(shape).drawWithContent {
+        drawContent()
+        drawLine(
+            color = color,
+            start = Offset(0f, size.height),
+            end = Offset(size.width, 0f),
+            strokeWidth = 1.25.dp.toPx(),
+            cap = StrokeCap.Round
         )
     }
 }
@@ -819,6 +841,10 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                             contentPadding = PaddingValues(
                                 horizontal = 14.dp,
                                 vertical = 9.dp
+                            ),
+                            modifier = Modifier.productDetailIncompatibleSlash(
+                                show = existsGlobally && !compatibleNow && !chosen,
+                                shape = RoundedCornerShape(50.dp)
                             )
                         ) {
                             if (swatch != null) {
@@ -901,6 +927,10 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                             contentPadding = PaddingValues(
                                 horizontal = 18.dp,
                                 vertical = 10.dp
+                            ),
+                            modifier = Modifier.productDetailIncompatibleSlash(
+                                show = existsGlobally && !compatibleNow && !chosen,
+                                shape = RoundedCornerShape(14.dp)
                             )
                         ) {
                             Text(
