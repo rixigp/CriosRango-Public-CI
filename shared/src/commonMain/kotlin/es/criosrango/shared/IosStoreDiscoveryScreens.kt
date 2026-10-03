@@ -104,9 +104,18 @@ internal fun IosNovedadesScreen(
         onProduct = onProduct,
         onBack = onBack,
         load = { page, perPage ->
-            storeApi.products(perPage = perPage, page = page, orderBy = "date", order = "desc")
+            val orderBy = when (sort) {
+                IosNovedadesSort.RECENT -> "date"
+                IosNovedadesSort.PRICE_ASC, IosNovedadesSort.PRICE_DESC -> "price"
+                IosNovedadesSort.NAME_ASC -> "title"
+            }
+            val order = when (sort) {
+                IosNovedadesSort.PRICE_DESC -> "desc"
+                else -> "asc"
+            }
+            storeApi.products(perPage = perPage, page = page, orderBy = orderBy, order = if (sort == IosNovedadesSort.RECENT) "desc" else order)
         },
-        queryKey = "novedades:$audienceKey",
+        queryKey = "novedades:$audienceKey:$sortKey",
         transform = { products ->
             sortNovedadesProducts(
                 products.filter { novedadesAudienceMatches(it, audience, categories) },
@@ -227,7 +236,7 @@ private fun IosPagedProductScreen(
     onEmptyAction: (() -> Unit)? = null,
     headerContent: (@Composable ColumnScope.() -> Unit)? = null
 ) {
-    val scope=rememberCoroutineScope(); val paginator=remember(queryKey){CatalogPaginatorStore<StoreProduct>(scope){it.id}}; val state by paginator.state.collectAsState(); val grid=rememberLazyGridState()
+    val scope=rememberCoroutineScope(); val paginator=remember(queryKey){CatalogPaginatorStore<StoreProduct>(scope, pageSize = if (queryKey.startsWith("novedades:")) 24 else CatalogPaginator.PAGE_SIZE) { it.id }}; val state by paginator.state.collectAsState(); val grid=rememberLazyGridState()
     LaunchedEffect(queryKey){paginator.start(queryKey){p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}
     LaunchedEffect(grid,state.items.size,state.hasMore){snapshotFlow{grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index?:-1}.collect{last->if(state.hasMore&&!state.isInitialLoading&&!state.isAppending&&last>=state.items.size-CatalogPaginator.PREFETCH_DISTANCE)paginator.loadNext{p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}}
     Column(Modifier.fillMaxSize().padding(padding)){

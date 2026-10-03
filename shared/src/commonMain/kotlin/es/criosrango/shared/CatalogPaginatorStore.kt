@@ -11,9 +11,10 @@ import kotlinx.coroutines.launch
  */
 class CatalogPaginatorStore<T>(
     private val scope: CoroutineScope,
+    private val pageSize: Int = CatalogPaginator.PAGE_SIZE,
     identity: (T) -> Any
 ) {
-    private val paginator = CatalogPaginator<T>(identity = identity)
+    private val paginator = CatalogPaginator(pageSize = pageSize, identity = identity)
 
     val state: StateFlow<CatalogPagingState<T>>
         get() = paginator.state
