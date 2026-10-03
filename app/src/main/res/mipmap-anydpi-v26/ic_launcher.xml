@@ -1,6 +1,0 @@
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/launcher_background" />
-    <!-- Keep the mark inside the adaptive-icon safe zone; the source logo is
-         intentionally wrapped with transparent space in this foreground. -->
-    <foreground android:drawable="@drawable/launcher_favicon_foreground" />
-</adaptive-icon>

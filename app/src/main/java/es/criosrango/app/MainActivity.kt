@@ -66,10 +66,13 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.text.HtmlCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -89,6 +92,7 @@ private val pushOrderIdState = androidx.compose.runtime.mutableStateOf<Int?>(nul
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         paymentReturnUriState.value = intent?.data
         pushTypeState.value = intent?.getStringExtra(PushNotificationContract.TYPE_KEY)
@@ -117,6 +121,65 @@ class MainActivity : ComponentActivity() {
         pushOrderIdState.value = PushNotificationContract.parseOrderId(intent.getStringExtra(PushNotificationContract.ORDER_ID_KEY))
     }
     override fun onResume() { super.onResume(); PushNotificationController.initialize(this) }
+}
+
+@Composable
+private fun StartupBranding() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFFAF7F0)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 32.dp)
+        ) {
+            Image(
+                painter = painterResource(R.drawable.criosrango_symbol),
+                contentDescription = null,
+                modifier = Modifier.size(82.dp),
+                contentScale = ContentScale.Fit
+            )
+            Spacer(Modifier.height(28.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "Críos",
+                    fontFamily = FontFamily.Serif,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = Color(0xFF123F36)
+                )
+                Text(
+                    text = " & ",
+                    fontFamily = FontFamily.Serif,
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = Color(0xFFB28A50)
+                )
+                Text(
+                    text = "Rango",
+                    fontFamily = FontFamily.Serif,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = Color(0xFF123F36)
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = "MODA PARA TODAS LAS EDADES",
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 3.1.sp,
+                color = Color(0xFF6B625E),
+                textAlign = TextAlign.Center
+            )
+        }
+    }
 }
 
 @Composable
@@ -193,8 +256,12 @@ private fun CriosRangoApp(
         }
     }
 
+    val showStartupBranding = loading && products.isEmpty() && homeProducts.isEmpty() && error == null
+
     MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF183B35), secondary = Color(0xFFD18162))) {
-        Surface(Modifier.fillMaxSize(), color = Color(0xFFFCFAF7)) {
+        if (showStartupBranding) {
+            StartupBranding()
+        } else Surface(Modifier.fillMaxSize(), color = Color(0xFFFCFAF7)) {
             if (checkoutOpen) {
                 RedesignedCheckoutScreen(remoteCart, checkout, checkoutLoading, checkoutError, checkoutPhase, { checkoutOpen = false; viewModel.abandonCheckout() }, viewModel::loadCheckout, viewModel::selectShippingRate, viewModel::createOrder, viewModel.deliveryAddressStore)
             } else if (selectedProduct != null) {

@@ -1,3 +1,7 @@
 <resources>
-    <color name="launcher_background">#FFFFFF</color>
+    <color name="launcher_background">#FAF7F0</color>
+    <color name="startup_background">#FAF7F0</color>
+    <color name="startup_symbol">#6B625E</color>
+    <color name="startup_brand_green">#123F36</color>
+    <color name="startup_brand_gold">#B28A50</color>
 </resources>

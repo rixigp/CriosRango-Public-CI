@@ -41,8 +41,8 @@ android {
         applicationId = "es.criosrango.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 163
-        versionName = "1.0.163"
+        versionCode = 164
+        versionName = "1.0.164"
     }
     signingConfigs {
         getByName("debug") {
@@ -64,6 +64,7 @@ dependencies {
     implementation("androidx.browser:browser:1.8.0")
     implementation("androidx.security:security-crypto:1.1.0")
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.core:core-splashscreen:1.2.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.activity:activity-ktx:1.10.0")
     implementation("androidx.activity:activity-compose:1.10.1")
