@@ -134,15 +134,56 @@ private fun StartupBranding() {
             .background(Color(0xFFFAF7F0)),
         contentAlignment = Alignment.Center
     ) {
-        Image(
-            painter = painterResource(R.drawable.criosrango_branding),
-            contentDescription = "Críos & Rango",
-            modifier = Modifier
-                .fillMaxWidth(0.90f)
-                .widthIn(max = 360.dp)
-                .aspectRatio(4f / 3f),
-            contentScale = ContentScale.Fit
-        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 28.dp)
+        ) {
+            Image(
+                painter = painterResource(R.drawable.criosrango_monogram),
+                contentDescription = null,
+                modifier = Modifier.size(176.dp),
+                contentScale = ContentScale.Fit
+            )
+            Spacer(Modifier.height(24.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "CRÍOS",
+                    fontFamily = FontFamily.Serif,
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = Color(0xFF123F36),
+                    letterSpacing = 0.6.sp
+                )
+                Text(
+                    text = " & ",
+                    fontFamily = FontFamily.Serif,
+                    fontSize = 29.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = Color(0xFFB28A50)
+                )
+                Text(
+                    text = "RANGO",
+                    fontFamily = FontFamily.Serif,
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = Color(0xFF123F36),
+                    letterSpacing = 0.6.sp
+                )
+            }
+            Spacer(Modifier.height(13.dp))
+            Text(
+                text = "MODA PARA TODAS LAS EDADES",
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 3.1.sp,
+                color = Color(0xFF6B625E),
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
 
