@@ -579,7 +579,7 @@ private fun IosAddressScreen(repository: AccountRepository, onSessionExpired: ()
                             .onSuccess { notice = "Dirección actualizada" }
                             .onFailure {
                                 if (!repository.hasSession) {
-                                    error = "La sesión ha caducado. Vuelve a iniciar sesión."
+                                    onSessionExpired()
                                 } else {
                                     error = it.message ?: "No se ha podido guardar la dirección."
                                 }
