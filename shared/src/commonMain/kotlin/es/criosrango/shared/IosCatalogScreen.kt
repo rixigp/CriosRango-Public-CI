@@ -26,6 +26,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import es.criosrango.shared.api.StoreApiClient
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
@@ -161,6 +165,14 @@ internal fun IosCategoryPage(
     }
 }
 
+private enum class IosCatalogSortMode(val label: String) {
+    RECENT("Más recientes"),
+    PRICE_ASC("Precio: menor a mayor"),
+    PRICE_DESC("Precio: mayor a menor"),
+    NAME_ASC("Nombre A-Z")
+}
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun IosCategoryProducts(
     storeApi: es.criosrango.shared.api.StoreApiClient,
@@ -177,14 +189,162 @@ internal fun IosCategoryProducts(
     val pagingState by paginator.state.collectAsState()
     val gridState = rememberLazyGridState()
 
-    LaunchedEffect(category.id) {
-        paginator.start("category:" + category.id) { page, perPage ->
-            val items = storeApi.products(perPage = perPage, page = page, category = category.id)
-            CatalogPage(items, hasMore = items.size >= perPage)
+    var filtersOpen by remember(category.id) { mutableStateOf(false) }
+    var sortMode by remember(category.id) { mutableStateOf(IosCatalogSortMode.RECENT) }
+    var selectedSizes by remember(category.id) { mutableStateOf(setOf<String>()) }
+    var selectedColors by remember(category.id) { mutableStateOf(setOf<String>()) }
+    var selectedBrands by remember(category.id) { mutableStateOf(setOf<String>()) }
+
+    val queryKey = remember(
+        category.id,
+        sortMode,
+        selectedSizes,
+        selectedColors,
+        selectedBrands
+    ) {
+        buildString {
+            append("category:")
+            append(category.id)
+            append("|sort:")
+            append(sortMode.name)
+            append("|sizes:")
+            append(selectedSizes.sorted().joinToString(","))
+            append("|colors:")
+            append(selectedColors.sorted().joinToString(","))
+            append("|brands:")
+            append(selectedBrands.sorted().joinToString(","))
         }
     }
 
-    LaunchedEffect(gridState, pagingState.items.size, pagingState.hasMore) {
+    val orderBy = when (sortMode) {
+        IosCatalogSortMode.RECENT -> "date"
+        IosCatalogSortMode.PRICE_ASC,
+        IosCatalogSortMode.PRICE_DESC -> "price"
+        IosCatalogSortMode.NAME_ASC -> "title"
+    }
+    val order = when (sortMode) {
+        IosCatalogSortMode.PRICE_DESC,
+        IosCatalogSortMode.RECENT -> "desc"
+        else -> "asc"
+    }
+
+    val loadPage: suspend (Int, Int) -> CatalogPage<StoreProduct> = { page, perPage ->
+        val items = storeApi.products(
+            perPage = perPage,
+            page = page,
+            category = category.id,
+            orderBy = orderBy,
+            order = order
+        )
+        CatalogPage(items, hasMore = items.size >= perPage)
+    }
+
+    LaunchedEffect(queryKey) {
+        paginator.start(queryKey, loadPage)
+    }
+
+    fun filterValues(product: StoreProduct, attribute: String): Set<String> =
+        product.attributes
+            .filter { it.name.equals(attribute, ignoreCase = true) }
+            .flatMap { it.terms.map { term -> term.name } }
+            .filter { it.isNotBlank() }
+            .toSet()
+
+    fun normalized(value: String): String = value.trim().lowercase()
+
+    fun matchesFilters(product: StoreProduct): Boolean {
+        val productSizes = filterValues(product, "Tallas").map(::normalized).toSet()
+        val productColors = filterValues(product, "Color").map(::normalized).toSet()
+        val productBrands = product.tags.map { it.name }.filter { it.isNotBlank() }.map(::normalized).toSet()
+        val wantedSizes = selectedSizes.map(::normalized).toSet()
+        val wantedColors = selectedColors.map(::normalized).toSet()
+        val wantedBrands = selectedBrands.map(::normalized).toSet()
+
+        return (wantedSizes.isEmpty() || productSizes.any { it in wantedSizes }) &&
+            (wantedColors.isEmpty() || productColors.any { it in wantedColors }) &&
+            (wantedBrands.isEmpty() || productBrands.any { it in wantedBrands })
+    }
+
+    val rawProducts = pagingState.items
+    val filteredProducts = rawProducts.filter(::matchesFilters)
+
+    val sizes = (rawProducts.flatMap { filterValues(it, "Tallas") } + selectedSizes)
+        .filter { it.isNotBlank() }
+        .distinct()
+        .sortedWith(compareBy(String::lowercase))
+
+    val colors = (rawProducts.flatMap { filterValues(it, "Color") } + selectedColors)
+        .filter { it.isNotBlank() }
+        .distinct()
+        .sorted()
+
+    val brands = (rawProducts.flatMap { it.tags.map { tag -> tag.name } } + selectedBrands)
+        .filter { it.isNotBlank() }
+        .distinct()
+        .sorted()
+
+    val possibleSizes = rawProducts
+        .filter { product ->
+            val colorsOnly = selectedColors.map(::normalized).toSet()
+            val brandsOnly = selectedBrands.map(::normalized).toSet()
+            val productColors = filterValues(product, "Color").map(::normalized)
+            val productBrands = product.tags.map { it.name }.map(::normalized)
+            (colorsOnly.isEmpty() || productColors.any { it in colorsOnly }) &&
+                (brandsOnly.isEmpty() || productBrands.any { it in brandsOnly })
+        }
+        .flatMap { filterValues(it, "Tallas") }
+        .toSet() + selectedSizes
+
+    val possibleColors = rawProducts
+        .filter { product ->
+            val sizesOnly = selectedSizes.map(::normalized).toSet()
+            val brandsOnly = selectedBrands.map(::normalized).toSet()
+            val productSizes = filterValues(product, "Tallas").map(::normalized)
+            val productBrands = product.tags.map { it.name }.map(::normalized)
+            (sizesOnly.isEmpty() || productSizes.any { it in sizesOnly }) &&
+                (brandsOnly.isEmpty() || productBrands.any { it in brandsOnly })
+        }
+        .flatMap { filterValues(it, "Color") }
+        .toSet() + selectedColors
+
+    val possibleBrands = rawProducts
+        .filter { product ->
+            val sizesOnly = selectedSizes.map(::normalized).toSet()
+            val colorsOnly = selectedColors.map(::normalized).toSet()
+            val productSizes = filterValues(product, "Tallas").map(::normalized)
+            val productColors = filterValues(product, "Color").map(::normalized)
+            (sizesOnly.isEmpty() || productSizes.any { it in sizesOnly }) &&
+                (colorsOnly.isEmpty() || productColors.any { it in colorsOnly })
+        }
+        .flatMap { it.tags.map { tag -> tag.name } }
+        .filter { it.isNotBlank() }
+        .toSet() + selectedBrands
+
+    val activeFilterCount = selectedSizes.size + selectedColors.size + selectedBrands.size
+
+    LaunchedEffect(
+        pagingState.items.size,
+        pagingState.currentPage,
+        pagingState.hasMore,
+        pagingState.isInitialLoading,
+        pagingState.isAppending,
+        selectedSizes,
+        selectedColors,
+        selectedBrands
+    ) {
+        if (
+            activeFilterCount > 0 &&
+            filteredProducts.size < CatalogPaginator.PREFETCH_DISTANCE &&
+            pagingState.hasMore &&
+            !pagingState.isInitialLoading &&
+            !pagingState.isAppending &&
+            pagingState.currentPage > 0
+        ) {
+            paginator.loadNext(loadPage)
+        }
+    }
+
+    LaunchedEffect(gridState, filteredProducts.size, pagingState.hasMore, pagingState.isInitialLoading, pagingState.isAppending) {
         snapshotFlow {
             gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
         }.collect { lastVisible ->
@@ -192,29 +352,122 @@ internal fun IosCategoryProducts(
                 pagingState.hasMore &&
                 !pagingState.isInitialLoading &&
                 !pagingState.isAppending &&
-                lastVisible >= pagingState.items.size - CatalogPaginator.PREFETCH_DISTANCE
+                filteredProducts.isNotEmpty() &&
+                lastVisible >= filteredProducts.size - CatalogPaginator.PREFETCH_DISTANCE
             ) {
-                paginator.loadNext { page, perPage ->
-                    val items = storeApi.products(perPage = perPage, page = page, category = category.id)
-                    CatalogPage(items, hasMore = items.size >= perPage)
-                }
+                paginator.loadNext(loadPage)
             }
         }
     }
+
     Column(Modifier.fillMaxSize().padding(padding)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             TextButton(onClick = onBack) { Text("Atrás") }
-            Text(category.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(
+                category.name,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
         }
-        when {
-            pagingState.isInitialLoading -> IosStoreLoading()
-            pagingState.initialError != null -> IosStoreError(pagingState.initialError?.message ?: "No se han podido cargar los productos.") {
-                paginator.start("category:" + category.id) { page, perPage ->
-                    val items = storeApi.products(perPage = perPage, page = page, category = category.id)
-                    CatalogPage(items, hasMore = items.size >= perPage)
+
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Ordenar por", style = MaterialTheme.typography.bodyMedium)
+                Box {
+                    var sortExpanded by remember(category.id) { mutableStateOf(false) }
+                    TextButton(onClick = { sortExpanded = true }) {
+                        Text("\${sortMode.label}  ▾")
+                    }
+                    DropdownMenu(
+                        expanded = sortExpanded,
+                        onDismissRequest = { sortExpanded = false }
+                    ) {
+                        IosCatalogSortMode.values().forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(option.label) },
+                                onClick = {
+                                    sortExpanded = false
+                                    sortMode = option
+                                }
+                            )
+                        }
+                    }
                 }
             }
-            pagingState.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No hay productos en esta categoría.") }
+            OutlinedButton(onClick = { filtersOpen = true }) {
+                Text(if (activeFilterCount == 0) "Filtros" else "Filtros (\$activeFilterCount)")
+            }
+        }
+
+        if (activeFilterCount > 0) {
+            FlowRow(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                selectedSizes.sorted().forEach { value ->
+                    FilterChip(
+                        selected = true,
+                        onClick = { selectedSizes = selectedSizes - value },
+                        label = { Text("Talla \$value") },
+                        trailingIcon = { Text("×") }
+                    )
+                }
+                selectedColors.sorted().forEach { value ->
+                    FilterChip(
+                        selected = true,
+                        onClick = { selectedColors = selectedColors - value },
+                        label = { Text(value) },
+                        trailingIcon = { Text("×") }
+                    )
+                }
+                selectedBrands.sorted().forEach { value ->
+                    FilterChip(
+                        selected = true,
+                        onClick = { selectedBrands = selectedBrands - value },
+                        label = { Text(value) },
+                        trailingIcon = { Text("×") }
+                    )
+                }
+                TextButton(
+                    onClick = {
+                        selectedSizes = emptySet()
+                        selectedColors = emptySet()
+                        selectedBrands = emptySet()
+                    }
+                ) {
+                    Text("Borrar filtros")
+                }
+            }
+        }
+
+        when {
+            pagingState.isInitialLoading -> IosStoreLoading()
+            pagingState.initialError != null -> IosStoreError(
+                pagingState.initialError?.message ?: "No se han podido cargar los productos."
+            ) {
+                paginator.start(queryKey, loadPage)
+            }
+            filteredProducts.isEmpty() && !pagingState.hasMore -> Box(
+                Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    if (activeFilterCount > 0) {
+                        "No hay productos con estos filtros."
+                    } else {
+                        "No hay productos en esta categoría."
+                    }
+                )
+            }
             else -> LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 state = gridState,
@@ -223,23 +476,105 @@ internal fun IosCategoryProducts(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(pagingState.items, key = { it.id }) { IosProductCard(it, onOpenProduct, cartStore) }
+                items(filteredProducts, key = { it.id }) { IosProductCard(it, onOpenProduct, cartStore) }
                 if (pagingState.isAppending) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp)) }
+                        Box(
+                            Modifier.fillMaxWidth().padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(Modifier.size(24.dp))
+                        }
                     }
                 }
                 if (pagingState.appendError != null) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        IosStoreError(pagingState.appendError?.message ?: "No se han podido cargar más productos.") {
-                            paginator.loadNext { page, perPage ->
-                                val items = storeApi.products(perPage = perPage, page = page, category = category.id)
-                                CatalogPage(items, hasMore = items.size >= perPage)
-                            }
+                        IosStoreError(
+                            pagingState.appendError?.message ?: "No se han podido cargar más productos."
+                        ) {
+                            paginator.loadNext(loadPage)
                         }
                     }
                 }
             }
+        }
+    }
+
+    if (filtersOpen) {
+        AlertDialog(
+            onDismissRequest = { filtersOpen = false },
+            title = { Text("Filtros") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    IosFilterChoices(
+                        title = "Talla",
+                        values = sizes,
+                        selected = selectedSizes,
+                        enabledValues = possibleSizes,
+                        onChange = { selectedSizes = it }
+                    )
+                    Spacer(Modifier.height(20.dp))
+                    IosFilterChoices(
+                        title = "Color",
+                        values = colors,
+                        selected = selectedColors,
+                        enabledValues = possibleColors,
+                        onChange = { selectedColors = it }
+                    )
+                    Spacer(Modifier.height(20.dp))
+                    IosFilterChoices(
+                        title = "Marca",
+                        values = brands,
+                        selected = selectedBrands,
+                        enabledValues = possibleBrands,
+                        onChange = { selectedBrands = it }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { filtersOpen = false }) { Text("Aplicar") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        selectedSizes = emptySet()
+                        selectedColors = emptySet()
+                        selectedBrands = emptySet()
+                    }
+                ) {
+                    Text("Limpiar")
+                }
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun IosFilterChoices(
+    title: String,
+    values: List<String>,
+    selected: Set<String>,
+    enabledValues: Set<String>,
+    onChange: (Set<String>) -> Unit
+) {
+    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(8.dp))
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        values.forEach { value ->
+            FilterChip(
+                selected = value in selected,
+                enabled = value in selected || value in enabledValues,
+                onClick = {
+                    onChange(
+                        if (value in selected) selected - value else selected + value
+                    )
+                },
+                label = { Text(value) }
+            )
         }
     }
 }
