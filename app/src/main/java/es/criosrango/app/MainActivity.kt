@@ -365,8 +365,6 @@ private fun CriosRangoApp(
                 }
             }
         }
-            }
-        }
     }
 
 
