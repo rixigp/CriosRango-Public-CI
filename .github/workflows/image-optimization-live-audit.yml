@@ -65,7 +65,7 @@ jobs:
           JSON
 
       - name: Run live image audit
-        run: ./gradlew :app:testDebugUnitTest --tests es.criosrango.app.LiveImageOptimizationAuditTest --stacktrace
+        run: ./gradlew :app:testDebugUnitTest -PrunLiveAudits=true --tests es.criosrango.app.LiveImageOptimizationAuditTest --stacktrace
 
       - name: Cleanup
         if: always()

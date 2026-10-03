@@ -95,3 +95,13 @@ dependencies {
     implementation("androidx.room:room-ktx:$roomVersion")
     kapt("androidx.room:room-compiler:$roomVersion")
 }
+
+// Live audits depend on production services and must not gate deterministic CI.
+tasks.withType(org.gradle.api.tasks.testing.Test::class.java).configureEach {
+    val runLiveAudits = providers.gradleProperty("runLiveAudits")
+        .map(String::toBoolean)
+        .getOrElse(false)
+    if (!runLiveAudits) {
+        exclude("**/LiveImageOptimizationAuditTest.class")
+    }
+}
