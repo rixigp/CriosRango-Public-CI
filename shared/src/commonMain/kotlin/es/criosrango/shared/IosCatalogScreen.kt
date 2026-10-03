@@ -193,7 +193,7 @@ internal fun IosCategoryProducts(
     val pagingState by paginator.state.collectAsState()
     val gridState = rememberLazyGridState()
 
-    val savedState = catalogRestoration[category.id]
+    val savedState = catalogRestoration[category.id.toLong()]
     val initialSortMode = when (savedState?.sortMode) {
         IosCatalogSortModeState.PRICE_ASC -> IosCatalogSortMode.PRICE_ASC
         IosCatalogSortModeState.PRICE_DESC -> IosCatalogSortMode.PRICE_DESC
@@ -262,7 +262,7 @@ internal fun IosCategoryProducts(
             IosCatalogSortMode.NAME_ASC -> IosCatalogSortModeState.NAME_ASC
             IosCatalogSortMode.RECENT -> IosCatalogSortModeState.RECENT
         }
-        catalogRestoration[category.id] = IosCatalogRestorationState(
+        catalogRestoration[category.id.toLong()] = IosCatalogRestorationState(
             queryKey, restoredSort, selectedSizes, selectedColors, selectedBrands,
             pagingState, gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset
         )
