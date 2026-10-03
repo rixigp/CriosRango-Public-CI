@@ -850,17 +850,19 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                     } else if (attribute.name.equals("Tallas", true)) {
                         OutlinedButton(
                             onClick = {
-                                productDetailToggleAttributeSelection(
-                                    selected = selected,
-                                    attributeName = attribute.name,
-                                    termSlug = term.slug,
-                                    chosen = chosen,
-                                    existsGlobally = existsGlobally,
-                                    termName = term.name,
-                                    variations = variationSnapshots
-                                )
+                                if (chosen) {
+                                    selected.remove(attribute.name)
+                                } else if (existsGlobally) {
+                                    productDetailSelectAttributeOption(
+                                        selected = selected,
+                                        attributeName = attribute.name,
+                                        termSlug = term.slug,
+                                        termName = term.name,
+                                        variations = variationSnapshots
+                                    )
+                                }
                             },
-                            enabled = clickable,
+                            enabled = chosen || existsGlobally,
                             shape = RoundedCornerShape(14.dp),
                             border = androidx.compose.foundation.BorderStroke(
                                 if (chosen) 2.dp else 1.dp,
