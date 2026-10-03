@@ -429,6 +429,8 @@ private fun CriosRangoApp(
     }
 }
 
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StoreTopBar(tab: AppTab, cartQuantity: Int, onSearch: () -> Unit, onCart: () -> Unit) = TopAppBar(
@@ -468,4 +470,3 @@ private fun catalogHasUsableContent(tab: AppTab, products: List<StoreProduct>, h
 private fun parseMinorPrice(value: String): Double = value.toDoubleOrNull()?.div(100.0) ?: parsePrice(value)
 private fun parsePrice(value: String): Double = value.replace(".", "").replace(",", ".").replace(" €", "").toDoubleOrNull() ?: 0.0
 private fun Double.formatPrice(): String = "%,.2f €".format(java.util.Locale("es", "ES"), this)
-}
