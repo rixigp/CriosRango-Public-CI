@@ -91,6 +91,10 @@ private val pushTypeState = androidx.compose.runtime.mutableStateOf<String?>(nul
 private val pushOrderIdState = androidx.compose.runtime.mutableStateOf<Int?>(null)
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        private var startupBrandingShownInProcess = false
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
@@ -111,10 +115,8 @@ class MainActivity : ComponentActivity() {
         categoryCache.bindRepository(repository)
         val outletAvailabilityStore = OutletAvailabilityStore(repository, preferences)
         val shopViewModel = androidx.lifecycle.ViewModelProvider(this, ShopViewModel.Factory(repository, cartStore, DeliveryAddressStore(preferences), pendingCardPaymentStore))[ShopViewModel::class.java]
-        val coldStartBranding = !preferences.getBoolean("brandingIntroShown", false)
-        if (coldStartBranding) {
-            preferences.edit().putBoolean("brandingIntroShown", true).apply()
-        }
+        val coldStartBranding = !startupBrandingShownInProcess
+        startupBrandingShownInProcess = true
         setContent { CriosRangoApp(shopViewModel, categoryCache, outletAvailabilityStore, coldStartBranding) }
     }
     override fun onNewIntent(intent: android.content.Intent) {
