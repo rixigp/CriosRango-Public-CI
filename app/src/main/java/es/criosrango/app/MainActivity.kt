@@ -141,49 +141,12 @@ private fun StartupBranding() {
             modifier = Modifier.padding(horizontal = 28.dp)
         ) {
             Image(
-                painter = painterResource(R.drawable.criosrango_monogram),
+                painter = painterResource(R.drawable.splash_logo),
                 contentDescription = null,
-                modifier = Modifier.size(176.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp),
                 contentScale = ContentScale.Fit
             )
             Spacer(Modifier.height(24.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "CRÍOS",
-                    fontFamily = FontFamily.Serif,
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = Color(0xFF123F36),
-                    letterSpacing = 0.6.sp
-                )
-                Text(
-                    text = " & ",
-                    fontFamily = FontFamily.Serif,
-                    fontSize = 29.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = Color(0xFFB28A50)
-                )
-                Text(
-                    text = "RANGO",
-                    fontFamily = FontFamily.Serif,
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = Color(0xFF123F36),
-                    letterSpacing = 0.6.sp
-                )
-            }
-            Spacer(Modifier.height(13.dp))
-            Text(
-                text = "MODA PARA TODAS LAS EDADES",
-                fontSize = 10.5.sp,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = 3.1.sp,
-                color = Color(0xFF6B625E),
-                textAlign = TextAlign.Center
-            )
         }
     }
 }
@@ -438,7 +401,7 @@ private fun StoreTopBar(tab: AppTab, cartQuantity: Int, onSearch: () -> Unit, on
     title = {},
     navigationIcon = {
         Image(
-            painter = painterResource(R.drawable.criosrango_monogram),
+            painter = painterResource(R.drawable.home_logo),
             contentDescription = "Críos & Rango",
             modifier = Modifier.size(34.dp),
             contentScale = ContentScale.Fit
