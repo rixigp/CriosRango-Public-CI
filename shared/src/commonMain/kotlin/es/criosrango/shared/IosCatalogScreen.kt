@@ -46,7 +46,7 @@ internal fun IosCatalogScreen(
 ) {
     when (page) {
         IosCatalogPage.Root -> IosCategoryRoot(storeApi, padding, onOpenCategory)
-        is IosCatalogPage.Category -> IosCategoryProducts(storeApi, padding, page.category, onOpenProduct, onBack, cartStore)
+        is IosCatalogPage.Category -> IosCategoryPage(storeApi, padding, page.category, onOpenCategory, onOpenProduct, onBack, cartStore)
         is IosCatalogPage.Product -> IosProductDetail(storeApi, padding, page.product, onBack, cartStore)
         IosCatalogPage.Novedades -> IosNovedadesScreen(storeApi, padding, cartStore, onOpenProduct, onBack)
         IosCatalogPage.Search -> IosSearchScreen(storeApi, padding, cartStore, onOpenProduct, onBack)
@@ -91,6 +91,72 @@ internal fun IosCategoryRoot(
                     Button(onClick = { onOpenCategory(it) }) { Text(it.name) }
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun IosCategoryPage(
+    storeApi: es.criosrango.shared.api.StoreApiClient,
+    padding: PaddingValues,
+    category: StoreCategory,
+    onOpenCategory: (StoreCategory) -> Unit,
+    onOpenProduct: (StoreProduct) -> Unit,
+    onBack: () -> Unit,
+    cartStore: StoreCartStore
+) {
+    var categories by remember { mutableStateOf<List<StoreCategory>?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(category.id) {
+        categories = null
+        error = null
+        runCatching { storeApi.categories(perPage = 100) }
+            .onSuccess { categories = it }
+            .onFailure { error = it.message ?: "No se han podido cargar las categorías." }
+    }
+
+    val children = categories
+        ?.filter { it.parent == category.id }
+        ?.distinctBy { it.id }
+        ?: emptyList()
+
+    Column(Modifier.fillMaxSize().padding(padding)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(onClick = onBack) { Text("Atrás") }
+            Text(category.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        }
+
+        when {
+            error != null -> IosStoreError(error!!) {
+                categories = null
+                error = null
+            }
+            categories == null -> IosStoreLoading()
+            children.isNotEmpty() -> LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(children, key = { it.id }) { child ->
+                    Button(onClick = { onOpenCategory(child) }) {
+                        Text(child.name)
+                    }
+                }
+            }
+            else -> IosCategoryProducts(
+                storeApi = storeApi,
+                padding = PaddingValues(),
+                category = category,
+                onOpenProduct = onOpenProduct,
+                onBack = onBack,
+                cartStore = cartStore
+            )
         }
     }
 }

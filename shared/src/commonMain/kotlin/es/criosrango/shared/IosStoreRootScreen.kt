@@ -88,9 +88,10 @@ fun CriosRangoIOSRootScreen(
     var section by remember { mutableStateOf(IosRootSection.HOME) }
     var checkoutOpen by remember { mutableStateOf(false) }
     var catalogPage by remember { mutableStateOf<IosCatalogPage>(IosCatalogPage.Root) }
+    var catalogOriginHome by remember { mutableStateOf(false) }
     val catalogHistory = remember { mutableStateListOf<IosCatalogPage>() }
     fun openCatalog(page: IosCatalogPage) { if (catalogPage != page) catalogHistory.add(catalogPage); catalogPage = page }
-    fun resetCatalog() { catalogHistory.clear(); catalogPage = IosCatalogPage.Root }
+    fun resetCatalog() { catalogHistory.clear(); catalogPage = IosCatalogPage.Root; catalogOriginHome = false }
     fun backCatalog() { catalogPage = if (catalogHistory.isNotEmpty()) catalogHistory.removeAt(catalogHistory.lastIndex) else IosCatalogPage.Root }
 
     LaunchedEffect(pushNavigation) {
@@ -146,6 +147,7 @@ fun CriosRangoIOSRootScreen(
                     onCategory = {
                         section = IosRootSection.CATEGORIES
                         resetCatalog()
+                        catalogOriginHome = true
                         openCatalog(IosCatalogPage.Category(it))
                     },
                     onProduct = {
@@ -165,7 +167,21 @@ fun CriosRangoIOSRootScreen(
                     cartStore = cartStore,
                     onOpenCategory = { openCatalog(IosCatalogPage.Category(it)) },
                     onOpenProduct = { openCatalog(IosCatalogPage.Product(it)) },
-                    onBack = { if (section == IosRootSection.OUTLET && catalogPage == IosCatalogPage.Outlet) { section = IosRootSection.HOME; resetCatalog() } else if (catalogPage == IosCatalogPage.Root) { section = IosRootSection.HOME } else backCatalog() }
+                    onBack = {
+                        if (section == IosRootSection.OUTLET && catalogPage == IosCatalogPage.Outlet) {
+                            section = IosRootSection.HOME
+                            resetCatalog()
+                        } else if (catalogPage == IosCatalogPage.Root) {
+                            section = IosRootSection.HOME
+                            resetCatalog()
+                        } else {
+                            backCatalog()
+                            if (catalogHistory.isEmpty() && catalogPage == IosCatalogPage.Root && catalogOriginHome) {
+                                section = IosRootSection.HOME
+                                resetCatalog()
+                            }
+                        }
+                    }
                 )
                 IosRootSection.CART -> IosCartScreen(cartStore, padding, onCheckout = { checkoutOpen = true }) { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) }
                 IosRootSection.ACCOUNT -> CriosRangoIOSAccountScreen(
