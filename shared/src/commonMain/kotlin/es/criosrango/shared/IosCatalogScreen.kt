@@ -16,6 +16,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -609,6 +612,115 @@ private fun IosFilterChoices(
     }
 }
 
+internal data class IosProductDetailVariationSnapshot(
+    val availableForPurchase: Boolean,
+    val attributes: List<Pair<String, String>>
+)
+
+internal data class IosProductDetailAttributeOptionState(
+    val existsGlobally: Boolean,
+    val compatibleWithCurrentSelection: Boolean
+)
+
+private fun iosProductDetailNormalized(value: String): String =
+    value.trim().lowercase().removePrefix("pa_").replace(Regex("[^a-z0-9]+"), "-").trim('-')
+
+private fun iosProductDetailAttributesMatch(left: String, right: String): Boolean =
+    iosProductDetailNormalized(left) == iosProductDetailNormalized(right)
+
+private fun iosProductDetailValuesMatch(left: String, right: String): Boolean =
+    iosProductDetailNormalized(left) == iosProductDetailNormalized(right)
+
+private fun iosProductDetailVariationHasValue(
+    variation: IosProductDetailVariationSnapshot,
+    attributeName: String,
+    selectedValue: String
+): Boolean = variation.attributes.any { (name, value) ->
+    iosProductDetailAttributesMatch(name, attributeName) && iosProductDetailValuesMatch(value, selectedValue)
+}
+
+private fun iosProductDetailVariationHasTerm(
+    variation: IosProductDetailVariationSnapshot,
+    attributeName: String,
+    termSlug: String,
+    termName: String
+): Boolean = variation.attributes.any { (name, value) ->
+    iosProductDetailAttributesMatch(name, attributeName) &&
+        (iosProductDetailValuesMatch(value, termSlug) || iosProductDetailValuesMatch(value, termName))
+}
+
+internal fun iosProductDetailAttributeOptionState(
+    variations: List<IosProductDetailVariationSnapshot>,
+    selected: Map<String, String>,
+    attributeName: String,
+    termSlug: String,
+    termName: String
+): IosProductDetailAttributeOptionState {
+    val existsGlobally = variations.any { variation ->
+        variation.availableForPurchase && iosProductDetailVariationHasTerm(variation, attributeName, termSlug, termName)
+    }
+    val compatibleWithCurrentSelection = variations.any { variation ->
+        variation.availableForPurchase &&
+            iosProductDetailVariationHasTerm(variation, attributeName, termSlug, termName) &&
+            selected.all { (selectedName, selectedValue) ->
+                iosProductDetailAttributesMatch(selectedName, attributeName) ||
+                    iosProductDetailVariationHasValue(variation, selectedName, selectedValue)
+            }
+    }
+    return IosProductDetailAttributeOptionState(existsGlobally, compatibleWithCurrentSelection)
+}
+
+internal fun iosProductDetailSelectAttributeOption(
+    selected: MutableMap<String, String>,
+    attributeName: String,
+    termSlug: String,
+    termName: String,
+    variations: List<IosProductDetailVariationSnapshot>
+) {
+    selected[attributeName] = termSlug
+    val conflictingAttributes = selected.toMap()
+        .filterKeys { !iosProductDetailAttributesMatch(it, attributeName) }
+        .filterNot { (selectedName, selectedValue) ->
+            variations.any { variation ->
+                variation.availableForPurchase &&
+                    iosProductDetailVariationHasTerm(variation, attributeName, termSlug, termName) &&
+                    iosProductDetailVariationHasValue(variation, selectedName, selectedValue)
+            }
+        }
+        .keys
+    conflictingAttributes.forEach(selected::remove)
+}
+
+internal fun iosProductDetailToggleAttributeSelection(
+    selected: MutableMap<String, String>,
+    attributeName: String,
+    termSlug: String,
+    termName: String,
+    chosen: Boolean,
+    existsGlobally: Boolean,
+    variations: List<IosProductDetailVariationSnapshot>
+) {
+    if (chosen) selected.remove(attributeName)
+    else if (existsGlobally) iosProductDetailSelectAttributeOption(selected, attributeName, termSlug, termName, variations)
+}
+
+private fun Modifier.iosProductDetailIncompatibleSlash(
+    show: Boolean,
+    shape: androidx.compose.ui.graphics.Shape,
+    color: Color = Color(0xFF8B878B)
+): Modifier = if (!show) this else {
+    clip(shape).drawWithContent {
+        drawContent()
+        drawLine(
+            color = color,
+            start = Offset(0f, size.height),
+            end = Offset(size.width, 0f),
+            strokeWidth = 1.25.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+    }
+}
+
 @Composable
 internal fun IosProductDetail(
     storeApi: es.criosrango.shared.api.StoreApiClient,
@@ -635,11 +747,24 @@ internal fun IosProductDetail(
             .onFailure { error = it.message ?: "No se ha podido cargar el producto." }
         loading = false
     }
+    val variationSnapshots = remember(product.variations) {
+        product.variations.map { variation ->
+            IosProductDetailVariationSnapshot(
+                availableForPurchase = variation.isInStock != false && variation.isPurchasable != false,
+                attributes = variation.attributes.map { it.name to it.value }
+            )
+        }
+    }
+    val selectableAttributes = product.attributes.filter { it.terms.isNotEmpty() }
     val selectedVariation = remember(product, selected.toMap()) {
         if (product.type != "variable") null else product.variations.firstOrNull { variation ->
-            product.attributes.filter { it.terms.isNotEmpty() }.all { attribute ->
+            selectableAttributes.all { attribute ->
                 val wanted = selected[attribute.name]
-                wanted != null && variation.attributes.any { it.name == attribute.name && it.value == wanted }
+                wanted != null && variation.attributes.any { value ->
+                    iosProductDetailAttributesMatch(value.name, attribute.name) &&
+                        (iosProductDetailValuesMatch(value.value, wanted) ||
+                            attribute.terms.any { it.slug == wanted && iosProductDetailValuesMatch(value.value, it.name) })
+                }
             }
         }
     }
@@ -689,7 +814,57 @@ internal fun IosProductDetail(
                 Text(attribute.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(20.dp, 18.dp, 20.dp, 6.dp))
                 Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     attribute.terms.forEach { term ->
-                        FilterChip(selected[attribute.name] == term.slug, { selected[attribute.name] = term.slug }, label = { Text(term.name) })
+                        run {
+                            val chosen = selected[attribute.name]?.let {
+                                iosProductDetailValuesMatch(it, term.slug) || iosProductDetailValuesMatch(it, term.name)
+                            } == true
+                            val optionState = iosProductDetailAttributeOptionState(
+                                variations = variationSnapshots,
+                                selected = selected,
+                                attributeName = attribute.name,
+                                termSlug = term.slug,
+                                termName = term.name
+                            )
+                            val existsGlobally = optionState.existsGlobally
+                            val compatibleNow = optionState.compatibleWithCurrentSelection
+                            val clickable = chosen || existsGlobally
+                            OutlinedButton(
+                                onClick = {
+                                    iosProductDetailToggleAttributeSelection(
+                                        selected = selected,
+                                        attributeName = attribute.name,
+                                        termSlug = term.slug,
+                                        termName = term.name,
+                                        chosen = chosen,
+                                        existsGlobally = existsGlobally,
+                                        variations = variationSnapshots
+                                    )
+                                },
+                                enabled = clickable,
+                                shape = RoundedCornerShape(if (attribute.name.equals("Color", true)) 50.dp else 14.dp),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    if (chosen) 2.dp else 1.dp,
+                                    when {
+                                        chosen -> Color(0xFF183B35)
+                                        existsGlobally && !compatibleNow -> Color(0xFFD0CDD0)
+                                        else -> Color(0xFF8B878B)
+                                    }
+                                ),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = if (chosen) Color(0xFFE4EFEA) else Color.Transparent,
+                                    contentColor = if (existsGlobally && !compatibleNow) Color(0xFF777277) else LocalContentColor.current
+                                ),
+                                modifier = Modifier.iosProductDetailIncompatibleSlash(
+                                    show = existsGlobally && !compatibleNow && !chosen,
+                                    shape = RoundedCornerShape(if (attribute.name.equals("Color", true)) 50.dp else 14.dp)
+                                )
+                            ) {
+                                Text(
+                                    term.name,
+                                    textDecoration = if (!existsGlobally && attribute.name.equals("Tallas", true)) TextDecoration.LineThrough else TextDecoration.None
+                                )
+                            }
+                        }
                     }
                 }
             }
