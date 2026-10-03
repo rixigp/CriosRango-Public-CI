@@ -117,8 +117,9 @@ internal fun IosCategoryPage(
 ) {
     var categories by remember { mutableStateOf<List<StoreCategory>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var retryGeneration by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(category.id) {
+    LaunchedEffect(category.id, retryGeneration) {
         categories = null
         error = null
         runCatching { storeApi.categories(perPage = 100) }
@@ -144,6 +145,7 @@ internal fun IosCategoryPage(
             error != null -> IosStoreError(error!!) {
                 categories = null
                 error = null
+                retryGeneration++
             }
             categories == null -> IosStoreLoading()
             children.isNotEmpty() -> LazyVerticalGrid(
