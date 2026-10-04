@@ -63,6 +63,8 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.6.1")
     implementation("androidx.browser:browser:1.8.0")
     implementation("androidx.core:core-ktx:1.15.0")
+    // Retained for AccountSessionStore legacy-token migration; PendingCardPaymentStore does not use it.
+    implementation("androidx.security:security-crypto:1.1.0")
     implementation("androidx.core:core-splashscreen:1.2.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.activity:activity-ktx:1.10.0")
