@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: Crios&Rango Push Notifications
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 if (!defined('ABSPATH')) exit;
 
@@ -20,7 +20,7 @@ final class CriosRango_Push {
     static function activate(){
         global $wpdb; require_once ABSPATH.'wp-admin/includes/upgrade.php'; $c=$wpdb->get_charset_collate();
         dbDelta("CREATE TABLE ".self::table('devices')." (id bigint unsigned NOT NULL AUTO_INCREMENT, token_hash char(64) NOT NULL, token text NOT NULL, identifier_hash char(64) NOT NULL DEFAULT '', identifier text NOT NULL DEFAULT '', identifier_type varchar(20) NOT NULL DEFAULT 'fcm_token', platform varchar(10) NOT NULL, user_id bigint unsigned NOT NULL DEFAULT 0, new_products tinyint(1) NOT NULL DEFAULT 1, order_updates tinyint(1) NOT NULL DEFAULT 1, active tinyint(1) NOT NULL DEFAULT 1, last_seen_gmt datetime NOT NULL, created_gmt datetime NOT NULL, updated_gmt datetime NOT NULL, PRIMARY KEY(id), UNIQUE KEY token_hash(token_hash), KEY identifier_hash_idx(identifier_hash), KEY user_id(user_id), KEY active(active)) $c;");
-        self::migrate_devices_schema(); update_option('criosrango_push_db_version',self::DB_VERSION,false);
+        if(self::migrate_devices_schema()) update_option('criosrango_push_db_version',self::DB_VERSION,false);
         dbDelta("CREATE TABLE ".self::table('events')." (id bigint unsigned NOT NULL AUTO_INCREMENT, idempotency_key varchar(190) NOT NULL, type varchar(40) NOT NULL, entity_id bigint unsigned NOT NULL DEFAULT 0, entity_state varchar(60) NOT NULL DEFAULT '', payload longtext NULL, created_gmt datetime NOT NULL, sent_gmt datetime NULL, PRIMARY KEY(id), UNIQUE KEY idempotency_key(idempotency_key), KEY type_sent(type,sent_gmt)) $c;");
         dbDelta("CREATE TABLE ".self::table('deliveries')." (id bigint unsigned NOT NULL AUTO_INCREMENT,event_id bigint unsigned NOT NULL,device_id bigint unsigned NOT NULL,result varchar(30) NOT NULL,provider_id varchar(255) NOT NULL DEFAULT '',created_gmt datetime NOT NULL,PRIMARY KEY(id),UNIQUE KEY event_device(event_id,device_id)) $c;");
         self::schedule();
@@ -110,34 +110,189 @@ final class CriosRango_Push {
 
     return $user_id;
     }
+    static function migration_error($step){
+        error_log('CriosRango Push DB migration failed: step='.$step);
+    }
     static function maybe_migrate(){
         if((int)get_option('criosrango_push_db_version',0)<self::DB_VERSION){
-            self::migrate_devices_schema();
-            update_option('criosrango_push_db_version',self::DB_VERSION,false);
+            if(self::migrate_devices_schema()){
+                update_option('criosrango_push_db_version',self::DB_VERSION,false);
+            }
         }
     }
     static function migrate_devices_schema(){
         global $wpdb; $table=self::table('devices');
-        if($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s",$table))!==$table)return;
+
+        $exists=$wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s",$table));
+        if($exists!==$table){
+            self::migration_error('devices_table_missing');
+            return false;
+        }
+
         $columns=$wpdb->get_col("SHOW COLUMNS FROM $table");
-        if(!in_array('identifier_hash',$columns,true))$wpdb->query("ALTER TABLE $table ADD COLUMN identifier_hash char(64) NOT NULL DEFAULT '' AFTER token");
-        if(!in_array('identifier',$columns,true))$wpdb->query("ALTER TABLE $table ADD COLUMN identifier text NOT NULL DEFAULT '' AFTER identifier_hash");
-        if(!in_array('identifier_type',$columns,true))$wpdb->query("ALTER TABLE $table ADD COLUMN identifier_type varchar(20) NOT NULL DEFAULT 'fcm_token' AFTER identifier");
-        $rows=$wpdb->get_results("SELECT id,platform,token,identifier,identifier_type FROM $table");
+        if($wpdb->last_error || !is_array($columns)){
+            self::migration_error('inspect_columns');
+            return false;
+        }
+
+        if(!in_array('identifier_hash',$columns,true) &&
+            false === $wpdb->query("ALTER TABLE $table ADD COLUMN identifier_hash char(64) NOT NULL DEFAULT '' AFTER token")){
+            self::migration_error('add_identifier_hash');
+            return false;
+        }
+        $columns=$wpdb->get_col("SHOW COLUMNS FROM $table");
+        if($wpdb->last_error || !is_array($columns) || !in_array('identifier_hash',$columns,true)){
+            self::migration_error('verify_identifier_hash_column');
+            return false;
+        }
+
+        if(!in_array('identifier',$columns,true) &&
+            false === $wpdb->query("ALTER TABLE $table ADD COLUMN identifier text NOT NULL DEFAULT '' AFTER identifier_hash")){
+            self::migration_error('add_identifier');
+            return false;
+        }
+        $columns=$wpdb->get_col("SHOW COLUMNS FROM $table");
+        if($wpdb->last_error || !is_array($columns) || !in_array('identifier',$columns,true)){
+            self::migration_error('verify_identifier_column');
+            return false;
+        }
+
+        if(!in_array('identifier_type',$columns,true) &&
+            false === $wpdb->query("ALTER TABLE $table ADD COLUMN identifier_type varchar(20) NOT NULL DEFAULT 'fcm_token' AFTER identifier")){
+            self::migration_error('add_identifier_type');
+            return false;
+        }
+        $columns=$wpdb->get_col("SHOW COLUMNS FROM $table");
+        if($wpdb->last_error || !is_array($columns) || !in_array('identifier_type',$columns,true)){
+            self::migration_error('verify_identifier_type_column');
+            return false;
+        }
+
+        $row_count_before=$wpdb->get_var("SELECT COUNT(*) FROM $table");
+        if(null===$row_count_before || $wpdb->last_error){
+            self::migration_error('count_before');
+            return false;
+        }
+
+        $rows=$wpdb->get_results("SELECT id,platform,token,identifier,identifier_type FROM $table ORDER BY id ASC");
+        if(!is_array($rows) || $wpdb->last_error){
+            self::migration_error('read_devices');
+            return false;
+        }
+
+        $logical_identities=[];
+        $hashes=[];
         foreach($rows as $row){
-            $type=trim((string)$row->identifier_type);
-            if($type===''||!in_array($type,['fid','fcm_token','apns_token'],true))$type=$row->platform==='ios'?'apns_token':'fcm_token';
+            $platform=sanitize_key((string)$row->platform);
+            if(!in_array($platform,['android','ios'],true)){
+                self::migration_error('invalid_platform');
+                return false;
+            }
+
+            $stored_type=trim((string)$row->identifier_type);
+            if($stored_type===''){
+                $type=$platform==='ios'?'apns_token':'fcm_token';
+            }elseif($platform==='android' && in_array($stored_type,['fid','fcm_token'],true)){
+                $type=$stored_type;
+            }elseif($platform==='ios' && $stored_type==='apns_token'){
+                $type=$stored_type;
+            }else{
+                self::migration_error('invalid_identifier_type');
+                return false;
+            }
+
             $identifier=trim((string)$row->identifier);
             if($identifier==='')$identifier=trim((string)$row->token);
-            if($identifier==='')continue;
-            $hash=hash('sha256',$row->platform.':'.$type.':'.$identifier);
-            $wpdb->update($table,['identifier_hash'=>$hash,'identifier'=>$identifier,'identifier_type'=>$type],['id'=>(int)$row->id]);
+            if($identifier===''){
+                self::migration_error('empty_identifier');
+                return false;
+            }
+
+            $logical_key=$platform.':'.$type.':'.$identifier;
+            $hash=hash('sha256',$logical_key);
+            if(isset($logical_identities[$logical_key]) || isset($hashes[$hash])){
+                self::migration_error('duplicate_logical_identity');
+                return false;
+            }
+            $logical_identities[$logical_key]=true;
+            $hashes[$hash]=true;
         }
+
+        foreach($rows as $row){
+            $platform=sanitize_key((string)$row->platform);
+            $stored_type=trim((string)$row->identifier_type);
+            $type=$stored_type===''?($platform==='ios'?'apns_token':'fcm_token'):$stored_type;
+            $identifier=trim((string)$row->identifier);
+            if($identifier==='')$identifier=trim((string)$row->token);
+            $hash=hash('sha256',$platform.':'.$type.':'.$identifier);
+            $result=$wpdb->update(
+                $table,
+                ['identifier_hash'=>$hash,'identifier'=>$identifier,'identifier_type'=>$type],
+                ['id'=>(int)$row->id]
+            );
+            if(false===$result){
+                self::migration_error('update_device');
+                return false;
+            }
+        }
+
+        $row_count_after=$wpdb->get_var("SELECT COUNT(*) FROM $table");
+        if(null===$row_count_after || $wpdb->last_error || (int)$row_count_after!==(int)$row_count_before){
+            self::migration_error('count_after');
+            return false;
+        }
+
+        $bad=$wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $table WHERE identifier IS NULL OR TRIM(identifier)='' OR identifier_hash IS NULL OR TRIM(identifier_hash)='' OR (platform='android' AND identifier_type NOT IN ('fid','fcm_token')) OR (platform='ios' AND identifier_type<>'apns_token')"
+        ));
+        if(null===$bad || $wpdb->last_error || (int)$bad!==0){
+            self::migration_error('verify_migrated_rows');
+            return false;
+        }
+
+        $required=['id','token_hash','token','identifier_hash','identifier','identifier_type','platform','user_id','new_products','order_updates','active','last_seen_gmt','created_gmt','updated_gmt'];
+        foreach($required as $required_column){
+            if(!in_array($required_column,$columns,true)){
+                self::migration_error('verify_required_columns');
+                return false;
+            }
+        }
+
         $has_unique=false;
-        foreach((array)$wpdb->get_results("SHOW INDEX FROM $table") as $index){
-            if($index->Key_name==='identifier_hash'&&!(int)$index->Non_unique){$has_unique=true;break;}
+        $indexes=$wpdb->get_results("SHOW INDEX FROM $table");
+        if(!is_array($indexes) || $wpdb->last_error){
+            self::migration_error('inspect_indexes');
+            return false;
         }
-        if(!$has_unique)$wpdb->query("ALTER TABLE $table ADD UNIQUE KEY identifier_hash (identifier_hash)");
+        foreach($indexes as $index){
+            if($index->Key_name==='identifier_hash' && !(int)$index->Non_unique){
+                $has_unique=true;
+                break;
+            }
+        }
+        if(!$has_unique){
+            if(false===$wpdb->query("ALTER TABLE $table ADD UNIQUE KEY identifier_hash (identifier_hash)")){
+                self::migration_error('add_identifier_hash_unique');
+                return false;
+            }
+        }
+
+        $indexes=$wpdb->get_results("SHOW INDEX FROM $table");
+        $has_unique=false;
+        if(is_array($indexes) && !$wpdb->last_error){
+            foreach($indexes as $index){
+                if($index->Key_name==='identifier_hash' && !(int)$index->Non_unique){
+                    $has_unique=true;
+                    break;
+                }
+            }
+        }
+        if(!$has_unique){
+            self::migration_error('verify_identifier_hash_unique');
+            return false;
+        }
+
+        return true;
     }
     static function parse_identifier($r){
         $platform=sanitize_key($r->get_param('platform'));
