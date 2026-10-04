@@ -25,10 +25,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.Icon
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.ShoppingBag
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -233,12 +229,12 @@ private fun IosStoreTopBar(
 ) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("Críos&Rango", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-        IconButton(onClick = onSearch) { Icon(Icons.Outlined.Search, "Buscar") }
+        IconButton(onClick = onSearch) { Text("⌕", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { contentDescription = "Buscar" }) }
         BadgedBox(
             modifier = Modifier.size(52.dp),
             badge = { if (cartQuantity > 0) Badge { Text(cartQuantity.toString(), maxLines = 1) } }
         ) {
-            IconButton(onClick = onCart) { Icon(Icons.Outlined.ShoppingBag, "Carrito") }
+            IconButton(onClick = onCart) { Text("🛍", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { contentDescription = "Carrito" }) }
         }
     }
 }
