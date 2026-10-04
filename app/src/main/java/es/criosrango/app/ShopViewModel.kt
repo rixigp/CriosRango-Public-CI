@@ -494,8 +494,8 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
             is PaymentReconciliationResult.PAID -> {
                 val confirmedOrderId = if (result.order.id > 0) result.order.id else checkout.orderId
                 // If cart cleanup fails, leave the durable marker intact for recovery.
-                try {
-                    val cleanupCompleted = clearPendingAfterPaidCartCleanup(
+                val cleanupCompleted = try {
+                    clearPendingAfterPaidCartCleanup(
                         clearCart = { cartStore.clearAfterConfirmedPayment() },
                         clearPending = { pendingCardPaymentStore.clear() }
                     )
