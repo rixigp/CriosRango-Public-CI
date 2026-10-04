@@ -353,6 +353,22 @@ class StoreRepository(private val api: StoreApi) {
 
 enum class CartLoadState { LOADING, SUCCESS_ITEMS, SUCCESS_EMPTY, ERROR }
 
+internal class CartAddGate {
+    private var inFlight = false
+
+    @Synchronized
+    fun tryAcquire(): Boolean {
+        if (inFlight) return false
+        inFlight = true
+        return true
+    }
+
+    @Synchronized
+    fun release() {
+        inFlight = false
+    }
+}
+
 internal suspend fun clearConfirmedPaymentLines(
     items: List<CartLine>,
     removeLine: suspend (CartLine) -> Boolean
@@ -376,6 +392,7 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
     private var confirmedCart = WooCart()
     private val lineLocks = mutableMapOf<String, Mutex>()
     private val cartMutex = Mutex()
+    private val addGate = CartAddGate()
 
     suspend fun refresh() {
         cartMutex.withLock {
@@ -397,12 +414,17 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
             _error.value = "Pedido pagado. Estamos actualizando tu carrito antes de permitir otra compra."
             return false
         }
-        return execute("POST /cart/add-item") { api.addCartItem(request) }.also {
+        if (!addGate.tryAcquire()) return false
+        return try {
+            execute("POST /cart/add-item") { api.addCartItem(request) }.also {
             if (it) {
                 persistParentIds(parentProductId)
                 confirmedCart = confirmedCart.withParentIds()
                 _cart.value = confirmedCart
             }
+        }
+        } finally {
+            addGate.release()
         }
     }
     suspend fun update(line: CartLine, quantity: Int): Boolean = lineLocks.getOrPut(line.key) { Mutex() }.withLock {

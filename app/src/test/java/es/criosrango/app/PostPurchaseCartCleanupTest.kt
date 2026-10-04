@@ -55,6 +55,27 @@ class PostPurchaseCartCleanupTest {
         assertTrue(remaining.isEmpty())
     }
 
+
+    @Test fun paidCleanupFailure_keepsPendingMarker() = runBlocking {
+        var markerCleared = false
+        val completed = clearPendingAfterPaidCartCleanup(
+            clearCart = { false },
+            clearPending = { markerCleared = true; true }
+        )
+        assertFalse(completed)
+        assertFalse(markerCleared)
+    }
+
+    @Test fun paidCleanupSuccess_clearsPendingMarkerAfterCart() = runBlocking {
+        val events = mutableListOf<String>()
+        val completed = clearPendingAfterPaidCartCleanup(
+            clearCart = { events += "cart"; true },
+            clearPending = { events += "marker"; true }
+        )
+        assertTrue(completed)
+        assertEquals(listOf("cart", "marker"), events)
+    }
+
     @Test fun pendingFailedOrCancelledPathsDoNotInvokeCleanup() = runBlocking {
         for (paid in listOf(false, null)) {
             var calls = 0

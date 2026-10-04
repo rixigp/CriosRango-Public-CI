@@ -14,20 +14,23 @@ import es.criosrango.shared.account.AccountOrderVariation
 import es.criosrango.shared.account.AccountRepository as SharedAccountRepository
 import es.criosrango.shared.account.AccountTokenStore
 import es.criosrango.shared.account.AccountUser
+import es.criosrango.shared.account.isAccountSessionExpiredStatus
 import retrofit2.HttpException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-internal class OrdersLoadGate {
+internal class SingleActionGate {
     private var inFlight = false
 
+    @Synchronized
     fun tryAcquire(): Boolean {
         if (inFlight) return false
         inFlight = true
         return true
     }
 
+    @Synchronized
     fun release() {
         inFlight = false
     }
@@ -186,7 +189,8 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
 
     private val _ordersRefreshing = MutableStateFlow(false)
     val ordersRefreshing = _ordersRefreshing.asStateFlow()
-    private val ordersLoadGate = OrdersLoadGate()
+    private val ordersLoadGate = SingleActionGate()
+    private val authActionGate = SingleActionGate()
 
 
     private val _error = MutableStateFlow<String?>(null)
@@ -250,7 +254,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun handleAuthenticatedHttpError(exception: Exception, fallback: String): Boolean {
-        if (exception is HttpException && exception.code() == 401) {
+        if (exception is HttpException && isAccountSessionExpiredStatus(exception.code())) {
             invalidateSession()
             return true
         }
@@ -404,6 +408,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
             _error.value = "La contraseña debe tener al menos 8 caracteres."
             return
         }
+        if (!authActionGate.tryAcquire()) return
 
         viewModelScope.launch {
             _loading.value = true
@@ -446,6 +451,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 _error.value = "No hemos podido crear la cuenta."
             } finally {
                 _loading.value = false
+                authActionGate.release()
             }
         }
     }
@@ -455,6 +461,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
             _error.value = "Introduce tu correo o usuario."
             return
         }
+        if (!authActionGate.tryAcquire()) return
 
         viewModelScope.launch {
             _loading.value = true
@@ -471,6 +478,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 _error.value = "No hemos podido solicitar el cambio de contraseña."
             } finally {
                 _loading.value = false
+                authActionGate.release()
             }
         }
     }
@@ -480,6 +488,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
             _error.value = "Introduce tu correo y contraseña."
             return
         }
+        if (!authActionGate.tryAcquire()) return
 
         viewModelScope.launch {
             _loading.value = true
@@ -510,6 +519,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 _error.value = "No hemos podido conectar con la tienda."
             } finally {
                 _loading.value = false
+                authActionGate.release()
             }
         }
     }

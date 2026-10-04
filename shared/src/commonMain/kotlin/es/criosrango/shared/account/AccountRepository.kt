@@ -1,9 +1,12 @@
 package es.criosrango.shared.account
 
+/** Authentication failures that invalidate the locally stored account session. */
+fun isAccountSessionExpiredStatus(statusCode: Int): Boolean = statusCode == 401 || statusCode == 403
+
+
 import es.criosrango.shared.PushDeviceRegistration
 
 import io.ktor.client.plugins.ResponseException
-import io.ktor.http.HttpStatusCode
 
 interface AccountTokenStore {
     fun load(): String?
@@ -64,7 +67,7 @@ class AccountRepository(
         return try {
             client.me(token).user
         } catch (exception: ResponseException) {
-            if (exception.response.status == HttpStatusCode.Unauthorized) {
+            if (isAccountSessionExpiredStatus(exception.response.status.value)) {
                 clearAuthenticationState()
             }
             throw exception
