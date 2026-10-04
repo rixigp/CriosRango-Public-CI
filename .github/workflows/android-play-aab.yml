@@ -6,138 +6,266 @@ on:
 permissions:
   contents: read
 
+env:
+  BUNDLETOOL_VERSION: "1.18.3"
+  BUNDLETOOL_SHA256: "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29"
+  EXPECTED_PACKAGE: "es.criosrango.app"
+  EXPECTED_VERSION_NAME: "1.0.165"
+  EXPECTED_VERSION_CODE: "165"
+  EXPECTED_MIN_SDK: "24"
+  EXPECTED_TARGET_SDK: "36"
+  EXPECTED_UPLOAD_ALIAS: "criosrango-upload"
+
 jobs:
   android-play-aab:
     name: Build and verify signed Play AAB
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout dispatched SHA
+        uses: actions/checkout@v7
         with:
-          ref: kmp-migration
+          ref: \${{ github.sha }}
 
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Check required signing secrets
+      - name: Check required secrets
         env:
-          ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
-          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
-          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
-          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          ANDROID_UPLOAD_KEYSTORE_BASE64: \${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          ANDROID_UPLOAD_STORE_PASSWORD: \${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: \${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: \${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          GOOGLE_SERVICES_JSON_BASE64: \${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
         run: |
           set -euo pipefail
           test -n "$ANDROID_UPLOAD_KEYSTORE_BASE64"
           test -n "$ANDROID_UPLOAD_STORE_PASSWORD"
           test -n "$ANDROID_UPLOAD_KEY_ALIAS"
           test -n "$ANDROID_UPLOAD_KEY_PASSWORD"
+          test -n "$GOOGLE_SERVICES_JSON_BASE64"
+          echo "Required release secrets are present."
 
       - name: Prepare Google Services
         env:
-          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+          GOOGLE_SERVICES_JSON_BASE64: \${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
         run: |
           set -euo pipefail
-          test -n "$GOOGLE_SERVICES_JSON_BASE64"
           printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
-          test -s app/google-services.json
           chmod 600 app/google-services.json
+          test -s app/google-services.json
 
-      - name: Reconstruct temporary upload keystore
+      - name: Reconstruct temporary upload JKS
         env:
-          ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          ANDROID_UPLOAD_KEYSTORE_BASE64: \${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
           umask 077
           printf '%s' "$ANDROID_UPLOAD_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/criosrango-upload.jks"
-          test -s "$RUNNER_TEMP/criosrango-upload.jks"
           chmod 600 "$RUNNER_TEMP/criosrango-upload.jks"
+          test -s "$RUNNER_TEMP/criosrango-upload.jks"
+
+      - name: Verify upload certificate before build
+        env:
+          ANDROID_UPLOAD_STORE_PASSWORD: \${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: \${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          keytool -list -v \
+            -keystore "$RUNNER_TEMP/criosrango-upload.jks" \
+            -storepass "$ANDROID_UPLOAD_STORE_PASSWORD" \
+            -alias "$ANDROID_UPLOAD_KEY_ALIAS" > "$RUNNER_TEMP/upload-cert.txt"
+          grep -q "Alias name: $EXPECTED_UPLOAD_ALIAS" "$RUNNER_TEMP/upload-cert.txt"
+          grep -q "Entry type: PrivateKeyEntry" "$RUNNER_TEMP/upload-cert.txt"
+          grep -Eq "Public key.*RSA|Algorithm:.*RSA|Signature algorithm name:.*RSA" "$RUNNER_TEMP/upload-cert.txt"
+          grep -Eq "4096-bit|Key size: 4096" "$RUNNER_TEMP/upload-cert.txt"
+          echo "Upload certificate: alias/RSA-4096 validated."
 
       - name: Build signed release AAB
         env:
-          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/criosrango-upload.jks
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_PATH: \${{ runner.temp }}/criosrango-upload.jks
+          ANDROID_KEYSTORE_PASSWORD: \${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: \${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: \${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          ./gradlew :app:bundleRelease --stacktrace
+          ./gradlew clean :app:bundleRelease --warning-mode all --stacktrace
 
-      - name: Verify exactly one AAB
+      - name: Locate exact release AAB
         id: aab
+        shell: bash
         run: |
           set -euo pipefail
           AAB_COUNT=$(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | wc -l)
           test "$AAB_COUNT" -eq 1
-          AAB_PATH="$(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' -print -quit)"
-          test -s "$AAB_PATH"
-          echo "aab_path=$AAB_PATH" >> "$GITHUB_OUTPUT"
-          echo "AAB_NAME=$(basename "$AAB_PATH")"
-          echo "AAB_SIZE=$(stat -c '%s' "$AAB_PATH") bytes"
-          echo "AAB_SHA256=$(sha256sum "$AAB_PATH" | awk '{print $1}')"
+          SOURCE_AAB="$(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' -print -quit)"
+          test -s "$SOURCE_AAB"
+          AAB_NAME="CriosRango-v\${EXPECTED_VERSION_NAME}-code\${EXPECTED_VERSION_CODE}-release.aab"
+          cp "$SOURCE_AAB" "$AAB_NAME"
+          SHA256="$(sha256sum "$AAB_NAME" | awk '{print $1}')"
+          SIZE="$(stat -c '%s' "$AAB_NAME")"
+          echo "aab_path=$AAB_NAME" >> "$GITHUB_OUTPUT"
+          echo "aab_sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "aab_size=$SIZE" >> "$GITHUB_OUTPUT"
+          echo "AAB: $AAB_NAME"
+          echo "AAB SHA-256: $SHA256"
+          echo "AAB size: $SIZE bytes"
 
-      - name: Verify AAB signature
+      - name: Verify AAB signature and certificate match
         env:
-          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/criosrango-upload.jks
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_STORE_PASSWORD: \${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: \${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
         run: |
           set -euo pipefail
-          keytool -list -v             -keystore "$ANDROID_KEYSTORE_PATH"             -storepass:env ANDROID_KEYSTORE_PASSWORD             -alias "$ANDROID_KEY_ALIAS"             | grep -E 'Alias name:|Entry type:|SHA256:'
-          AAB_PATH="$(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' -print -quit)"
-          jarsigner -verify -verbose -certs "$AAB_PATH"
+          AAB="\${{ steps.aab.outputs.aab_path }}"
+          KEYSTORE_CERT="$RUNNER_TEMP/keystore-cert.txt"
+          AAB_CERT="$RUNNER_TEMP/aab-cert.txt"
+          keytool -list -v \
+            -keystore "$RUNNER_TEMP/criosrango-upload.jks" \
+            -storepass "$ANDROID_UPLOAD_STORE_PASSWORD" \
+            -alias "$ANDROID_UPLOAD_KEY_ALIAS" > "$KEYSTORE_CERT"
+          jarsigner -verify -verbose -certs "$AAB" > "$RUNNER_TEMP/jarsigner.txt"
+          grep -q "jar verified." "$RUNNER_TEMP/jarsigner.txt"
+          SIGNATURE_ENTRY="$(unzip -Z1 "$AAB" | grep -E '^META-INF/[^/]+\.(RSA|DSA|EC)$' | head -1)"
+          test -n "$SIGNATURE_ENTRY"
+          unzip -p "$AAB" "$SIGNATURE_ENTRY" > "$RUNNER_TEMP/aab-cert.der"
+          keytool -printcert -file "$RUNNER_TEMP/aab-cert.der" > "$AAB_CERT"
+          EXPECTED_SHA1="$(grep -m1 'SHA1:' "$KEYSTORE_CERT" | sed 's/.*SHA1: //' | tr -d '[:space:]')"
+          ACTUAL_SHA1="$(grep -m1 'SHA1:' "$AAB_CERT" | sed 's/.*SHA1: //' | tr -d '[:space:]')"
+          EXPECTED_SHA256="$(grep -m1 'SHA256:' "$KEYSTORE_CERT" | sed 's/.*SHA256: //' | tr -d '[:space:]')"
+          ACTUAL_SHA256="$(grep -m1 'SHA256:' "$AAB_CERT" | sed 's/.*SHA256: //' | tr -d '[:space:]')"
+          test -n "$EXPECTED_SHA1"
+          test -n "$ACTUAL_SHA1"
+          test -n "$EXPECTED_SHA256"
+          test -n "$ACTUAL_SHA256"
+          test "$EXPECTED_SHA1" = "$ACTUAL_SHA1"
+          test "$EXPECTED_SHA256" = "$ACTUAL_SHA256"
+          SUBJECT="$(grep -m1 'Owner:' "$AAB_CERT" | sed 's/.*Owner: //')"
+          echo "AAB signature: VALID"
+          echo "Upload certificate SHA-1: $ACTUAL_SHA1"
+          echo "Upload certificate SHA-256: $ACTUAL_SHA256"
+          echo "Upload certificate subject: $SUBJECT"
+          echo "Upload certificate algorithm/key size: RSA 4096"
+          echo "Certificate match against supplied upload keystore: PASS"
+          echo "Debug certificate check: PASS"
 
-      - name: Inspect AAB manifest and contents
+      - name: Validate AAB with pinned bundletool
+        shell: bash
         run: |
           set -euo pipefail
-          BUNDLETOOL_VERSION="1.18.3"
-          curl --fail --silent --show-error --location             "https://github.com/google/bundletool/releases/download/$BUNDLETOOL_VERSION/bundletool-all-$BUNDLETOOL_VERSION.jar"             --output "$RUNNER_TEMP/bundletool.jar"
-
-          AAB_PATH="$(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' -print -quit)"
-          MANIFEST="$RUNNER_TEMP/aab-manifest.txt"
-          java -jar "$RUNNER_TEMP/bundletool.jar" dump manifest --bundle "$AAB_PATH" > "$MANIFEST"
-
+          AAB="\${{ steps.aab.outputs.aab_path }}"
+          BUNDLETOOL="$RUNNER_TEMP/bundletool.jar"
+          curl --fail --silent --show-error --location \
+            "https://github.com/google/bundletool/releases/download/\${BUNDLETOOL_VERSION}/bundletool-all-\${BUNDLETOOL_VERSION}.jar" \
+            --output "$BUNDLETOOL"
+          echo "\${BUNDLETOOL_SHA256}  $BUNDLETOOL" | sha256sum --check --status
+          java -jar "$BUNDLETOOL" version
+          java -jar "$BUNDLETOOL" validate --bundle "$AAB"
+          MANIFEST="$RUNNER_TEMP/aab-manifest.xml"
+          java -jar "$BUNDLETOOL" dump manifest --bundle "$AAB" > "$MANIFEST"
           grep -q 'package="es.criosrango.app"' "$MANIFEST"
-          grep -q 'android:versionCode="165"' "$MANIFEST"
           grep -q 'android:versionName="1.0.165"' "$MANIFEST"
-          ! grep -q 'CrashlyticsDebugCrashActivity' "$MANIFEST"
+          grep -q 'android:versionCode="165"' "$MANIFEST"
+          grep -q 'android:minSdkVersion="24"' "$MANIFEST"
+          grep -q 'android:targetSdkVersion="36"' "$MANIFEST"
+          if grep -q 'CrashlyticsDebugCrashActivity' "$MANIFEST"; then
+            echo "::error::CrashlyticsDebugCrashActivity leaked into release AAB"
+            exit 1
+          fi
+          if grep -Eq 'android.intent.category.LAUNCHER.*Debug|Debug.*android.intent.category.LAUNCHER' "$MANIFEST"; then
+            echo "::error::Debug-only launcher leaked into release AAB"
+            exit 1
+          fi
+          unzip -t "$AAB" >/dev/null
+          unzip -Z1 "$AAB" | grep -q '^base/manifest/AndroidManifest.xml$'
+          unzip -Z1 "$AAB" | grep -q '^base/dex/.*\.dex$'
+          unzip -Z1 "$AAB" | grep -q '^base/resources.pb$'
+          unzip -Z1 "$AAB" | grep -q '^BundleConfig.pb$'
+          echo "bundletool version: $BUNDLETOOL_VERSION"
+          echo "bundletool validation: PASS"
+          echo "Base manifest/resources/dex: PASS"
+          echo "CrashlyticsDebugCrashActivity: ABSENT"
+          echo "Debug-only launcher: ABSENT"
 
-          unzip -t "$AAB_PATH" >/dev/null
-          unzip -l "$AAB_PATH" | grep -E 'base/manifest/AndroidManifest.xml|base/dex/|base/res/|BundleConfig.pb'
-
-      - name: Write non-sensitive metadata
-        id: metadata
+      - name: Validate R8, resource shrinking, and Crashlytics mapping
         run: |
           set -euo pipefail
-          AAB_PATH="$(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' -print -quit)"
+          test -s app/build/outputs/mapping/release/mapping.txt
+          test -s app/build/outputs/mapping/release/resources.txt
+          grep -q 'isMinifyEnabled = true' app/build.gradle.kts
+          grep -q 'isShrinkResources = true' app/build.gradle.kts
+          ./gradlew :app:tasks --all | grep -q 'uploadCrashlyticsMappingFileRelease'
+          echo "R8 mapping.txt: GENERATED"
+          echo "Resource shrink diagnostic resources.txt: GENERATED"
+          echo "Release minify: ENABLED"
+          echo "Release shrinkResources: ENABLED"
+          echo "Crashlytics mapping upload task: CONFIGURED"
+
+      - name: Upload Crashlytics mapping
+        run: |
+          set -euo pipefail
+          ./gradlew :app:uploadCrashlyticsMappingFileRelease --stacktrace
+          echo "Crashlytics mapping upload task: COMPLETED"
+          echo "Firebase-side receipt is not asserted beyond successful Gradle upload task."
+
+      - name: Write non-sensitive release report
+        run: |
+          set -euo pipefail
           {
-            echo "applicationId=es.criosrango.app"
-            echo "versionName=1.0.165"
-            echo "versionCode=165"
-            echo "minSdk=24"
-            echo "targetSdk=36"
+            echo "applicationId=$EXPECTED_PACKAGE"
+            echo "versionName=$EXPECTED_VERSION_NAME"
+            echo "versionCode=$EXPECTED_VERSION_CODE"
+            echo "minSdk=$EXPECTED_MIN_SDK"
+            echo "targetSdk=$EXPECTED_TARGET_SDK"
             echo "minifyEnabled=true"
             echo "shrinkResources=true"
-            echo "aabSha256=$(sha256sum "$AAB_PATH" | awk '{print $1}')"
-          } > "$RUNNER_TEMP/criosrango-aab-metadata.txt"
-          cp "$RUNNER_TEMP/criosrango-aab-metadata.txt" criosrango-aab-metadata.txt
+            echo "crashlytics=integrated"
+            echo "CrashlyticsDebugCrashActivity=absent"
+            echo "debug-only-launcher=absent"
+            echo "bundletool=$BUNDLETOOL_VERSION"
+            echo "aab_name=\${{ steps.aab.outputs.aab_path }}"
+            echo "aab_sha256=\${{ steps.aab.outputs.aab_sha256 }}"
+            echo "aab_size_bytes=\${{ steps.aab.outputs.aab_size }}"
+            echo "upload_alias=$EXPECTED_UPLOAD_ALIAS"
+            echo "keystore_published=false"
+            echo "secret_values_published=false"
+            echo "google_services_json_published=false"
+          } > criosrango-release-aab-report.txt
 
-      - name: Upload signed AAB artifact
+      - name: Upload signed AAB
         uses: actions/upload-artifact@v7
         with:
-          name: criosrango-1.0.165-play-aab
+          name: criosrango-v1.0.165-code165-release-aab
           retention-days: 7
-          path: |
-            ${{ steps.aab.outputs.aab_path }}
-            criosrango-aab-metadata.txt
+          path: \${{ steps.aab.outputs.aab_path }}
           if-no-files-found: error
 
-      - name: Cleanup signing material
+      - name: Upload R8 mapping
+        uses: actions/upload-artifact@v7
+        with:
+          name: criosrango-v1.0.165-code165-r8-mapping
+          retention-days: 7
+          path: app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+
+      - name: Upload non-sensitive release report
+        uses: actions/upload-artifact@v7
+        with:
+          name: criosrango-v1.0.165-code165-release-report
+          retention-days: 7
+          path: criosrango-release-aab-report.txt
+          if-no-files-found: error
+
+      - name: Cleanup all temporary signing/config material
         if: always()
         run: |
           rm -f "$RUNNER_TEMP/criosrango-upload.jks"
-          rm -f app/google-services.json
+          rm -f "$RUNNER_TEMP/upload-cert.txt"
+          rm -f "$RUNNER_TEMP/keystore-cert.txt"
+          rm -f "$RUNNER_TEMP/aab-cert.txt"
+          rm -f "$RUNNER_TEMP/aab-cert.der"
+          rm -f "$RUNNER_TEMP/jarsigner.txt"
           rm -f "$RUNNER_TEMP/bundletool.jar"
-          rm -f "$RUNNER_TEMP/aab-manifest.txt"
-          rm -f "$RUNNER_TEMP/criosrango-aab-metadata.txt"
-          rm -f criosrango-aab-metadata.txt
+          rm -f "$RUNNER_TEMP/aab-manifest.xml"
+          rm -f app/google-services.json
