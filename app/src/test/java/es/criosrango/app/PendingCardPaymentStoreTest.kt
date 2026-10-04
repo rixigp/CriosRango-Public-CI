@@ -11,7 +11,6 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.io.File
 import java.security.GeneralSecurityException
-import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -27,7 +26,7 @@ class PendingCardPaymentStoreTest {
         File(path + ".new").delete()
     }
 
-    private fun store(file: File, cipher: PendingPaymentCipher = TestCipher(key)) =
+    private fun store(file: File, cipher: PendingPaymentCipher = TestPendingPaymentCipher(key)) =
         PendingCardPaymentStore(file, cipher)
 
     @Test
@@ -47,7 +46,6 @@ class PendingCardPaymentStoreTest {
         val file = file("pending-exhausted-restart")
         val marker = LastCheckout(13010, "wc_order_key_13010", "https://example.invalid/payment/13010")
         assertTrue(store(file).save(marker))
-        // EXHAUSTED does not call clear(); a new store instance can recover it.
         assertEquals(marker, store(file).load())
     }
 
@@ -130,7 +128,6 @@ class PendingCardPaymentStoreTest {
         val file = file("pending-invalid-iv")
         assertTrue(store(file).save(LastCheckout(13007, "secret-key", "https://example.invalid/secret")))
         val bytes = file.readBytes()
-        // Blob header: magic (4), format version (4), IV length (4).
         bytes[11] = 11
         file.writeBytes(bytes)
         assertNull(store(file).load())
@@ -167,7 +164,7 @@ class PendingCardPaymentStoreTest {
         assertFalse(file.exists())
     }
 
-    private class TestCipher(private val key: SecretKeySpec) : PendingPaymentCipher {
+    internal class TestPendingPaymentCipher(private val key: SecretKeySpec) : PendingPaymentCipher {
         override fun encrypt(plaintext: ByteArray): EncryptedPendingBlob {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, key)
