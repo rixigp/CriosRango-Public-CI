@@ -29,6 +29,8 @@ import android.net.Uri
 import android.util.Log
 import es.criosrango.shared.PushNotificationContract
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -98,6 +100,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+        )
         paymentReturnUriState.value = intent?.data
         pushTypeState.value = intent?.getStringExtra(PushNotificationContract.TYPE_KEY)
         pushOrderIdState.value = PushNotificationContract.parseOrderId(intent?.getStringExtra(PushNotificationContract.ORDER_ID_KEY))
@@ -262,7 +268,7 @@ private fun CriosRangoApp(
                 containerColor = MaterialTheme.colorScheme.background,
                 topBar = { StoreTopBar(tab, remoteCart.itemsCount, { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH }, { tab = AppTab.CART }) },
                 bottomBar = {
-                    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
+                    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
                         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             listOf(AppTab.HOME, AppTab.CATEGORIES, AppTab.OUTLET, AppTab.CART, AppTab.ACCOUNT).forEach { item ->
                                 val selected = tab == item
