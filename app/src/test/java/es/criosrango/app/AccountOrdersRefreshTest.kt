@@ -8,7 +8,7 @@ class AccountOrdersRefreshTest {
 
     @Test
     fun refreshGate_allowsOneRequestAndRejectsConcurrentRequest() {
-        val gate = OrdersLoadGate()
+        val gate = SingleActionGate()
 
         assertTrue(gate.tryAcquire())
         assertFalse(gate.tryAcquire())

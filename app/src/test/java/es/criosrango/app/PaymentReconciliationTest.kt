@@ -82,8 +82,8 @@ class PaymentReconciliationTest {
     @Test fun paidCleanupClearsMarkerOnlyAfterCartCleanup() = runBlocking {
         val events = mutableListOf<String>()
         clearPendingAfterPaidCartCleanup(
-            clearCart = { events += "cart" },
-            clearPending = { events += "marker" }
+            clearCart = { events += "cart"; true },
+            clearPending = { events += "marker"; true }
         )
         assertEquals(listOf("cart", "marker"), events)
     }
@@ -93,7 +93,7 @@ class PaymentReconciliationTest {
         try {
             clearPendingAfterPaidCartCleanup(
                 clearCart = { events += "cart"; throw IOException("cart cleanup failed") },
-                clearPending = { events += "marker" }
+                clearPending = { events += "marker"; true }
             )
         } catch (_: IOException) {
             // The marker clear must not run when cart cleanup fails.
