@@ -242,9 +242,7 @@ final class CriosRango_Push {
             return false;
         }
 
-        $bad=$wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM $table WHERE identifier IS NULL OR TRIM(identifier)='' OR identifier_hash IS NULL OR TRIM(identifier_hash)='' OR (platform='android' AND identifier_type NOT IN ('fid','fcm_token')) OR (platform='ios' AND identifier_type<>'apns_token')"
-        ));
+        $bad=$wpdb->get_var("SELECT COUNT(*) FROM $table WHERE identifier IS NULL OR TRIM(identifier)='' OR identifier_hash IS NULL OR TRIM(identifier_hash)='' OR (platform='android' AND identifier_type NOT IN ('fid','fcm_token')) OR (platform='ios' AND identifier_type<>'apns_token')");
         if(null===$bad || $wpdb->last_error || (int)$bad!==0){
             self::migration_error('verify_migrated_rows');
             return false;
