@@ -3,8 +3,11 @@ package es.criosrango.app
 import android.content.Context
 import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
+import java.io.File
+import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -16,6 +19,27 @@ import org.robolectric.Shadows
 
 @RunWith(RobolectricTestRunner::class)
 class PaymentStatusExactlyOnceIsolatedTest {
+    private val tempFiles = mutableListOf<File>()
+
+    @After
+    fun cleanupTempFiles() {
+        tempFiles.forEach { file ->
+            file.delete()
+            File(file.path + ".bak").delete()
+            File(file.path + ".new").delete()
+        }
+        tempFiles.clear()
+    }
+
+    private fun pendingFile(name: String): File =
+        Files.createTempFile("g5-$name-", ".bin").toFile().also { tempFiles += it }
+
+    private fun pendingStore(name: String): PendingCardPaymentStore =
+        PendingCardPaymentStore(
+            file = pendingFile(name),
+            cipher = TestPendingPaymentCipher(SecretKeySpec(ByteArray(32) { (it + 1).toByte() }, "AES"))
+        )
+
     private class CountingStoreApi(
         private val orderStatus: OrderStatusResponse = OrderStatusResponse(
             id = 123, status = "cancelled", paid = false, needsPayment = false, terminal = true
@@ -80,6 +104,12 @@ class PaymentStatusExactlyOnceIsolatedTest {
         field.set(viewModel, checkout)
     }
 
+    private fun lastCheckoutOf(viewModel: ShopViewModel): LastCheckout? {
+        val field = ShopViewModel::class.java.getDeclaredField("lastCheckout")
+        field.isAccessible = true
+        return field.get(viewModel) as LastCheckout?
+    }
+
     private fun validAddress() = CustomerAddress(
         firstName = "Test",
         lastName = "User",
@@ -93,25 +123,27 @@ class PaymentStatusExactlyOnceIsolatedTest {
     )
 
     @Test
-    fun pendingMarkerAtStartup_isCleared_withoutPaymentStatus() {
+    fun pendingMarkerAtStartup_isPreservedAndRestored_withoutPaymentStatus() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val preferences = context.getSharedPreferences("j5-startup-" + System.nanoTime(), Context.MODE_PRIVATE)
-        val pendingStore = PendingCardPaymentStore(preferences)
-        assertTrue(pendingStore.save(LastCheckout(123, "wc_order_123", "https://criosrango.es/pay/123")))
+        val marker = LastCheckout(123, "wc_order_123", "https://criosrango.es/pay/123")
+        val file = pendingFile("startup")
+        val firstStore = PendingCardPaymentStore(file = file, cipher = TestPendingPaymentCipher(SecretKeySpec(ByteArray(32) { (it + 1).toByte() }, "AES")))
+        assertTrue(firstStore.save(marker))
 
         val api = CountingStoreApi()
-        newViewModel(context, api, pendingStore)
+        val recreatedStore = PendingCardPaymentStore(file = file, cipher = TestPendingPaymentCipher(SecretKeySpec(ByteArray(32) { (it + 1).toByte() }, "AES")))
+        val viewModel = newViewModel(context, api, recreatedStore)
         idleMainLooper()
 
-        assertNull(pendingStore.load())
+        assertEquals(marker, recreatedStore.load())
+        assertEquals(marker, lastCheckoutOf(viewModel))
         assertEquals(0, api.paymentStatusCalls.get())
     }
 
     @Test
     fun firstCreateOrder_afterProcessDeathStartsImmediately_withoutReconciliation() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val preferences = context.getSharedPreferences("j5-create-" + System.nanoTime(), Context.MODE_PRIVATE)
-        val pendingStore = PendingCardPaymentStore(preferences)
+        val pendingStore = pendingStore("create")
         assertTrue(pendingStore.save(LastCheckout(123, "wc_order_123", "https://criosrango.es/pay/123")))
 
         val api = CountingStoreApi(
@@ -147,8 +179,7 @@ class PaymentStatusExactlyOnceIsolatedTest {
     @Test
     fun multipleTaps_createExactlyOneOrder() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val preferences = context.getSharedPreferences("j5-multitap-" + System.nanoTime(), Context.MODE_PRIVATE)
-        val pendingStore = PendingCardPaymentStore(preferences)
+        val pendingStore = pendingStore("multitap")
         val api = CountingStoreApi(
             checkoutResponse = CheckoutResponse(
                 orderId = 456,
@@ -174,8 +205,7 @@ class PaymentStatusExactlyOnceIsolatedTest {
     @Test
     fun normalCecabankReturn_stillUsesPaymentStatus() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val preferences = context.getSharedPreferences("j5-return-" + System.nanoTime(), Context.MODE_PRIVATE)
-        val pendingStore = PendingCardPaymentStore(preferences)
+        val pendingStore = pendingStore("return")
         val api = CountingStoreApi(
             orderStatus = OrderStatusResponse(
                 id = 123, status = "processing", paid = true, needsPayment = false, terminal = true
@@ -200,8 +230,7 @@ class PaymentStatusExactlyOnceIsolatedTest {
     @Test
     fun normalCecabankCancellation_clearsPendingAndKeepsCartUsable() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val preferences = context.getSharedPreferences("j5-cancel-" + System.nanoTime(), Context.MODE_PRIVATE)
-        val pendingStore = PendingCardPaymentStore(preferences)
+        val pendingStore = pendingStore("cancel")
         val api = CountingStoreApi()
         val viewModel = newViewModel(context, api, pendingStore)
         idleMainLooper()
