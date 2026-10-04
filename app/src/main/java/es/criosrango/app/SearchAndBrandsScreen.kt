@@ -674,7 +674,7 @@ internal fun ProductGrid(
                 androidx.compose.foundation.lazy.grid.GridCells.Fixed(2),
             modifier = modifier,
             state = gridState,
-            contentPadding = PaddingValues(20.dp),
+            contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 20.dp),
             horizontalArrangement =
                 Arrangement.spacedBy(12.dp),
             verticalArrangement =
