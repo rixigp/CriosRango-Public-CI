@@ -469,6 +469,8 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private val _cardPaymentResult = MutableStateFlow<CardPaymentResult?>(null)
     val cardPaymentResult: StateFlow<CardPaymentResult?> = _cardPaymentResult.asStateFlow()
 
+    private class PaidCartCleanupException(cause: Exception) : Exception("Paid cart cleanup failed", cause)
+
     private enum class ReconcileOutcome { PAID, CLEARED, PENDING, NO_MARKER }
     private val reconciliationMutex = kotlinx.coroutines.sync.Mutex()
     init {
@@ -492,10 +494,16 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
             is PaymentReconciliationResult.PAID -> {
                 val confirmedOrderId = if (result.order.id > 0) result.order.id else checkout.orderId
                 // If cart cleanup fails, leave the durable marker intact for recovery.
-                clearPendingAfterPaidCartCleanup(
-                    clearCart = { cartStore.clearAfterConfirmedPayment() },
-                    clearPending = { pendingCardPaymentStore.clear() }
-                )
+                try {
+                    clearPendingAfterPaidCartCleanup(
+                        clearCart = { cartStore.clearAfterConfirmedPayment() },
+                        clearPending = { pendingCardPaymentStore.clear() }
+                    )
+                } catch (exception: CancellationException) {
+                    throw exception
+                } catch (exception: Exception) {
+                    throw PaidCartCleanupException(exception)
+                }
                 lastCheckout = null
                 _paymentRedirect.value = null
                 if (publishPaidResult) _cardPaymentResult.value = CardPaymentResult(confirmedOrderId, true)
@@ -614,12 +622,12 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
             } catch (exception: CancellationException) {
                 throw exception
             } catch (exception: Exception) {
-                if (!isTransientPaymentStatusException(exception)) {
+                if (exception !is PaidCartCleanupException && !isTransientPaymentStatusException(exception)) {
                     pendingCardPaymentStore.clear()
                     lastCheckout = null
                     _paymentRedirect.value = null
-                    _checkoutError.value = "No hemos podido comprobar el pago."
                 }
+                _checkoutError.value = "No hemos podido comprobar el pago."
             } finally {
                 _checkoutLoading.value = false
             }
