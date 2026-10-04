@@ -26,10 +26,22 @@ val debugKeystoreFile = providers.environmentVariable("CRIOSRANGO_DEBUG_KEYSTORE
 val debugSigningPassword = signingValue("CRIOSRANGO_DEBUG_KEYSTORE_" + "PASSWORD")
 val debugKeyAlias = signingValue("CRIOSRANGO_DEBUG_KEY_ALIAS")
 val debugKeyPassword = signingValue("CRIOSRANGO_DEBUG_KEY_" + "PASSWORD")
-check(file(debugKeystoreFile).isFile) { "Missing debug keystore: $debugKeystoreFile" }
-check(!debugSigningPassword.isNullOrBlank()) { "Missing signing configuration" }
-check(!debugKeyAlias.isNullOrBlank()) { "Missing debug key alias" }
-check(!debugKeyPassword.isNullOrBlank()) { "Missing debug key configuration" }
+val debugSigningConfigured = listOf(
+    debugSigningPassword,
+    debugKeyAlias,
+    debugKeyPassword
+).all { !it.isNullOrBlank() } && file(debugKeystoreFile).isFile
+
+val releaseKeystorePath = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
+val releaseStorePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+val releaseSigningConfigured = listOf(
+    releaseKeystorePath,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword
+).all { !it.isNullOrBlank() }
 
 android {
     namespace = "es.criosrango.app"
@@ -46,24 +58,56 @@ android {
     }
     signingConfigs {
         getByName("debug") {
-            storeType = "JKS"
-            storeFile = file(debugKeystoreFile)
-            storePassword = debugSigningPassword
-            keyAlias = debugKeyAlias
-            keyPassword = debugKeyPassword
+            if (debugSigningConfigured) {
+                storeType = "JKS"
+                storeFile = file(debugKeystoreFile)
+                storePassword = debugSigningPassword
+                keyAlias = debugKeyAlias
+                keyPassword = debugKeyPassword
+            }
+        }
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeType = "JKS"
+                storeFile = file(releaseKeystorePath!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
         }
     }
     buildTypes {
         getByName("debug") {
-            signingConfig = signingConfigs.getByName("debug")
+            if (debugSigningConfigured) {
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+    }
+}
+
+gradle.taskGraph.whenReady {
+    if (allTasks.any { it.path == ":app:assembleDebug" }) {
+        check(debugSigningConfigured) {
+            "Android debug tasks require the configured debug keystore and debug signing credentials"
+        }
+    }
+    if (allTasks.any { it.path == ":app:bundleRelease" }) {
+        check(releaseSigningConfigured) {
+            "Signed :app:bundleRelease requires ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD"
+        }
+        check(file(releaseKeystorePath!!).isFile) {
+            "Signed :app:bundleRelease requires a readable keystore at ANDROID_KEYSTORE_PATH"
         }
     }
 }
