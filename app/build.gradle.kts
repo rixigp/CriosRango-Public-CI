@@ -56,6 +56,10 @@ android {
     buildTypes { getByName("debug") { signingConfig = signingConfigs.getByName("debug") } }
 }
 
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(project(":shared"))
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")

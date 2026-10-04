@@ -122,7 +122,7 @@ interface CatalogDao {
     @Query("SELECT * FROM catalog_priority_fallback WHERE categoryId = :categoryId ORDER BY catalogOrder ASC") suspend fun getPriorityFallback(categoryId: Int): List<CatalogPriorityFallbackEntity>
 }
 
-@Database(entities = [CatalogProductEntity::class, CatalogProductCategoryEntity::class, CatalogCategoryEntity::class, CatalogSyncMetadataEntity::class, CatalogPriorityFallbackEntity::class], version = 4, exportSchema = false)
+@Database(entities = [CatalogProductEntity::class, CatalogProductCategoryEntity::class, CatalogCategoryEntity::class, CatalogSyncMetadataEntity::class, CatalogPriorityFallbackEntity::class], version = 4, exportSchema = true)
 abstract class CategoryProductCacheDatabase : RoomDatabase() {
     abstract fun catalogDao(): CatalogDao
     companion object {
@@ -140,7 +140,7 @@ abstract class CategoryProductCacheDatabase : RoomDatabase() {
                 db.execSQL("DELETE FROM catalog_priority_fallback")
             }
         }
-        fun create(context: Context): CategoryProductCacheDatabase = Room.databaseBuilder(context.applicationContext, CategoryProductCacheDatabase::class.java, "criosrango_catalog.db").addMigrations(MIGRATION_2_3, MIGRATION_3_4).fallbackToDestructiveMigration(false).build()
+        fun create(context: Context): CategoryProductCacheDatabase = Room.databaseBuilder(context.applicationContext, CategoryProductCacheDatabase::class.java, "criosrango_catalog.db").addMigrations(MIGRATION_2_3, MIGRATION_3_4).build()
     }
 }
 
