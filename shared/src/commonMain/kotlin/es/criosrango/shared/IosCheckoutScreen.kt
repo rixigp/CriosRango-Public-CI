@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -106,16 +107,10 @@ fun IosCheckoutScreen(
         !paymentInProgress
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(20.dp),
+        modifier = Modifier.fillMaxSize().padding(padding).imePadding(),
+        contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 72.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack, enabled = !checkoutBusy && !paymentInProgress) { Text("← Carrito") }
-                Text("Finalizar compra", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-            }
-        }
         if (phase == StoreCheckoutPhase.LOADING && checkout == null) item {
             Column(
                 modifier = Modifier.fillMaxWidth(),

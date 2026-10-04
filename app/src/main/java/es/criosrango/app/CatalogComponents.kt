@@ -149,7 +149,7 @@ internal fun CatalogProductControlsRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         ProductSortControl(mode = sortMode, onMode = onSortMode)
-        OutlinedButton(onClick = onOpenFilters) {
+        OutlinedButton(onClick = onOpenFilters, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
             Text(if (activeFilters == 0) "Filtros" else "Filtros ($activeFilters)")
         }
     }

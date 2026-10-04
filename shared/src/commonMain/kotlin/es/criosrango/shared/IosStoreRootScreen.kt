@@ -23,6 +23,12 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.ShoppingBag
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -54,6 +60,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.navigationBarsPadding
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
@@ -145,6 +152,12 @@ fun CriosRangoIOSRootScreen(
                 )
             }
         ) { padding ->
+            Column(Modifier.fillMaxSize()) {
+                IosStoreTopBar(
+                    cartQuantity = cartStore.cart.collectAsState().value.itemsCount,
+                    onSearch = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Search) },
+                    onCart = { section = IosRootSection.CART }
+                )
             if (checkoutOpen) {
                 IosCheckoutScreen(
                     checkoutStore = checkoutStore,
@@ -207,6 +220,25 @@ fun CriosRangoIOSRootScreen(
                     onOpenExternalUrl = onOpenExternalUrl
                 )
             }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IosStoreTopBar(
+    cartQuantity: Int,
+    onSearch: () -> Unit,
+    onCart: () -> Unit
+) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("Críos&Rango", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        IconButton(onClick = onSearch) { Icon(Icons.Outlined.Search, "Buscar") }
+        Box(Modifier.size(52.dp), contentAlignment = Alignment.Center) {
+            IconButton(onClick = onCart) { Icon(Icons.Outlined.ShoppingBag, "Carrito") }
+            if (cartQuantity > 0) {
+                BadgedBox(modifier = Modifier.align(Alignment.TopEnd).padding(top = 1.dp, end = 1.dp), badge = { Badge { Text(cartQuantity.toString(), maxLines = 1) } }) {}
+            }
         }
     }
 }
@@ -219,7 +251,7 @@ private fun IosMainTabBar(
 ) {
     Surface(shadowElevation = 3.dp) {
         Row(
-            modifier = Modifier.fillMaxWidth().height(68.dp),
+            modifier = Modifier.fillMaxWidth().height(68.dp).navigationBarsPadding(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             listOf(

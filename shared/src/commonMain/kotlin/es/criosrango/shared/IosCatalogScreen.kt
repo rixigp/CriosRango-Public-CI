@@ -92,7 +92,7 @@ internal fun IosCategoryRoot(
             else -> LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp, top = 8.dp, bottom = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -134,7 +134,7 @@ internal fun IosCategoryPage(
 
     Column(Modifier.fillMaxSize().padding(padding)) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             TextButton(onClick = onBack) { Text("Atrás") }
@@ -438,7 +438,7 @@ internal fun IosCategoryProducts(
                     }
                 }
             }
-            OutlinedButton(onClick = { filtersOpen = true }) {
+            OutlinedButton(onClick = { filtersOpen = true }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
                 Text(if (activeFilterCount == 0) "Filtros" else "Filtros (\$activeFilterCount)")
             }
         }
@@ -508,7 +508,7 @@ internal fun IosCategoryProducts(
                 columns = GridCells.Fixed(2),
                 state = gridState,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, top = 6.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -785,11 +785,11 @@ internal fun IosProductDetail(
         maximum?.let { quantity = quantity.coerceAtMost(it) }
         if ((quantity - minimum) % multiple != 0) quantity = minimum
     }
-    LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 32.dp)) {
+    LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(top = 2.dp, bottom = 72.dp)) {
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onBack) { Text("Atrás") }
-                Text("Detalle", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(product.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             }
         }
         item {
