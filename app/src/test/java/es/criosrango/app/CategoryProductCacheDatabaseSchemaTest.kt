@@ -55,6 +55,15 @@ class CategoryProductCacheDatabaseSchemaTest {
     }
 
     @Test
+    fun exportedV4SchemaIsGenerated() {
+        val schema = java.io.File("$projectDir/schemas/es.criosrango.app.CategoryProductCacheDatabase/4.json")
+        assertTrue("Missing generated Room v4 schema at ${schema.path}", schema.isFile)
+        println("ROOM_SCHEMA_V4_BEGIN")
+        println(schema.readText())
+        println("ROOM_SCHEMA_V4_END")
+    }
+
+    @Test
     fun currentSchemaKeepsExpectedPrimaryKeysAndColumns() {
         val sqlite = database.openHelper.writableDatabase
         assertColumns(sqlite, "catalog_products", listOf("generation", "productId", "payloadJson", "catalogOrder"), listOf(true, true, true, true))
