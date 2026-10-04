@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import es.criosrango.shared.PushNotificationContract
 import es.criosrango.shared.PushNotificationType
 
@@ -49,7 +50,7 @@ object PushNotificationController {
         CoroutineScope(SupervisorJob()+Dispatchers.IO).launch{runCatching{
             val client=okhttp3.OkHttpClient()
             val json=org.json.JSONObject().put("platform","android").put("token",token).put("new_products",prefs.newProducts).put("order_updates",prefs.orderUpdates)
-            val body=okhttp3.RequestBody.create("application/json".toMediaType(),json.toString())
+            val body=json.toString().toRequestBody("application/json".toMediaType())
             val builder=okhttp3.Request.Builder().url(ENDPOINT).post(body)
             context.getSharedPreferences(SESSION,Context.MODE_PRIVATE).getString("account_token",null)?.let{builder.header("Authorization","Bearer $it")}
             client.newCall(builder.build()).execute().close()
