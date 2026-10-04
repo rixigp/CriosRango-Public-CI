@@ -56,7 +56,7 @@ class CategoryProductCacheDatabaseSchemaTest {
 
     @Test
     fun exportedV4SchemaIsGenerated() {
-        val schema = java.io.File("$projectDir/schemas/es.criosrango.app.CategoryProductCacheDatabase/4.json")
+        val schema = java.io.File("schemas/es.criosrango.app.CategoryProductCacheDatabase/4.json")
         assertTrue("Missing generated Room v4 schema at ${schema.path}", schema.isFile)
         println("ROOM_SCHEMA_V4_BEGIN")
         println(schema.readText())
