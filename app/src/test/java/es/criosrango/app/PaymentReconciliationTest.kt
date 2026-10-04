@@ -78,4 +78,26 @@ class PaymentReconciliationTest {
         val result = reconcilePaymentStatus(maxRetries = 1, delayMs = 0) { order("processing") }
         assertTrue(result is PaymentReconciliationResult.PAID)
     }
+
+    @Test fun paidCleanupClearsMarkerOnlyAfterCartCleanup() = runBlocking {
+        val events = mutableListOf<String>()
+        clearPendingAfterPaidCartCleanup(
+            clearCart = { events += "cart" },
+            clearPending = { events += "marker" }
+        )
+        assertEquals(listOf("cart", "marker"), events)
+    }
+
+    @Test fun paidCartCleanupFailurePreservesPendingMarker() = runBlocking {
+        val events = mutableListOf<String>()
+        try {
+            clearPendingAfterPaidCartCleanup(
+                clearCart = { events += "cart"; throw IOException("cart cleanup failed") },
+                clearPending = { events += "marker" }
+            )
+        } catch (_: IOException) {
+            // The marker clear must not run when cart cleanup fails.
+        }
+        assertEquals(listOf("cart"), events)
+    }
 }
