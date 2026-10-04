@@ -6,7 +6,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class CriosRango_Push {
-    const NS='criosrango/v1'; const GROUP='criosrango-push';
+    const NS='criosrango/v1'; const GROUP='criosrango-push'; const DB_VERSION=2;
     static function init(){
         add_action('rest_api_init',[__CLASS__,'routes']);
         add_action('transition_post_status',[__CLASS__,'product_publish'],10,3);
@@ -14,11 +14,13 @@ final class CriosRango_Push {
         add_action('criosrango_push_daily_digest',[__CLASS__,'schedule_next'],5);
         add_action('criosrango_push_daily_digest',[__CLASS__,'digest'],10);
         add_action('action_scheduler_init',[__CLASS__,'ensure_schedule']);
+        self::maybe_migrate();
     }
     static function table($n){global $wpdb;return $wpdb->prefix.'criosrango_push_'.$n;}
     static function activate(){
         global $wpdb; require_once ABSPATH.'wp-admin/includes/upgrade.php'; $c=$wpdb->get_charset_collate();
-        dbDelta("CREATE TABLE ".self::table('devices')." (id bigint unsigned NOT NULL AUTO_INCREMENT, token_hash char(64) NOT NULL, token text NOT NULL, platform varchar(10) NOT NULL, user_id bigint unsigned NOT NULL DEFAULT 0, new_products tinyint(1) NOT NULL DEFAULT 1, order_updates tinyint(1) NOT NULL DEFAULT 1, active tinyint(1) NOT NULL DEFAULT 1, last_seen_gmt datetime NOT NULL, created_gmt datetime NOT NULL, updated_gmt datetime NOT NULL, PRIMARY KEY(id), UNIQUE KEY token_hash(token_hash), KEY user_id(user_id), KEY active(active)) $c;");
+        dbDelta("CREATE TABLE ".self::table('devices')." (id bigint unsigned NOT NULL AUTO_INCREMENT, token_hash char(64) NOT NULL, token text NOT NULL, identifier_hash char(64) NOT NULL DEFAULT '', identifier text NOT NULL DEFAULT '', identifier_type varchar(20) NOT NULL DEFAULT 'fcm_token', platform varchar(10) NOT NULL, user_id bigint unsigned NOT NULL DEFAULT 0, new_products tinyint(1) NOT NULL DEFAULT 1, order_updates tinyint(1) NOT NULL DEFAULT 1, active tinyint(1) NOT NULL DEFAULT 1, last_seen_gmt datetime NOT NULL, created_gmt datetime NOT NULL, updated_gmt datetime NOT NULL, PRIMARY KEY(id), UNIQUE KEY token_hash(token_hash), KEY identifier_hash_idx(identifier_hash), KEY user_id(user_id), KEY active(active)) $c;");
+        self::migrate_devices_schema(); update_option('criosrango_push_db_version',self::DB_VERSION,false);
         dbDelta("CREATE TABLE ".self::table('events')." (id bigint unsigned NOT NULL AUTO_INCREMENT, idempotency_key varchar(190) NOT NULL, type varchar(40) NOT NULL, entity_id bigint unsigned NOT NULL DEFAULT 0, entity_state varchar(60) NOT NULL DEFAULT '', payload longtext NULL, created_gmt datetime NOT NULL, sent_gmt datetime NULL, PRIMARY KEY(id), UNIQUE KEY idempotency_key(idempotency_key), KEY type_sent(type,sent_gmt)) $c;");
         dbDelta("CREATE TABLE ".self::table('deliveries')." (id bigint unsigned NOT NULL AUTO_INCREMENT,event_id bigint unsigned NOT NULL,device_id bigint unsigned NOT NULL,result varchar(30) NOT NULL,provider_id varchar(255) NOT NULL DEFAULT '',created_gmt datetime NOT NULL,PRIMARY KEY(id),UNIQUE KEY event_device(event_id,device_id)) $c;");
         self::schedule();
@@ -108,25 +110,60 @@ final class CriosRango_Push {
 
     return $user_id;
     }
-    static function routes(){
-        register_rest_route(self::NS,'/push/device',[
-            ['methods'=>WP_REST_Server::CREATABLE,'callback'=>[__CLASS__,'register'],'permission_callback'=>'__return_true'],
-            ['methods'=>WP_REST_Server::DELETABLE,'callback'=>[__CLASS__,'unregister'],'permission_callback'=>'__return_true']
-        ]);
+    static function maybe_migrate(){
+        if((int)get_option('criosrango_push_db_version',0)<self::DB_VERSION){
+            self::migrate_devices_schema();
+            update_option('criosrango_push_db_version',self::DB_VERSION,false);
+        }
+    }
+    static function migrate_devices_schema(){
+        global $wpdb; $table=self::table('devices');
+        if($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s",$table))!==$table)return;
+        $columns=$wpdb->get_col("SHOW COLUMNS FROM $table");
+        if(!in_array('identifier_hash',$columns,true))$wpdb->query("ALTER TABLE $table ADD COLUMN identifier_hash char(64) NOT NULL DEFAULT '' AFTER token");
+        if(!in_array('identifier',$columns,true))$wpdb->query("ALTER TABLE $table ADD COLUMN identifier text NOT NULL DEFAULT '' AFTER identifier_hash");
+        if(!in_array('identifier_type',$columns,true))$wpdb->query("ALTER TABLE $table ADD COLUMN identifier_type varchar(20) NOT NULL DEFAULT 'fcm_token' AFTER identifier");
+        $rows=$wpdb->get_results("SELECT id,platform,token,identifier,identifier_type FROM $table");
+        foreach($rows as $row){
+            $type=trim((string)$row->identifier_type);
+            if($type===''||!in_array($type,['fid','fcm_token','apns_token'],true))$type=$row->platform==='ios'?'apns_token':'fcm_token';
+            $identifier=trim((string)$row->identifier);
+            if($identifier==='')$identifier=trim((string)$row->token);
+            if($identifier==='')continue;
+            $hash=hash('sha256',$row->platform.':'.$type.':'.$identifier);
+            $wpdb->update($table,['identifier_hash'=>$hash,'identifier'=>$identifier,'identifier_type'=>$type],['id'=>(int)$row->id]);
+        }
+        $has_unique=false;
+        foreach((array)$wpdb->get_results("SHOW INDEX FROM $table") as $index){
+            if($index->Key_name==='identifier_hash'&&!(int)$index->Non_unique){$has_unique=true;break;}
+        }
+        if(!$has_unique)$wpdb->query("ALTER TABLE $table ADD UNIQUE KEY identifier_hash (identifier_hash)");
+    }
+    static function parse_identifier($r){
+        $platform=sanitize_key($r->get_param('platform'));
+        $type=sanitize_key($r->get_param('identifier_type'));
+        $identifier=trim((string)$r->get_param('identifier'));
+        if($identifier===''&&$r->get_param('token')!==null){
+            $identifier=trim((string)$r->get_param('token'));
+            if($type==='')$type=$platform==='ios'?'apns_token':'fcm_token';
+        }
+        $valid=($platform==='android'&&in_array($type,['fid','fcm_token'],true))||($platform==='ios'&&$type==='apns_token');
+        if(!$valid||$identifier==='')return new WP_Error('invalid_push_device','Datos no válidos',['status'=>400]);
+        return [$platform,$type,$identifier];
     }
     static function register($r){
-        global $wpdb; $platform=sanitize_key($r->get_param('platform')); $token=trim((string)$r->get_param('token'));
-        if(!in_array($platform,['android','ios'],true)||$token==='') return new WP_Error('invalid_push_device','Datos no válidos',['status'=>400]);
+        global $wpdb; $parsed=self::parse_identifier($r); if(is_wp_error($parsed))return $parsed; [$platform,$type,$identifier]=$parsed;
         $user=self::authenticated_user_id($r); if(is_wp_error($user)) return $user;
-        $hash=hash('sha256',$platform.':'.$token); $now=gmdate('Y-m-d H:i:s'); $table=self::table('devices');
-        $data=['token_hash'=>$hash,'token'=>$token,'platform'=>$platform,'user_id'=>(int)$user,'new_products'=>$r->get_param('new_products')===null?1:(bool)$r->get_param('new_products'),'order_updates'=>$r->get_param('order_updates')===null?1:(bool)$r->get_param('order_updates'),'active'=>1,'last_seen_gmt'=>$now,'updated_gmt'=>$now];
-        $id=$wpdb->get_var($wpdb->prepare("SELECT id FROM $table WHERE token_hash=%s",$hash));
+        $hash=hash('sha256',$platform.':'.$type.':'.$identifier); $legacy_hash=hash('sha256',$platform.':'.$identifier); $now=gmdate('Y-m-d H:i:s'); $table=self::table('devices');
+        $data=['token_hash'=>$legacy_hash,'token'=>$identifier,'identifier_hash'=>$hash,'identifier'=>$identifier,'identifier_type'=>$type,'platform'=>$platform,'user_id'=>(int)$user,'new_products'=>$r->get_param('new_products')===null?1:(bool)$r->get_param('new_products'),'order_updates'=>$r->get_param('order_updates')===null?1:(bool)$r->get_param('order_updates'),'active'=>1,'last_seen_gmt'=>$now,'updated_gmt'=>$now];
+        $id=$wpdb->get_var($wpdb->prepare("SELECT id FROM $table WHERE identifier_hash=%s",$hash));
         if($id)$wpdb->update($table,$data,['id'=>(int)$id]);else{$data['created_gmt']=$now;$wpdb->insert($table,$data);}
         return rest_ensure_response(['success'=>true]);
     }
     static function unregister($r){
-        global $wpdb; $platform=sanitize_key($r->get_param('platform'));$token=trim((string)$r->get_param('token'));if(!in_array($platform,['android','ios'],true)||$token==='') return new WP_Error('invalid_push_device','Datos no válidos',['status'=>400]);$hash=hash('sha256',$platform.':'.$token);
-        $wpdb->update(self::table('devices'),['active'=>0,'user_id'=>0,'updated_gmt'=>gmdate('Y-m-d H:i:s')],['token_hash'=>$hash]);
+        global $wpdb; $parsed=self::parse_identifier($r); if(is_wp_error($parsed))return $parsed; [$platform,$type,$identifier]=$parsed;
+        $hash=hash('sha256',$platform.':'.$type.':'.$identifier);
+        $wpdb->update(self::table('devices'),['active'=>0,'user_id'=>0,'updated_gmt'=>gmdate('Y-m-d H:i:s')],['identifier_hash'=>$hash]);
         return rest_ensure_response(['success'=>true]);
     }
     static function product_publish($new,$old,$post){
@@ -173,18 +210,19 @@ final class CriosRango_Push {
         if($all_ok)$wpdb->update(self::table('events'),['sent_gmt'=>gmdate('Y-m-d H:i:s')],['id'=>$id]);
     }
     static function send($d,$p){
-        if($d->platform==='android')return self::fcm($d->token,$p); return self::apns($d->token,$p);
+        if($d->platform==='android')return self::fcm($d->identifier,$p,$d->identifier_type==='fid'?'fid':'token'); return self::apns($d->identifier,$p);
     }
     static function delivery($eid,$did,$r){
         global $wpdb;$wpdb->query($wpdb->prepare("INSERT INTO ".self::table('deliveries')." (event_id,device_id,result,provider_id,created_gmt) VALUES(%d,%d,%s,%s,%s) ON DUPLICATE KEY UPDATE result=%s, provider_id=%s, created_gmt=%s",$eid,$did,$r['result'],$r['provider_id'],gmdate('Y-m-d H:i:s'),$r['result'],$r['provider_id'],gmdate('Y-m-d H:i:s')));
         if($r['invalid'])$wpdb->update(self::table('devices'),['active'=>0],['id'=>$did]);
     }
-    static function fcm($token,$p){
+    static function fcm($identifier,$p,$target='token'){
         $cfg=defined('CRIOSRANGO_PUSH_FCM_SERVICE_ACCOUNT')?CRIOSRANGO_PUSH_FCM_SERVICE_ACCOUNT:get_option('criosrango_push_fcm_service_account');if(!$cfg)return['result'=>'config_missing','provider_id'=>'','invalid'=>false];
         $c=is_string($cfg)?json_decode($cfg,true):$cfg;if(empty($c['project_id'])||empty($c['client_email'])||empty($c['private_key']))return['result'=>'config_invalid','provider_id'=>'','invalid'=>false];
         $now=time();$b=function($v){return rtrim(strtr(base64_encode($v),'+/','-_'),'=');};$h=$b(wp_json_encode(['alg'=>'RS256','typ'=>'JWT']));$pl=$b(wp_json_encode(['iss'=>$c['client_email'],'scope'=>'https://www.googleapis.com/auth/firebase.messaging','aud'=>'https://oauth2.googleapis.com/token','iat'=>$now,'exp'=>$now+3600]));$sig='';openssl_sign("$h.$pl",$sig,$c['private_key'],OPENSSL_ALGO_SHA256);$jwt="$h.$pl.".$b($sig);
         $r=wp_remote_post('https://oauth2.googleapis.com/token',['body'=>['grant_type'=>'urn:ietf:params:oauth:grant-type:jwt-bearer','assertion'=>$jwt],'timeout'=>15]);if(is_wp_error($r))return['result'=>'oauth_error','provider_id'=>'','invalid'=>false];$access=json_decode(wp_remote_retrieve_body($r),true)['access_token']??'';if(!$access)return['result'=>'oauth_error','provider_id'=>'','invalid'=>false];
-        $body=['message'=>['token'=>$token,'notification'=>['title'=>$p['title'],'body'=>$p['body']],'data'=>['type'=>$p['type'],'order_id'=>(string)($p['order_id']??'')],'android'=>['notification'=>['channel_id'=>$p['type']==='order_status'?'criosrango_orders':'criosrango_general']]]];
+        $targetKey=$target==='fid'?'fid':'token';
+        $body=['message'=>[$targetKey=>$identifier,'notification'=>['title'=>$p['title'],'body'=>$p['body']],'data'=>['type'=>$p['type'],'order_id'=>(string)($p['order_id']??'')],'android'=>['notification'=>['channel_id'=>$p['type']==='order_status'?'criosrango_orders':'criosrango_general']]]];
         $r=wp_remote_post('https://fcm.googleapis.com/v1/projects/'.rawurlencode($c['project_id']).'/messages:send',['headers'=>['Authorization'=>'Bearer '.$access,'Content-Type'=>'application/json'],'body'=>wp_json_encode($body),'timeout'=>15]);$code=is_wp_error($r)?0:wp_remote_retrieve_response_code($r);$raw=is_wp_error($r)?'':wp_remote_retrieve_body($r);return['result'=>$code>=200&&$code<300?'sent':'failed','provider_id'=>(string)$code,'invalid'=>$code===404||stripos($raw,'UNREGISTERED')!==false];
     }
     static function apns($token,$p){
