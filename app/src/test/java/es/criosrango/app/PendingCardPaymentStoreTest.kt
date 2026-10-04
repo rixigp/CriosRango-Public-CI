@@ -43,6 +43,38 @@ class PendingCardPaymentStoreTest {
     }
 
     @Test
+    fun exhaustedMarkerSurvivesRestart() {
+        val file = file("pending-exhausted-restart")
+        val marker = LastCheckout(13010, "wc_order_key_13010", "https://example.invalid/payment/13010")
+        assertTrue(store(file).save(marker))
+        // EXHAUSTED does not call clear(); a new store instance can recover it.
+        assertEquals(marker, store(file).load())
+    }
+
+    @Test
+    fun startupWithoutMarkerReturnsNull() {
+        assertNull(store(file("pending-empty-startup")).load())
+    }
+
+    @Test
+    fun terminalUnpaidMarkerCanBeCleared() {
+        val file = file("pending-terminal-unpaid")
+        val store = store(file)
+        assertTrue(store.save(LastCheckout(13011, "wc_order_key_13011", "https://example.invalid/payment/13011")))
+        assertTrue(store.clear())
+        assertNull(store.load())
+    }
+
+    @Test
+    fun cancelledPaymentMarkerCanBeCleared() {
+        val file = file("pending-cancelled")
+        val store = store(file)
+        assertTrue(store.save(LastCheckout(13012, "wc_order_key_13012", "https://example.invalid/payment/13012")))
+        assertTrue(store.clear())
+        assertNull(store.load())
+    }
+
+    @Test
     fun overwrite_returnsLatestMarker() {
         val file = file("pending-overwrite")
         val store = store(file)
