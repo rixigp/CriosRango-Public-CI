@@ -184,8 +184,11 @@ fun AccountLoginScreen(
                 }
             }
         } else {
-            Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
-                Spacer(Modifier.height(20.dp))
+            Column(
+                Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
+                    .then(if (accountSection == AccountSection.HELP) Modifier else Modifier.padding(horizontal = 24.dp))
+            ) {
+                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(20.dp))
                 when (accountSection) {
                     AccountSection.HOME -> AccountHomeContentV2(
                         fullName = fullName,
@@ -202,13 +205,16 @@ fun AccountLoginScreen(
                     AccountSection.HELP -> AccountHelpContent { accountSection = AccountSection.HOME }
                     AccountSection.ORDERS -> Unit
                 }
-                Spacer(Modifier.height(24.dp))
+                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(24.dp))
             }
         }
         if (showForgot) AccountForgotPasswordDialog(login, loading, error, notice, { showForgot = false; vm.clearAccountMessages() }, vm::forgotPassword)
     } else if (!showLogin) {
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
-            Spacer(Modifier.height(20.dp))
+        Column(
+            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
+                .then(if (accountSection == AccountSection.HELP) Modifier else Modifier.padding(horizontal = 24.dp))
+        ) {
+            if (accountSection != AccountSection.HELP) Spacer(Modifier.height(20.dp))
             when (accountSection) {
                 AccountSection.HELP -> AccountHelpContent { accountSection = AccountSection.HOME }
                 else -> AccountHomeContentV2(
@@ -221,7 +227,7 @@ fun AccountLoginScreen(
                     onInfoPage = { selectedInfoPage = it }
                 )
             }
-            Spacer(Modifier.height(24.dp))
+            if (accountSection != AccountSection.HELP) Spacer(Modifier.height(24.dp))
         }
     } else {
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
@@ -362,38 +368,40 @@ private fun AccountHomeContentV2(
 private fun AccountHelpContent(onBack: () -> Unit) {
     val context = LocalContext.current
     Column(Modifier.fillMaxWidth()) {
-        AccountSectionHeader("Ayuda", onBack)
-        Spacer(Modifier.height(22.dp))
-        Text("Contacta con nosotros", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = Color(0xFF183B35))
-        Spacer(Modifier.height(16.dp))
-        HelpContactRow("WhatsApp", "633 246 788", Icons.AutoMirrored.Outlined.Chat) {
-            val message = "Hola, necesito ayuda con la app de Críos&Rango."
-            val encodedMessage = java.net.URLEncoder.encode(message, "UTF-8")
-            val whatsappUri = Uri.parse("https://wa.me/34633246788?text=$encodedMessage")
-            val intent = Intent(Intent.ACTION_VIEW, whatsappUri)
-            runCatching { context.startActivity(intent) }.onFailure {
-                Toast.makeText(context, "No se ha podido abrir WhatsApp.", Toast.LENGTH_SHORT).show()
+        CatalogScreenHeader(title = "Ayuda", onBack = onBack, bottomPadding = 4.dp)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+            Spacer(Modifier.height(4.dp))
+            Text("Contacta con nosotros", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = Color(0xFF183B35))
+            Spacer(Modifier.height(16.dp))
+            HelpContactRow("WhatsApp", "633 246 788", Icons.AutoMirrored.Outlined.Chat) {
+                val message = "Hola, necesito ayuda con la app de Críos&Rango."
+                val encodedMessage = java.net.URLEncoder.encode(message, "UTF-8")
+                val whatsappUri = Uri.parse("https://wa.me/34633246788?text=$encodedMessage")
+                val intent = Intent(Intent.ACTION_VIEW, whatsappUri)
+                runCatching { context.startActivity(intent) }.onFailure {
+                    Toast.makeText(context, "No se ha podido abrir WhatsApp.", Toast.LENGTH_SHORT).show()
+                }
             }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            HelpContactRow("Llamar", "969 091 236", Icons.Outlined.Phone) {
+                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:+34969091236"))
+                runCatching { context.startActivity(intent) }.onFailure {
+                    Toast.makeText(context, "No se ha podido abrir el teléfono.", Toast.LENGTH_SHORT).show()
+                }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            HelpContactRow("Correo electrónico", "criosrango@criosrango.es", Icons.Outlined.Email) {
+                val intent = Intent(Intent.ACTION_SENDTO).apply {
+                    data = Uri.parse("mailto:criosrango@criosrango.es")
+                    putExtra(Intent.EXTRA_SUBJECT, "Consulta desde la app Críos&Rango")
+                }
+                runCatching { context.startActivity(intent) }.onFailure {
+                    Toast.makeText(context, "No se ha podido abrir el correo.", Toast.LENGTH_SHORT).show()
+                }
+            }
+            Spacer(Modifier.height(28.dp))
+            StoreHoursSection()
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        HelpContactRow("Llamar", "969 091 236", Icons.Outlined.Phone) {
-            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:+34969091236"))
-            runCatching { context.startActivity(intent) }.onFailure {
-                Toast.makeText(context, "No se ha podido abrir el teléfono.", Toast.LENGTH_SHORT).show()
-            }
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        HelpContactRow("Correo electrónico", "criosrango@criosrango.es", Icons.Outlined.Email) {
-            val intent = Intent(Intent.ACTION_SENDTO).apply {
-                data = Uri.parse("mailto:criosrango@criosrango.es")
-                putExtra(Intent.EXTRA_SUBJECT, "Consulta desde la app Críos&Rango")
-            }
-            runCatching { context.startActivity(intent) }.onFailure {
-                Toast.makeText(context, "No se ha podido abrir el correo.", Toast.LENGTH_SHORT).show()
-            }
-        }
-        Spacer(Modifier.height(28.dp))
-        StoreHoursSection()
     }
 }
 
