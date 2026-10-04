@@ -23,6 +23,11 @@ import es.criosrango.shared.CatalogPage
 import es.criosrango.shared.CatalogPaginator
 import es.criosrango.shared.CatalogPagingState
 
+internal suspend fun clearPendingAfterPaidCartCleanup(clearCart: suspend () -> Unit, clearPending: () -> Unit) {
+    clearCart()
+    clearPending()
+}
+
 enum class CheckoutPhase { IDLE, QUOTING, READY, CREATING_ORDER, ORDER_CREATED, OPENING_PAYMENT, FAILED }
 data class PaymentRedirect(val generation: Long, val orderId: Int, val url: String)
 data class CardPaymentResult(val orderId: Int, val paid: Boolean?)
@@ -487,8 +492,10 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
             is PaymentReconciliationResult.PAID -> {
                 val confirmedOrderId = if (result.order.id > 0) result.order.id else checkout.orderId
                 // If cart cleanup fails, leave the durable marker intact for recovery.
-                cartStore.clearAfterConfirmedPayment()
-                pendingCardPaymentStore.clear()
+                clearPendingAfterPaidCartCleanup(
+                    clearCart = { cartStore.clearAfterConfirmedPayment() },
+                    clearPending = { pendingCardPaymentStore.clear() }
+                )
                 lastCheckout = null
                 _paymentRedirect.value = null
                 if (publishPaidResult) _cardPaymentResult.value = CardPaymentResult(confirmedOrderId, true)
