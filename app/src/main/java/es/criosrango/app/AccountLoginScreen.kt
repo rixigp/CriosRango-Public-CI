@@ -180,7 +180,7 @@ fun AccountLoginScreen(
                         onHelp = { accountSection = AccountSection.HELP },
                         onInfoPage = { selectedInfoPage = it }
                     )
-                    AccountSection.PROFILE -> AccountProfileContent(loading, { accountSection = AccountSection.HOME }, { accountSection = AccountSection.DATA }, { accountSection = AccountSection.ADDRESSES }, { vm.clearAccountMessages(); showForgot = true }, { PushNotificationController.unregister(notificationContext); vm.logout() })
+                    AccountSection.PROFILE -> AccountProfileContent(loading, { accountSection = AccountSection.HOME }, { accountSection = AccountSection.DATA }, { accountSection = AccountSection.ADDRESSES }, { vm.clearAccountMessages(); showForgot = true }, { vm.logout() })
                     AccountSection.DATA -> AccountPersonalDataContent(vm, currentUser) { accountSection = AccountSection.PROFILE }
                     AccountSection.ADDRESSES -> AccountAddressContent(vm, address) { accountSection = AccountSection.PROFILE }
                     AccountSection.HELP -> AccountHelpContent { accountSection = AccountSection.HOME }

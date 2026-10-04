@@ -24,10 +24,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.compose.material.icons.outlined.*
 import android.os.Bundle
-import android.Manifest
-import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.net.Uri
 import android.util.Log
 import es.criosrango.shared.PushNotificationContract
@@ -36,8 +33,6 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -83,7 +78,6 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.text.HtmlCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import compose.icons.TablerIcons
 import compose.icons.tablericons.Bed
@@ -97,10 +91,6 @@ enum class AppTab(val label: String) { HOME("Inicio"), CATEGORIES("Categorías")
 private val paymentReturnUriState = androidx.compose.runtime.mutableStateOf<android.net.Uri?>(null)
 private val pushTypeState = androidx.compose.runtime.mutableStateOf<String?>(null)
 private val pushOrderIdState = androidx.compose.runtime.mutableStateOf<Int?>(null)
-private const val NOTIFICATION_PERMISSION_REQUESTED_KEY = "notification_permission_requested"
-
-internal fun shouldRequestNotificationPermission(apiLevel: Int, alreadyRequested: Boolean, granted: Boolean): Boolean =
-    apiLevel >= Build.VERSION_CODES.TIRAMISU && !alreadyRequested && !granted
 
 class MainActivity : ComponentActivity() {
     companion object {
@@ -212,10 +202,6 @@ private fun CriosRangoApp(
         accountViewModel.prepareClaimOrder(orderId, orderKey)
     }
     val context = LocalContext.current
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { PushNotificationController.initialize(context) }
-
     val cartItems = remoteCart.items.map { line -> CartItem(lineKey = line.key, productId = line.parentProductId ?: line.id, name = line.name.cleanWooText(), imageUrl = line.images.firstOrNull()?.src.orEmpty(), unitPrice = line.prices.price, variationId = line.id, quantity = line.quantity) }
     val loading by viewModel.isLoading.collectAsStateWithLifecycle()
     val initialLoading by viewModel.initialLoading.collectAsStateWithLifecycle()
@@ -264,25 +250,6 @@ private fun CriosRangoApp(
     }
     val startupReady = !initialLoading || error != null
     val showStartupBranding = shouldShowStartupBranding(coldStartBranding, startupMinimumDurationReached, startupReady)
-
-    LaunchedEffect(showStartupBranding) {
-        if (showStartupBranding) return@LaunchedEffect
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return@LaunchedEffect
-
-        val granted = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.POST_NOTIFICATIONS
-        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        val preferences = context.getSharedPreferences("criosrango", Context.MODE_PRIVATE)
-        val alreadyRequested = preferences.getBoolean(NOTIFICATION_PERMISSION_REQUESTED_KEY, false)
-
-        if (shouldRequestNotificationPermission(Build.VERSION.SDK_INT, alreadyRequested, granted)) {
-            preferences.edit()
-                .putBoolean(NOTIFICATION_PERMISSION_REQUESTED_KEY, true)
-                .apply()
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-    }
 
     MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF183B35), secondary = Color(0xFFD18162))) {
         Crossfade(
