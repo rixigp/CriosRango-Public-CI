@@ -832,7 +832,6 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
                     onDismiss = { telemetryDialogOpen = false }
                 )
             }
-            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             OutletAwareCatalogGrid(
                 current = current,
                 products = products,
