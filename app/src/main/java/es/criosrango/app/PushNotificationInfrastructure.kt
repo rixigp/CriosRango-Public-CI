@@ -84,6 +84,8 @@ class PushFirebaseMessagingService:FirebaseMessagingService(){
         val intent=Intent(this,MainActivity::class.java).apply{flags=Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP;putExtra(PushNotificationContract.TYPE_KEY,type);orderId?.let{putExtra(PushNotificationContract.ORDER_ID_KEY,it)}}
         val pending=PendingIntent.getActivity(this,orderId?.hashCode()?:type.hashCode(),intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification=NotificationCompat.Builder(this,channel).setSmallIcon(es.criosrango.app.R.drawable.ic_stat_notification).setContentTitle(title).setContentText(body).setAutoCancel(true).setContentIntent(pending).build()
-        androidx.core.app.NotificationManagerCompat.from(this).notify(orderId?.hashCode()?:type.hashCode(),notification)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            androidx.core.app.NotificationManagerCompat.from(this).notify(orderId?.hashCode()?:type.hashCode(),notification)
+        }
     }
 }
