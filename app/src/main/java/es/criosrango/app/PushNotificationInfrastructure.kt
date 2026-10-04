@@ -62,7 +62,7 @@ object PushNotificationController {
         val accountToken=prefs.getString("account_token",null)
         CoroutineScope(SupervisorJob()+Dispatchers.IO).launch{runCatching{
             val json=org.json.JSONObject().put("platform","android").put("token",token)
-            val body=okhttp3.RequestBody.create("application/json".toMediaType(),json.toString())
+            val body=json.toString().toRequestBody("application/json".toMediaType())
             val b=okhttp3.Request.Builder().url(ENDPOINT).delete(body)
             accountToken?.let{b.header("Authorization","Bearer $it")}
             okhttp3.OkHttpClient().newCall(b.build()).execute().close()
