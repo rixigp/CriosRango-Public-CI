@@ -152,16 +152,16 @@ fun AccountInformationPageContent(page: AccountInfoPage, onBack: () -> Unit) {
     BackHandler(onBack = onBack)
 
     Column(modifier = Modifier.fillMaxSize()) {
-        AccountSectionHeader(title = page.title, onBack = onBack)
-        Spacer(Modifier.height(18.dp))
+        CatalogScreenHeader(title = page.title, onBack = onBack, bottomPadding = 4.dp)
+        Spacer(Modifier.height(4.dp))
         when (val current = state) {
             InfoPageUiState.Loading -> Box(
-                modifier = Modifier.fillMaxWidth().padding(top = 36.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 28.dp),
                 contentAlignment = Alignment.Center
             ) { CircularProgressIndicator() }
 
             is InfoPageUiState.Error -> Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(current.message, style = MaterialTheme.typography.bodyLarge)
@@ -170,7 +170,7 @@ fun AccountInformationPageContent(page: AccountInfoPage, onBack: () -> Unit) {
             }
 
             is InfoPageUiState.Success -> Column(
-                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp).verticalScroll(rememberScrollState())
             ) {
                 Text(current.content, style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.height(48.dp))

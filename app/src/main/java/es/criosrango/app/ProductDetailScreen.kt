@@ -285,7 +285,7 @@ internal fun productSizeSortKey(value: String): Int {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cartItems: List<CartItem>, loadVariation: (Int) -> Unit, onBack: () -> Unit, onCart: () -> Unit, onAdd: (CartItem) -> Unit) {
+internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cartItems: List<CartItem>, loadVariation: (Int) -> Unit, onBack: () -> Unit, onCart: () -> Unit, onSearch: () -> Unit, onAdd: (CartItem) -> Unit) {
     val context = LocalContext.current
     val selected = remember(product.id) { mutableStateMapOf<String, String>() }
     var fullscreenGalleryPage by remember(product.id) {
@@ -379,37 +379,18 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
     BackHandler { onBack() }
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Detalle") },
-                navigationIcon = {
-                    IconButton(onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            "Volver"
-                        )
-                    }
-                },
-                actions = {
-                    BadgedBox(
-                        badge = {
-                            if (cartItems.sumOf { it.quantity } > 0) {
-                                Badge {
-                                    Text(
-                                        cartItems.sumOf { it.quantity }.toString()
-                                    )
-                                }
-                            }
-                        }
-                    ) {
-                        IconButton(onCart) {
-                            Icon(
-                                Icons.Outlined.ShoppingBag,
-                                "Ir al carrito"
-                            )
-                        }
-                    }
-                }
-            )
+            Column {
+                StoreTopBar(
+                    cartQuantity = cartItems.sumOf { it.quantity },
+                    onSearch = onSearch,
+                    onCart = onCart
+                )
+                CatalogScreenHeader(
+                    title = "Detalle",
+                    onBack = onBack,
+                    bottomPadding = 4.dp
+                )
+            }
         },
         bottomBar = {
             Surface(

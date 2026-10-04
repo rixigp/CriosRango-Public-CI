@@ -747,7 +747,7 @@ internal fun HomeScreen(
         }
 
         item {
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(12.dp))
         }
 
         item { HomeSectionTitle("Novedades", "Ver todo") { onEnterNovedades() } }

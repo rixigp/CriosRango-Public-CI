@@ -84,8 +84,8 @@ import kotlinx.coroutines.launch
 /** One geometry rule for every catalog screen title row. */
 internal object CatalogHeaderGeometry {
     val horizontalPadding = 20.dp
-    val topPadding = 12.dp
-    val bottomPadding = 12.dp
+    val topPadding = 8.dp
+    val bottomPadding = 4.dp
     val controlsVerticalPadding = 8.dp
 }
 

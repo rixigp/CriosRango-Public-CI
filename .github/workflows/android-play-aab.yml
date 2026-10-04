@@ -10,8 +10,8 @@ env:
   BUNDLETOOL_VERSION: "1.18.3"
   BUNDLETOOL_SHA256: "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29"
   EXPECTED_PACKAGE: "es.criosrango.app"
-  EXPECTED_VERSION_NAME: "1.0.165"
-  EXPECTED_VERSION_CODE: "165"
+  EXPECTED_VERSION_NAME: "1.0.166"
+  EXPECTED_VERSION_CODE: "166"
   EXPECTED_MIN_SDK: "24"
   EXPECTED_TARGET_SDK: "36"
   EXPECTED_UPLOAD_ALIAS: "criosrango-upload"
@@ -165,8 +165,8 @@ jobs:
           MANIFEST="$RUNNER_TEMP/aab-manifest.xml"
           java -jar "$BUNDLETOOL" dump manifest --bundle "$AAB" > "$MANIFEST"
           grep -q 'package="es.criosrango.app"' "$MANIFEST"
-          grep -q 'android:versionName="1.0.165"' "$MANIFEST"
-          grep -q 'android:versionCode="165"' "$MANIFEST"
+          grep -q 'android:versionName="1.0.166"' "$MANIFEST"
+          grep -q 'android:versionCode="166"' "$MANIFEST"
           grep -q 'android:minSdkVersion="24"' "$MANIFEST"
           grep -q 'android:targetSdkVersion="36"' "$MANIFEST"
           if grep -q 'CrashlyticsDebugCrashActivity' "$MANIFEST"; then
@@ -236,7 +236,7 @@ jobs:
       - name: Upload signed AAB
         uses: actions/upload-artifact@v7
         with:
-          name: criosrango-v1.0.165-code165-release-aab
+          name: criosrango-v1.0.166-code166-release-aab
           retention-days: 7
           path: \${{ steps.aab.outputs.aab_path }}
           if-no-files-found: error
@@ -244,7 +244,7 @@ jobs:
       - name: Upload R8 mapping
         uses: actions/upload-artifact@v7
         with:
-          name: criosrango-v1.0.165-code165-r8-mapping
+          name: criosrango-v1.0.166-code166-r8-mapping
           retention-days: 7
           path: app/build/outputs/mapping/release/mapping.txt
           if-no-files-found: error
@@ -252,7 +252,7 @@ jobs:
       - name: Upload non-sensitive release report
         uses: actions/upload-artifact@v7
         with:
-          name: criosrango-v1.0.165-code165-release-report
+          name: criosrango-v1.0.166-code166-release-report
           retention-days: 7
           path: criosrango-release-aab-report.txt
           if-no-files-found: error

@@ -296,10 +296,19 @@ private fun CriosRangoApp(
             if (checkoutOpen) {
                 RedesignedCheckoutScreen(remoteCart, checkout, checkoutLoading, checkoutError, checkoutPhase, { checkoutOpen = false; viewModel.abandonCheckout() }, viewModel::loadCheckout, viewModel::selectShippingRate, viewModel::createOrder, viewModel.deliveryAddressStore)
             } else if (selectedProduct != null) {
-                ProductDetail(selectedProduct!!, selectedVariation, cartItems, viewModel::loadVariation, viewModel::closeProduct, { tab = AppTab.CART; viewModel.closeProduct() }, viewModel::addToCart)
+                ProductDetail(
+                    product = selectedProduct!!,
+                    variation = selectedVariation,
+                    cartItems = cartItems,
+                    loadVariation = viewModel::loadVariation,
+                    onBack = viewModel::closeProduct,
+                    onCart = { tab = AppTab.CART; viewModel.closeProduct() },
+                    onSearch = { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH; viewModel.closeProduct() },
+                    onAdd = viewModel::addToCart
+                )
             } else Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
-                topBar = { StoreTopBar(tab, remoteCart.itemsCount, { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH }, { tab = AppTab.CART }) },
+                topBar = { StoreTopBar(remoteCart.itemsCount, { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH }, { tab = AppTab.CART }) },
                 bottomBar = {
                     Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
                         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -341,12 +350,12 @@ private fun CriosRangoApp(
                                 tab = AppTab.CART
                             }
                         },
-                        onBackFromLogin = {
-                            if (returnToCartAfterLogin) {
+                        onBackFromLogin = if (returnToCartAfterLogin) {
+                            {
                                 returnToCartAfterLogin = false
                                 tab = AppTab.CART
                             }
-                        }
+                        } else null
                     )
                     else -> saveableStateHolder.SaveableStateProvider("CART") { CartScreen(
                         cart = remoteCart,
@@ -438,7 +447,7 @@ private fun CriosRangoApp(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun StoreTopBar(tab: AppTab, cartQuantity: Int, onSearch: () -> Unit, onCart: () -> Unit) = TopAppBar(
+internal fun StoreTopBar(cartQuantity: Int, onSearch: () -> Unit, onCart: () -> Unit) = TopAppBar(
     title = {},
     navigationIcon = {
         Image(

@@ -77,6 +77,30 @@ fun AccountLoginScreen(
     var accountSection by remember(currentUser?.id) { mutableStateOf(AccountSection.HOME) }
     var selectedOrderId by remember { mutableStateOf<Int?>(initialOrderId) }
     val selectedOrder = orders.firstOrNull { it.id == selectedOrderId }
+    val leaveLogin: () -> Unit = {
+        when (accountAuthBackDestination(AccountAuthDestination.LOGIN, returnToCartAfterLogin = onBackFromLogin != null)) {
+            AccountAuthDestination.CART -> onBackFromLogin?.invoke()
+            AccountAuthDestination.ACCOUNT -> {
+                showLogin = false
+                showRegister = false
+                showForgot = false
+                vm.clearAccountMessages()
+            }
+            else -> Unit
+        }
+    }
+    val dismissRegister: () -> Unit = {
+        if (!loading && accountAuthBackDestination(AccountAuthDestination.REGISTER) == AccountAuthDestination.LOGIN) {
+            showRegister = false
+            vm.clearAccountMessages()
+        }
+    }
+    val dismissForgot: () -> Unit = {
+        if (!loading && accountAuthBackDestination(AccountAuthDestination.FORGOT_PASSWORD) == AccountAuthDestination.LOGIN) {
+            showForgot = false
+            vm.clearAccountMessages()
+        }
+    }
 
     LaunchedEffect(currentUser?.id, initialOrderId) {
         if (currentUser != null && initialOrderId != null) selectedOrderId = initialOrderId
@@ -121,8 +145,7 @@ fun AccountLoginScreen(
     }
 
     if (selectedInfoPage != null && selectedOrder == null) {
-        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 24.dp)) {
-            Spacer(Modifier.height(20.dp))
+        Column(Modifier.fillMaxSize().padding(padding)) {
             AccountInformationPageContent(selectedInfoPage!!, onBack = { selectedInfoPage = null; accountSection = AccountSection.HOME })
         }
         return
@@ -136,15 +159,8 @@ fun AccountLoginScreen(
             AccountSection.HOME -> AccountSection.HOME
         }
     }
-    BackHandler(enabled = currentUser == null && showLogin && selectedOrder == null) {
-        if (onBackFromLogin != null) {
-            onBackFromLogin.invoke()
-        } else {
-            showLogin = false
-            showRegister = false
-            showForgot = false
-            vm.clearAccountMessages()
-        }
+    BackHandler(enabled = currentUser == null && showLogin && selectedOrder == null && !showRegister && !showForgot) {
+        leaveLogin()
     }
 
     if (currentUser != null && selectedOrder != null) {
@@ -208,22 +224,39 @@ fun AccountLoginScreen(
             Spacer(Modifier.height(24.dp))
         }
     } else {
-        Column(Modifier.fillMaxSize().padding(padding).padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center) {
-            Text("Iniciar sesión", style = MaterialTheme.typography.headlineSmall)
-            Spacer(Modifier.height(20.dp))
-            OutlinedTextField(login, { login = it }, label = { Text("Correo o usuario") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(password, { password = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
-            error?.let { Spacer(Modifier.height(12.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
-            Spacer(Modifier.height(20.dp))
-            Button({ vm.login(login.trim(), password) }, enabled = !loading, modifier = Modifier.fillMaxWidth()) { if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Iniciar sesión") }
-            Spacer(Modifier.height(8.dp))
-            TextButton({ vm.clearAccountMessages(); showForgot = true }, modifier = Modifier.fillMaxWidth()) { Text("He olvidado mi contraseña") }
-            OutlinedButton({ vm.clearAccountMessages(); showRegister = true }, modifier = Modifier.fillMaxWidth()) { Text("Crear cuenta") }
-            if (showRegister) AccountRegisterDialog(login, loading, error, { showRegister = false; vm.clearAccountMessages() }, vm::createAccount)
-            if (showForgot) AccountForgotPasswordDialog(login, loading, error, notice, { showForgot = false; vm.clearAccountMessages() }, vm::forgotPassword)
+        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
+            CatalogScreenHeader(
+                title = "Iniciar sesión",
+                onBack = leaveLogin,
+                bottomPadding = 4.dp
+            )
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(login, { login = it }, label = { Text("Correo o usuario") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(password, { password = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
+                error?.let { Spacer(Modifier.height(12.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
+                Spacer(Modifier.height(20.dp))
+                Button({ vm.login(login.trim(), password) }, enabled = !loading, modifier = Modifier.fillMaxWidth()) { if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Iniciar sesión") }
+                Spacer(Modifier.height(8.dp))
+                TextButton({ vm.clearAccountMessages(); showForgot = true }, modifier = Modifier.fillMaxWidth()) { Text("He olvidado mi contraseña") }
+                OutlinedButton({ vm.clearAccountMessages(); showRegister = true }, modifier = Modifier.fillMaxWidth()) { Text("Crear cuenta") }
+            }
+            if (showRegister) AccountRegisterDialog(login, loading, error, dismissRegister, vm::createAccount)
+            if (showForgot) AccountForgotPasswordDialog(login, loading, error, notice, dismissForgot, vm::forgotPassword)
         }
     }
+}
+
+internal enum class AccountAuthDestination { ACCOUNT, LOGIN, REGISTER, FORGOT_PASSWORD, CART }
+
+internal fun accountAuthBackDestination(
+    current: AccountAuthDestination,
+    returnToCartAfterLogin: Boolean = false
+): AccountAuthDestination = when (current) {
+    AccountAuthDestination.REGISTER, AccountAuthDestination.FORGOT_PASSWORD -> AccountAuthDestination.LOGIN
+    AccountAuthDestination.LOGIN -> if (returnToCartAfterLogin) AccountAuthDestination.CART else AccountAuthDestination.ACCOUNT
+    AccountAuthDestination.ACCOUNT, AccountAuthDestination.CART -> AccountAuthDestination.ACCOUNT
 }
 
 private enum class AccountSection { HOME, ORDERS, PROFILE, DATA, ADDRESSES, HELP }
