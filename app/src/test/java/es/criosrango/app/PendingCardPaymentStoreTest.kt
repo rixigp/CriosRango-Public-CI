@@ -164,17 +164,18 @@ class PendingCardPaymentStoreTest {
         assertFalse(file.exists())
     }
 
-    internal class TestPendingPaymentCipher(private val key: SecretKeySpec) : PendingPaymentCipher {
-        override fun encrypt(plaintext: ByteArray): EncryptedPendingBlob {
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, key)
-            return EncryptedPendingBlob(cipher.iv, cipher.doFinal(plaintext))
-        }
+}
 
-        override fun decrypt(blob: EncryptedPendingBlob): ByteArray {
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, blob.iv))
-            return cipher.doFinal(blob.ciphertext)
-        }
+internal class TestPendingPaymentCipher(private val key: SecretKeySpec) : PendingPaymentCipher {
+    override fun encrypt(plaintext: ByteArray): EncryptedPendingBlob {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        return EncryptedPendingBlob(cipher.iv, cipher.doFinal(plaintext))
+    }
+
+    override fun decrypt(blob: EncryptedPendingBlob): ByteArray {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, blob.iv))
+        return cipher.doFinal(blob.ciphertext)
     }
 }
