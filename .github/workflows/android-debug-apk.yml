@@ -54,15 +54,40 @@ jobs:
           set -euo pipefail
           STOREPASS="$(printf '%s' "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD" | tr -d '\r\n')"
           keytool -list -keystore "$RUNNER_TEMP/criosrango-debug.jks" -storepass "$STOREPASS" -alias "criosrango-development"
-      - name: Assemble Android debug APK
+      - name: Validate Android debug, tests, lint, and minified release
         run: |
           set +e
-          ./gradlew clean :app:assembleDebug :app:lintDebug --warning-mode all --stacktrace
+          ./gradlew clean :app:assembleDebug :app:lintDebug test :app:assembleRelease --warning-mode all --stacktrace
           STATUS=$?
           if [ -f app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt ]; then
             cat app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
           fi
           exit $STATUS
+      - name: Validate R8 outputs and release manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          RELEASE_APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$RELEASE_APK"
+          test -s "$RELEASE_APK"
+          MAPPING="app/build/outputs/mapping/release/mapping.txt"
+          test -s "$MAPPING"
+          echo "RELEASE_APK=$RELEASE_APK"
+          echo "RELEASE_APK_SIZE=$(stat -c '%s' "$RELEASE_APK") bytes"
+          echo "MAPPING=$MAPPING"
+          echo "MAPPING_SIZE=$(stat -c '%s' "$MAPPING") bytes"
+          echo "=== R8 outputs ==="
+          find app/build/outputs/mapping/release -maxdepth 1 -type f -print | sort
+          echo "=== Release manifest check ==="
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          if "$BUILD_TOOLS/aapt" dump badging "$RELEASE_APK" | grep -q "CrashlyticsDebugCrashActivity"; then
+            echo "::error::CrashlyticsDebugCrashActivity leaked into release artifact"
+            exit 1
+          fi
+          echo "CrashlyticsDebugCrashActivity absent from release artifact"
+          echo "=== Crashlytics mapping upload task ==="
+          ./gradlew :app:tasks --all | grep -E "uploadCrashlyticsMappingFileRelease|assembleRelease" || true
+          ./gradlew :app:uploadCrashlyticsMappingFileRelease --stacktrace
       - name: Locate and validate exactly one APK
         id: apk
         shell: bash

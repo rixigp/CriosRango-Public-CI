@@ -53,7 +53,19 @@ android {
             keyPassword = debugKeyPassword
         }
     }
-    buildTypes { getByName("debug") { signingConfig = signingConfigs.getByName("debug") } }
+    buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("debug")
+        }
+        getByName("release") {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
 }
 
 ksp {
