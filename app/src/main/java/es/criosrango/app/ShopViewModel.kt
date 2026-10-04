@@ -467,11 +467,11 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private enum class ReconcileOutcome { PAID, CLEARED, PENDING, NO_MARKER }
     private val reconciliationMutex = kotlinx.coroutines.sync.Mutex()
     init {
+        // Load the durable marker before startup work; a restart must not discard it.
+        lastCheckout = pendingCardPaymentStore.load()
         refreshHome()
         viewModelScope.launch {
             cartStore.refresh()
-            pendingCardPaymentStore.clear()
-            lastCheckout = null
         }
     }
 
@@ -486,12 +486,13 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         }) {
             is PaymentReconciliationResult.PAID -> {
                 val confirmedOrderId = if (result.order.id > 0) result.order.id else checkout.orderId
+                // If cart cleanup fails, leave the durable marker intact for recovery.
+                cartStore.clearAfterConfirmedPayment()
                 pendingCardPaymentStore.clear()
                 lastCheckout = null
                 _paymentRedirect.value = null
                 if (publishPaidResult) _cardPaymentResult.value = CardPaymentResult(confirmedOrderId, true)
                 _checkoutPhase.value = CheckoutPhase.ORDER_CREATED
-                cartStore.clearAfterConfirmedPayment()
                 ReconcileOutcome.PAID
             }
             PaymentReconciliationResult.TERMINAL_UNPAID -> {
