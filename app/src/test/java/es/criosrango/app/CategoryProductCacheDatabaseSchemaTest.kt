@@ -4,12 +4,14 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.room.Room
 import org.junit.After
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
+@RunWith(RobolectricTestRunner::class)
 class CategoryProductCacheDatabaseSchemaTest {
     private lateinit var context: Context
     private lateinit var database: CategoryProductCacheDatabase
