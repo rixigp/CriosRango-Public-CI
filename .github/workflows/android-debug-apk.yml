@@ -55,7 +55,14 @@ jobs:
           STOREPASS="$(printf '%s' "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD" | tr -d '\r\n')"
           keytool -list -keystore "$RUNNER_TEMP/criosrango-debug.jks" -storepass "$STOREPASS" -alias "criosrango-development"
       - name: Assemble Android debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: |
+          set +e
+          ./gradlew clean :app:assembleDebug :app:lintDebug --warning-mode all --stacktrace
+          STATUS=$?
+          if [ -f app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt ]; then
+            cat app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
+          fi
+          exit $STATUS
       - name: Locate and validate exactly one APK
         id: apk
         shell: bash
