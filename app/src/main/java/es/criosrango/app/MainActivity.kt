@@ -473,11 +473,11 @@ internal fun StoreTopBar(cartQuantity: Int, onSearch: () -> Unit, onCart: () -> 
     },
     actions = {
         IconButton(onSearch) { Icon(Icons.Outlined.Search, "Buscar") }
-        Box(Modifier.size(52.dp), contentAlignment = Alignment.Center) {
+        BadgedBox(
+            modifier = Modifier.size(52.dp),
+            badge = { if (cartQuantity > 0) Badge { Text(cartQuantity.toString(), maxLines = 1) } }
+        ) {
             IconButton(onCart) { Icon(Icons.Outlined.ShoppingBag, "Carrito") }
-            if (cartQuantity > 0) {
-                BadgedBox(modifier = Modifier.align(Alignment.TopEnd).padding(top = 1.dp, end = 1.dp), badge = { Badge { Text(cartQuantity.toString(), maxLines = 1) } }) {}
-            }
         }
     },
     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent)

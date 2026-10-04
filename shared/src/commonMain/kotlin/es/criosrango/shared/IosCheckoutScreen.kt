@@ -111,6 +111,15 @@ fun IosCheckoutScreen(
         contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 72.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 0.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onBack, enabled = !checkoutBusy && !paymentInProgress) { Text("← Carrito") }
+                Text("Finalizar compra", style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.weight(1f))
+            }
+        }
         if (phase == StoreCheckoutPhase.LOADING && checkout == null) item {
             Column(
                 modifier = Modifier.fillMaxWidth(),
