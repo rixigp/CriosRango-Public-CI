@@ -17,14 +17,12 @@ class CategoryProductCacheDatabaseSchemaTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        context.deleteDatabase("criosrango_catalog.db")
-        database = CategoryProductCacheDatabase.create(context)
+        database = Room.inMemoryDatabaseBuilder(context, CategoryProductCacheDatabase::class.java).build()
     }
 
     @After
     fun tearDown() {
         database.close()
-        context.deleteDatabase("criosrango_catalog.db")
     }
 
     @Test
