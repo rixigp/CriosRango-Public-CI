@@ -102,7 +102,7 @@ internal fun CartScreen(
         mutableStateOf(false)
     }
 
-    LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),

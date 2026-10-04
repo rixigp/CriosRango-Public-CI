@@ -386,9 +386,9 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                     onCart = onCart
                 )
                 CatalogScreenHeader(
-                    title = "Detalle",
+                    title = product.name.cleanWooText(),
                     onBack = onBack,
-                    bottomPadding = 4.dp
+                    bottomPadding = CatalogHeaderGeometry.bottomPadding
                 )
             }
         },

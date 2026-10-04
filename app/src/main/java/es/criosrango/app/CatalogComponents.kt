@@ -84,9 +84,9 @@ import kotlinx.coroutines.launch
 /** One geometry rule for every catalog screen title row. */
 internal object CatalogHeaderGeometry {
     val horizontalPadding = 20.dp
-    val topPadding = 8.dp
-    val bottomPadding = 4.dp
-    val controlsVerticalPadding = 8.dp
+    val topPadding = 6.dp
+    val bottomPadding = 2.dp
+    val controlsVerticalPadding = 4.dp
 }
 
 @Composable
@@ -123,7 +123,9 @@ internal fun CatalogScreenHeader(
                 ),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Normal,
-            color = Color(0xFF183B35)
+            color = Color(0xFF183B35),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
         Row(verticalAlignment = Alignment.CenterVertically, content = trailing)
     }

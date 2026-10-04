@@ -48,6 +48,9 @@ fun RedesignedCheckoutScreen(
     error: String?,
     checkoutPhase: CheckoutPhase,
     onBack: () -> Unit,
+    cartQuantity: Int,
+    onSearch: () -> Unit,
+    onCart: () -> Unit,
     loadCheckout: (CustomerAddress) -> Unit,
     selectShipping: (Int, String) -> Unit,
     createOrder: (CustomerAddress, String, String?) -> Unit,
@@ -161,11 +164,19 @@ fun RedesignedCheckoutScreen(
 
     BackHandler(onBack = onBack)
     Scaffold(topBar = {
-        TopAppBar(title = { Text("Finalizar compra", fontWeight = FontWeight.SemiBold) }, navigationIcon = {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") }
-        })
+        Column {
+            StoreTopBar(
+                cartQuantity = cartQuantity,
+                onSearch = onSearch,
+                onCart = onCart
+            )
+            CatalogScreenHeader(
+                title = "Finalizar compra",
+                onBack = onBack
+            )
+        }
     }) { padding ->
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding(), contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding(), contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -194,7 +205,6 @@ fun RedesignedCheckoutScreen(
                     }
                 }
             }
-            item { Spacer(Modifier.height(6.dp)) }
             item { CheckoutSection(1, "Entrega") }
             item { CompactMainCheckoutField("Nombre", firstName, errors["Nombre"]) { firstName = it } }
             item { CompactMainCheckoutField("Apellidos", lastName, errors["Apellidos"]) { lastName = it } }

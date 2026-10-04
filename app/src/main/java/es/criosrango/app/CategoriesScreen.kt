@@ -263,7 +263,10 @@ internal fun OutletAwareCatalogGrid(
     onProduct: (StoreProduct) -> Unit,
     pagingState: es.criosrango.shared.CatalogPagingState<StoreProduct>? = null,
     onLoadNextPage: (() -> Unit)? = null,
-    pagingKey: Any? = null
+    pagingKey: Any? = null,
+    headerTitle: String? = null,
+    headerOnBack: (() -> Unit)? = null,
+    headerOnTitleLongPress: (() -> Unit)? = null
 ) {
 
     // Solo las categorías finales dentro de Outlet.
@@ -274,7 +277,10 @@ internal fun OutletAwareCatalogGrid(
             onProduct = onProduct,
             pagingState = pagingState,
             onLoadNextPage = onLoadNextPage,
-            pagingKey = pagingKey
+            pagingKey = pagingKey,
+            headerTitle = headerTitle,
+            headerOnBack = headerOnBack,
+            headerOnTitleLongPress = headerOnTitleLongPress
         )
         return
     }
@@ -382,6 +388,13 @@ internal fun OutletAwareCatalogGrid(
     }
 
     Column(modifier) {
+        if (headerTitle != null && headerOnBack != null) {
+            CatalogScreenHeader(
+                title = headerTitle,
+                onBack = headerOnBack,
+                onTitleLongPress = headerOnTitleLongPress
+            )
+        }
 
         if (bubbles.isNotEmpty()) {
 
@@ -812,18 +825,6 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
     } else {
         Column(Modifier.fillMaxSize().padding(padding)) {
             var telemetryDialogOpen by remember(currentId) { mutableStateOf(false) }
-            CatalogScreenHeader(
-                title = current?.name ?: "Productos",
-                onBack = onCategoriesBack,
-                bottomPadding =
-                    if (current?.parent == 445) 10.dp
-                    else CatalogHeaderGeometry.bottomPadding,
-                onTitleLongPress = if (currentId != null) {
-                    { telemetryDialogOpen = true }
-                } else {
-                    null
-                }
-            )
             if (telemetryDialogOpen && currentId != null) {
                 CategoryTelemetryDialog(
                     categoryId = currentId,
@@ -841,7 +842,14 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
                 onProduct = onProduct,
                 pagingState = categoryPagingState,
                 onLoadNextPage = loadNextCategoryPage,
-                pagingKey = currentId
+                pagingKey = currentId,
+                headerTitle = current?.name ?: "Productos",
+                headerOnBack = onCategoriesBack,
+                headerOnTitleLongPress = if (currentId != null) {
+                    { telemetryDialogOpen = true }
+                } else {
+                    null
+                }
             )
         }
     }
@@ -1368,7 +1376,10 @@ internal fun CatalogFilteredProductGrid(
     pagingState: es.criosrango.shared.CatalogPagingState<StoreProduct>? = null,
     onLoadNextPage: (() -> Unit)? = null,
     pagingKey: Any? = null,
-    allowBrandFilter: Boolean = true
+    allowBrandFilter: Boolean = true,
+    headerTitle: String? = null,
+    headerOnBack: (() -> Unit)? = null,
+    headerOnTitleLongPress: (() -> Unit)? = null
 ) {
     var filtersOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var sortMode by androidx.compose.runtime.saveable.rememberSaveable {
@@ -1441,24 +1452,32 @@ internal fun CatalogFilteredProductGrid(
     }
 
     Column(modifier) {
+        if (headerTitle != null && headerOnBack != null) {
+            CatalogScreenHeader(
+                title = headerTitle,
+                onBack = headerOnBack,
+                onTitleLongPress = headerOnTitleLongPress,
+                trailing = {
+                    OutlinedButton(onClick = { filtersOpen = true }) {
+                        Text(if (active == 0) "Filtros" else "Filtros ($active)")
+                    }
+                }
+            )
+        }
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(horizontal = 20.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.Start
         ) {
-            ProductSortControl(
-                mode = sortMode,
-                onMode = {
-                    sortMode = it
+            ProductSortControl(mode = sortMode, onMode = { sortMode = it })
+            if (headerTitle == null) {
+                Spacer(Modifier.weight(1f))
+                OutlinedButton(onClick = { filtersOpen = true }) {
+                    Text(if (active == 0) "Filtros" else "Filtros ($active)")
                 }
-            )
-
-            OutlinedButton(onClick = { filtersOpen = true }) {
-                Text(if (active == 0) "Filtros" else "Filtros ($active)")
             }
         }
-
         ActiveFilterChips(
             filters = activeFilterChips,
             onClearAll = {
@@ -1606,6 +1625,7 @@ internal fun CategoryParentWithFilters(
     var sizes by remember { mutableStateOf(setOf<String>()) }
     var colors by remember { mutableStateOf(setOf<String>()) }
     var brands by remember { mutableStateOf(setOf<String>()) }
+    var sortMode by remember { mutableStateOf(ProductSortMode.RECENT) }
 
     val allSizes = products.flatMap { it.filterValues("Tallas") }.distinct().sorted()
     val allColors = products.flatMap { it.filterValues("Color") }.distinct().sorted()
@@ -1671,8 +1691,8 @@ internal fun CategoryParentWithFilters(
 
         if (active == 0) {
             LazyColumn(
-                contentPadding = PaddingValues(20.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(children.chunked(3)) { row ->
                         Row(
@@ -1710,7 +1730,24 @@ internal fun CategoryParentWithFilters(
                 }
             }
         } else {
-            ProductGrid(filtered, Modifier.fillMaxSize(), onProduct)
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.Start
+                ) {
+                    ProductSortControl(
+                        mode = sortMode,
+                        onMode = { sortMode = it }
+                    )
+                }
+                ProductGrid(
+                    sortProducts(filtered, sortMode),
+                    Modifier.weight(1f),
+                    onProduct
+                )
+            }
         }
     }
 

@@ -210,33 +210,20 @@ internal fun BrandProductsScreen(
                 bottom = padding.calculateBottomPadding()
             )
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Volver"
-                )
-            }
-            Text(
-                text = brand.name,
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.weight(1f)
-            )
-        }
-
         if (initialLoading && displayedProducts.isEmpty()) {
             ProductSkeletonGrid(Modifier.fillMaxSize())
         } else if (displayedProducts.isEmpty()) {
-            Box(
-                Modifier.fillMaxWidth().weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("No hay productos disponibles de esta marca")
+            Column(Modifier.fillMaxSize()) {
+                CatalogScreenHeader(
+                    title = brand.name,
+                    onBack = onBack
+                )
+                Box(
+                    Modifier.fillMaxWidth().weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("No hay productos disponibles de esta marca")
+                }
             }
         } else {
             CatalogFilteredProductGrid(
@@ -246,7 +233,9 @@ internal fun BrandProductsScreen(
                 pagingState = pagingState,
                 onLoadNextPage = shopViewModel::loadNextBrandPage,
                 pagingKey = brand.slug.trim().lowercase(),
-                allowBrandFilter = false
+                allowBrandFilter = false,
+                headerTitle = brand.name,
+                headerOnBack = onBack
             )
         }
     }
@@ -269,17 +258,10 @@ internal fun AllBrandsScreen(
                 bottom = padding.calculateBottomPadding()
             )
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
-            }
-            Text("Todas las marcas", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        }
+        CatalogScreenHeader(
+            title = "Nuestras marcas",
+            onBack = onBack
+        )
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             modifier = Modifier
@@ -288,8 +270,8 @@ internal fun AllBrandsScreen(
             contentPadding = PaddingValues(
                 start = 20.dp,
                 end = 20.dp,
-                top = 16.dp,
-                bottom = 24.dp
+                top = 8.dp,
+                bottom = 20.dp
             ),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -674,7 +656,7 @@ internal fun ProductGrid(
                 androidx.compose.foundation.lazy.grid.GridCells.Fixed(2),
             modifier = modifier,
             state = gridState,
-            contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 20.dp),
+            contentPadding = PaddingValues(start = 20.dp, top = 6.dp, end = 20.dp, bottom = 20.dp),
             horizontalArrangement =
                 Arrangement.spacedBy(12.dp),
             verticalArrangement =

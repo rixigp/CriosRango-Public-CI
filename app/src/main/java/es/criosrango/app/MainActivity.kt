@@ -294,7 +294,21 @@ private fun CriosRangoApp(
                 StartupBranding()
             } else Surface(Modifier.fillMaxSize(), color = Color(0xFFFCFAF7)) {
             if (checkoutOpen) {
-                RedesignedCheckoutScreen(remoteCart, checkout, checkoutLoading, checkoutError, checkoutPhase, { checkoutOpen = false; viewModel.abandonCheckout() }, viewModel::loadCheckout, viewModel::selectShippingRate, viewModel::createOrder, viewModel.deliveryAddressStore)
+                RedesignedCheckoutScreen(
+                    remoteCart,
+                    checkout,
+                    checkoutLoading,
+                    checkoutError,
+                    checkoutPhase,
+                    { checkoutOpen = false; viewModel.abandonCheckout() },
+                    remoteCart.itemsCount,
+                    { checkoutOpen = false; viewModel.abandonCheckout(); tab = AppTab.SEARCH },
+                    { checkoutOpen = false; viewModel.abandonCheckout(); tab = AppTab.CART },
+                    viewModel::loadCheckout,
+                    viewModel::selectShippingRate,
+                    viewModel::createOrder,
+                    viewModel.deliveryAddressStore
+                )
             } else if (selectedProduct != null) {
                 ProductDetail(
                     product = selectedProduct!!,
