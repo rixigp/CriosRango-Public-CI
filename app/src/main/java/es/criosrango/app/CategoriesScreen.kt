@@ -883,7 +883,6 @@ internal fun CategoryList(
             top = 0.dp,
             bottom = 28.dp
         ),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         item {
             CatalogScreenHeader(
@@ -896,7 +895,7 @@ internal fun CategoryList(
             val row = rows[rowIndex]
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(top = if (rowIndex == 0) 8.dp else 18.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 repeat(3) { index ->

@@ -746,10 +746,6 @@ internal fun HomeScreen(
             )
         }
 
-        item {
-            Spacer(Modifier.height(12.dp))
-        }
-
         item { HomeSectionTitle("Novedades", "Ver todo") { onEnterNovedades() } }
             item { ProductCarousel(novedades, onProduct) }
             item {
