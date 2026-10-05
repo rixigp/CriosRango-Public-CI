@@ -925,6 +925,8 @@ internal fun CategoryList(
 
 
 
+}
+
 @Composable
 private fun CategorySkeletonList(padding: PaddingValues) {
     LazyColumn(
