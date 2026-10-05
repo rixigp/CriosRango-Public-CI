@@ -879,26 +879,21 @@ internal fun CategoryList(
         return
     }
 
-    LazyColumn(
+    Column(
         modifier = Modifier
             .padding(padding)
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentPadding = PaddingValues(
-            start = 0.dp,
-            end = 0.dp,
-            top = 0.dp,
-            bottom = 28.dp
-        ),
+            .background(MaterialTheme.colorScheme.background)
     ) {
-        item {
-            CatalogScreenHeader(
-                title = "Categorías",
-                onBack = onBack
-            )
-        }
-
-        items(rows.size) { rowIndex ->
+        CatalogScreenHeader(
+            title = "Categorías",
+            onBack = onBack
+        )
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 6.dp, bottom = 28.dp)
+        ) {
+            items(rows.size) { rowIndex ->
             val row = rows[rowIndex]
 
             Row(
@@ -1231,6 +1226,13 @@ else -> null
     }
 }
 
+internal object CategoryGridTokens {
+    val referenceImage = 104.dp
+    val fullScreenImage = 96.dp
+    val fullScreenCellHeight = 150.dp
+    val rowSpacing = 12.dp
+}
+
 @Composable
 internal fun CategoryCard(
     category: ProductCategory,
@@ -1247,8 +1249,8 @@ internal fun CategoryCard(
 
     Column(
         modifier = modifier
-            .widthIn(max = 104.dp)
-            .height(170.dp)
+            .widthIn(max = CategoryGridTokens.fullScreenImage)
+            .height(CategoryGridTokens.fullScreenCellHeight)
             .clickable {
                 onOpen(category)
             },
@@ -1259,7 +1261,7 @@ internal fun CategoryCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(104.dp),
+                .height(CategoryGridTokens.fullScreenImage),
             contentAlignment =
                 Alignment.Center
         ) {
