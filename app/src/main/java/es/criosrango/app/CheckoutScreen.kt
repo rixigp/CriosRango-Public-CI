@@ -346,16 +346,16 @@ fun RedesignedCheckoutScreen(
 
 @Composable
 private fun CompactMainCheckoutField(label: String, value: String, error: String?, modifier: Modifier = Modifier, keyboardOptions: KeyboardOptions = KeyboardOptions.Default, enabled: Boolean = true, onValueChange: (String) -> Unit) {
-    CheckoutFieldFrame(label, modifier) {
-        OutlinedTextField(value = value, onValueChange = onValueChange, modifier = Modifier.fillMaxWidth().height(58.dp), textStyle = androidx.compose.ui.text.TextStyle(fontSize = 16.sp), singleLine = true, enabled = enabled, shape = RoundedCornerShape(3.dp), isError = error != null, keyboardOptions = keyboardOptions, colors = checkoutFieldColors())
+    OutlinedTextField(
+            label = { Text(text = label, fontSize = 13.sp) },value = value, onValueChange = onValueChange, modifier = Modifier.fillMaxWidth().height(58.dp), textStyle = androidx.compose.ui.text.TextStyle(fontSize = 16.sp), singleLine = true, enabled = enabled, shape = RoundedCornerShape(3.dp), isError = error != null, keyboardOptions = keyboardOptions, colors = checkoutFieldColors())
     }
     if (error != null) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
 }
 
 @Composable
 private fun CompactCheckoutTextField(label: String, value: String, error: String?, modifier: Modifier = Modifier, enabled: Boolean = true, keyboardOptions: KeyboardOptions = KeyboardOptions.Default, onChange: (String) -> Unit) {
-    CheckoutFieldFrame(label, modifier) {
-        OutlinedTextField(value = value, onValueChange = onChange, modifier = Modifier.fillMaxWidth().height(58.dp), enabled = enabled, singleLine = true, keyboardOptions = keyboardOptions, isError = error != null, textStyle = MaterialTheme.typography.bodyLarge, shape = RoundedCornerShape(3.dp), colors = checkoutFieldColors())
+    OutlinedTextField(
+            label = { Text(text = label, fontSize = 13.sp) },value = value, onValueChange = onChange, modifier = Modifier.fillMaxWidth().height(58.dp), enabled = enabled, singleLine = true, keyboardOptions = keyboardOptions, isError = error != null, textStyle = MaterialTheme.typography.bodyLarge, shape = RoundedCornerShape(3.dp), colors = checkoutFieldColors())
     }
     if (error != null) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
 }
@@ -429,8 +429,8 @@ private fun CheckoutProvince(
             onExpandedChange = onExpanded,
             modifier = Modifier.fillMaxWidth()
         ) {
-            CheckoutFieldFrame("Provincia") {
-                OutlinedTextField(
+            OutlinedTextField(
+                label = { Text("Provincia", fontSize = 13.sp) },
                 value = selected?.name.orEmpty(),
                 onValueChange = {},
                 readOnly = true,
@@ -481,8 +481,8 @@ private fun CheckoutCountry(
             onExpandedChange = onExpanded,
             modifier = Modifier.fillMaxWidth()
         ) {
-            CheckoutFieldFrame("País") {
-                OutlinedTextField(
+            OutlinedTextField(
+                label = { Text("País", fontSize = 13.sp) },
                 value = if (value == "ES") "España" else value,
                 onValueChange = {},
                 readOnly = true,
