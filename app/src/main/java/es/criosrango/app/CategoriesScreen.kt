@@ -1251,6 +1251,64 @@ internal fun CategoryCard(
         )
     }
 }
+internal fun StoreProduct.filterValues(attribute: String): Set<String> =
+    attributes
+        .filter { it.name.equals(attribute, true) }
+        .flatMap { it.terms.map { term -> term.name } }
+        .filter { it.isNotBlank() }
+        .toSet()
+
+internal fun catalogFilterKey(value: String): String =
+    java.text.Normalizer
+        .normalize(
+            value.lowercase().trim(),
+            java.text.Normalizer.Form.NFD
+        )
+        .replace("\\p{Mn}+".toRegex(), "")
+        .replace("\\s+".toRegex(), " ")
+
+internal fun StoreProduct.matchesCatalogFilters(
+    sizes: Set<String>,
+    colors: Set<String>,
+    brands: Set<String>
+): Boolean {
+    val productSizes =
+        filterValues("Tallas")
+            .map(::catalogFilterKey)
+            .toSet()
+
+    val productColors =
+        filterValues("Color")
+            .map(::catalogFilterKey)
+            .toSet()
+
+    val productBrands =
+        tags.map { it.name }
+            .filter { it.isNotBlank() }
+            .map(::catalogFilterKey)
+            .toSet()
+
+    val wantedSizes =
+        sizes.map(::catalogFilterKey).toSet()
+
+    val wantedColors =
+        colors.map(::catalogFilterKey).toSet()
+
+    val wantedBrands =
+        brands.map(::catalogFilterKey).toSet()
+
+    return (
+        (wantedSizes.isEmpty() ||
+            productSizes.any { it in wantedSizes }) &&
+        (wantedColors.isEmpty() ||
+            productColors.any { it in wantedColors }) &&
+        (wantedBrands.isEmpty() ||
+            productBrands.any { it in wantedBrands })
+    )
+}
+
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun CatalogFilteredProductGrid(
     products: List<StoreProduct>,
