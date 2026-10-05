@@ -1337,7 +1337,7 @@ internal fun CatalogFilteredProductGrid(
         if (headerTitle != null && headerOnBack != null) {
             CatalogProductListHeader(title = headerTitle, onBack = headerOnBack, onTitleLongPress = headerOnTitleLongPress, activeFilters = active, onOpenFilters = { filtersOpen = true })
         }
-        headerContent?.invoke()
+        headerContent?.invoke(this)
 
         ActiveFilterChips(
             filters = activeFilterChips,
