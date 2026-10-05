@@ -238,6 +238,7 @@ private fun IosStoreTopBar(
         ) {
             IconButton(onClick = onCart) { Text("🛍", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { contentDescription = "Carrito" }) }
         }
+        }
     }
 }
 
