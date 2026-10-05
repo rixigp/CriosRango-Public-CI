@@ -12,6 +12,7 @@ import java.math.BigDecimal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
@@ -329,9 +330,21 @@ fun IosCheckoutScreen(
 @Composable
 private fun CheckoutField(label: String, value: String, keyboardType: KeyboardType = KeyboardType.Text, onValueChange: (String) -> Unit) {
     OutlinedTextField(
-        value = value, onValueChange = onValueChange, label = { Text(label) },
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label, fontSize = 13.sp) },
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        modifier = Modifier.fillMaxWidth(), singleLine = true
+        modifier = Modifier.fillMaxWidth().height(58.dp),
+        textStyle = MaterialTheme.typography.bodyLarge,
+        singleLine = true,
+        shape = RoundedCornerShape(3.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = Color(0xFF183B35),
+            unfocusedBorderColor = Color(0xFF8A858A),
+            focusedLabelColor = Color(0xFF183B35),
+            unfocusedLabelColor = Color(0xFF777277),
+            cursorColor = Color(0xFF183B35)
+        )
     )
 }
 
