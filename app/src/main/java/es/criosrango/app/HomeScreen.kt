@@ -59,7 +59,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathBuilder
@@ -907,8 +906,7 @@ internal fun ApprovedCategoryCell(
                         .fillMaxSize()
                         .padding(CatalogCategoryVisualTokens.imagePadding)
                         .scale(imageScale),
-                    contentScale = ContentScale.Fit,
-                    filterQuality = FilterQuality.High
+                    contentScale = ContentScale.Fit
                 )
             } else {
                 CategoryVisual(
