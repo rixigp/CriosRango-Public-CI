@@ -363,6 +363,7 @@ private fun CompactMainCheckoutField(
             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 16.sp),
             singleLine = true,
             enabled = enabled,
+            shape = RoundedCornerShape(3.dp),
             isError = error != null,
             keyboardOptions = keyboardOptions,
             colors = OutlinedTextFieldDefaults.colors(

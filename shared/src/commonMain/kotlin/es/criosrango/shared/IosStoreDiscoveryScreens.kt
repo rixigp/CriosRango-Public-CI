@@ -503,7 +503,15 @@ private fun IosPagedProductScreen(
     LaunchedEffect(queryKey){paginator.start(queryKey){p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}
     LaunchedEffect(grid,state.items.size,state.hasMore){snapshotFlow{grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index?:-1}.collect{last->if(state.hasMore&&!state.isInitialLoading&&!state.isAppending&&last>=state.items.size-CatalogPaginator.PREFETCH_DISTANCE)paginator.loadNext{p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}}
     Column(Modifier.fillMaxSize().padding(padding)){
-        if(title.isNotBlank())Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=2.dp),verticalAlignment=Alignment.CenterVertically){TextButton(onClick=onBack){Text("Atrás")};Text(title,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)}
+        if(title.isNotBlank())Row(Modifier.fillMaxWidth().padding(horizontal=20.dp,vertical=2.dp),verticalAlignment=Alignment.CenterVertically){
+            TextButton(onClick=onBack){Text("Atrás")}
+            Text(title,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.weight(1f))
+            if (enableProductControls) {
+                OutlinedButton(onClick={filtersOpen=true},contentPadding=PaddingValues(horizontal=12.dp,vertical=4.dp)){
+                    Text(if(activeFilterCount==0)"Filtros" else "Filtros ("+activeFilterCount+")")
+                }
+            }
+        }
         if (enableProductControls && state.items.isNotEmpty()) {
             if (activeFilterCount > 0) {
                 FlowRow(
@@ -546,10 +554,7 @@ private fun IosPagedProductScreen(
                         }
                     }
                 }
-                Spacer(Modifier.weight(1f))
-                OutlinedButton(onClick = { filtersOpen = true }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
-                    Text(if (activeFilterCount == 0) "Filtros" else "Filtros (" + activeFilterCount + ")")
-                }
+
             }
         }
         if (enableProductControls && filtersOpen) {

@@ -82,6 +82,15 @@ import compose.icons.tablericons.Tag
 import kotlinx.coroutines.launch
 
 /** One geometry rule for every catalog screen title row. */
+internal object CatalogCategoryVisualTokens {
+    val horizontalPadding = 20.dp
+    val columnSpacing = 12.dp
+    val rowSpacing = 12.dp
+    val imageScale = 1.16f
+    val imagePadding = 1.dp
+    val imageToLabelSpacing = 6.dp
+}
+
 internal object CatalogHeaderGeometry {
     val horizontalPadding = 20.dp
     val topPadding = 2.dp

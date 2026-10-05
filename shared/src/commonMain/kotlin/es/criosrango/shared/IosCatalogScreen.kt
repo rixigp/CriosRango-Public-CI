@@ -93,7 +93,7 @@ internal fun IosCategoryRoot(
             else -> LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 20.dp),
+                contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -152,9 +152,9 @@ internal fun IosCategoryPage(
             children.isNotEmpty() -> LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 20.dp, top = 4.dp, end = 20.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(children, key = { it.id }) { child ->
                     Button(onClick = { onOpenCategory(child) }) {
