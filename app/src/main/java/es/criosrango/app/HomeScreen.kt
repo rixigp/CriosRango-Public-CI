@@ -780,13 +780,13 @@ internal fun CategoryPage(
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = CatalogCategoryVisualTokens.horizontalPadding),
+        verticalArrangement = Arrangement.spacedBy(CatalogCategoryVisualTokens.rowSpacing)
     ) {
         categories.chunked(3).forEach { rowCategories ->
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(CatalogCategoryVisualTokens.columnSpacing)
             ) {
                 rowCategories.forEach { category ->
                     Box(Modifier.weight(1f)) {
@@ -881,9 +881,10 @@ internal fun approvedCategoryName(category: ProductCategory): String {
 internal fun ApprovedCategoryCell(
     category: ProductCategory,
     onClick: () -> Unit,
-    imageScale: Float = 1.16f
+    imageScale: Float = CatalogCategoryVisualTokens.imageScale,
+    imageResOverride: Int? = null
 ) {
-    val imageRes = categoryImageRes(category)
+    val imageRes = imageResOverride ?: categoryImageRes(category)
 
     Column(
         modifier = Modifier
@@ -903,7 +904,7 @@ internal fun ApprovedCategoryCell(
                     contentDescription = approvedCategoryName(category),
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(1.dp)
+                        .padding(CatalogCategoryVisualTokens.imagePadding)
                         .scale(imageScale),
                     contentScale = ContentScale.Fit
                 )
@@ -917,7 +918,7 @@ internal fun ApprovedCategoryCell(
             }
         }
 
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(CatalogCategoryVisualTokens.imageToLabelSpacing))
 
         Text(
             text = approvedCategoryName(category),

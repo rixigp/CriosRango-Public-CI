@@ -891,14 +891,19 @@ internal fun CategoryList(
         )
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 6.dp, bottom = 28.dp)
+            contentPadding = PaddingValues(
+                start = CatalogCategoryVisualTokens.horizontalPadding,
+                top = CatalogCategoryVisualTokens.rowSpacing,
+                end = CatalogCategoryVisualTokens.horizontalPadding,
+                bottom = 28.dp
+            )
         ) {
             items(rows.size) { rowIndex ->
             val row = rows[rowIndex]
 
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = if (rowIndex == 0) 8.dp else 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier.fillMaxWidth().padding(top = if (rowIndex == 0) 0.dp else CatalogCategoryVisualTokens.rowSpacing),
+                horizontalArrangement = Arrangement.spacedBy(CatalogCategoryVisualTokens.columnSpacing)
             ) {
                 repeat(3) { index ->
                     Box(
@@ -911,9 +916,7 @@ internal fun CategoryList(
                                 category = category,
                                 onClick = {
                                     onOpen(category)
-                                },
-                                imageScale = 1f
-                            )
+                                }
                         }
                     }
                 }
@@ -951,7 +954,7 @@ private fun CategorySkeletonList(padding: PaddingValues) {
         items(4) {
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(CatalogCategoryVisualTokens.columnSpacing)
             ) {
                 repeat(3) {
                     Column(
@@ -1229,12 +1232,7 @@ else -> null
     }
 }
 
-internal object CategoryGridTokens {
-    val homeReferenceImage = 100.dp
-    val catalogImage = 100.dp
-    val catalogCellHeight = 136.dp
-    val rowSpacing = 10.dp
-}
+
 
 @Composable
 internal fun CategoryCard(
@@ -1244,134 +1242,15 @@ internal fun CategoryCard(
     onOpen: (ProductCategory) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val imageRes =
-        subcategoryImageRes(
-            category,
-            allCategories
-        )
-
-    Column(
-        modifier = modifier
-            .widthIn(max = CategoryGridTokens.catalogImage)
-            .height(CategoryGridTokens.catalogCellHeight)
-            .clickable {
-                onOpen(category)
-            },
-        horizontalAlignment =
-            Alignment.CenterHorizontally
-    ) {
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(CategoryGridTokens.catalogImage),
-            contentAlignment =
-                Alignment.Center
-        ) {
-
-            if (imageRes != null) {
-                Image(
-                    painter =
-                        painterResource(imageRes),
-                    contentDescription =
-                        category.name,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(8.dp),
-                    contentScale =
-                        ContentScale.Fit
-                )
-            } else {
-                CategoryVisual(
-                    category,
-                    Modifier
-                        .fillMaxSize()
-                        .padding(8.dp)
-                )
-            }
-        }
-
-        Spacer(
-            Modifier.height(6.dp)
-        )
-
-        Text(
-            text = category.name,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(60.dp),
-            style =
-                MaterialTheme.typography.bodyMedium,
-            color =
-                MaterialTheme.colorScheme.onBackground,
-            textAlign =
-                TextAlign.Center,
-            maxLines = 3,
-            overflow =
-                TextOverflow.Ellipsis
+    val imageRes = subcategoryImageRes(category, allCategories)
+    Box(modifier = modifier) {
+        ApprovedCategoryCell(
+            category = category,
+            onClick = { onOpen(category) },
+            imageResOverride = imageRes
         )
     }
 }
-
-
-internal fun StoreProduct.filterValues(attribute: String): Set<String> =
-    attributes
-        .filter { it.name.equals(attribute, true) }
-        .flatMap { it.terms.map { term -> term.name } }
-        .filter { it.isNotBlank() }
-        .toSet()
-
-internal fun catalogFilterKey(value: String): String =
-    java.text.Normalizer
-        .normalize(
-            value.lowercase().trim(),
-            java.text.Normalizer.Form.NFD
-        )
-        .replace("\\p{Mn}+".toRegex(), "")
-        .replace("\\s+".toRegex(), " ")
-
-internal fun StoreProduct.matchesCatalogFilters(
-    sizes: Set<String>,
-    colors: Set<String>,
-    brands: Set<String>
-): Boolean {
-    val productSizes =
-        filterValues("Tallas")
-            .map(::catalogFilterKey)
-            .toSet()
-
-    val productColors =
-        filterValues("Color")
-            .map(::catalogFilterKey)
-            .toSet()
-
-    val productBrands =
-        tags.map { it.name }
-            .filter { it.isNotBlank() }
-            .map(::catalogFilterKey)
-            .toSet()
-
-    val wantedSizes =
-        sizes.map(::catalogFilterKey).toSet()
-
-    val wantedColors =
-        colors.map(::catalogFilterKey).toSet()
-
-    val wantedBrands =
-        brands.map(::catalogFilterKey).toSet()
-
-    return (
-        (wantedSizes.isEmpty() ||
-            productSizes.any { it in wantedSizes }) &&
-        (wantedColors.isEmpty() ||
-            productColors.any { it in wantedColors }) &&
-        (wantedBrands.isEmpty() ||
-            productBrands.any { it in wantedBrands })
-    )
-}
-
-
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun CatalogFilteredProductGrid(
     products: List<StoreProduct>,
@@ -1695,8 +1574,13 @@ internal fun CategoryParentWithFilters(
 
         if (active == 0) {
             LazyColumn(
-                contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                contentPadding = PaddingValues(
+                    start = CatalogCategoryVisualTokens.horizontalPadding,
+                    top = CatalogCategoryVisualTokens.rowSpacing,
+                    end = CatalogCategoryVisualTokens.horizontalPadding,
+                    bottom = 28.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(CatalogCategoryVisualTokens.rowSpacing)
             ) {
                 items(children.chunked(3)) { row ->
                         Row(
