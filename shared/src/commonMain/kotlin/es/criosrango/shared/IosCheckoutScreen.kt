@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.verticalScroll
+import java.math.BigDecimal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -98,6 +100,12 @@ fun IosCheckoutScreen(
         StoreCardPaymentState.RECONCILING
     )
     val checkoutBusy = phase == StoreCheckoutPhase.LOADING || phase == StoreCheckoutPhase.CREATING_ORDER
+    val subtotalMinor = cart.totals.totalItems.toBigDecimalOrNull() ?: BigDecimal.ZERO
+    val scale = cart.totals.currencyMinorUnit
+    val freeThreshold = BigDecimal("50").movePointRight(scale)
+    val remaining = (freeThreshold - subtotalMinor).max(BigDecimal.ZERO)
+    val freeMessage = if (subtotalMinor >= freeThreshold) "¡Ya tienes envío gratis!" else "Te faltan " + formatStorePrice(remaining.toBigInteger().toString(), scale, cart.totals.currencySymbol) + " para conseguir envío gratis"
+
     val canSubmit = cart.items.isNotEmpty() &&
         phase == StoreCheckoutPhase.READY &&
         selectedShipping != null &&
@@ -118,6 +126,15 @@ fun IosCheckoutScreen(
             ) {
                 TextButton(onClick = onBack, enabled = !checkoutBusy && !paymentInProgress) { Text("← Carrito") }
                 Text("Finalizar compra", style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.weight(1f))
+            }
+        }
+        item {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer
+            ) {
+                Text(freeMessage, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.onSecondaryContainer)
             }
         }
         if (phase == StoreCheckoutPhase.LOADING && checkout == null) item {

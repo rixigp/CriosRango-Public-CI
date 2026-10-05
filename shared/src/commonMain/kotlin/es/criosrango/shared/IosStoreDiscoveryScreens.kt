@@ -396,11 +396,34 @@ internal fun IosSearchScreen(
 internal fun IosBrandsScreen(storeApi:StoreApiClient,padding:PaddingValues,cartStore:StoreCartStore,onProduct:(StoreProduct)->Unit,onBack:()->Unit){
     var selected by remember { mutableStateOf<StoreBrand?>(null) }
     if(selected==null) Column(Modifier.fillMaxSize().padding(padding)){
-        Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=6.dp),verticalAlignment=Alignment.CenterVertically){TextButton(onClick=onBack){Text("Atrás")};Text("Nuestras marcas",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)}
-        LazyVerticalGrid(columns=GridCells.Fixed(2),contentPadding=PaddingValues(start=16.dp,top=6.dp,end=16.dp,bottom=24.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
+        Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=4.dp),verticalAlignment=Alignment.CenterVertically){TextButton(onClick=onBack,contentPadding=PaddingValues(horizontal=8.dp,vertical=4.dp)){Text("Atrás")};Text("Nuestras marcas",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)}
+        LazyVerticalGrid(columns=GridCells.Fixed(2),contentPadding=PaddingValues(start=16.dp,top=4.dp,end=16.dp,bottom=28.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
             items(storeBrands,key={it.slug}){brand->OutlinedButton(onClick={selected=brand},modifier=Modifier.fillMaxWidth()){Text(brand.name)}}
         }
-    } else IosPagedProductScreen(selected!!.name,padding,cartStore,onProduct,{selected=null},{p,n->storeApi.products(p,n,tag=selected!!.slug)},"brand:"+selected!!.slug)
+    } else IosPagedProductScreen(selected!!.name,padding,cartStore,onProduct,{selected=null},{p,n->storeApi.products(p,n,tag=selected!!.slug)},"brand:"+selected!!.slug,enableProductControls=true)
+}
+
+@Composable
+private fun IosDiscoveryFilterChoices(
+    title: String,
+    values: List<String>,
+    selected: Set<String>,
+    onChange: (Set<String>) -> Unit
+) {
+    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(6.dp))
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        values.forEach { value ->
+            FilterChip(
+                selected = value in selected,
+                onClick = { onChange(if (value in selected) selected - value else selected + value) },
+                label = { Text(value) }
+            )
+        }
+    }
 }
 
 @Composable
@@ -444,19 +467,115 @@ private fun IosPagedProductScreen(
     emptyMessage: String = "No hay productos.",
     emptyActionLabel: String? = null,
     onEmptyAction: (() -> Unit)? = null,
-    headerContent: (@Composable ColumnScope.() -> Unit)? = null
+    headerContent: (@Composable ColumnScope.() -> Unit)? = null,
+    enableProductControls: Boolean = false
 ) {
     val scope=rememberCoroutineScope(); val paginator=remember(queryKey){CatalogPaginatorStore<StoreProduct>(scope, pageSize = if (queryKey.startsWith("novedades:")) 24 else CatalogPaginator.PAGE_SIZE) { it.id }}; val state by paginator.state.collectAsState(); val grid=rememberLazyGridState()
+    var sortMode by rememberSaveable(queryKey) { mutableStateOf(IosCatalogSortModeState.RECENT) }
+    var filtersOpen by rememberSaveable(queryKey) { mutableStateOf(false) }
+    var selectedSizes by rememberSaveable(queryKey) { mutableStateOf(setOf<String>()) }
+    var selectedColors by rememberSaveable(queryKey) { mutableStateOf(setOf<String>()) }
+    var selectedBrands by rememberSaveable(queryKey) { mutableStateOf(setOf<String>()) }
+    val rawItems = state.items
+    fun productValues(product: StoreProduct, attribute: String): Set<String> =
+        product.attributes.filter { it.name.equals(attribute, true) }.flatMap { it.terms.map { term -> term.name } }.filter { it.isNotBlank() }.toSet()
+    fun matches(product: StoreProduct): Boolean {
+        val sizes = productValues(product, "Tallas")
+        val colors = productValues(product, "Color")
+        val brands = product.tags.map { it.name }.filter { it.isNotBlank() }.toSet()
+        return (selectedSizes.isEmpty() || sizes.any { it in selectedSizes }) &&
+            (selectedColors.isEmpty() || colors.any { it in selectedColors }) &&
+            (selectedBrands.isEmpty() || brands.any { it in selectedBrands })
+    }
+    val filteredItems = rawItems.filter(::matches)
+    val displayedItems = when (sortMode) {
+        IosCatalogSortModeState.RECENT -> filteredItems
+        IosCatalogSortModeState.PRICE_ASC -> filteredItems.sortedBy { it.prices.price.toLongOrNull() ?: Long.MAX_VALUE }
+        IosCatalogSortModeState.PRICE_DESC -> filteredItems.sortedByDescending { it.prices.price.toLongOrNull() ?: Long.MIN_VALUE }
+        IosCatalogSortModeState.NAME_ASC -> filteredItems.sortedBy { it.name.lowercase() }
+    }
+    val availableSizes = rawItems.flatMap { productValues(it, "Tallas") }.distinct().sorted()
+    val availableColors = rawItems.flatMap { productValues(it, "Color") }.distinct().sorted()
+    val availableBrands = rawItems.flatMap { it.tags.map { tag -> tag.name } }.filter { it.isNotBlank() }.distinct().sorted()
+    val activeFilterCount = selectedSizes.size + selectedColors.size + selectedBrands.size
     LaunchedEffect(queryKey){paginator.start(queryKey){p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}
     LaunchedEffect(grid,state.items.size,state.hasMore){snapshotFlow{grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index?:-1}.collect{last->if(state.hasMore&&!state.isInitialLoading&&!state.isAppending&&last>=state.items.size-CatalogPaginator.PREFETCH_DISTANCE)paginator.loadNext{p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}}
     Column(Modifier.fillMaxSize().padding(padding)){
         if(title.isNotBlank())Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=6.dp),verticalAlignment=Alignment.CenterVertically){TextButton(onClick=onBack){Text("Atrás")};Text(title,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)}
+        if (enableProductControls && state.items.isNotEmpty()) {
+            if (activeFilterCount > 0) {
+                FlowRow(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    selectedSizes.sorted().forEach { value -> FilterChip(true, { selectedSizes = selectedSizes - value }, label = { Text("Talla " + value) }, trailingIcon = { Text("×") }) }
+                    selectedColors.sorted().forEach { value -> FilterChip(true, { selectedColors = selectedColors - value }, label = { Text(value) }, trailingIcon = { Text("×") }) }
+                    selectedBrands.sorted().forEach { value -> FilterChip(true, { selectedBrands = selectedBrands - value }, label = { Text(value) }, trailingIcon = { Text("×") }) }
+                    TextButton(onClick = { selectedSizes = emptySet(); selectedColors = emptySet(); selectedBrands = emptySet() }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) { Text("Borrar filtros") }
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Ordenar por", style = MaterialTheme.typography.bodyMedium)
+                Box {
+                    var expanded by remember(queryKey) { mutableStateOf(false) }
+                    TextButton(onClick = { expanded = true }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+                        Text("${when (sortMode) {
+    IosCatalogSortModeState.RECENT -> "Más recientes"
+    IosCatalogSortModeState.PRICE_ASC -> "Precio: menor a mayor"
+    IosCatalogSortModeState.PRICE_DESC -> "Precio: mayor a menor"
+    IosCatalogSortModeState.NAME_ASC -> "Nombre A-Z"
+}}  ▾")
+                    }
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        IosCatalogSortModeState.values().forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(when(option) {
+                                    IosCatalogSortModeState.RECENT -> "Más recientes"
+                                    IosCatalogSortModeState.PRICE_ASC -> "Precio: menor a mayor"
+                                    IosCatalogSortModeState.PRICE_DESC -> "Precio: mayor a menor"
+                                    IosCatalogSortModeState.NAME_ASC -> "Nombre A-Z"
+                                }) },
+                                onClick = { expanded = false; sortMode = option }
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                OutlinedButton(onClick = { filtersOpen = true }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                    Text(if (activeFilterCount == 0) "Filtros" else "Filtros (" + activeFilterCount + ")")
+                }
+            }
+        }
+        if (enableProductControls && filtersOpen) {
+            AlertDialog(
+                onDismissRequest = { filtersOpen = false },
+                title = { Text("Filtros") },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        IosDiscoveryFilterChoices("Talla", availableSizes, selectedSizes) { selectedSizes = it }
+                        Spacer(Modifier.height(16.dp))
+                        IosDiscoveryFilterChoices("Color", availableColors, selectedColors) { selectedColors = it }
+                        if (availableBrands.isNotEmpty()) {
+                            Spacer(Modifier.height(16.dp))
+                            IosDiscoveryFilterChoices("Marca", availableBrands, selectedBrands) { selectedBrands = it }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { filtersOpen = false }) { Text("Aplicar") } },
+                dismissButton = { TextButton(onClick = { selectedSizes = emptySet(); selectedColors = emptySet(); selectedBrands = emptySet() }) { Text("Limpiar") } }
+            )
+        }
+
         when{
             state.isInitialLoading->IosStoreLoading()
             state.initialError!=null->IosStoreError(state.initialError!!.message?:"No se ha podido cargar."){paginator.start(queryKey){p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}
             state.items.isEmpty()->IosStoreEmpty(emptyMessage,onEmptyAction,emptyActionLabel)
             else->Column { headerContent?.invoke(this); LazyVerticalGrid(columns=GridCells.Fixed(2),state=grid,contentPadding=PaddingValues(start=12.dp,top=6.dp,end=12.dp,bottom=24.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
-                items(transform(state.items),key={it.id}){IosProductCard(it,onProduct,cartStore)}
+                items(transform(displayedItems),key={it.id}){IosProductCard(it,onProduct,cartStore)}
                 if(state.isAppending)item(span={GridItemSpan(maxLineSpan)}){IosStoreLoading()}
                 state.appendError?.let{e->item(span={GridItemSpan(maxLineSpan)}){IosStoreError(e.message?:"Error"){paginator.loadNext{p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}}}
             }
