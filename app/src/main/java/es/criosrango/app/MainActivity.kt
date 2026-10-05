@@ -339,8 +339,8 @@ private fun CriosRangoApp(
                 checkoutPhase,
                 { checkoutOpen = false; viewModel.abandonCheckout() },
                 remoteCart.itemsCount,
-                { checkoutOpen = false; viewModel.abandonCheckout(); activeTab = AppTab.SEARCH },
-                { checkoutOpen = false; viewModel.abandonCheckout(); activeTab = AppTab.CART },
+                { checkoutOpen = false; viewModel.abandonCheckout(); navigateTo(AppTab.SEARCH) },
+                { checkoutOpen = false; viewModel.abandonCheckout(); navigateTo(AppTab.CART) },
                 viewModel::loadCheckout,
                 viewModel::selectShippingRate,
                 viewModel::createOrder,
@@ -359,7 +359,7 @@ private fun CriosRangoApp(
             )
         } else Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
-            topBar = { StoreTopBar(remoteCart.itemsCount, { selectedBrand = null; showAllBrands = false; activeTab = AppTab.SEARCH }, { activeTab = AppTab.CART }) },
+            topBar = { StoreTopBar(remoteCart.itemsCount, { selectedBrand = null; showAllBrands = false; navigateTo(AppTab.SEARCH) }, { navigateTo(AppTab.CART) }) },
             bottomBar = {
                 Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
                     Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -383,13 +383,13 @@ private fun CriosRangoApp(
         ) { padding ->
             when {
                 error != null && activeTab != AppTab.ACCOUNT && activeTab != AppTab.CART && !catalogHasUsableContent(activeTab, products, homeProducts, activeCategoryProducts) -> StoreErrorState(error!!, padding, viewModel::retryLastOperation)
-                showAllBrands -> AllBrandsScreen(brands = APP_BRANDS, padding = padding, onBrand = { brand -> brandOrigin = BrandOrigin.ALL_BRANDS; showAllBrands = false; selectedBrand = brand; viewModel.loadBrand(brand) }, onBack = { showAllBrands = false; selectedBrand = null; activeTab = AppTab.HOME })
-                selectedBrand != null -> saveableStateHolder.SaveableStateProvider("BRAND:${selectedBrand!!.slug.ifBlank { selectedBrand!!.name.lowercase().trim() }}") { BrandProductsScreen(brand = selectedBrand!!, products = activeBrandProducts, loading = loading, padding = padding, onBack = { selectedBrand = null; when (brandOrigin) { BrandOrigin.HOME -> { showAllBrands = false; activeTab = AppTab.HOME }; BrandOrigin.ALL_BRANDS -> { showAllBrands = true; activeTab = AppTab.HOME } } }, onProduct = viewModel::openProduct) }
+                showAllBrands -> AllBrandsScreen(brands = APP_BRANDS, padding = padding, onBrand = { brand -> brandOrigin = BrandOrigin.ALL_BRANDS; showAllBrands = false; selectedBrand = brand; viewModel.loadBrand(brand) }, onBack = { showAllBrands = false; selectedBrand = null; navigateTo(AppTab.HOME) })
+                selectedBrand != null -> saveableStateHolder.SaveableStateProvider("BRAND:${selectedBrand!!.slug.ifBlank { selectedBrand!!.name.lowercase().trim() }}") { BrandProductsScreen(brand = selectedBrand!!, products = activeBrandProducts, loading = loading, padding = padding, onBack = { selectedBrand = null; when (brandOrigin) { BrandOrigin.HOME -> { showAllBrands = false; navigateTo(AppTab.HOME) }; BrandOrigin.ALL_BRANDS -> { showAllBrands = true; navigateTo(AppTab.HOME) } } }, onProduct = ::openProduct) }
                 loading && products.isEmpty() && activeTab != AppTab.SEARCH && activeTab != AppTab.CATEGORIES && activeTab != AppTab.OUTLET -> LoadingState(padding)
-                activeTab == AppTab.HOME -> saveableStateHolder.SaveableStateProvider("HOME") { HomeScreen(products = homeProducts, allProducts = products, roots = categories, brands = normalizedBrands, padding = padding, onProduct = viewModel::openProduct, onAllCategories = { categoryPath.clear(); activeTab = AppTab.CATEGORIES }, onCategory = { category -> categoryPath.clear(); categoryPath += category.id; activeTab = AppTab.CATEGORIES }, onOutlet = { category -> outletSeasonFilter = null; categoryPath.clear(); categoryPath += category.id; activeTab = AppTab.OUTLET }, onBrand = { brand -> brandOrigin = BrandOrigin.HOME; selectedBrand = brand; showAllBrands = false; viewModel.loadBrand(brand) }, onAllBrands = { brandOrigin = BrandOrigin.HOME; selectedBrand = null; showAllBrands = true }, onOutletWinter = { outletSeasonFilter = HomeOutletSeason.WINTER; categoryPath.clear(); categoryPath += 445; activeTab = AppTab.OUTLET }, onOutletSummer = { outletSeasonFilter = HomeOutletSeason.SUMMER; categoryPath.clear(); categoryPath += 445; activeTab = AppTab.OUTLET }, onOutletAll = { outletSeasonFilter = null; categoryPath.clear(); categoryPath += 445; activeTab = AppTab.OUTLET }, homeListState = homeListState, showAll = homeShowAll, onShowAllChange = { homeShowAll = it }, isRefreshing = loading, onRefresh = { viewModel.refreshHome() }, onEnterNovedades = { viewModel.refreshHome(); homeShowAll = true }) }
-                activeTab == AppTab.CATEGORIES -> saveableStateHolder.SaveableStateProvider("CATEGORY:${categoryPath.joinToString("/")}") { CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = viewModel::openProduct, availabilityStore = outletAvailabilityStore, onRootBack = { categoryPath.clear(); navController.popBackStack() }, onOpen = { category: ProductCategory -> categoryPath += category.id }, outletSeasonFilter = null) }
-                activeTab == AppTab.OUTLET -> saveableStateHolder.SaveableStateProvider("OUTLET:${outletSeasonFilter?.name ?: "ALL"}:${categoryPath.joinToString("/")}") { CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = viewModel::openProduct, availabilityStore = outletAvailabilityStore, onRootBack = { categoryPath.clear(); outletSeasonFilter = null; navController.popBackStack() }, onOpen = { category: ProductCategory -> categoryPath += category.id; activeTab = AppTab.OUTLET }, outletSeasonFilter = outletSeasonFilter, onSingleLevelBack = if (outletSeasonFilter != null) { { outletSeasonFilter = null } } else { { categoryPath.clear(); navController.popBackStack() } }) }
-                activeTab == AppTab.SEARCH -> saveableStateHolder.SaveableStateProvider("SEARCH") { SearchScreen(products = products, allProducts = homeProducts, categories = categories, brands = normalizedBrands, padding = padding, search = viewModel::search, onProduct = viewModel::openProduct, onCategory = { category -> categoryPath.clear(); categoryPath += category.id; activeTab = AppTab.CATEGORIES }, loading = loading) }
+                activeTab == AppTab.HOME -> saveableStateHolder.SaveableStateProvider("HOME") { HomeScreen(products = homeProducts, allProducts = products, roots = categories, brands = normalizedBrands, padding = padding, onProduct = ::openProduct, onAllCategories = { categoryPath.clear(); navigateTo(AppTab.CATEGORIES) }, onCategory = { category -> categoryPath.clear(); categoryPath += category.id; navigateTo(AppTab.CATEGORIES) }, onOutlet = { category -> outletSeasonFilter = null; categoryPath.clear(); categoryPath += category.id; navigateTo(AppTab.OUTLET) }, onBrand = { brand -> brandOrigin = BrandOrigin.HOME; selectedBrand = brand; showAllBrands = false; viewModel.loadBrand(brand) }, onAllBrands = { brandOrigin = BrandOrigin.HOME; selectedBrand = null; showAllBrands = true }, onOutletWinter = { outletSeasonFilter = HomeOutletSeason.WINTER; categoryPath.clear(); categoryPath += 445; navigateTo(AppTab.OUTLET) }, onOutletSummer = { outletSeasonFilter = HomeOutletSeason.SUMMER; categoryPath.clear(); categoryPath += 445; navigateTo(AppTab.OUTLET) }, onOutletAll = { outletSeasonFilter = null; categoryPath.clear(); categoryPath += 445; navigateTo(AppTab.OUTLET) }, homeListState = homeListState, showAll = homeShowAll, onShowAllChange = { homeShowAll = it }, isRefreshing = loading, onRefresh = { viewModel.refreshHome() }, onEnterNovedades = { viewModel.refreshHome(); homeShowAll = true }) }
+                activeTab == AppTab.CATEGORIES -> saveableStateHolder.SaveableStateProvider("CATEGORY:${categoryPath.joinToString("/")}") { CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = ::openProduct, availabilityStore = outletAvailabilityStore, onRootBack = { categoryPath.clear(); navController.popBackStack() }, onOpen = { category: ProductCategory -> categoryPath += category.id }, outletSeasonFilter = null) }
+                activeTab == AppTab.OUTLET -> saveableStateHolder.SaveableStateProvider("OUTLET:${outletSeasonFilter?.name ?: "ALL"}:${categoryPath.joinToString("/")}") { CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = ::openProduct, availabilityStore = outletAvailabilityStore, onRootBack = { categoryPath.clear(); outletSeasonFilter = null; navController.popBackStack() }, onOpen = { category: ProductCategory -> categoryPath += category.id; navigateTo(AppTab.OUTLET) }, outletSeasonFilter = outletSeasonFilter, onSingleLevelBack = if (outletSeasonFilter != null) { { outletSeasonFilter = null } } else { { categoryPath.clear(); navController.popBackStack() } }) }
+                activeTab == AppTab.SEARCH -> saveableStateHolder.SaveableStateProvider("SEARCH") { SearchScreen(products = products, allProducts = homeProducts, categories = categories, brands = normalizedBrands, padding = padding, search = viewModel::search, onProduct = ::openProduct, onCategory = { category -> categoryPath.clear(); categoryPath += category.id; navigateTo(AppTab.CATEGORIES) }, loading = loading) }
                 activeTab == AppTab.ACCOUNT -> AccountLoginScreen(
                     padding = padding,
                     vm = accountViewModel,
@@ -398,13 +398,13 @@ private fun CriosRangoApp(
                     onAuthenticated = {
                         if (returnToCartAfterLogin) {
                             returnToCartAfterLogin = false
-                            activeTab = AppTab.CART
+                            navigateTo(AppTab.CART)
                         }
                     },
                     onBackFromLogin = if (returnToCartAfterLogin) {
                         {
                             returnToCartAfterLogin = false
-                            activeTab = AppTab.CART
+                            navigateTo(AppTab.CART)
                         }
                     } else null
                 )
@@ -424,7 +424,7 @@ private fun CriosRangoApp(
                     accountUserId = accountUser?.id,
                     onLogin = {
                         returnToCartAfterLogin = true
-                        activeTab = AppTab.ACCOUNT
+                        navigateTo(AppTab.ACCOUNT)
                     },
                 ) }
             }
@@ -457,6 +457,9 @@ private fun CriosRangoApp(
                     RenderDestination(null)
                 }
             }
+            }
+        }
+    }
 
 
     if (checkoutLoading && paymentBrowserOpened && paymentRedirect != null && cardPaymentResult == null && paymentReturnUri == null) AlertDialog(onDismissRequest = { }, title = { Text("Confirmando tu pedido") }, text = { Text("Estamos comprobando que el pago se ha recibido correctamente. Esto puede tardar unos segundos.") }, confirmButton = { })
