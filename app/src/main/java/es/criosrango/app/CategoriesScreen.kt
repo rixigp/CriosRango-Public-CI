@@ -281,7 +281,8 @@ internal fun OutletAwareCatalogGrid(
             pagingKey = pagingKey,
             headerTitle = headerTitle,
             headerOnBack = headerOnBack,
-            headerOnTitleLongPress = headerOnTitleLongPress
+            headerOnTitleLongPress = headerOnTitleLongPress,
+            headerContent = headerContent
         )
         return
     }
@@ -1259,7 +1260,8 @@ internal fun CatalogFilteredProductGrid(
     allowBrandFilter: Boolean = true,
     headerTitle: String? = null,
     headerOnBack: (() -> Unit)? = null,
-    headerOnTitleLongPress: (() -> Unit)? = null
+    headerOnTitleLongPress: (() -> Unit)? = null,
+    headerContent: (@Composable ColumnScope.() -> Unit)? = null
 ) {
     var filtersOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var sortMode by androidx.compose.runtime.saveable.rememberSaveable {
