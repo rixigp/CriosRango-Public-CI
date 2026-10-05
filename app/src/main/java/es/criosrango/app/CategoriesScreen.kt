@@ -919,6 +919,7 @@ internal fun CategoryList(
                                 }
                             )
                     }
+                    }
                 }
             }
         }
