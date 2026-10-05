@@ -552,7 +552,7 @@ internal fun ProductSkeletonGrid(modifier: Modifier) {
         modifier = modifier,
         contentPadding = PaddingValues(20.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         items(6) {
             Column(Modifier.fillMaxWidth()) {
@@ -656,7 +656,7 @@ internal fun ProductGrid(
                 androidx.compose.foundation.lazy.grid.GridCells.Fixed(2),
             modifier = modifier,
             state = gridState,
-            contentPadding = PaddingValues(start = 20.dp, top = 6.dp, end = 20.dp, bottom = 20.dp),
+            contentPadding = PaddingValues(start = 20.dp, top = 4.dp, end = 20.dp, bottom = 20.dp),
             horizontalArrangement =
                 Arrangement.spacedBy(12.dp),
             verticalArrangement =

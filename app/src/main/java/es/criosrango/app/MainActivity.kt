@@ -474,7 +474,9 @@ internal fun StoreTopBar(cartQuantity: Int, onSearch: () -> Unit, onCart: () -> 
     actions = {
         IconButton(onSearch) { Icon(Icons.Outlined.Search, "Buscar") }
         BadgedBox(
-            modifier = Modifier.size(52.dp),
+            modifier = Modifier
+                .size(48.dp)
+                .padding(end = 2.dp),
             badge = { if (cartQuantity > 0) Badge { Text(cartQuantity.toString(), maxLines = 1) } }
         ) {
             IconButton(onCart) { Icon(Icons.Outlined.ShoppingBag, "Carrito") }

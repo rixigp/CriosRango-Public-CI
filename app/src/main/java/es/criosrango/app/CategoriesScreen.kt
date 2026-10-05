@@ -902,7 +902,7 @@ internal fun CategoryList(
             val row = rows[rowIndex]
 
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = if (rowIndex == 0) 8.dp else 18.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = if (rowIndex == 0) 8.dp else 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 repeat(3) { index ->
@@ -938,7 +938,7 @@ private fun CategorySkeletonList(padding: PaddingValues) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
             Box(
@@ -1246,8 +1246,8 @@ internal fun CategoryCard(
         )
 
     Column(
-        modifier = Modifier
-            .width(104.dp)
+        modifier = modifier
+            .widthIn(max = 104.dp)
             .height(170.dp)
             .clickable {
                 onOpen(category)
@@ -1272,7 +1272,7 @@ internal fun CategoryCard(
                         category.name,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(5.dp),
+                        .padding(8.dp),
                     contentScale =
                         ContentScale.Fit
                 )
@@ -1281,7 +1281,7 @@ internal fun CategoryCard(
                     category,
                     Modifier
                         .fillMaxSize()
-                        .padding(10.dp)
+                        .padding(8.dp)
                 )
             }
         }
@@ -1696,7 +1696,7 @@ internal fun CategoryParentWithFilters(
                 items(children.chunked(3)) { row ->
                         Row(
                             Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             row.forEach { category ->
                                 CategoryCard(

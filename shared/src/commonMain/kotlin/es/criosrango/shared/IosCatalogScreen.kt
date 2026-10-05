@@ -135,7 +135,7 @@ internal fun IosCategoryPage(
 
     Column(Modifier.fillMaxSize().padding(padding)) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             TextButton(onClick = onBack) { Text("Atrás") }
@@ -407,7 +407,9 @@ internal fun IosCategoryProducts(
                 category.name,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                maxLines = 1,\n                overflow = TextOverflow.Ellipsis,\n                modifier = Modifier.weight(1f)
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
             )
             OutlinedButton(
                 onClick = { filtersOpen = true },
@@ -427,7 +429,7 @@ internal fun IosCategoryProducts(
                     FilterChip(
                         selected = true,
                         onClick = { selectedSizes = selectedSizes - value },
-                        label = { Text("Talla \$value") },
+                        label = { Text("Talla $value") },
                         trailingIcon = { Text("×") }
                     )
                 }
@@ -455,6 +457,33 @@ internal fun IosCategoryProducts(
                     }
                 ) {
                     Text("Borrar filtros")
+                }
+            }
+        }
+
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Ordenar por", style = MaterialTheme.typography.bodyMedium)
+            Box {
+                var sortExpanded by remember(category.id) { mutableStateOf(false) }
+                TextButton(onClick = { sortExpanded = true }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+                    Text("${sortMode.label}  ▾")
+                }
+                DropdownMenu(
+                    expanded = sortExpanded,
+                    onDismissRequest = { sortExpanded = false }
+                ) {
+                    IosCatalogSortMode.values().forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text(option.label) },
+                            onClick = {
+                                sortExpanded = false
+                                sortMode = option
+                            }
+                        )
+                    }
                 }
             }
         }
