@@ -176,7 +176,7 @@ internal fun ActiveFilterChips(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = CatalogHeaderGeometry.horizontalPadding)
-            .padding(bottom = 6.dp),
+            .padding(bottom = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
