@@ -260,10 +260,9 @@ private fun CriosRangoApp(
 
     fun openProduct(product: StoreProduct) {
         viewModel.openProduct(product)
-        if (currentRoute != "product") {
-            navController.navigate("product")
-        }
+        if (currentRoute != "product") navController.navigate("product")
     }
+    var tab by remember { mutableStateOf(AppTab.HOME) }
     var returnToCartAfterLogin by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var homeShowAll by remember { mutableStateOf(false) }
 
@@ -329,7 +328,6 @@ private fun CriosRangoApp(
     @Composable
     fun RenderDestination(destination: AppTab?) {
         val activeTab = destination ?: tab
-                val activeTab = destination ?: tab
         if (checkoutOpen) {
             RedesignedCheckoutScreen(
                 remoteCart,
@@ -338,7 +336,8 @@ private fun CriosRangoApp(
                 checkoutError,
                 checkoutPhase,
                 { checkoutOpen = false; viewModel.abandonCheckout() },
-                    NavHost(
+                remoteCart.itemsCount,
+                { ch            NavHost(
                 navController = navController,
                 startDestination = "home",
                 modifier = Modifier.fillMaxSize()
@@ -355,8 +354,7 @@ private fun CriosRangoApp(
                     }
                     RenderDestination(null)
                 }
-            }   checkoutLoading,
-                    checkoutError,
+            }    checkoutError,
                     checkoutPhase,
                     { checkoutOpen = false; viewModel.abandonCheckout() },
                     remoteCart.itemsCount,
@@ -419,13 +417,13 @@ private fun CriosRangoApp(
                         onAuthenticated = {
                             if (returnToCartAfterLogin) {
                                 returnToCartAfterLogin = false
-                                navigateTo(AppTab.CART)
+                                if (!popToTab(AppTab.CART)) navigateTo(AppTab.CART)
                             }
                         },
                         onBackFromLogin = if (returnToCartAfterLogin) {
                             {
                                 returnToCartAfterLogin = false
-                                navigateTo(AppTab.CART)
+                                if (!popToTab(AppTab.CART)) navigateTo(AppTab.CART)
                             }
                         } else null
                     )
