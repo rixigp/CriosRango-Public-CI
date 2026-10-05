@@ -447,12 +447,29 @@ internal fun IosOutletScreen(storeApi:StoreApiClient,padding:PaddingValues,cartS
         availabilityError?.let{Text(it,modifier=Modifier.padding(12.dp))}
         val selectedBubble = selected?.let { key -> visible.firstOrNull { it.key == key } }
         val queryKey = "outlet:" + outlet.id + ":" + (selectedBubble?.key ?: "all")
-        IosPagedProductScreen("",PaddingValues(),cartStore,onProduct,{}, { p,n ->
-            if (selectedBubble == null) storeApi.products(p,n,category=outlet.id)
-            else coroutineScope {
-                selectedBubble.categoryIds.map { categoryId -> async { storeApi.products(p,n,category=categoryId) } }.awaitAll().flatten().distinctBy { it.id }
-            }
-        },queryKey)
+        val selectedTitle = selectedBubble?.label.orEmpty()
+        IosPagedProductScreen(
+            title = selectedTitle,
+            padding = PaddingValues(),
+            cartStore = cartStore,
+            onProduct = onProduct,
+            onBack = { selected = null },
+            load = { p,n ->
+                if (selectedBubble == null) {
+                    storeApi.products(p,n,category=outlet.id)
+                } else {
+                    coroutineScope {
+                        selectedBubble.categoryIds
+                            .map { categoryId -> async { storeApi.products(p,n,category=categoryId) } }
+                            .awaitAll()
+                            .flatten()
+                            .distinctBy { it.id }
+                    }
+                }
+            },
+            queryKey = queryKey,
+            enableProductControls = selectedBubble != null
+        )
     }
 }
 

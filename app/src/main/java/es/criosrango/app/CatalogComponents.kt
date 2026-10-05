@@ -95,7 +95,7 @@ internal object CatalogHeaderGeometry {
     val horizontalPadding = 20.dp
     val topPadding = 2.dp
     val bottomPadding = 2.dp
-    val controlsVerticalPadding = 4.dp
+    val controlsVerticalPadding = 2.dp
 }
 
 @Composable
