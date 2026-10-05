@@ -370,7 +370,7 @@ private fun CriosRangoApp(
                                 selectedBrand = null; showAllBrands = false
                                 if (item == AppTab.CATEGORIES) categoryPath.clear()
                                 if (item == AppTab.OUTLET) { outletSeasonFilter = null; categoryPath.clear(); categoryPath += 445 }
-                                activeTab = item
+                                navigateTo(item)
                             }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                                 Icon(imageVector = if (selected) when (item) { AppTab.HOME -> Icons.Default.Home; AppTab.CATEGORIES -> Icons.Default.Category; AppTab.OUTLET -> Icons.Default.LocalOffer; AppTab.SEARCH -> Icons.Default.Search; AppTab.CART -> Icons.Default.ShoppingBag; AppTab.ACCOUNT -> Icons.Default.Person } else when (item) { AppTab.HOME -> Icons.Outlined.Home; AppTab.CATEGORIES -> Icons.Outlined.Category; AppTab.OUTLET -> Icons.Outlined.LocalOffer; AppTab.SEARCH -> Icons.Outlined.Search; AppTab.CART -> Icons.Outlined.ShoppingBag; AppTab.ACCOUNT -> Icons.Outlined.Person }, contentDescription = item.label, modifier = Modifier.size(24.dp), tint = if (selected) Color.Black else Color(0xFF777277))
                                 Spacer(Modifier.height(2.dp))
@@ -398,13 +398,13 @@ private fun CriosRangoApp(
                     onAuthenticated = {
                         if (returnToCartAfterLogin) {
                             returnToCartAfterLogin = false
-                            navigateTo(AppTab.CART)
+                            if (!popToTab(AppTab.CART)) navigateTo(AppTab.CART)
                         }
                     },
                     onBackFromLogin = if (returnToCartAfterLogin) {
                         {
                             returnToCartAfterLogin = false
-                            navigateTo(AppTab.CART)
+                            if (!popToTab(AppTab.CART)) navigateTo(AppTab.CART)
                         }
                     } else null
                 )
