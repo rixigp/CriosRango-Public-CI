@@ -330,10 +330,10 @@ fun IosCheckoutScreen(
 
 @Composable
 private fun CheckoutField(label: String, value: String, keyboardType: KeyboardType = KeyboardType.Text, onValueChange: (String) -> Unit) {
+    CheckoutFieldFrame(label) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text(label, fontSize = 13.sp) },
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         modifier = Modifier.fillMaxWidth().height(58.dp),
         textStyle = MaterialTheme.typography.bodyLarge,
@@ -342,11 +342,12 @@ private fun CheckoutField(label: String, value: String, keyboardType: KeyboardTy
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = Color(0xFF183B35),
             unfocusedBorderColor = Color(0xFF8A858A),
-            focusedLabelColor = Color(0xFF183B35),
-            unfocusedLabelColor = Color(0xFF777277),
+            focusedLabelColor = Color.Transparent,
+            unfocusedLabelColor = Color.Transparent,
             cursorColor = Color(0xFF183B35)
         )
     )
+    }
 }
 
 private fun validateIosCheckoutAddress(address: CustomerAddress): String? = when {

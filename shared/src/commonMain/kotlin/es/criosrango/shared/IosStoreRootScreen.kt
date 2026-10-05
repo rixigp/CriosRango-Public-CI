@@ -231,8 +231,9 @@ private fun IosStoreTopBar(
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).statusBarsPadding(), verticalAlignment = Alignment.CenterVertically) {
         Text("Críos&Rango", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
         IconButton(onClick = onSearch) { Text("⌕", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { contentDescription = "Buscar" }) }
+        Box(Modifier.width(56.dp).fillMaxHeight()) {
         BadgedBox(
-            modifier = Modifier.size(48.dp).padding(end = 2.dp),
+            modifier = Modifier.size(48.dp).align(Alignment.CenterStart),
             badge = { if (cartQuantity > 0) Badge { Text(cartQuantity.toString(), maxLines = 1) } }
         ) {
             IconButton(onClick = onCart) { Text("🛍", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { contentDescription = "Carrito" }) }

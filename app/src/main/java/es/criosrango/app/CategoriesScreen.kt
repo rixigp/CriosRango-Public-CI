@@ -266,7 +266,8 @@ internal fun OutletAwareCatalogGrid(
     pagingKey: Any? = null,
     headerTitle: String? = null,
     headerOnBack: (() -> Unit)? = null,
-    headerOnTitleLongPress: (() -> Unit)? = null
+    headerOnTitleLongPress: (() -> Unit)? = null,
+    headerContent: (@Composable ColumnScope.() -> Unit)? = null
 ) {
 
     // Solo las categorías finales dentro de Outlet.
@@ -388,105 +389,6 @@ internal fun OutletAwareCatalogGrid(
     }
 
     Column(modifier) {
-        if (headerTitle != null && headerOnBack != null) {
-            CatalogScreenHeader(
-                title = headerTitle,
-                onBack = headerOnBack,
-                onTitleLongPress = headerOnTitleLongPress
-            )
-        }
-
-        if (bubbles.isNotEmpty()) {
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(
-                        rememberScrollState()
-                    )
-                    .padding(
-                        start = 20.dp,
-                        end = 20.dp,
-                        top = 6.dp,
-                        bottom = 10.dp
-                    ),
-                horizontalArrangement =
-                    Arrangement.spacedBy(7.dp)
-            ) {
-                val allSelected =
-                    selectedBubbleKey == null
-
-                Surface(
-                    modifier = Modifier
-                        .height(34.dp)
-                        .clickable {
-                            selectedBubbleKey = null
-                        },
-                    shape = RoundedCornerShape(17.dp),
-                    color =
-                        if (allSelected)
-                            Color(0xFF163B35)
-                        else
-                            Color(0xFFF1EDEF)
-                ) {
-                    Box(
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Todas",
-                            color =
-                                if (allSelected)
-                                    Color.White
-                                else
-                                    Color(0xFF3F3A3D),
-                            fontSize = 13.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Clip
-                        )
-                    }
-                }
-
-                visibleBubbles.forEach { bubble ->
-
-                    val selected =
-                        selectedBubbleKey ==
-                            bubble.key
-
-                    Surface(
-                        modifier = Modifier
-                            .height(34.dp)
-                            .clickable {
-                                selectedBubbleKey = bubble.key
-                            },
-                        shape = RoundedCornerShape(17.dp),
-                        color =
-                            if (selected)
-                                Color(0xFF163B35)
-                            else
-                                Color(0xFFF1EDEF)
-                    ) {
-                        Box(
-                            modifier = Modifier.padding(horizontal = 12.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = outletBubbleDisplayLabel(bubble.label),
-                                color =
-                                    if (selected)
-                                        Color.White
-                                    else
-                                        Color(0xFF3F3A3D),
-                                fontSize = 13.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Clip
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
         val probingSelectedBubble =
             selectedBubble != null &&
                 visibleProducts.isEmpty() &&
@@ -516,7 +418,43 @@ internal fun OutletAwareCatalogGrid(
                 pagingKey = listOf(
                     pagingKey,
                     selectedBubbleKey
-                )
+                ),
+                headerTitle = headerTitle,
+                headerOnBack = headerOnBack,
+                headerOnTitleLongPress = headerOnTitleLongPress,
+                headerContent = if (bubbles.isNotEmpty()) {
+                    {
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = CatalogHeaderGeometry.horizontalPadding, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(7.dp)
+                        ) {
+                            val allSelected = selectedBubbleKey == null
+                            Surface(
+                                Modifier.height(34.dp).clickable { selectedBubbleKey = null },
+                                shape = RoundedCornerShape(17.dp),
+                                color = if (allSelected) Color(0xFF163B35) else Color(0xFFF1EDEF)
+                            ) {
+                                Box(Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+                                    Text("Todas", color = if (allSelected) Color.White else Color(0xFF3F3A3D), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Clip)
+                                }
+                            }
+                            visibleBubbles.forEach { bubble ->
+                                val selected = selectedBubbleKey == bubble.key
+                                Surface(
+                                    Modifier.height(34.dp).clickable { selectedBubbleKey = bubble.key },
+                                    shape = RoundedCornerShape(17.dp),
+                                    color = if (selected) Color(0xFF163B35) else Color(0xFFF1EDEF)
+                                ) {
+                                    Box(Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+                                        Text(outletBubbleDisplayLabel(bubble.label), color = if (selected) Color.White else Color(0xFF3F3A3D), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Clip)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else null
             )
         }
     }
@@ -895,7 +833,7 @@ internal fun CategoryList(
                 start = CatalogCategoryVisualTokens.horizontalPadding,
                 top = CatalogCategoryVisualTokens.rowSpacing,
                 end = CatalogCategoryVisualTokens.horizontalPadding,
-                bottom = 28.dp
+                bottom = 0.dp
             )
         ) {
             items(rows.size) { rowIndex ->
@@ -1395,17 +1333,10 @@ internal fun CatalogFilteredProductGrid(
 
     Column(modifier) {
         if (headerTitle != null && headerOnBack != null) {
-            CatalogScreenHeader(
-                title = headerTitle,
-                onBack = headerOnBack,
-                onTitleLongPress = headerOnTitleLongPress,
-                trailing = {
-                    OutlinedButton(onClick = { filtersOpen = true }) {
-                        Text(if (active == 0) "Filtros" else "Filtros ($active)")
-                    }
-                }
-            )
+            CatalogProductListHeader(title = headerTitle, onBack = headerOnBack, onTitleLongPress = headerOnTitleLongPress, activeFilters = active, onOpenFilters = { filtersOpen = true })
         }
+        headerContent?.invoke()
+
         ActiveFilterChips(
             filters = activeFilterChips,
             onClearAll = {
@@ -1418,7 +1349,7 @@ internal fun CatalogFilteredProductGrid(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 4.dp),
+                .padding(horizontal = CatalogHeaderGeometry.horizontalPadding, vertical = CatalogHeaderGeometry.controlsVerticalPadding),
             horizontalArrangement = Arrangement.Start
         ) {
             ProductSortControl(mode = sortMode, onMode = { sortMode = it })
@@ -1610,15 +1541,7 @@ internal fun CategoryParentWithFilters(
     }
 
     Column(Modifier.fillMaxSize().padding(padding)) {
-        CatalogScreenHeader(
-            title = title,
-            onBack = onBack,
-            trailing = {
-                OutlinedButton(onClick = { open = true }) {
-                    Text(if (active == 0) "Filtros" else "Filtros ($active)")
-                }
-            }
-        )
+        CatalogProductListHeader(title = title, onBack = onBack, activeFilters = active, onOpenFilters = { open = true })
 
         ActiveFilterChips(
             filters = activeFilterChips,

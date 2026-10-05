@@ -93,7 +93,7 @@ internal fun IosCategoryRoot(
             else -> LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 28.dp),
+                contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 0.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {

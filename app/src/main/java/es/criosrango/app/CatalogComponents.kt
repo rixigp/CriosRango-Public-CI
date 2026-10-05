@@ -166,6 +166,26 @@ internal fun CatalogProductControlsRow(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
+internal fun CatalogProductListHeader(
+    title: String,
+    onBack: () -> Unit,
+    activeFilters: Int,
+    onOpenFilters: () -> Unit,
+    onTitleLongPress: (() -> Unit)? = null
+) {
+    CatalogScreenHeader(
+        title = title,
+        onBack = onBack,
+        onTitleLongPress = onTitleLongPress,
+        trailing = {
+            OutlinedButton(onClick = onOpenFilters, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                Text(if (activeFilters == 0) "Filtros" else "Filtros ($activeFilters)")
+            }
+        }
+    )
+}
+
+@Composable
 internal fun ActiveFilterChips(
     filters: List<ActiveFilterChip>,
     onClearAll: () -> Unit
