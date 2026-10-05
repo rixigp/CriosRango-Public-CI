@@ -82,10 +82,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.text.HtmlCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
@@ -225,46 +221,7 @@ private fun CriosRangoApp(
     val initialLoading by viewModel.initialLoading.collectAsStateWithLifecycle()
     val activeBrandProducts by viewModel.activeBrandProducts.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
-    val navController = rememberNavController()
-    val currentBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = currentBackStackEntry?.destination?.route ?: "home"
-    val tab = when (currentRoute) {
-        "categories" -> AppTab.CATEGORIES
-        "outlet" -> AppTab.OUTLET
-        "search" -> AppTab.SEARCH
-        "cart" -> AppTab.CART
-        "account" -> AppTab.ACCOUNT
-        else -> AppTab.HOME
-    }
-
-    fun routeForTab(target: AppTab): String = when (target) {
-        AppTab.HOME -> "home"
-        AppTab.CATEGORIES -> "categories"
-        AppTab.OUTLET -> "outlet"
-        AppTab.SEARCH -> "search"
-        AppTab.CART -> "cart"
-        AppTab.ACCOUNT -> "account"
-    }
-
-    fun navigateTo(target: AppTab) {
-        val route = routeForTab(target)
-        if (currentRoute != route) {
-            navController.navigate(route) {
-                launchSingleTop = true
-            }
-        }
-    }
-
-    fun popToTab(target: AppTab): Boolean =
-        navController.popBackStack(routeForTab(target), inclusive = false)
-
-    fun openProduct(product: StoreProduct) {
-        viewModel.openProduct(product)
-        if (currentRoute != "product") {
-            navController.navigate("product")
-        }
-    }
-
+    var tab by remember { mutableStateOf(AppTab.HOME) }
     var returnToCartAfterLogin by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var homeShowAll by remember { mutableStateOf(false) }
 
@@ -272,10 +229,10 @@ private fun CriosRangoApp(
         when (pushType) {
             "new_products" -> {
                 viewModel.refreshHome()
-                navigateTo(AppTab.HOME)
+                tab = AppTab.HOME
                 homeShowAll = true
             }
-            "order_status" -> { navigateTo(AppTab.ACCOUNT) }
+            "order_status" -> { tab = AppTab.ACCOUNT }
         }
         if (pushType != null) { pushTypeState.value = null; pushOrderIdState.value = null }
     }
@@ -305,7 +262,7 @@ private fun CriosRangoApp(
             startupMinimumDurationReached = true
         }
     }
-    val startupReady = !initialLoading || error != null || startupMinimumDurationReached
+    val startupReady = !initialLoading || error != null
     val showStartupBranding = shouldShowStartupBranding(coldStartBranding, startupMinimumDurationReached, startupReady)
 
     LaunchedEffect(showStartupBranding) {
@@ -327,109 +284,6 @@ private fun CriosRangoApp(
         }
     }
 
-    @Composable
-    fun RenderDestination(destination: AppTab?) {
-        val activeTab = destination ?: tab
-        if (checkoutOpen) {
-            RedesignedCheckoutScreen(
-                remoteCart,
-                checkout,
-                checkoutLoading,
-                checkoutError,
-                checkoutPhase,
-                { checkoutOpen = false; viewModel.abandonCheckout() },
-                remoteCart.itemsCount,
-                { checkoutOpen = false; viewModel.abandonCheckout(); navigateTo(AppTab.SEARCH) },
-                { checkoutOpen = false; viewModel.abandonCheckout(); navigateTo(AppTab.CART) },
-                viewModel::loadCheckout,
-                viewModel::selectShippingRate,
-                viewModel::createOrder,
-                viewModel.deliveryAddressStore
-            )
-        } else if (currentRoute == "product" && selectedProduct != null) {
-            ProductDetail(
-                product = selectedProduct!!,
-                variation = selectedVariation,
-                cartItems = cartItems,
-                loadVariation = viewModel::loadVariation,
-                onBack = { navController.popBackStack() },
-                onCart = { navigateTo(AppTab.CART) },
-                onSearch = { selectedBrand = null; showAllBrands = false; navigateTo(AppTab.SEARCH); viewModel.closeProduct() },
-                onAdd = viewModel::addToCart
-            )
-        } else Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
-            topBar = { StoreTopBar(remoteCart.itemsCount, { selectedBrand = null; showAllBrands = false; navigateTo(AppTab.SEARCH) }, { navigateTo(AppTab.CART) }) },
-            bottomBar = {
-                Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
-                    Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        listOf(AppTab.HOME, AppTab.CATEGORIES, AppTab.OUTLET, AppTab.CART, AppTab.ACCOUNT).forEach { item ->
-                            val selected = activeTab == item
-                            val itemColor = if (selected) Color(0xFF28252A) else Color(0xFF777277)
-                            Column(Modifier.weight(1f).fillMaxHeight().clickable {
-                                selectedBrand = null; showAllBrands = false
-                                if (item == AppTab.CATEGORIES) categoryPath.clear()
-                                if (item == AppTab.OUTLET) { outletSeasonFilter = null; categoryPath.clear(); categoryPath += 445 }
-                                navigateTo(item)
-                            }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                Icon(imageVector = if (selected) when (item) { AppTab.HOME -> Icons.Default.Home; AppTab.CATEGORIES -> Icons.Default.Category; AppTab.OUTLET -> Icons.Default.LocalOffer; AppTab.SEARCH -> Icons.Default.Search; AppTab.CART -> Icons.Default.ShoppingBag; AppTab.ACCOUNT -> Icons.Default.Person } else when (item) { AppTab.HOME -> Icons.Outlined.Home; AppTab.CATEGORIES -> Icons.Outlined.Category; AppTab.OUTLET -> Icons.Outlined.LocalOffer; AppTab.SEARCH -> Icons.Outlined.Search; AppTab.CART -> Icons.Outlined.ShoppingBag; AppTab.ACCOUNT -> Icons.Outlined.Person }, contentDescription = item.label, modifier = Modifier.size(24.dp), tint = if (selected) Color.Black else Color(0xFF777277))
-                                Spacer(Modifier.height(2.dp))
-                                Text(text = item.label, style = MaterialTheme.typography.labelSmall, color = if (selected) Color.Black else Color(0xFF777277), fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
-                            }
-                        }
-                    }
-                }
-            }
-        ) { padding ->
-            when {
-                error != null && activeTab != AppTab.ACCOUNT && activeTab != AppTab.CART && !catalogHasUsableContent(activeTab, products, homeProducts, activeCategoryProducts) -> StoreErrorState(error!!, padding, viewModel::retryLastOperation)
-                showAllBrands -> AllBrandsScreen(brands = APP_BRANDS, padding = padding, onBrand = { brand -> brandOrigin = BrandOrigin.ALL_BRANDS; showAllBrands = false; selectedBrand = brand; viewModel.loadBrand(brand) }, onBack = { showAllBrands = false; selectedBrand = null; navigateTo(AppTab.HOME) })
-                selectedBrand != null -> saveableStateHolder.SaveableStateProvider("BRAND:${selectedBrand!!.slug.ifBlank { selectedBrand!!.name.lowercase().trim() }}") { BrandProductsScreen(brand = selectedBrand!!, products = activeBrandProducts, loading = loading, padding = padding, onBack = { selectedBrand = null; when (brandOrigin) { BrandOrigin.HOME -> { showAllBrands = false; navigateTo(AppTab.HOME) }; BrandOrigin.ALL_BRANDS -> { showAllBrands = true; navigateTo(AppTab.HOME) } } }, onProduct = ::openProduct) }
-                loading && products.isEmpty() && activeTab != AppTab.HOME && activeTab != AppTab.SEARCH && activeTab != AppTab.CATEGORIES && activeTab != AppTab.OUTLET -> LoadingState(padding)
-                activeTab == AppTab.HOME -> saveableStateHolder.SaveableStateProvider("HOME") { HomeScreen(products = homeProducts, allProducts = products, roots = categories, brands = normalizedBrands, padding = padding, onProduct = ::openProduct, onAllCategories = { categoryPath.clear(); navigateTo(AppTab.CATEGORIES) }, onCategory = { category -> categoryPath.clear(); categoryPath += category.id; navigateTo(AppTab.CATEGORIES) }, onOutlet = { category -> outletSeasonFilter = null; categoryPath.clear(); categoryPath += category.id; navigateTo(AppTab.OUTLET) }, onBrand = { brand -> brandOrigin = BrandOrigin.HOME; selectedBrand = brand; showAllBrands = false; viewModel.loadBrand(brand) }, onAllBrands = { brandOrigin = BrandOrigin.HOME; selectedBrand = null; showAllBrands = true }, onOutletWinter = { outletSeasonFilter = HomeOutletSeason.WINTER; categoryPath.clear(); categoryPath += 445; navigateTo(AppTab.OUTLET) }, onOutletSummer = { outletSeasonFilter = HomeOutletSeason.SUMMER; categoryPath.clear(); categoryPath += 445; navigateTo(AppTab.OUTLET) }, onOutletAll = { outletSeasonFilter = null; categoryPath.clear(); categoryPath += 445; navigateTo(AppTab.OUTLET) }, homeListState = homeListState, showAll = homeShowAll, onShowAllChange = { homeShowAll = it }, isRefreshing = loading, onRefresh = { viewModel.refreshHome() }, onEnterNovedades = { viewModel.refreshHome(); homeShowAll = true }) }
-                activeTab == AppTab.CATEGORIES -> saveableStateHolder.SaveableStateProvider("CATEGORY:${categoryPath.joinToString("/")}") { CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = ::openProduct, availabilityStore = outletAvailabilityStore, onRootBack = { categoryPath.clear(); navController.popBackStack() }, onOpen = { category: ProductCategory -> categoryPath += category.id }, outletSeasonFilter = null) }
-                activeTab == AppTab.OUTLET -> saveableStateHolder.SaveableStateProvider("OUTLET:${outletSeasonFilter?.name ?: "ALL"}:${categoryPath.joinToString("/")}") { CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = ::openProduct, availabilityStore = outletAvailabilityStore, onRootBack = { categoryPath.clear(); outletSeasonFilter = null; navController.popBackStack() }, onOpen = { category: ProductCategory -> categoryPath += category.id; navigateTo(AppTab.OUTLET) }, outletSeasonFilter = outletSeasonFilter, onSingleLevelBack = if (outletSeasonFilter != null) { { outletSeasonFilter = null } } else { { categoryPath.clear(); navController.popBackStack() } }) }
-                activeTab == AppTab.SEARCH -> saveableStateHolder.SaveableStateProvider("SEARCH") { SearchScreen(products = products, allProducts = homeProducts, categories = categories, brands = normalizedBrands, padding = padding, search = viewModel::search, onProduct = ::openProduct, onCategory = { category -> categoryPath.clear(); categoryPath += category.id; navigateTo(AppTab.CATEGORIES) }, loading = loading) }
-                activeTab == AppTab.ACCOUNT -> AccountLoginScreen(
-                    padding = padding,
-                    vm = accountViewModel,
-                    openLoginOnStart = returnToCartAfterLogin,
-                    initialOrderId = pushOrderId,
-                    onAuthenticated = {
-                        if (returnToCartAfterLogin) {
-                            returnToCartAfterLogin = false
-                            if (!popToTab(AppTab.CART)) navigateTo(AppTab.CART)
-                        }
-                    },
-                    onBackFromLogin = if (returnToCartAfterLogin) {
-                        {
-                            returnToCartAfterLogin = false
-                            if (!popToTab(AppTab.CART)) navigateTo(AppTab.CART)
-                        }
-                    } else null
-                )
-                else -> saveableStateHolder.SaveableStateProvider("CART") { CartScreen(
-                    cart = remoteCart,
-                    state = cartState,
-                    error = cartError,
-                    padding = padding,
-                    updateQuantity = viewModel::updateCartQuantity,
-                    canIncrease = viewModel::canIncreaseCart,
-                    increment = viewModel::cartIncrement,
-                    removeLine = viewModel::removeCartLine,
-                    clearCart = viewModel::clearCart,
-                    openLine = viewModel::openCartLine,
-                    retry = viewModel::refreshCart,
-                    onCheckout = { checkoutOpen = true },
-                    accountUserId = accountUser?.id,
-                    onLogin = {
-                        returnToCartAfterLogin = true
-                        navigateTo(AppTab.ACCOUNT)
-                    },
-                ) }
-            }
-    }
-
     MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF183B35), secondary = Color(0xFFD18162))) {
         Crossfade(
             targetState = showStartupBranding,
@@ -439,24 +293,104 @@ private fun CriosRangoApp(
             if (brandingVisible) {
                 StartupBranding()
             } else Surface(Modifier.fillMaxSize(), color = Color(0xFFFCFAF7)) {
-            NavHost(
-                navController = navController,
-                startDestination = "home",
-                modifier = Modifier.fillMaxSize()
-            ) {
-                composable("home") { RenderDestination(AppTab.HOME) }
-                composable("categories") { RenderDestination(AppTab.CATEGORIES) }
-                composable("outlet") { RenderDestination(AppTab.OUTLET) }
-                composable("search") { RenderDestination(AppTab.SEARCH) }
-                composable("cart") { RenderDestination(AppTab.CART) }
-                composable("account") { RenderDestination(AppTab.ACCOUNT) }
-                composable("product") {
-                    androidx.compose.runtime.DisposableEffect(Unit) {
-                        onDispose { viewModel.closeProduct() }
+            if (checkoutOpen) {
+                RedesignedCheckoutScreen(
+                    remoteCart,
+                    checkout,
+                    checkoutLoading,
+                    checkoutError,
+                    checkoutPhase,
+                    { checkoutOpen = false; viewModel.abandonCheckout() },
+                    remoteCart.itemsCount,
+                    { checkoutOpen = false; viewModel.abandonCheckout(); tab = AppTab.SEARCH },
+                    { checkoutOpen = false; viewModel.abandonCheckout(); tab = AppTab.CART },
+                    viewModel::loadCheckout,
+                    viewModel::selectShippingRate,
+                    viewModel::createOrder,
+                    viewModel.deliveryAddressStore
+                )
+            } else if (selectedProduct != null) {
+                ProductDetail(
+                    product = selectedProduct!!,
+                    variation = selectedVariation,
+                    cartItems = cartItems,
+                    loadVariation = viewModel::loadVariation,
+                    onBack = viewModel::closeProduct,
+                    onCart = { tab = AppTab.CART; viewModel.closeProduct() },
+                    onSearch = { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH; viewModel.closeProduct() },
+                    onAdd = viewModel::addToCart
+                )
+            } else Scaffold(
+                containerColor = MaterialTheme.colorScheme.background,
+                topBar = { StoreTopBar(remoteCart.itemsCount, { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH }, { tab = AppTab.CART }) },
+                bottomBar = {
+                    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
+                        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            listOf(AppTab.HOME, AppTab.CATEGORIES, AppTab.OUTLET, AppTab.CART, AppTab.ACCOUNT).forEach { item ->
+                                val selected = tab == item
+                                val itemColor = if (selected) Color(0xFF28252A) else Color(0xFF777277)
+                                Column(Modifier.weight(1f).fillMaxHeight().clickable {
+                                    selectedBrand = null; showAllBrands = false
+                                    if (item == AppTab.CATEGORIES) categoryPath.clear()
+                                    if (item == AppTab.OUTLET) { outletSeasonFilter = null; categoryPath.clear(); categoryPath += 445 }
+                                    tab = item
+                                }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                    Icon(imageVector = if (selected) when (item) { AppTab.HOME -> Icons.Default.Home; AppTab.CATEGORIES -> Icons.Default.Category; AppTab.OUTLET -> Icons.Default.LocalOffer; AppTab.SEARCH -> Icons.Default.Search; AppTab.CART -> Icons.Default.ShoppingBag; AppTab.ACCOUNT -> Icons.Default.Person } else when (item) { AppTab.HOME -> Icons.Outlined.Home; AppTab.CATEGORIES -> Icons.Outlined.Category; AppTab.OUTLET -> Icons.Outlined.LocalOffer; AppTab.SEARCH -> Icons.Outlined.Search; AppTab.CART -> Icons.Outlined.ShoppingBag; AppTab.ACCOUNT -> Icons.Outlined.Person }, contentDescription = item.label, modifier = Modifier.size(24.dp), tint = if (selected) Color.Black else Color(0xFF777277))
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(text = item.label, style = MaterialTheme.typography.labelSmall, color = if (selected) Color.Black else Color(0xFF777277), fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
+                                }
+                            }
+                        }
                     }
-                    RenderDestination(null)
                 }
-            }
+            ) { padding ->
+                when {
+                    error != null && tab != AppTab.ACCOUNT && tab != AppTab.CART && !catalogHasUsableContent(tab, products, homeProducts, activeCategoryProducts) -> StoreErrorState(error!!, padding, viewModel::retryLastOperation)
+                    showAllBrands -> AllBrandsScreen(brands = APP_BRANDS, padding = padding, onBrand = { brand -> brandOrigin = BrandOrigin.ALL_BRANDS; showAllBrands = false; selectedBrand = brand; viewModel.loadBrand(brand) }, onBack = { showAllBrands = false; selectedBrand = null; tab = AppTab.HOME })
+                    selectedBrand != null -> saveableStateHolder.SaveableStateProvider("BRAND:${selectedBrand!!.slug.ifBlank { selectedBrand!!.name.lowercase().trim() }}") { BrandProductsScreen(brand = selectedBrand!!, products = activeBrandProducts, loading = loading, padding = padding, onBack = { selectedBrand = null; when (brandOrigin) { BrandOrigin.HOME -> { showAllBrands = false; tab = AppTab.HOME }; BrandOrigin.ALL_BRANDS -> { showAllBrands = true; tab = AppTab.HOME } } }, onProduct = viewModel::openProduct) }
+                    loading && products.isEmpty() && tab != AppTab.SEARCH && tab != AppTab.CATEGORIES && tab != AppTab.OUTLET -> LoadingState(padding)
+                    tab == AppTab.HOME -> saveableStateHolder.SaveableStateProvider("HOME") { HomeScreen(products = homeProducts, allProducts = products, roots = categories, brands = normalizedBrands, padding = padding, onProduct = viewModel::openProduct, onAllCategories = { categoryPath.clear(); tab = AppTab.CATEGORIES }, onCategory = { category -> categoryPath.clear(); categoryPath += category.id; tab = AppTab.CATEGORIES }, onOutlet = { category -> outletSeasonFilter = null; categoryPath.clear(); categoryPath += category.id; tab = AppTab.OUTLET }, onBrand = { brand -> brandOrigin = BrandOrigin.HOME; selectedBrand = brand; showAllBrands = false; viewModel.loadBrand(brand) }, onAllBrands = { brandOrigin = BrandOrigin.HOME; selectedBrand = null; showAllBrands = true }, onOutletWinter = { outletSeasonFilter = HomeOutletSeason.WINTER; categoryPath.clear(); categoryPath += 445; tab = AppTab.OUTLET }, onOutletSummer = { outletSeasonFilter = HomeOutletSeason.SUMMER; categoryPath.clear(); categoryPath += 445; tab = AppTab.OUTLET }, onOutletAll = { outletSeasonFilter = null; categoryPath.clear(); categoryPath += 445; tab = AppTab.OUTLET }, homeListState = homeListState, showAll = homeShowAll, onShowAllChange = { homeShowAll = it }, isRefreshing = loading, onRefresh = { viewModel.refreshHome() }, onEnterNovedades = { viewModel.refreshHome(); homeShowAll = true }) }
+                    tab == AppTab.CATEGORIES -> saveableStateHolder.SaveableStateProvider("CATEGORY:${categoryPath.joinToString("/")}") { CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = viewModel::openProduct, availabilityStore = outletAvailabilityStore, onRootBack = { categoryPath.clear(); tab = AppTab.HOME }, onOpen = { category: ProductCategory -> categoryPath += category.id }, outletSeasonFilter = null) }
+                    tab == AppTab.OUTLET -> saveableStateHolder.SaveableStateProvider("OUTLET:${outletSeasonFilter?.name ?: "ALL"}:${categoryPath.joinToString("/")}") { CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = viewModel::openProduct, availabilityStore = outletAvailabilityStore, onRootBack = { categoryPath.clear(); outletSeasonFilter = null; tab = AppTab.HOME }, onOpen = { category: ProductCategory -> categoryPath += category.id; tab = AppTab.OUTLET }, outletSeasonFilter = outletSeasonFilter, onSingleLevelBack = if (outletSeasonFilter != null) { { outletSeasonFilter = null } } else { { categoryPath.clear(); tab = AppTab.HOME } }) }
+                    tab == AppTab.SEARCH -> saveableStateHolder.SaveableStateProvider("SEARCH") { SearchScreen(products = products, allProducts = homeProducts, categories = categories, brands = normalizedBrands, padding = padding, search = viewModel::search, onProduct = viewModel::openProduct, onCategory = { category -> categoryPath.clear(); categoryPath += category.id; tab = AppTab.CATEGORIES }, loading = loading) }
+                    tab == AppTab.ACCOUNT -> AccountLoginScreen(
+                        padding = padding,
+                        vm = accountViewModel,
+                        openLoginOnStart = returnToCartAfterLogin,
+                        initialOrderId = pushOrderId,
+                        onAuthenticated = {
+                            if (returnToCartAfterLogin) {
+                                returnToCartAfterLogin = false
+                                tab = AppTab.CART
+                            }
+                        },
+                        onBackFromLogin = if (returnToCartAfterLogin) {
+                            {
+                                returnToCartAfterLogin = false
+                                tab = AppTab.CART
+                            }
+                        } else null
+                    )
+                    else -> saveableStateHolder.SaveableStateProvider("CART") { CartScreen(
+                        cart = remoteCart,
+                        state = cartState,
+                        error = cartError,
+                        padding = padding,
+                        updateQuantity = viewModel::updateCartQuantity,
+                        canIncrease = viewModel::canIncreaseCart,
+                        increment = viewModel::cartIncrement,
+                        removeLine = viewModel::removeCartLine,
+                        clearCart = viewModel::clearCart,
+                        openLine = viewModel::openCartLine,
+                        retry = viewModel::refreshCart,
+                        onCheckout = { checkoutOpen = true },
+                        accountUserId = accountUser?.id,
+                        onLogin = {
+                            returnToCartAfterLogin = true
+                            tab = AppTab.ACCOUNT
+                        },
+                    ) }
+                }
             }
         }
     }
@@ -475,13 +409,13 @@ private fun CriosRangoApp(
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.consumeCardPaymentResult()
-                    if (result.paid == true) { checkoutOpen = false; navigateTo(AppTab.HOME) }
+                    if (result.paid == true) { checkoutOpen = false; tab = AppTab.HOME }
                 }) { Text(if (result.paid == true) "Seguir comprando" else "Volver al carrito") }
             }
         )
     } }
     bizumOrderId?.let { orderId ->
-        val closeBizumConfirmation = { viewModel.consumeBizumOrder(); checkoutOpen = false; navigateTo(AppTab.HOME); viewModel.refreshCart() }
+        val closeBizumConfirmation = { viewModel.consumeBizumOrder(); checkoutOpen = false; tab = AppTab.HOME; viewModel.refreshCart() }
         androidx.compose.material3.AlertDialog(onDismissRequest = closeBizumConfirmation, title = { androidx.compose.material3.Text("Pedido recibido") }, text = { androidx.compose.material3.Text("Tu pedido #$orderId ha sido recibido.\n\nRealiza el pago por Bizum al 679 97 28 88 y utiliza el número de pedido como referencia de pago.\n\nTu pedido no se procesará hasta que se haya recibido el importe.") }, confirmButton = { androidx.compose.material3.TextButton(onClick = closeBizumConfirmation) { androidx.compose.material3.Text("Seguir comprando") } })
     }
     LaunchedEffect(paymentReturnUri) {
@@ -497,7 +431,7 @@ private fun CriosRangoApp(
                     if (orderId != null) {
                         viewModel.handleCardPaymentCancelled(orderId)
                         checkoutOpen = false
-                        navigateTo(AppTab.CART)
+                        tab = AppTab.CART
                     }
                 }
                 "ok" -> viewModel.verifyCardPaymentReturn()

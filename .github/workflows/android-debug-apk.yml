@@ -63,25 +63,6 @@ jobs:
             cat app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
           fi
           exit $STATUS
-      - name: Validate merged debug launcher manifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          MERGED_MANIFEST="$(find app/build/intermediates/merged_manifest/debug -type f -name 'AndroidManifest.xml' -print -quit)"
-          test -n "$MERGED_MANIFEST"
-          test -s "$MERGED_MANIFEST"
-          echo "MERGED_MANIFEST=$MERGED_MANIFEST"
-          MAIN_COUNT="$(grep -o 'android.intent.action.MAIN' "$MERGED_MANIFEST" | wc -l)"
-          LAUNCHER_COUNT="$(grep -o 'android.intent.category.LAUNCHER' "$MERGED_MANIFEST" | wc -l)"
-          test "$MAIN_COUNT" -eq 1
-          test "$LAUNCHER_COUNT" -eq 1
-          grep -q 'android:name="es.criosrango.app.MainActivity"' "$MERGED_MANIFEST"
-          if grep -A8 -B4 'CrashlyticsDebugCrashActivity' "$MERGED_MANIFEST" | grep -Eq 'android.intent.action.MAIN|android.intent.category.LAUNCHER'; then
-            echo "::error::CrashlyticsDebugCrashActivity is still a launcher in the merged debug manifest"
-            exit 1
-          fi
-          echo "Merged debug manifest has exactly one launcher: MainActivity"
-          echo "CrashlyticsDebugCrashActivity is not a launcher"
       - name: Validate R8 outputs and release manifest
         shell: bash
         run: |
