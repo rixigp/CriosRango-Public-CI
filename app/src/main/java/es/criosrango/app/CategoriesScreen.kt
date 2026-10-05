@@ -917,7 +917,7 @@ internal fun CategoryList(
                                 onClick = {
                                     onOpen(category)
                                 }
-                        }
+                            )
                     }
                 }
             }
