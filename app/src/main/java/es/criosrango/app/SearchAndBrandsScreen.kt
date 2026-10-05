@@ -660,7 +660,7 @@ internal fun ProductGrid(
             horizontalArrangement =
                 Arrangement.spacedBy(12.dp),
             verticalArrangement =
-                Arrangement.spacedBy(18.dp)
+                Arrangement.spacedBy(14.dp)
         ) {
             items(
                 products,

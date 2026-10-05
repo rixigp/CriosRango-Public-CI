@@ -57,6 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
@@ -227,11 +228,11 @@ private fun IosStoreTopBar(
     onSearch: () -> Unit,
     onCart: () -> Unit
 ) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).statusBarsPadding(), verticalAlignment = Alignment.CenterVertically) {
         Text("Críos&Rango", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
         IconButton(onClick = onSearch) { Text("⌕", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { contentDescription = "Buscar" }) }
         BadgedBox(
-            modifier = Modifier.size(52.dp),
+            modifier = Modifier.size(48.dp).padding(end = 2.dp),
             badge = { if (cartQuantity > 0) Badge { Text(cartQuantity.toString(), maxLines = 1) } }
         ) {
             IconButton(onClick = onCart) { Text("🛍", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { contentDescription = "Carrito" }) }
@@ -504,7 +505,7 @@ private fun IosCartScreen(
 
     LazyColumn(
         Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(20.dp),
+        contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { Text("Tu carrito", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
