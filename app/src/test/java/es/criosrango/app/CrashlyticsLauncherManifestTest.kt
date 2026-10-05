@@ -12,8 +12,8 @@ class CrashlyticsLauncherManifestTest {
         val manifest = File("src/debug/AndroidManifest.xml")
         assertTrue(manifest.isFile, "debug AndroidManifest.xml must exist")
         val xml = manifest.readText()
-        assertTrue(xml.contains("android:name=".CrashlyticsDebugCrashActivity""))
-        assertTrue(xml.contains("android:exported="false""))
+        assertTrue(xml.contains("""android:name=".CrashlyticsDebugCrashActivity""" ))
+        assertTrue(xml.contains("""android:exported="false""" ))
         assertFalse(xml.contains("android.intent.action.MAIN"))
         assertFalse(xml.contains("android.intent.category.LAUNCHER"))
     }
@@ -25,6 +25,6 @@ class CrashlyticsLauncherManifestTest {
         val xml = manifest.readText()
         assertEquals(1, Regex("android.intent.action.MAIN").findAll(xml).count())
         assertEquals(1, Regex("android.intent.category.LAUNCHER").findAll(xml).count())
-        assertTrue(xml.contains("android:name=".MainActivity""))
+        assertTrue(xml.contains("""android:name=".MainActivity""" ))
     }
 }
