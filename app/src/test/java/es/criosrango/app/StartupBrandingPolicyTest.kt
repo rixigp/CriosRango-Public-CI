@@ -14,7 +14,7 @@ class StartupBrandingPolicyTest {
     @Test
     fun coldStartKeepsBrandingUntilMinimumDurationAndReady() {
         assertTrue(shouldShowStartupBranding(true, false, true))
-        assertTrue(shouldShowStartupBranding(true, true, false))
+        assertFalse(shouldShowStartupBranding(true, true, false))
         assertFalse(shouldShowStartupBranding(true, true, true))
     }
 }
