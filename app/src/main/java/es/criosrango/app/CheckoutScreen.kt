@@ -359,7 +359,7 @@ private fun CompactCheckoutTextField(label: String, value: String, error: String
 }
 
 @Composable
-private fun checkoutFieldColors() = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF183B35), unfocusedBorderColor = Color(0xFF8A858A), focusedLabelColor = Color.Transparent, unfocusedLabelColor = Color.Transparent, cursorColor = Color(0xFF183B35))
+private fun checkoutFieldColors() = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF183B35), unfocusedBorderColor = Color(0xFF8A858A), focusedLabelColor = Color(0xFF183B35), unfocusedLabelColor = Color(0xFF777277), cursorColor = Color(0xFF183B35))
 
 @Composable
 private fun CheckoutPaymentOption(
