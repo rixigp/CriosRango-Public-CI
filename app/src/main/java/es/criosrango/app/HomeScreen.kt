@@ -880,7 +880,8 @@ internal fun approvedCategoryName(category: ProductCategory): String {
 @Composable
 internal fun ApprovedCategoryCell(
     category: ProductCategory,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    imageScale: Float = 1.16f
 ) {
     val imageRes = categoryImageRes(category)
 
@@ -903,7 +904,7 @@ internal fun ApprovedCategoryCell(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(1.dp)
-                        .scale(1.16f),
+                        .scale(imageScale),
                     contentScale = ContentScale.Fit
                 )
             } else {

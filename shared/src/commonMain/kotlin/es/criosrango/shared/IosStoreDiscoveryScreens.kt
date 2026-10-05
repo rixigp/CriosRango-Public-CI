@@ -503,7 +503,7 @@ private fun IosPagedProductScreen(
     LaunchedEffect(queryKey){paginator.start(queryKey){p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}
     LaunchedEffect(grid,state.items.size,state.hasMore){snapshotFlow{grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index?:-1}.collect{last->if(state.hasMore&&!state.isInitialLoading&&!state.isAppending&&last>=state.items.size-CatalogPaginator.PREFETCH_DISTANCE)paginator.loadNext{p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}}
     Column(Modifier.fillMaxSize().padding(padding)){
-        if(title.isNotBlank())Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=6.dp),verticalAlignment=Alignment.CenterVertically){TextButton(onClick=onBack){Text("Atrás")};Text(title,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)}
+        if(title.isNotBlank())Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=2.dp),verticalAlignment=Alignment.CenterVertically){TextButton(onClick=onBack){Text("Atrás")};Text(title,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)}
         if (enableProductControls && state.items.isNotEmpty()) {
             if (activeFilterCount > 0) {
                 FlowRow(
@@ -576,7 +576,7 @@ private fun IosPagedProductScreen(
             state.isInitialLoading->IosStoreLoading()
             state.initialError!=null->IosStoreError(state.initialError!!.message?:"No se ha podido cargar."){paginator.start(queryKey){p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}
             state.items.isEmpty()->IosStoreEmpty(emptyMessage,onEmptyAction,emptyActionLabel)
-            else->Column { headerContent?.invoke(this); LazyVerticalGrid(columns=GridCells.Fixed(2),state=grid,contentPadding=PaddingValues(start=12.dp,top=6.dp,end=12.dp,bottom=24.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+            else->Column { headerContent?.invoke(this); LazyVerticalGrid(columns=GridCells.Fixed(2),state=grid,contentPadding=PaddingValues(start=12.dp,top=4.dp,end=12.dp,bottom=28.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
                 items(transform(displayedItems),key={it.id}){IosProductCard(it,onProduct,cartStore)}
                 if(state.isAppending)item(span={GridItemSpan(maxLineSpan)}){IosStoreLoading()}
                 state.appendError?.let{e->item(span={GridItemSpan(maxLineSpan)}){IosStoreError(e.message?:"Error"){paginator.loadNext{p,n->val items=load(p,n);CatalogPage(items,items.size>=n)}}}}

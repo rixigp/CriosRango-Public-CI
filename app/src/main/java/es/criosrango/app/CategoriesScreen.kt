@@ -911,7 +911,8 @@ internal fun CategoryList(
                                 category = category,
                                 onClick = {
                                     onOpen(category)
-                                }
+                                },
+                                imageScale = 1f
                             )
                         }
                     }
@@ -1229,10 +1230,10 @@ else -> null
 }
 
 internal object CategoryGridTokens {
-    val referenceImage = 104.dp
-    val fullScreenImage = 96.dp
-    val fullScreenCellHeight = 150.dp
-    val rowSpacing = 12.dp
+    val homeReferenceImage = 100.dp
+    val catalogImage = 100.dp
+    val catalogCellHeight = 136.dp
+    val rowSpacing = 10.dp
 }
 
 @Composable
@@ -1251,8 +1252,8 @@ internal fun CategoryCard(
 
     Column(
         modifier = modifier
-            .widthIn(max = CategoryGridTokens.fullScreenImage)
-            .height(CategoryGridTokens.fullScreenCellHeight)
+            .widthIn(max = CategoryGridTokens.catalogImage)
+            .height(CategoryGridTokens.catalogCellHeight)
             .clickable {
                 onOpen(category)
             },
@@ -1263,7 +1264,7 @@ internal fun CategoryCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(CategoryGridTokens.fullScreenImage),
+                .height(CategoryGridTokens.catalogImage),
             contentAlignment =
                 Alignment.Center
         ) {

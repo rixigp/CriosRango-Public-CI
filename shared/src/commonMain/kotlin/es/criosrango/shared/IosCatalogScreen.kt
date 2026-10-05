@@ -85,7 +85,7 @@ internal fun IosCategoryRoot(
             .onFailure { error = it.message ?: "No se han podido cargar las categorías."; loading = false }
     }
     Column(Modifier.fillMaxSize().padding(padding)) {
-        Text("Categorías", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(20.dp))
+        Text("Categorías", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
         when {
             loading -> IosStoreLoading()
             error != null -> IosStoreError(error!!) { loading = true; error = null }
@@ -135,7 +135,7 @@ internal fun IosCategoryPage(
 
     Column(Modifier.fillMaxSize().padding(padding)) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             TextButton(onClick = onBack) { Text("Atrás") }
@@ -150,11 +150,11 @@ internal fun IosCategoryPage(
             }
             categories == null -> IosStoreLoading()
             children.isNotEmpty() -> LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
+                columns = GridCells.Fixed(3),
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                contentPadding = PaddingValues(start = 20.dp, top = 4.dp, end = 20.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(children, key = { it.id }) { child ->
                     Button(onClick = { onOpenCategory(child) }) {
