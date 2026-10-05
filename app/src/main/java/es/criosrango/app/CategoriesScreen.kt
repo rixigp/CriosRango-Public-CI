@@ -1463,6 +1463,15 @@ internal fun CatalogFilteredProductGrid(
                 }
             )
         }
+        ActiveFilterChips(
+            filters = activeFilterChips,
+            onClearAll = {
+                selectedSizes = emptySet()
+                selectedColors = emptySet()
+                if (allowBrandFilter) selectedBrands = emptySet()
+            }
+        )
+
         Row(
             Modifier
                 .fillMaxWidth()
@@ -1477,15 +1486,6 @@ internal fun CatalogFilteredProductGrid(
                 }
             }
         }
-        ActiveFilterChips(
-            filters = activeFilterChips,
-            onClearAll = {
-                selectedSizes = emptySet()
-                selectedColors = emptySet()
-                if (allowBrandFilter) selectedBrands = emptySet()
-            }
-        )
-
         ProductGrid(
             products = filtered,
             modifier = Modifier.weight(1f),

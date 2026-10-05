@@ -399,7 +399,7 @@ internal fun IosCategoryProducts(
 
     Column(Modifier.fillMaxSize().padding(padding)) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             TextButton(onClick = onBack) { Text("Atrás") }
@@ -407,40 +407,13 @@ internal fun IosCategoryProducts(
                 category.name,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
+                maxLines = 1,\n                overflow = TextOverflow.Ellipsis,\n                modifier = Modifier.weight(1f)
             )
-        }
-
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Ordenar por", style = MaterialTheme.typography.bodyMedium)
-                Box {
-                    var sortExpanded by remember(category.id) { mutableStateOf(false) }
-                    TextButton(onClick = { sortExpanded = true }) {
-                        Text("\${sortMode.label}  ▾")
-                    }
-                    DropdownMenu(
-                        expanded = sortExpanded,
-                        onDismissRequest = { sortExpanded = false }
-                    ) {
-                        IosCatalogSortMode.values().forEach { option ->
-                            DropdownMenuItem(
-                                text = { Text(option.label) },
-                                onClick = {
-                                    sortExpanded = false
-                                    sortMode = option
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-            OutlinedButton(onClick = { filtersOpen = true }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
-                Text(if (activeFilterCount == 0) "Filtros" else "Filtros (\$activeFilterCount)")
+            OutlinedButton(
+                onClick = { filtersOpen = true },
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                Text(if (activeFilterCount == 0) "Filtros" else "Filtros ($activeFilterCount)")
             }
         }
 
