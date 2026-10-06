@@ -265,6 +265,12 @@ private fun CriosRangoApp(
     val startupReady = !initialLoading || error != null
     val showStartupBranding = shouldShowStartupBranding(coldStartBranding, startupMinimumDurationReached, startupReady)
 
+    // Native Android Back reuses the exact checkout visual-back callback. Other screens already own their BackHandler; Home/Cart fall through to Android default.
+    BackHandler(enabled = checkoutOpen && !showStartupBranding) {
+        checkoutOpen = false
+        viewModel.abandonCheckout()
+    }
+
     LaunchedEffect(showStartupBranding) {
         if (showStartupBranding) return@LaunchedEffect
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return@LaunchedEffect
