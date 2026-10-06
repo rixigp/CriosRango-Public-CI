@@ -222,7 +222,16 @@ private fun CriosRangoApp(
     val activeBrandProducts by viewModel.activeBrandProducts.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(AppTab.HOME) }
+    var utilityReturnTab by remember { mutableStateOf<AppTab?>(null) }
+    var accountRootBackAvailable by remember { mutableStateOf(false) }
     var returnToCartAfterLogin by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+
+    fun openUtilityTab(destination: AppTab) {
+        if (tab != AppTab.CART && tab != AppTab.ACCOUNT) {
+            utilityReturnTab = tab
+        }
+        tab = destination
+    }
     var homeShowAll by remember { mutableStateOf(false) }
 
     LaunchedEffect(pushType, pushOrderId) {
@@ -269,6 +278,14 @@ private fun CriosRangoApp(
     BackHandler(enabled = checkoutOpen && !showStartupBranding) {
         checkoutOpen = false
         viewModel.abandonCheckout()
+    }
+
+    BackHandler(
+        enabled = !checkoutOpen && selectedProduct == null &&
+            ((tab == AppTab.CART) || (tab == AppTab.ACCOUNT && accountRootBackAvailable))
+    ) {
+        tab = utilityReturnTab ?: AppTab.HOME
+        utilityReturnTab = null
     }
 
     LaunchedEffect(showStartupBranding) {
@@ -322,13 +339,13 @@ private fun CriosRangoApp(
                     cartItems = cartItems,
                     loadVariation = viewModel::loadVariation,
                     onBack = viewModel::closeProduct,
-                    onCart = { tab = AppTab.CART; viewModel.closeProduct() },
+                    onCart = { openUtilityTab(AppTab.CART); viewModel.closeProduct() },
                     onSearch = { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH; viewModel.closeProduct() },
                     onAdd = viewModel::addToCart
                 )
             } else Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
-                topBar = { StoreTopBar(remoteCart.itemsCount, { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH }, { tab = AppTab.CART }) },
+                topBar = { StoreTopBar(remoteCart.itemsCount, { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH }, { openUtilityTab(AppTab.CART) }) },
                 bottomBar = {
                     Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
                         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -339,7 +356,7 @@ private fun CriosRangoApp(
                                     selectedBrand = null; showAllBrands = false
                                     if (item == AppTab.CATEGORIES) categoryPath.clear()
                                     if (item == AppTab.OUTLET) { outletSeasonFilter = null; categoryPath.clear(); categoryPath += 445 }
-                                    tab = item
+                                    if (item == AppTab.CART || item == AppTab.ACCOUNT) openUtilityTab(item) else tab = item
                                 }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                                     Icon(imageVector = if (selected) when (item) { AppTab.HOME -> Icons.Default.Home; AppTab.CATEGORIES -> Icons.Default.Category; AppTab.OUTLET -> Icons.Default.LocalOffer; AppTab.SEARCH -> Icons.Default.Search; AppTab.CART -> Icons.Default.ShoppingBag; AppTab.ACCOUNT -> Icons.Default.Person } else when (item) { AppTab.HOME -> Icons.Outlined.Home; AppTab.CATEGORIES -> Icons.Outlined.Category; AppTab.OUTLET -> Icons.Outlined.LocalOffer; AppTab.SEARCH -> Icons.Outlined.Search; AppTab.CART -> Icons.Outlined.ShoppingBag; AppTab.ACCOUNT -> Icons.Outlined.Person }, contentDescription = item.label, modifier = Modifier.size(24.dp), tint = if (selected) Color.Black else Color(0xFF777277))
                                     Spacer(Modifier.height(2.dp))
@@ -364,6 +381,7 @@ private fun CriosRangoApp(
                         vm = accountViewModel,
                         openLoginOnStart = returnToCartAfterLogin,
                         initialOrderId = pushOrderId,
+                        onRootBackAvailable = { accountRootBackAvailable = it },
                         onAuthenticated = {
                             if (returnToCartAfterLogin) {
                                 returnToCartAfterLogin = false
@@ -393,7 +411,7 @@ private fun CriosRangoApp(
                         accountUserId = accountUser?.id,
                         onLogin = {
                             returnToCartAfterLogin = true
-                            tab = AppTab.ACCOUNT
+                            openUtilityTab(AppTab.ACCOUNT)
                         },
                     ) }
                 }

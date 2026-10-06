@@ -55,7 +55,8 @@ fun AccountLoginScreen(
     openLoginOnStart: Boolean = false,
     initialOrderId: Int? = null,
     onAuthenticated: (() -> Unit)? = null,
-    onBackFromLogin: (() -> Unit)? = null
+    onBackFromLogin: (() -> Unit)? = null,
+    onRootBackAvailable: (Boolean) -> Unit = {}
 ) {
     val authState by vm.authState.collectAsStateWithLifecycle()
     val user by vm.user.collectAsStateWithLifecycle()
@@ -77,6 +78,8 @@ fun AccountLoginScreen(
     var accountSection by remember(currentUser?.id) { mutableStateOf(AccountSection.HOME) }
     var selectedOrderId by remember { mutableStateOf<Int?>(initialOrderId) }
     val selectedOrder = orders.firstOrNull { it.id == selectedOrderId }
+    val accountRootBackAvailable = selectedInfoPage == null && selectedOrder == null && !showLogin && accountSection == AccountSection.HOME
+    SideEffect { onRootBackAvailable(accountRootBackAvailable) }
     val leaveLogin: () -> Unit = {
         when (accountAuthBackDestination(AccountAuthDestination.LOGIN, returnToCartAfterLogin = onBackFromLogin != null)) {
             AccountAuthDestination.CART -> onBackFromLogin?.invoke()
@@ -142,6 +145,11 @@ fun AccountLoginScreen(
             )
         }
         return
+    }
+
+    BackHandler(enabled = selectedInfoPage != null && selectedOrder == null) {
+        selectedInfoPage = null
+        accountSection = AccountSection.HOME
     }
 
     if (selectedInfoPage != null && selectedOrder == null) {
