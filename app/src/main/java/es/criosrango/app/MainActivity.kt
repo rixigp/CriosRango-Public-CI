@@ -258,7 +258,7 @@ private fun CriosRangoApp(
     var startupMinimumDurationReached by remember(coldStartBranding) { mutableStateOf(!coldStartBranding) }
     LaunchedEffect(coldStartBranding) {
         if (coldStartBranding) {
-            delay(3_000)
+            delay(2_000)
             startupMinimumDurationReached = true
         }
     }
