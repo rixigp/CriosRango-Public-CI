@@ -66,11 +66,12 @@ class AccountRepositoryTest {
     @Test
     fun loginSuccess_persistsTokenAndReturnsUser() = runBlocking {
         val store = FakeAccountTokenStore()
-        val repo = AccountRepository(store, client(body = """{"token":"tok-1","user":{"id":7,"email":"a@b.es","display_name":"Ana"}}"""))
+        val repo = AccountRepository(store, client(body = """{"token":"tok-1","user":{"id":7,"email":"a@b.es","display_name":"Ana","birth_date":"1990-02-03"}}"""))
         val user = repo.login("  ana  ", "secret")
         assertEquals("tok-1", store.load())
         assertEquals(7, user.id)
         assertEquals("Ana", user.displayName)
+        assertEquals("1990-02-03", user.birthDate)
     }
 
     @Test

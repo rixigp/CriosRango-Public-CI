@@ -44,7 +44,8 @@ class AccountRepository(
         password: String,
         firstName: String,
         lastName: String,
-        phone: String
+        phone: String,
+        birthDate: String? = null
     ): AccountUser {
         val response = client.register(
             AccountRegisterRequest(
@@ -52,7 +53,8 @@ class AccountRepository(
                 password = password,
                 firstName = firstName.trim(),
                 lastName = lastName.trim(),
-                phone = phone.trim()
+                phone = phone.trim(),
+                birthDate = birthDate
             )
         )
         persistToken(response.token)

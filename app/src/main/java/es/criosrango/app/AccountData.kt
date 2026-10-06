@@ -114,9 +114,10 @@ class AccountRepository(context: Context) {
         password: String,
         firstName: String,
         lastName: String,
-        phone: String
+        phone: String,
+        birthDate: String? = null
     ): AccountUser =
-        sharedAccountRepository.register(email, password, firstName, lastName, phone)
+        sharedAccountRepository.register(email, password, firstName, lastName, phone, birthDate)
 
     suspend fun forgotPassword(login: String): String =
         sharedAccountRepository.forgotPassword(login)
@@ -394,7 +395,8 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         lastName: String,
         email: String,
         phone: String,
-        password: String
+        password: String,
+        birthDate: String?
     ) {
         if (firstName.isBlank() || lastName.isBlank()) {
             _error.value = "Introduce tu nombre y apellidos."
@@ -415,7 +417,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
             _error.value = null
             _notice.value = null
             try {
-                val created = repository.registerAccount(email, password, firstName, lastName, phone)
+                val created = repository.registerAccount(email, password, firstName, lastName, phone, birthDate)
                 _user.value = created
                 _authState.value = AccountAuthState.AUTHENTICATED
                 val loadedAddress = try { repository.customerAddress() } catch (exception: Exception) {

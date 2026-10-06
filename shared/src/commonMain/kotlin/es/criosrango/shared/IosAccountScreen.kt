@@ -16,6 +16,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -348,6 +351,7 @@ private fun IosRegisterScreen(
     var firstName by remember { mutableStateOf("") }
     var lastName by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
+    var birthDate by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     AccountForm("Crear cuenta", onBack) {
@@ -355,6 +359,7 @@ private fun IosRegisterScreen(
         OutlinedTextField(lastName, { lastName = it }, label = { Text("Apellidos") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(email, { email = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(phone, { phone = it }, label = { Text("Teléfono") }, modifier = Modifier.fillMaxWidth())
+        BirthDatePickerField(birthDate, { birthDate = it }, modifier = Modifier.fillMaxWidth(), enabled = !busy)
         OutlinedTextField(password, { password = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(
@@ -362,7 +367,7 @@ private fun IosRegisterScreen(
             onClick = {
                 busy = true; error = null
                 scope.launch {
-                    runCatching { repository.register(email, password, firstName, lastName, phone) }
+                    runCatching { repository.register(email, password, firstName, lastName, phone, birthDate) }
                         .onSuccess(onAuthenticated)
                         .onFailure { error = it.message ?: "No se ha podido crear la cuenta." }
                     busy = false
@@ -499,6 +504,13 @@ private fun IosProfileScreen(
     var notice by remember { mutableStateOf<String?>(null) }
     AccountForm("Mi perfil", onBack) {
         Text("Email: " + user?.email.orEmpty())
+        OutlinedTextField(
+            formatBirthDateForDisplay(user?.birthDate).ifBlank { "No indicada" },
+            {},
+            label = { Text("Fecha de nacimiento") },
+            readOnly = true,
+            modifier = Modifier.fillMaxWidth()
+        )
         OutlinedTextField(firstName, { firstName = it }, label = { Text("Nombre") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(lastName, { lastName = it }, label = { Text("Apellidos") }, modifier = Modifier.fillMaxWidth())
         notice?.let { Text(it) }
@@ -833,4 +845,124 @@ private fun FullScreenLoading(text: String) {
         Spacer(Modifier.height(12.dp))
         Text(text)
     }
+}
+
+
+private const val BIRTH_MILLIS_PER_DAY = 86_400_000L
+
+fun birthDateToEpochMillis(value: String?): Long? {
+    val raw = value?.trim().orEmpty()
+    if (!raw.matches(Regex("""\d{4}-\d{2}-\d{2}"""))) return null
+    val year = raw.substring(0, 4).toInt()
+    val month = raw.substring(5, 7).toInt()
+    val day = raw.substring(8, 10).toInt()
+    if (month !in 1..12 || day !in 1..birthDaysInMonth(year, month)) return null
+    return birthDaysFromCivil(year, month, day) * BIRTH_MILLIS_PER_DAY
+}
+
+fun epochMillisToBirthDate(value: Long?): String? {
+    value ?: return null
+    val days = birthFloorDiv(value, BIRTH_MILLIS_PER_DAY)
+    val civil = birthCivilFromDays(days)
+    return civil.year.toString().padStart(4, '0') + "-" +
+        civil.month.toString().padStart(2, '0') + "-" +
+        civil.day.toString().padStart(2, '0')
+}
+
+fun formatBirthDateForDisplay(value: String?): String =
+    value?.takeIf { it.length == 10 && it[4] == '-' && it[7] == '-' }
+        ?.let { it.substring(8, 10) + "/" + it.substring(5, 7) + "/" + it.substring(0, 4) }
+        .orEmpty()
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BirthDatePickerField(
+    birthDate: String?,
+    onBirthDateChanged: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    var open by remember { mutableStateOf(false) }
+    OutlinedTextField(
+        value = formatBirthDateForDisplay(birthDate),
+        onValueChange = {},
+        readOnly = true,
+        enabled = enabled,
+        singleLine = true,
+        label = { Text("Fecha de nacimiento") },
+        placeholder = { Text("DD/MM/YYYY") },
+        modifier = modifier,
+        supportingText = { Text("Úsala para recibir tu sorpresa de cumpleaños.") },
+        trailingIcon = {
+            TextButton(onClick = { open = true }, enabled = enabled) { Text("Elegir") }
+        }
+    )
+    if (open) {
+        val state = androidx.compose.material3.rememberDatePickerState(
+            initialSelectedDateMillis = birthDateToEpochMillis(birthDate)
+        )
+        DatePickerDialog(
+            onDismissRequest = { open = false },
+            confirmButton = {
+                TextButton(
+                    enabled = state.selectedDateMillis != null,
+                    onClick = {
+                        onBirthDateChanged(epochMillisToBirthDate(state.selectedDateMillis))
+                        open = false
+                    }
+                ) { Text("Aceptar") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { onBirthDateChanged(null); open = false }) { Text("Borrar") }
+                    TextButton(onClick = { open = false }) { Text("Cancelar") }
+                }
+            }
+        ) {
+            DatePicker(state = state, showModeToggle = false)
+        }
+    }
+}
+
+private fun birthDaysInMonth(year: Int, month: Int): Int = when (month) {
+    2 -> if (birthIsLeapYear(year)) 29 else 28
+    4, 6, 9, 11 -> 30
+    else -> 31
+}
+
+private fun birthIsLeapYear(year: Int): Boolean =
+    year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+
+private fun birthFloorDiv(value: Long, divisor: Long): Long {
+    val quotient = value / divisor
+    return if (value % divisor < 0) quotient - 1 else quotient
+}
+
+private data class BirthCivilDate(val year: Int, val month: Int, val day: Int)
+
+private fun birthDaysFromCivil(year: Int, month: Int, day: Int): Long {
+    var y = year.toLong()
+    val m = month.toLong()
+    val d = day.toLong()
+    y -= if (m <= 2) 1 else 0
+    val era = if (y >= 0) y / 400 else (y - 399) / 400
+    val yoe = y - era * 400
+    val mp = m + if (m > 2) -3 else 9
+    val doy = (153 * mp + 2) / 5 + d - 1
+    val doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+    return era * 146097 + doe - 719468
+}
+
+private fun birthCivilFromDays(daysSinceEpoch: Long): BirthCivilDate {
+    val z = daysSinceEpoch + 719468
+    val era = if (z >= 0) z / 146097 else (z - 146096) / 146097
+    val doe = z - era * 146097
+    val yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+    var y = yoe + era * 400
+    val doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+    val mp = (5 * doy + 2) / 153
+    val d = doy - (153 * mp + 2) / 5 + 1
+    val m = mp + if (mp < 10) 3 else -9
+    y += if (m <= 2) 1 else 0
+    return BirthCivilDate(y.toInt(), m.toInt(), d.toInt())
 }

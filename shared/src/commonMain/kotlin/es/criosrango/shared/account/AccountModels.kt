@@ -15,7 +15,8 @@ data class AccountRegisterRequest(
     val password: String,
     @SerialName("first_name") val firstName: String,
     @SerialName("last_name") val lastName: String,
-    val phone: String = ""
+    val phone: String = "",
+    @SerialName("birth_date") val birthDate: String? = null
 )
 
 @Serializable
@@ -29,7 +30,8 @@ data class AccountUser(
     val email: String,
     @SerialName("display_name") val displayName: String = "",
     @SerialName("first_name") val firstName: String = "",
-    @SerialName("last_name") val lastName: String = ""
+    @SerialName("last_name") val lastName: String = "",
+    @SerialName("birth_date") val birthDate: String? = null
 )
 
 @Serializable
