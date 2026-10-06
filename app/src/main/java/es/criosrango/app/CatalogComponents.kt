@@ -171,12 +171,14 @@ internal fun CatalogProductListHeader(
     onBack: () -> Unit,
     activeFilters: Int,
     onOpenFilters: () -> Unit,
-    onTitleLongPress: (() -> Unit)? = null
+    onTitleLongPress: (() -> Unit)? = null,
+    bottomPadding: androidx.compose.ui.unit.Dp = CatalogHeaderGeometry.bottomPadding
 ) {
     CatalogScreenHeader(
         title = title,
         onBack = onBack,
         onTitleLongPress = onTitleLongPress,
+        bottomPadding = bottomPadding,
         trailing = {
             OutlinedButton(onClick = onOpenFilters, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
                 Text(if (activeFilters == 0) "Filtros" else "Filtros ($activeFilters)")

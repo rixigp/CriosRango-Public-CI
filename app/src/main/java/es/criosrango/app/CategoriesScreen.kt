@@ -267,7 +267,8 @@ internal fun OutletAwareCatalogGrid(
     headerTitle: String? = null,
     headerOnBack: (() -> Unit)? = null,
     headerOnTitleLongPress: (() -> Unit)? = null,
-    headerContent: (@Composable ColumnScope.() -> Unit)? = null
+    headerContent: (@Composable ColumnScope.() -> Unit)? = null,
+    compactHeaderSpacing: Boolean = false
 ) {
 
     // Solo las categorías finales dentro de Outlet.
@@ -1261,7 +1262,8 @@ internal fun CatalogFilteredProductGrid(
     headerTitle: String? = null,
     headerOnBack: (() -> Unit)? = null,
     headerOnTitleLongPress: (() -> Unit)? = null,
-    headerContent: (@Composable ColumnScope.() -> Unit)? = null
+    headerContent: (@Composable ColumnScope.() -> Unit)? = null,
+    compactHeaderSpacing: Boolean = false
 ) {
     var filtersOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var sortMode by androidx.compose.runtime.saveable.rememberSaveable {
@@ -1335,7 +1337,7 @@ internal fun CatalogFilteredProductGrid(
 
     Column(modifier) {
         if (headerTitle != null && headerOnBack != null) {
-            CatalogProductListHeader(title = headerTitle, onBack = headerOnBack, onTitleLongPress = headerOnTitleLongPress, activeFilters = active, onOpenFilters = { filtersOpen = true })
+            CatalogProductListHeader(title = headerTitle, onBack = headerOnBack, onTitleLongPress = headerOnTitleLongPress, activeFilters = active, onOpenFilters = { filtersOpen = true }, bottomPadding = if (compactHeaderSpacing) 0.dp else CatalogHeaderGeometry.bottomPadding)
         }
         headerContent?.invoke(this)
 
@@ -1351,7 +1353,7 @@ internal fun CatalogFilteredProductGrid(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = CatalogHeaderGeometry.horizontalPadding, vertical = CatalogHeaderGeometry.controlsVerticalPadding),
+                .padding(horizontal = CatalogHeaderGeometry.horizontalPadding, vertical = if (compactHeaderSpacing) 0.dp else CatalogHeaderGeometry.controlsVerticalPadding),
             horizontalArrangement = Arrangement.Start
         ) {
             ProductSortControl(mode = sortMode, onMode = { sortMode = it })

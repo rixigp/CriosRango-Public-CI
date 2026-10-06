@@ -235,7 +235,8 @@ internal fun BrandProductsScreen(
                 pagingKey = brand.slug.trim().lowercase(),
                 allowBrandFilter = false,
                 headerTitle = brand.name,
-                headerOnBack = onBack
+                headerOnBack = onBack,
+                compactHeaderSpacing = true
             )
         }
     }
