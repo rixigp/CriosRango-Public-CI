@@ -1341,14 +1341,16 @@ internal fun CatalogFilteredProductGrid(
         }
         headerContent?.invoke(this)
 
-        ActiveFilterChips(
-            filters = activeFilterChips,
-            onClearAll = {
+        if (activeFilterChips.isNotEmpty()) {
+            ActiveFilterChips(
+                filters = activeFilterChips,
+                onClearAll = {
                 selectedSizes = emptySet()
                 selectedColors = emptySet()
-                if (allowBrandFilter) selectedBrands = emptySet()
-            }
-        )
+                    if (allowBrandFilter) selectedBrands = emptySet()
+                }
+            )
+        }
 
         Row(
             Modifier
