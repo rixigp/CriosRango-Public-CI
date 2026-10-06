@@ -4,6 +4,7 @@ data class BrandTerm(
     val id: Int = 0,
     val name: String,
     val slug: String,
+    val count: Int = 0,
     val imageUrl: String? = null,
     val localLogoRes: Int? = null
 )

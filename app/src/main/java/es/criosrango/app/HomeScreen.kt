@@ -358,7 +358,12 @@ internal fun HomeBrandsSection(
 ) {
     val brandPages = remember(brands) {
         brands
-            .filter { it.name.isNotBlank() }
+            .filter { it.count > 0 && it.name.isNotBlank() }
+            .sortedWith(
+                compareByDescending<BrandTerm> { it.count }
+                    .thenBy { it.name.lowercase(java.util.Locale.ROOT) }
+            )
+            .take(16)
             .chunked(8)
     }
 

@@ -230,6 +230,7 @@ class SharedCatalogStoreApiAdapter(
                         id = brand.id,
                         name = brand.name,
                         slug = brand.slug,
+                        count = brand.count,
                         imageUrl = brand.image?.src?.takeIf { it.isNotBlank() }
                             ?: brand.image?.thumbnail?.takeIf { it.isNotBlank() }
                     ).withPackagedLogoFallback()

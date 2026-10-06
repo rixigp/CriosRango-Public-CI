@@ -249,6 +249,12 @@ internal fun AllBrandsScreen(
     onBrand: (BrandTerm) -> Unit,
     onBack: () -> Unit
 ) {
+    val visibleBrands = remember(brands) {
+        brands
+            .filter { it.count > 0 }
+            .sortedBy { it.name.lowercase(java.util.Locale.ROOT) }
+    }
+
     BackHandler { onBack() }
     Column(
         modifier = Modifier
@@ -276,7 +282,7 @@ internal fun AllBrandsScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(brands, key = { it.slug }) { brand ->
+            items(visibleBrands, key = { it.slug }) { brand ->
                 HomeBrandCard(
                     brand = brand,
                     onClick = { onBrand(brand) },
