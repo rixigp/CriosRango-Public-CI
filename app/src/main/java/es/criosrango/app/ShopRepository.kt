@@ -58,6 +58,8 @@ interface StoreApi {
     suspend fun addCartItem(request: AddCartRequest): WooCart
     suspend fun updateCartItem(key: String, quantity: Int): WooCart
     suspend fun removeCartItem(key: String): WooCart
+    suspend fun applyCoupon(code: String): WooCart
+    suspend fun removeCoupon(code: String): WooCart
 
     suspend fun checkout(): CheckoutResponse
     suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse
@@ -378,6 +380,8 @@ class StoreRepository(private val api: StoreApi) {
     suspend fun createCheckout(request: CreateOrderRequest) = api.createCheckout(request)
     suspend fun selectShippingRate(request: SelectShippingRateRequest) = api.selectShippingRate(request)
     suspend fun updateCustomer(request: UpdateCustomerRequest) = api.updateCustomer(request)
+    suspend fun applyCoupon(code: String) = api.applyCoupon(code)
+    suspend fun removeCoupon(code: String) = api.removeCoupon(code)
 
     suspend fun productWithVariationAvailability(id: Int): StoreProduct =
         api.productWithVariationAvailability(id)
@@ -418,12 +422,17 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
     val state: StateFlow<CartLoadState> = _state.asStateFlow()
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+    private val _couponLoading = MutableStateFlow(false)
+    val couponLoading: StateFlow<Boolean> = _couponLoading.asStateFlow()
+    private val _couponError = MutableStateFlow<String?>(null)
+    val couponError: StateFlow<String?> = _couponError.asStateFlow()
     private val cleanupPendingPreference = "post_purchase_cart_cleanup_pending"
     private val _postPurchaseCartCleanupPending = MutableStateFlow(preferences.getBoolean(cleanupPendingPreference, false))
     val postPurchaseCartCleanupPending: StateFlow<Boolean> = _postPurchaseCartCleanupPending.asStateFlow()
     private var confirmedCart = WooCart()
     private val lineLocks = mutableMapOf<String, Mutex>()
     private val cartMutex = Mutex()
+    private val couponMutationMutex = Mutex()
     private val addGate = CartAddGate()
 
     suspend fun refresh() {
@@ -478,6 +487,54 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
             totals = optimisticTotals,
             itemsCount = confirmedCart.items.sumOf { if (it.key == line.key) quantity else it.quantity }
         )
+    }
+
+    suspend fun applyCoupon(code: String): Boolean {
+        val normalizedCode = code.trim()
+        if (normalizedCode.isEmpty()) {
+            _couponError.value = "No se ha podido aplicar este código de descuento."
+            return false
+        }
+        return couponMutationMutex.withLock {
+            if (_couponLoading.value) return@withLock false
+            _couponLoading.value = true
+            _couponError.value = null
+            try {
+                val response = withTimeout(18_000) { api.applyCoupon(normalizedCode) }
+                if (response.errors.isNotEmpty()) throw CartException(response.errors.joinToString("\n") { it.message })
+                accept(response)
+                true
+            } catch (exception: Exception) {
+                _couponError.value = exception.message?.takeIf(String::isNotBlank) ?: "No se ha podido aplicar este código de descuento."
+                false
+            } finally {
+                _couponLoading.value = false
+            }
+        }
+    }
+
+    suspend fun removeCoupon(code: String): Boolean {
+        val normalizedCode = code.trim()
+        if (normalizedCode.isEmpty()) {
+            _couponError.value = "No se ha podido quitar este código de descuento."
+            return false
+        }
+        return couponMutationMutex.withLock {
+            if (_couponLoading.value) return@withLock false
+            _couponLoading.value = true
+            _couponError.value = null
+            try {
+                val response = withTimeout(18_000) { api.removeCoupon(normalizedCode) }
+                if (response.errors.isNotEmpty()) throw CartException(response.errors.joinToString("\n") { it.message })
+                accept(response)
+                true
+            } catch (exception: Exception) {
+                _couponError.value = exception.message?.takeIf(String::isNotBlank) ?: "No se ha podido quitar este código de descuento."
+                false
+            } finally {
+                _couponLoading.value = false
+            }
+        }
     }
 
     fun clearError() { _error.value = null }
@@ -558,6 +615,7 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
     }
 
     private fun accept(response: WooCart) {
+        _couponError.value = null
         confirmedCart = response.withParentIds()
         _cart.value = confirmedCart
         _state.value = if (confirmedCart.itemsCount == 0) CartLoadState.SUCCESS_EMPTY else CartLoadState.SUCCESS_ITEMS

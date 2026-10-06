@@ -229,6 +229,10 @@ fun CartTotals.consumerShipping(): String = (totalShipping ?: "0").toBigDecimalO
     .add((totalShippingTax ?: "0").toBigDecimalOrZero())
     .toPlainString()
 
+fun CartTotals.consumerDiscount(): String = totalDiscount.toBigDecimalOrZero()
+    .add(totalDiscountTax.toBigDecimalOrZero())
+    .toPlainString()
+
 data class WooCart(
     val items: List<CartLine> = emptyList(),
     val coupons: List<CartCoupon> = emptyList(),
@@ -501,6 +505,10 @@ data class CartCouponTotals(
     @SerializedName("total_discount_tax")
     val totalDiscountTax: String = "0"
 )
+
+fun CartCouponTotals.consumerDiscount(): String = totalDiscount.toBigDecimalOrZero()
+    .add(totalDiscountTax.toBigDecimalOrZero())
+    .toPlainString()
 
 data class CartError(
     val code: String = "",

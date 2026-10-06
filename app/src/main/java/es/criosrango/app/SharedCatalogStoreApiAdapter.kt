@@ -133,6 +133,21 @@ class SharedCatalogStoreApiAdapter(
             throw exception.toAndroidCatalogException()
         }
     }
+
+    override suspend fun applyCoupon(code: String): WooCart = try {
+        Log.d("CriosRangoSharedCart", "CART source=shared operation=APPLY_COUPON")
+        sharedClient.applyCoupon(code).toAndroid()
+    } catch (exception: Exception) {
+        throw exception.toAndroidCatalogException()
+    }
+
+    override suspend fun removeCoupon(code: String): WooCart = try {
+        Log.d("CriosRangoSharedCart", "CART source=shared operation=REMOVE_COUPON")
+        sharedClient.removeCoupon(code).toAndroid()
+    } catch (exception: Exception) {
+        throw exception.toAndroidCatalogException()
+    }
+
     override suspend fun checkout(): CheckoutResponse = try {
         Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=GET")
         sharedClient.checkout().toAndroid()

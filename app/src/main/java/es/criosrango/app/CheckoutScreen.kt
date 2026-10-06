@@ -311,6 +311,14 @@ fun RedesignedCheckoutScreen(
                     cart.items.forEach { line -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(line.name.cleanWooText(), Modifier.weight(1f)); Text("×${line.quantity}", color = Color.Gray) } }
                     HorizontalDivider()
                     CheckoutAmount("Subtotal", formatMinorUnits(cart.totals.consumerSubtotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
+                    if (cart.coupons.isNotEmpty()) {
+                        Text("Cupones aplicados", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        cart.coupons.forEach { coupon -> Text("• " + coupon.label.ifBlank { coupon.code }, style = MaterialTheme.typography.bodySmall, color = Color.Gray) }
+                    }
+                    val discount = cart.totals.consumerDiscount()
+                    if (discount.toLongOrNull()?.let { it > 0L } == true) {
+                        CheckoutAmount("Descuentos", "-" + formatMinorUnits(discount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
+                    }
                     if (ready) {
                         CheckoutAmount("Envío", if (cart.totals.consumerShipping().toBigDecimalOrNull() == BigDecimal.ZERO) "Gratis" else formatMinorUnits(cart.totals.consumerShipping(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
                         CheckoutAmount("Total (IVA incluido)", formatMinorUnits(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), true)

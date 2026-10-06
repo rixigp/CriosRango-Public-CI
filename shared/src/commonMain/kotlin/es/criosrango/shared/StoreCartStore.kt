@@ -28,7 +28,49 @@ class StoreCartStore(
     val state: StateFlow<StoreCartLoadState> = _state.asStateFlow()
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+    private val _couponLoading = MutableStateFlow(false)
+    val couponLoading: StateFlow<Boolean> = _couponLoading.asStateFlow()
+    private val _couponError = MutableStateFlow<String?>(null)
+    val couponError: StateFlow<String?> = _couponError.asStateFlow()
     private val scope = scope
+
+    fun applyCoupon(code: String) {
+        scope.launch {
+            mutex.withLock {
+                if (_couponLoading.value) return@withLock
+                val normalizedCode = code.trim()
+                if (normalizedCode.isEmpty()) {
+                    _couponError.value = "No se ha podido aplicar este código de descuento."
+                    return@withLock
+                }
+                _couponLoading.value = true
+                _couponError.value = null
+                runCatching { api.applyCoupon(normalizedCode) }
+                    .onSuccess { accept(it) }
+                    .onFailure { _couponError.value = it.message?.takeIf(String::isNotBlank) ?: "No se ha podido aplicar este código de descuento." }
+                _couponLoading.value = false
+            }
+        }
+    }
+
+    fun removeCoupon(code: String) {
+        scope.launch {
+            mutex.withLock {
+                if (_couponLoading.value) return@withLock
+                val normalizedCode = code.trim()
+                if (normalizedCode.isEmpty()) {
+                    _couponError.value = "No se ha podido quitar este código de descuento."
+                    return@withLock
+                }
+                _couponLoading.value = true
+                _couponError.value = null
+                runCatching { api.removeCoupon(normalizedCode) }
+                    .onSuccess { accept(it) }
+                    .onFailure { _couponError.value = it.message?.takeIf(String::isNotBlank) ?: "No se ha podido quitar este código de descuento." }
+                _couponLoading.value = false
+            }
+        }
+    }
 
     fun refresh() {
         scope.launch {
@@ -102,6 +144,7 @@ class StoreCartStore(
         _cart.value = cart
         _state.value = if (cart.items.isEmpty()) StoreCartLoadState.SUCCESS_EMPTY else StoreCartLoadState.SUCCESS_ITEMS
         _error.value = null
+        _couponError.value = null
     }
 
     fun clearAfterConfirmedPayment() {

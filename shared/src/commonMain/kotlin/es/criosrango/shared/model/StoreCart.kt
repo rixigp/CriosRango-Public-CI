@@ -68,6 +68,12 @@ data class StoreCartCouponTotals(
     @SerialName("total_discount_tax") val totalDiscountTax: String = "0"
 )
 
+fun StoreCartTotals.consumerDiscount(): String =
+    ((totalDiscount.toLongOrNull() ?: 0L) + (totalDiscountTax.toLongOrNull() ?: 0L)).toString()
+
+fun StoreCartCouponTotals.consumerDiscount(): String =
+    ((totalDiscount.toLongOrNull() ?: 0L) + (totalDiscountTax.toLongOrNull() ?: 0L)).toString()
+
 @Serializable
 data class StoreCartVariation(
     val attribute: String = "",

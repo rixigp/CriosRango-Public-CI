@@ -8,19 +8,20 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.verticalScroll
-import java.math.BigDecimal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.model.CustomerAddress
 import es.criosrango.shared.model.supportedPaymentOptions
+import es.criosrango.shared.model.consumerDiscount
 
 @Composable
 fun IosCheckoutScreen(
@@ -102,11 +103,11 @@ fun IosCheckoutScreen(
         StoreCardPaymentState.RECONCILING
     )
     val checkoutBusy = phase == StoreCheckoutPhase.LOADING || phase == StoreCheckoutPhase.CREATING_ORDER
-    val subtotalMinor = cart.totals.totalItems.toBigDecimalOrNull() ?: BigDecimal.ZERO
+    val subtotalMinor = cart.totals.totalItems.toLongOrNull() ?: 0L
     val scale = cart.totals.currencyMinorUnit
-    val freeThreshold = BigDecimal("50").movePointRight(scale)
-    val remaining = (freeThreshold - subtotalMinor).max(BigDecimal.ZERO)
-    val freeMessage = if (subtotalMinor >= freeThreshold) "¡Ya tienes envío gratis!" else "Te faltan " + formatStorePrice(remaining.toBigInteger().toString(), scale, cart.totals.currencySymbol) + " para conseguir envío gratis"
+    val freeThreshold = 50L * pow10(scale)
+    val remaining = (freeThreshold - subtotalMinor).coerceAtLeast(0L)
+    val freeMessage = if (subtotalMinor >= freeThreshold) "¡Ya tienes envío gratis!" else "Te faltan " + formatStorePrice(remaining.toString(), scale, cart.totals.currencySymbol) + " para conseguir envío gratis"
 
     val canSubmit = cart.items.isNotEmpty() &&
         phase == StoreCheckoutPhase.READY &&
@@ -240,6 +241,14 @@ fun IosCheckoutScreen(
                 }
                 HorizontalDivider()
                 CheckoutAmount("Subtotal", formatStorePrice(cart.totals.totalItems, cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
+                if (cart.coupons.isNotEmpty()) {
+                    Text("Cupones aplicados", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    cart.coupons.forEach { coupon -> Text("• " + coupon.label.ifBlank { coupon.code }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+                val discount = cart.totals.consumerDiscount()
+                if (discount.toLongOrNull()?.let { it > 0L } == true) {
+                    CheckoutAmount("Descuentos", "-" + formatStorePrice(discount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
+                }
                 val shipping = cart.totals.totalShipping
                 CheckoutAmount(
                     "Envío",
@@ -387,3 +396,5 @@ private fun CheckoutAmount(label: String, value: String, strong: Boolean = false
         Text(value, fontWeight = if (strong) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal)
     }
 }
+
+private fun pow10(exponent: Int): Long = (1..exponent.coerceAtLeast(0)).fold(1L) { acc, _ -> acc * 10L }

@@ -196,6 +196,8 @@ private fun CriosRangoApp(
     val remoteCart by viewModel.cartStore.cart.collectAsStateWithLifecycle()
     val cartState by viewModel.cartStore.state.collectAsStateWithLifecycle()
     val cartError by viewModel.cartStore.error.collectAsStateWithLifecycle()
+    val couponLoading by viewModel.cartStore.couponLoading.collectAsStateWithLifecycle()
+    val couponError by viewModel.cartStore.couponError.collectAsStateWithLifecycle()
     val checkout by viewModel.checkout.collectAsStateWithLifecycle()
     val checkoutError by viewModel.checkoutError.collectAsStateWithLifecycle()
     val checkoutLoading by viewModel.checkoutLoading.collectAsStateWithLifecycle()
@@ -408,6 +410,10 @@ private fun CriosRangoApp(
                         openLine = viewModel::openCartLine,
                         retry = viewModel::refreshCart,
                         onCheckout = { checkoutOpen = true },
+                        couponLoading = couponLoading,
+                        couponError = couponError,
+                        applyCoupon = viewModel::applyCoupon,
+                        removeCoupon = viewModel::removeCoupon,
                         accountUserId = accountUser?.id,
                         onLogin = {
                             returnToCartAfterLogin = true

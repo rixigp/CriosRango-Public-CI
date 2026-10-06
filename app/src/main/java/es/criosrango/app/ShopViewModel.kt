@@ -425,6 +425,17 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     fun canIncreaseCart(item: CartLine): Boolean = item.quantityLimits?.maximum?.takeUnless { it == 9999 }?.let { item.quantity < it } ?: true
     fun cartIncrement(item: CartLine): Int = item.quantityLimits?.multipleOf?.takeIf { it > 0 } ?: 1
     fun removeCartLine(item: CartLine) { invalidateCheckout(); viewModelScope.launch { cartStore.remove(item) } }
+
+    fun applyCoupon(code: String) {
+        invalidateCheckout()
+        viewModelScope.launch { cartStore.applyCoupon(code) }
+    }
+
+    fun removeCoupon(code: String) {
+        invalidateCheckout()
+        viewModelScope.launch { cartStore.removeCoupon(code) }
+    }
+
     fun clearCart() {
         invalidateCheckout()
         viewModelScope.launch { cartStore.cart.value.items.toList().forEach { item -> cartStore.remove(item) } }

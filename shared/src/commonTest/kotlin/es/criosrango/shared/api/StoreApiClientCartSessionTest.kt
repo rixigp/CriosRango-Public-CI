@@ -65,8 +65,10 @@ class StoreApiClientCartSessionTest {
         api.addCartItem(StoreCartRequest(id = 10, quantity = 1))
         api.updateCartItem("line-key", 2)
         api.removeCartItem("line-key")
+        api.applyCoupon(" SAVE10 ")
+        api.removeCoupon("SAVE10")
 
-        assertEquals(4, requests.size)
+        assertEquals(6, requests.size)
         assertTrue(requests.all { it.headers["Cart-Token"] == "cart-updated" || it.headers["Cart-Token"] == "cart-initial" })
         assertTrue(requests.drop(1).all { it.headers["Cart-Token"] == "cart-updated" })
         assertTrue(requests.drop(1).all { it.headers["Nonce"] == "nonce-updated" })
@@ -78,6 +80,10 @@ class StoreApiClientCartSessionTest {
         assertEquals("/wp-json/wc/store/v1/cart/add-item", requests[1].url.encodedPath)
         assertEquals("/wp-json/wc/store/v1/cart/update-item", requests[2].url.encodedPath)
         assertEquals("/wp-json/wc/store/v1/cart/remove-item", requests[3].url.encodedPath)
+        assertEquals("/wp-json/wc/store/v1/cart/apply-coupon", requests[4].url.encodedPath)
+        assertEquals("SAVE10", requests[4].url.parameters["code"])
+        assertEquals("/wp-json/wc/store/v1/cart/remove-coupon", requests[5].url.encodedPath)
+        assertEquals("SAVE10", requests[5].url.parameters["code"])
         client.close()
     }
 
@@ -111,4 +117,30 @@ class StoreApiClientCartSessionTest {
         assertEquals("woocommerce_cart_hash=hash-persisted", requests.single().headers["Cookie"])
         client.close()
     }
+
+    @Test
+    fun couponHttpErrorRemainsStoreApiException() = runTest {
+        val engine = MockEngine {
+            respond(
+                """{"code":"woocommerce_rest_invalid_coupon","message":"Cupón no válido."}""",
+                HttpStatusCode.BadRequest,
+                headersOf(HttpHeaders.ContentType to listOf("application/json"))
+            )
+        }
+        val client = HttpClient(engine) {
+            install(ContentNegotiation) {
+                json(Json { ignoreUnknownKeys = true; coerceInputValues = true })
+            }
+        }
+        val api = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client, InMemoryStoreSessionStore())
+
+        val error = runCatching { api.applyCoupon("INVALID") }.exceptionOrNull()
+        assertTrue(error is StoreApiException)
+        assertEquals(400, (error as StoreApiException).statusCode)
+        assertEquals("woocommerce_rest_invalid_coupon", error.apiCode)
+        assertEquals("Cupón no válido.", error.message)
+        client.close()
+    }
+
+
 }

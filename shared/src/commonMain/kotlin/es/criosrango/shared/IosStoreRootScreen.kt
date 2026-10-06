@@ -32,6 +32,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -63,6 +64,7 @@ import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.model.StoreCartVariation
+import es.criosrango.shared.model.consumerDiscount
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
@@ -502,7 +504,11 @@ private fun IosCartScreen(
     val cart by cartStore.cart.collectAsState()
     val state by cartStore.state.collectAsState()
     val error by cartStore.error.collectAsState()
+    val couponLoading by cartStore.couponLoading.collectAsState()
+    val couponError by cartStore.couponError.collectAsState()
     var clearCartConfirm by remember { mutableStateOf(false) }
+    var couponExpanded by remember { mutableStateOf(false) }
+    var couponCode by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) { cartStore.refresh() }
 
@@ -517,6 +523,32 @@ private fun IosCartScreen(
         if (state == StoreCartLoadState.SUCCESS_EMPTY && error == null) item {
             Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Tu carrito está vacío", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (cart.items.isNotEmpty()) item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 20.dp)) {
+                Text("Promociones y descuentos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                if (!couponExpanded) TextButton(onClick = { couponExpanded = true }, enabled = !couponLoading) { Text("Tengo un código de descuento") }
+                else {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = couponCode, onValueChange = { couponCode = it }, label = { Text("Código del cupón") }, singleLine = true, enabled = !couponLoading, modifier = Modifier.weight(1f))
+                        Button(onClick = { cartStore.applyCoupon(couponCode.trim()) }, enabled = couponCode.trim().isNotEmpty() && !couponLoading) {
+                            if (couponLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Aplicar")
+                        }
+                    }
+                    couponError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                }
+                if (cart.coupons.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    cart.coupons.forEach { coupon ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(coupon.label.ifBlank { coupon.code }, fontWeight = FontWeight.SemiBold)
+                                Text("-" + formatStorePrice(coupon.totals.consumerDiscount(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol), style = MaterialTheme.typography.bodySmall)
+                            }
+                            TextButton(onClick = { cartStore.removeCoupon(coupon.code) }, enabled = !couponLoading) { Text("Quitar") }
+                        }
+                    }
+                }
             }
         }
         items(cart.items, key = { it.key }) { line ->
@@ -561,6 +593,8 @@ private fun IosCartScreen(
             HorizontalDivider()
             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 Text("Subtotal: " + formatStorePrice(cart.totals.totalItems, cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
+                val discount = cart.totals.consumerDiscount()
+                if (discount.toLongOrNull()?.let { it > 0L } == true) Text("Descuentos: -" + formatStorePrice(discount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
                 when {
                     cart.totals.totalShipping == null -> Text("Envío: Se calcula en el checkout", color = Color.Gray)
                     cart.totals.totalShipping == "0" || cart.totals.totalShipping == "0.00" -> Text("Envío: Gratis")

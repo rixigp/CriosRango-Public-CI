@@ -73,6 +73,8 @@ class PaymentStatusExactlyOnceIsolatedTest {
         override suspend fun addCartItem(request: AddCartRequest) = WooCart()
         override suspend fun updateCartItem(key: String, quantity: Int) = WooCart()
         override suspend fun removeCartItem(key: String) = WooCart()
+        override suspend fun applyCoupon(code: String) = WooCart()
+        override suspend fun removeCoupon(code: String) = WooCart()
         override suspend fun checkout() = CheckoutResponse()
         override suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse {
             createCheckoutCalls.incrementAndGet()

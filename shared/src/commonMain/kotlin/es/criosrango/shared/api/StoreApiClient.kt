@@ -124,6 +124,28 @@ class StoreApiClient(
             }
         }
 
+    suspend fun applyCoupon(code: String): StoreCart {
+        val normalizedCode = code.trim()
+        require(normalizedCode.isNotEmpty()) { "El código del cupón no puede estar vacío." }
+        return executeCart {
+            client.post(baseUrl + "cart/apply-coupon") {
+                sessionHeaders()
+                url { parameter("code", normalizedCode) }
+            }
+        }
+    }
+
+    suspend fun removeCoupon(code: String): StoreCart {
+        val normalizedCode = code.trim()
+        require(normalizedCode.isNotEmpty()) { "El código del cupón no puede estar vacío." }
+        return executeCart {
+            client.post(baseUrl + "cart/remove-coupon") {
+                sessionHeaders()
+                url { parameter("code", normalizedCode) }
+            }
+        }
+    }
+
 
     suspend fun checkout(): CheckoutResponse =
         executeCart { client.get(baseUrl + "checkout") { sessionHeaders() } }

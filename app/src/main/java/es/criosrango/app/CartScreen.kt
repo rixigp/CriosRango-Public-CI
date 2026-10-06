@@ -95,12 +95,16 @@ internal fun CartScreen(
     openLine: (CartLine) -> Unit,
     retry: () -> Unit,
     onCheckout: () -> Unit,
+    couponLoading: Boolean,
+    couponError: String?,
+    applyCoupon: (String) -> Unit,
+    removeCoupon: (String) -> Unit,
     accountUserId: Int?,
     onLogin: () -> Unit,
 ) {
-    var clearCartConfirm by remember {
-        mutableStateOf(false)
-    }
+    var clearCartConfirm by remember { mutableStateOf(false) }
+    var couponExpanded by remember { mutableStateOf(false) }
+    var couponCode by remember { mutableStateOf("") }
 
     LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
@@ -136,6 +140,30 @@ internal fun CartScreen(
         if (!error.isNullOrBlank()) item { Row(verticalAlignment = Alignment.CenterVertically) { Text(error, color = Color(0xFFB3261E), modifier = Modifier.weight(1f)); TextButton(retry) { Text("Reintentar") } } }
         if (state == CartLoadState.ERROR && cart.items.isEmpty()) item { Text("No se ha podido recuperar el carrito.", color = Color.Gray) }
         if (state == CartLoadState.SUCCESS_EMPTY) item { Text("Tu carrito está vacío", color = Color.Gray) }
+        if (cart.items.isNotEmpty()) item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Promociones y descuentos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                if (!couponExpanded) TextButton(onClick = { couponExpanded = true }, enabled = !couponLoading) { Text("Tengo un código de descuento") }
+                else {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = couponCode, onValueChange = { couponCode = it }, label = { Text("Código del cupón") }, singleLine = true, enabled = !couponLoading, modifier = Modifier.weight(1f))
+                        Button(onClick = { applyCoupon(couponCode.trim()) }, enabled = couponCode.trim().isNotEmpty() && !couponLoading) { if (couponLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Aplicar") }
+                    }
+                    couponError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                }
+                if (cart.coupons.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    cart.coupons.forEach { coupon ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(coupon.label.ifBlank { coupon.code }, fontWeight = FontWeight.SemiBold)
+                                Text("-" + formatMinorUnits(coupon.totals.consumerDiscount(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol), style = MaterialTheme.typography.bodySmall)
+                            }
+                            TextButton(onClick = { removeCoupon(coupon.code) }, enabled = !couponLoading) { Text("Quitar") }
+                        }
+                    }
+                }
+            }
+        }
         items(cart.items, key = { it.key }) { item ->
             Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -180,14 +208,15 @@ internal fun CartScreen(
         }
         if (cart.items.isNotEmpty()) item {
             HorizontalDivider()
-            Text("Subtotal: ${formatMinorUnits(cart.totals.consumerSubtotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol)}", Modifier.padding(top = 8.dp))
+            Text("Subtotal: " + formatMinorUnits(cart.totals.consumerSubtotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol), Modifier.padding(top = 8.dp))
+            val discount = cart.totals.consumerDiscount()
+            if (discount.toLongOrNull()?.let { it > 0L } == true) Text("Descuentos: -" + formatMinorUnits(discount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), color = Color(0xFF183B35), style = MaterialTheme.typography.bodySmall)
             when {
                 cart.totals.totalShipping == null -> Text("Envío: Se calcula en el checkout", color = Color.Gray)
                 cart.totals.consumerShipping().toBigDecimalOrZero() == java.math.BigDecimal.ZERO -> Text("Envío: Gratis")
                 else -> Text("Envío: ${formatMinorUnits(cart.totals.consumerShipping(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol)}")
             }
-            Text("Total: ${formatMinorUnits(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)}", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            if (cart.totals.totalDiscount != "0") Text("Descuentos: -${formatMinorUnits(cart.totals.totalDiscount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)}", color = Color(0xFF183B35), style = MaterialTheme.typography.bodySmall)
+            Text("Total: " + formatMinorUnits(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             if (AccountCartCheckoutPolicy.showGuestLoginCta(accountUserId, cart.items.size)) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
