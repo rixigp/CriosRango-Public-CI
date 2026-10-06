@@ -30,6 +30,61 @@ import es.criosrango.shared.model.VariationAttribute as SharedVariationAttribute
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.ResponseException
 import java.net.SocketTimeoutException
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.GET
+import retrofit2.http.Query
+import okhttp3.OkHttpClient
+
+private data class WooBrandImageDto(
+    val src: String = "",
+    val thumbnail: String = ""
+)
+
+private data class WooBrandDto(
+    val id: Int = 0,
+    val name: String = "",
+    val slug: String = "",
+    val count: Int = 0,
+    val image: WooBrandImageDto? = null
+)
+
+private interface WooBrandStoreApi {
+    @GET("products/brands")
+    suspend fun brands(
+        @Query("per_page") perPage: Int = 100,
+        @Query("page") page: Int = 1,
+        @Query("hide_empty") hideEmpty: Boolean = true
+    ): List<WooBrandDto>
+
+    @GET("products")
+    suspend fun productsByBrand(
+        @Query("per_page") perPage: Int,
+        @Query("page") page: Int,
+        @Query("brand") brand: String
+    ): List<StoreProduct>
+}
+
+private fun createWooBrandStoreApi(session: StoreSession): WooBrandStoreApi {
+    val client = OkHttpClient.Builder()
+        .addInterceptor { chain ->
+            val builder = chain.request().newBuilder()
+            session.cartToken?.takeIf { it.isNotBlank() }?.let { builder.header("Cart-Token", it) }
+            session.nonce?.takeIf { it.isNotBlank() }?.let { builder.header("Nonce", it) }
+            session.cookieHeader?.takeIf { it.isNotBlank() }?.let { builder.header("Cookie", it) }
+            val response = chain.proceed(builder.build())
+            session.update(response.headers)
+            response
+        }
+        .build()
+
+    return Retrofit.Builder()
+        .baseUrl(STORE_API_BASE_URL)
+        .client(client)
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+        .create(WooBrandStoreApi::class.java)
+}
 
 /**
  * Temporary Phase C bridge between the stable Android StoreApi contract and
@@ -38,8 +93,10 @@ import java.net.SocketTimeoutException
  * Android catalog/cart/checkout/payment-status operations are routed through the shared KMP StoreApiClient.
  */
 class SharedCatalogStoreApiAdapter(
-    private val sharedClient: StoreApiClient
+    private val sharedClient: StoreApiClient,
+    session: StoreSession
 ) : StoreApi {
+    private val brandApi: WooBrandStoreApi = createWooBrandStoreApi(session)
 
     override suspend fun cart(): WooCart {
         Log.d("CriosRangoSharedCart", "CART source=shared operation=GET")
@@ -158,6 +215,42 @@ class SharedCatalogStoreApiAdapter(
                     "PRODUCTS source=shared params=search=${search != null} category=$category orderby=$orderBy order=$order after=${after != null} featured=$featured"
                 )
             }.map(SharedStoreProduct::toAndroid)
+        } catch (exception: Exception) {
+            throw exception.toAndroidCatalogException()
+        }
+    }
+
+    override suspend fun brands(perPage: Int, page: Int): List<BrandTerm> {
+        Log.d("CriosRangoBrands", "BRANDS source=product_brand perPage=$perPage page=$page")
+        return try {
+            brandApi.brands(perPage = perPage, page = page)
+                .filter { it.name.isNotBlank() && it.slug.isNotBlank() }
+                .map { brand ->
+                    BrandTerm(
+                        id = brand.id,
+                        name = brand.name,
+                        slug = brand.slug,
+                        imageUrl = brand.image?.src?.takeIf { it.isNotBlank() }
+                            ?: brand.image?.thumbnail?.takeIf { it.isNotBlank() }
+                    ).withPackagedLogoFallback()
+                }
+        } catch (exception: Exception) {
+            throw exception.toAndroidCatalogException()
+        }
+    }
+
+    override suspend fun productsByBrand(
+        perPage: Int,
+        page: Int,
+        brand: String
+    ): List<StoreProduct> {
+        Log.d("CriosRangoBrands", "PRODUCTS source=product_brand brand=$brand perPage=$perPage page=$page")
+        return try {
+            brandApi.productsByBrand(
+                perPage = perPage,
+                page = page,
+                brand = brand
+            )
         } catch (exception: Exception) {
             throw exception.toAndroidCatalogException()
         }
@@ -301,6 +394,11 @@ private fun SharedAddToCart.toAndroid(): AddToCart = AddToCart(
 private fun Exception.toAndroidCatalogException(): Exception = when (this) {
     is StoreApiException -> CartException(message)
     is HttpRequestTimeoutException -> SocketTimeoutException(message).also { it.initCause(this) }
+    is retrofit2.HttpException -> StoreApiException(
+        statusCode = code(),
+        apiCode = null,
+        message = message()
+    )
     is ResponseException -> StoreApiException(
         statusCode = response.status.value,
         apiCode = null,

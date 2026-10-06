@@ -325,12 +325,28 @@ internal fun HomeBrandCard(
             .padding(horizontal = 2.dp, vertical = 2.dp),
         contentAlignment = Alignment.Center
     ) {
-        Image(
-            painter = painterResource(id = brand.localLogoRes),
-            contentDescription = brand.name,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize()
-        )
+        val remoteLogo = brand.imageUrl?.takeIf { it.isNotBlank() }
+        val packagedLogo = brand.localLogoRes
+        when {
+            remoteLogo != null -> AsyncImage(
+                model = remoteLogo,
+                contentDescription = brand.name,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+            )
+            packagedLogo != null -> Image(
+                painter = painterResource(id = packagedLogo),
+                contentDescription = brand.name,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+            )
+            else -> Text(
+                text = brand.name,
+                style = MaterialTheme.typography.labelMedium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
+        }
     }
 }
 

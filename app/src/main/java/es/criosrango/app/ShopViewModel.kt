@@ -46,8 +46,6 @@ enum class CategoryLoadState { IDLE, LOADING, LOADED_WITH_RESULTS, LOADED_EMPTY,
 data class CategoryLoadStatus(val categoryId: Int? = null, val state: CategoryLoadState = CategoryLoadState.IDLE)
 internal val categoryCatalogLoadStatus = MutableStateFlow(CategoryLoadStatus())
 
-fun StoreProduct.hasBrand(brand: BrandTerm): Boolean = tags.any { tag -> tag.slug.equals(brand.slug, ignoreCase = true) || tag.name.replace("&amp;", "&").replace("&#038;", "&").trim().equals(brand.name, ignoreCase = true) }
-
 data class CategoryProductsState(val products: List<StoreProduct> = emptyList(), val loading: Boolean = false, val loaded: Boolean = false, val error: StoreUiError? = null, val requestVersion: Int = 0)
 
 class ShopViewModel(private val repository: StoreRepository, val cartStore: CartStore, val deliveryAddressStore: DeliveryAddressStore, private val pendingCardPaymentStore: PendingCardPaymentStore) : ViewModel() {
@@ -117,8 +115,20 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     val paymentRedirect: StateFlow<PaymentRedirect?> = _paymentRedirect.asStateFlow()
     private var productsRequestVersion = 0
     private val searchResultCache = mutableMapOf<String, List<StoreProduct>>()
+    private var brandLoadJob: Job? = null
+
+    private fun loadBrands() {
+        brandLoadJob?.cancel()
+        brandLoadJob = viewModelScope.launch {
+            val loadedBrands = runCatching { repository.allBrands() }.getOrNull().orEmpty()
+            if (loadedBrands.isNotEmpty()) {
+                _brands.value = loadedBrands
+            }
+        }
+    }
 
     fun refreshHome() {
+        loadBrands()
         lastCatalogOperation = CatalogOperation.Home
         val requestVersion = ++productsRequestVersion
         categoryCatalogLoadStatus.value = CategoryLoadStatus()

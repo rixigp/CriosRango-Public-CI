@@ -32,6 +32,19 @@ interface StoreApi {
         tag: String
     ): List<StoreProduct>
 
+    suspend fun brands(
+        perPage: Int = 100,
+        page: Int = 1
+    ): List<BrandTerm> = emptyList()
+
+    suspend fun productsByBrand(
+        perPage: Int = 100,
+        page: Int = 1,
+        brand: String
+    ): List<StoreProduct> {
+        throw UnsupportedOperationException("product_brand is not supported by this StoreApi implementation")
+    }
+
     suspend fun product(id: Int): StoreProduct
 
     suspend fun productWithVariationAvailability(id: Int): StoreProduct
@@ -216,6 +229,25 @@ class StoreRepository(private val api: StoreApi) {
         }
     }
 
+    suspend fun allBrands(): List<BrandTerm> {
+        val accumulated = mutableListOf<BrandTerm>()
+        var page = 1
+
+        while (true) {
+            val batch = api.brands(perPage = 100, page = page)
+            if (batch.isEmpty()) break
+            accumulated += batch
+            if (batch.size < 100) break
+            page++
+        }
+
+        return accumulated
+            .filter { it.name.isNotBlank() && it.slug.isNotBlank() }
+            .distinctBy { it.slug.trim().lowercase(java.util.Locale.ROOT) }
+            .map { it.withPackagedLogoFallback() }
+            .sortedBy { it.name.lowercase(java.util.Locale.ROOT) }
+    }
+
     suspend fun productsByBrand(brand: BrandTerm): List<StoreProduct> {
         val cacheKey = brand.slug.trim().lowercase()
 
@@ -229,10 +261,10 @@ class StoreRepository(private val api: StoreApi) {
 
             while (true) {
                 val batch = try {
-                    api.productsByTag(
+                    api.productsByBrand(
                         perPage = 100,
                         page = page,
-                        tag = brand.slug
+                        brand = brand.slug
                     )
                 } catch (exception: Exception) {
                     if (page == 1) throw exception
@@ -255,10 +287,10 @@ class StoreRepository(private val api: StoreApi) {
         brand: BrandTerm,
         page: Int,
         perPage: Int
-    ): List<StoreProduct> = api.productsByTag(
+    ): List<StoreProduct> = api.productsByBrand(
         perPage = perPage,
         page = page,
-        tag = brand.slug
+        brand = brand.slug
     )
 
     suspend fun productsByCategoryPage(

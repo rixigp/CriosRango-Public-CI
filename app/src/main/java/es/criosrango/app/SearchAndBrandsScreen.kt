@@ -306,7 +306,7 @@ internal fun SearchScreen(
     onBrandFromAllBrands: (BrandTerm) -> Unit = {}) {
     if (showAllBrands) {
         AllBrandsScreen(
-            brands = APP_BRANDS,
+            brands = brands,
             padding = padding,
             onBrand = onBrandFromAllBrands,
             onBack = onBackFromAllBrands
