@@ -63,6 +63,7 @@ fun AccountLoginScreen(
     initialOrderId: Int? = null,
     openPromotionsOnStart: Boolean = false,
     onAuthenticated: (() -> Unit)? = null,
+    onPromotionsOpened: () -> Unit = {},
     onBackFromLogin: (() -> Unit)? = null,
     onRootBackAvailable: (Boolean) -> Unit = {},
     loyaltyViewModel: LoyaltyViewModel = viewModel(),
@@ -126,6 +127,13 @@ fun AccountLoginScreen(
         if (!loading && accountAuthBackDestination(AccountAuthDestination.FORGOT_PASSWORD) == AccountAuthDestination.LOGIN) {
             showForgot = false
             vm.clearAccountMessages()
+        }
+    }
+
+    LaunchedEffect(openPromotionsOnStart, currentUser?.id) {
+        if (openPromotionsOnStart && currentUser != null) {
+            accountSection = AccountSection.WALLET
+            onPromotionsOpened()
         }
     }
 
