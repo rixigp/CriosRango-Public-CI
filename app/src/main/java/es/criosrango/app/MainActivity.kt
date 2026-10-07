@@ -421,7 +421,6 @@ private fun CriosRangoApp(
                         loyaltyViewModel = loyaltyViewModel,
                         applyWalletCoupon = viewModel.cartStore::applyCoupon,
                         accountUserId = accountUser?.id,
-                        accountUserEmail = accountUser?.email,
                         onLogin = {
                             returnToCartAfterLogin = true
                             openUtilityTab(AppTab.ACCOUNT)
