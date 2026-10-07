@@ -138,6 +138,18 @@ class SharedCatalogStoreApiAdapter(
         Log.d("CriosRangoSharedCart", "CART source=shared operation=APPLY_COUPON")
         sharedClient.applyCoupon(code).toAndroid()
     } catch (exception: Exception) {
+        if (BuildConfig.DEBUG && exception is StoreApiException) {
+            val customer = sharedClient.diagnosticCustomer()
+            Log.e("CriosRangoWalletDebug",
+                "WALLET DEBUG coupon=${code.trim()} status=${exception.statusCode} apiCode=${exception.apiCode} " +
+                    "message=${exception.message} billing.email=${customer?.billingEmail.orEmpty()} " +
+                    "billing.first_name=${customer?.billingFirstName.orEmpty()} " +
+                    "billing.last_name=${customer?.billingLastName.orEmpty()} " +
+                    "shipping.email=${customer?.shippingEmail.orEmpty()} " +
+                    "cartTokenPresent=${session.cartToken?.isNullOrBlank() == false} " +
+                    "noncePresent=${session.nonce?.isNullOrBlank() == false} " +
+                    "cookiePresent=${session.cookieHeader?.isNullOrBlank() == false}")
+        }
         throw exception.toAndroidCatalogException()
     }
 

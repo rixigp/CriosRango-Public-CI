@@ -65,12 +65,22 @@ class StoreApiException(
     override val message: String
 ) : Exception(message)
 
+data class StoreCustomerDiagnostic(
+    val billingEmail: String?,
+    val billingFirstName: String?,
+    val billingLastName: String?,
+    val shippingEmail: String?
+)
+
 class StoreApiClient(
     private val baseUrl: String = "https://criosrango.es/wp-json/wc/store/v1/",
     private val client: HttpClient = createStoreHttpClient(),
     private val session: StoreSessionStore = InMemoryStoreSessionStore()
 ) {
     private val json = Json { ignoreUnknownKeys = true }
+    private var lastCustomerDiagnostic: StoreCustomerDiagnostic? = null
+
+    fun diagnosticCustomer(): StoreCustomerDiagnostic? = lastCustomerDiagnostic
     private suspend inline fun <reified T> executeCart(
         request: suspend () -> io.ktor.client.statement.HttpResponse
     ): T {
@@ -152,6 +162,12 @@ class StoreApiClient(
 
     suspend fun updateCustomer(request: UpdateCustomerRequest): StoreCart =
         executeCart {
+            lastCustomerDiagnostic = StoreCustomerDiagnostic(
+                billingEmail = request.billingAddress.email,
+                billingFirstName = request.billingAddress.firstName,
+                billingLastName = request.billingAddress.lastName,
+                shippingEmail = request.shippingAddress.email
+            )
             client.post(baseUrl + "cart/update-customer") {
                 sessionHeaders()
                 contentType(ContentType.Application.Json)
