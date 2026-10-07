@@ -27,7 +27,9 @@ class PromotionClientTest {
                     "requires_login": false,
                     "starts_at": null,
                     "expires_at": "2026-12-31T23:59:59",
-                    "priority": 7
+                    "priority": 7,
+                    "type": "birthday",
+                    "personal": true
                 }]
             }"""
         ) { request = it }
@@ -45,10 +47,34 @@ class PromotionClientTest {
         assertEquals("10% de descuento", promotions.single().title)
         assertEquals("Promoción de prueba", promotions.single().description)
         assertEquals("TEST10", promotions.single().code)
+        assertEquals("birthday", promotions.single().type)
+        assertEquals(true, promotions.single().personal)
         assertEquals(false, promotions.single().requiresLogin)
         assertEquals(null, promotions.single().startsAt)
         assertEquals("2026-12-31T23:59:59", promotions.single().expiresAt)
         assertEquals(7, promotions.single().priority)
+    }
+
+    @Test
+    fun authenticatedRequestSendsBearerToken() = kotlinx.coroutines.test.runTest {
+        var request: HttpRequestData? = null
+        val api = PromotionClient(
+            client = mockClient(HttpStatusCode.OK, """{"promotions":[]}""") { request = it },
+            bearerTokenProvider = { "account-token-123" }
+        )
+        api.getPromotions()
+        assertEquals("Bearer account-token-123", request?.headers?.get("Authorization"))
+    }
+
+    @Test
+    fun blankTokenDoesNotSendAuthorizationHeader() = kotlinx.coroutines.test.runTest {
+        var request: HttpRequestData? = null
+        val api = PromotionClient(
+            client = mockClient(HttpStatusCode.OK, """{"promotions":[]}""") { request = it },
+            bearerTokenProvider = { "  " }
+        )
+        api.getPromotions()
+        assertEquals(null, request?.headers?.get("Authorization"))
     }
 
     @Test
