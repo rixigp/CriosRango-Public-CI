@@ -103,6 +103,7 @@ internal fun CartScreen(
     loyaltyViewModel: LoyaltyViewModel,
     applyWalletCoupon: suspend (String) -> Boolean,
     accountUserId: Int?,
+    accountUserEmail: String?,
     onLogin: () -> Unit,
 ) {
     var clearCartConfirm by remember { mutableStateOf(false) }
@@ -161,6 +162,43 @@ internal fun CartScreen(
                         Button(onClick = { applyCoupon(couponCode.trim()) }, enabled = couponCode.trim().isNotEmpty() && !couponLoading) { if (couponLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Aplicar") }
                     }
                     couponError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    if (BuildConfig.DEBUG) {
+                        WalletDebugDiagnosticStore.state.value?.let { debug ->
+                            val billingEmailMatchesAccount =
+                                !debug.billingEmail.isNullOrBlank() &&
+                                    !accountUserEmail.isNullOrBlank() &&
+                                    debug.billingEmail.equals(accountUserEmail, ignoreCase = true)
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.surfaceVariant,
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text("WALLET DEBUG", fontWeight = FontWeight.Bold)
+                                Text("coupon: ${debug.coupon}")
+                                Text("status: ${debug.status ?: ""}")
+                                Text("apiCode: ${debug.apiCode ?: ""}")
+                                Text("message: ${debug.message}")
+                                Spacer(Modifier.height(4.dp))
+                                Text("billing.email: ${debug.billingEmail.orEmpty()}")
+                                Text("billing.first_name: ${debug.billingFirstName.orEmpty()}")
+                                Text("billing.last_name: ${debug.billingLastName.orEmpty()}")
+                                Text("shipping.email: ${debug.shippingEmail.orEmpty()}")
+                                Spacer(Modifier.height(4.dp))
+                                Text("billingEmailMatchesAccount: $billingEmailMatchesAccount")
+                                Text("cartTokenPresent: ${debug.cartTokenPresent}")
+                                Text("noncePresent: ${debug.noncePresent}")
+                                Text("cookiePresent: ${debug.cookiePresent}")
+                                Text("updateCustomerBeforeApply: ${debug.updateCustomerBeforeApply}")
+                                Text("sameStoreSession: ${debug.sameStoreSession}")
+                            }
+                        }
+                    }
                 }
                 if (cart.coupons.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     cart.coupons.forEach { coupon ->
