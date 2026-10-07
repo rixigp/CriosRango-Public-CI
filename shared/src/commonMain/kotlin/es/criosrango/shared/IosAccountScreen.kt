@@ -98,7 +98,7 @@ fun CriosRangoIOSAccountScreen(
     fun finishAuthentication(authenticatedUser: AccountUser) {
         user = authenticatedUser
         error = null
-        page = IosAccountPage.HOME
+        page = if (openPromotionsOnStart) IosAccountPage.WALLET else IosAccountPage.HOME
         scope.launch {
             runCatching { repository.claimPendingOrder() }
                 .onFailure { println("KMP_ACCOUNT_CLAIM_FAILED=${it.message}") }
