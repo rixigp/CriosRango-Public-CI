@@ -97,7 +97,7 @@ fun AccountLoginScreen(
     var showLogin by remember { mutableStateOf(openLoginOnStart) }
     var selectedInfoPage by remember { mutableStateOf<AccountInfoPage?>(null) }
     val currentUser = user
-    var accountSection by remember(currentUser?.id) {
+    var accountSection by remember {
         mutableStateOf(if (openPromotionsOnStart) AccountSection.WALLET else AccountSection.HOME)
     }
     var selectedOrderId by remember { mutableStateOf<Int?>(initialOrderId) }
@@ -136,6 +136,7 @@ fun AccountLoginScreen(
     LaunchedEffect(currentUser?.id) {
         if (currentUser != null) {
             showLogin = false
+            if (openPromotionsOnStart) accountSection = AccountSection.WALLET
             PushNotificationController.initialize(notificationContext)
             onAuthenticated?.invoke()
         }
