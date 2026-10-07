@@ -3,6 +3,7 @@ package es.criosrango.shared
 object PushNotificationType {
     const val NEW_PRODUCTS = "new_products"
     const val ORDER_STATUS = "order_status"
+    const val BIRTHDAY_COUPON = "birthday_coupon"
 }
 
 object PushNotificationContract {
