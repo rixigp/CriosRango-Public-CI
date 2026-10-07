@@ -6,7 +6,7 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 actual fun createStoreHttpClient(): HttpClient = HttpClient(Darwin) {
-    expectSuccess = true
+    expectSuccess = false
     install(HttpTimeout) {
         requestTimeoutMillis = 15_000
         connectTimeoutMillis = 12_000

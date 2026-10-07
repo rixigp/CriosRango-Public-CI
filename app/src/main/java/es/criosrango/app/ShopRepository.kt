@@ -1,7 +1,5 @@
 package es.criosrango.app
 
-import es.criosrango.shared.api.StoreApiException
-
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -503,55 +501,13 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
             _couponError.value = null
             try {
                 val response = withTimeout(18_000) { api.applyCoupon(normalizedCode) }
-                if (response.errors.isNotEmpty()) {
-                    throw CartException(
-                        buildString {
-                            append("DBG path=cart.errors ")
-                            append(
-                                response.errors.joinToString(" | ") { error ->
-                                    "code=${error.code.ifBlank { "<blank>" }}" +
-                                        " message=${error.message.ifBlank { "<blank>" }}"
-                                }
-                            )
-                        }
-                    )
-                }
+                if (response.errors.isNotEmpty()) throw CartException(response.errors.joinToString("\n") { it.message })
                 accept(response)
                 true
             } catch (exception: Exception) {
-                val originalMessage =
-                    exception.message?.takeIf(String::isNotBlank)
-
                 _couponError.value =
-                    if (originalMessage?.startsWith("DBG path=cart.errors") == true) {
-                        originalMessage
-                    } else {
-                        buildString {
-                            if (exception is StoreApiException) {
-                                append("DBG path=exception")
-                                append(" status=")
-                                append(exception.statusCode)
-                                append(" apiCode=")
-                                append(exception.apiCode ?: "<null>")
-                                append(" message=")
-                                append(exception.message ?: "<null>")
-                            } else {
-                                append("DBG path=exception")
-                                append(" type=")
-                                append(exception::class.simpleName ?: "<unknown>")
-                                append(" message=")
-                                append(exception.message ?: "<null>")
-                                append(" causeType=")
-                                append(
-                                    exception.cause?.let {
-                                        it::class.simpleName
-                                    } ?: "<null>"
-                                )
-                                append(" causeMessage=")
-                                append(exception.cause?.message ?: "<null>")
-                            }
-                        }
-                    }
+                    exception.message?.takeIf(String::isNotBlank)
+                        ?: "No se ha podido aplicar este código de descuento."
                 false
             } finally {
                 _couponLoading.value = false
