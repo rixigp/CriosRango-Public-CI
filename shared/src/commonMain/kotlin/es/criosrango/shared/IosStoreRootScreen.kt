@@ -116,6 +116,7 @@ fun CriosRangoIOSRootScreen(
     onPushNavigationConsumed: () -> Unit = {}
 ) {
     var section by remember { mutableStateOf(IosRootSection.HOME) }
+    var openPromotionsOnStart by remember { mutableStateOf(false) }
     var checkoutOpen by remember { mutableStateOf(false) }
     var catalogPage by remember { mutableStateOf<IosCatalogPage>(IosCatalogPage.Root) }
     var catalogOriginHome by remember { mutableStateOf(false) }
@@ -130,7 +131,10 @@ fun CriosRangoIOSRootScreen(
         when (n.type) {
             PushNotificationType.NEW_PRODUCTS -> { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Novedades) }
             PushNotificationType.ORDER_STATUS -> section = IosRootSection.ACCOUNT
-            PushNotificationType.BIRTHDAY_COUPON -> section = IosRootSection.ACCOUNT
+            PushNotificationType.BIRTHDAY_COUPON -> {
+                openPromotionsOnStart = true
+                section = IosRootSection.ACCOUNT
+            }
         }
         onPushNavigationConsumed()
     }
@@ -236,7 +240,8 @@ fun CriosRangoIOSRootScreen(
                     onApplyWalletCoupon = { code -> cartStore.applyCoupon(code) },
                     modifier = Modifier.padding(padding),
                     initialOrderId = pushNavigation?.orderId,
-                    openPromotionsOnStart = pushNavigation?.type == PushNotificationType.BIRTHDAY_COUPON,
+                    openPromotionsOnStart = openPromotionsOnStart,
+                    onPromotionsOpened = { openPromotionsOnStart = false },
                     onOpenExternalUrl = onOpenExternalUrl
                 )
             }

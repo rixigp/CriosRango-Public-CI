@@ -68,7 +68,8 @@ fun CriosRangoIOSAccountScreen(
     modifier: Modifier = Modifier,
     onOpenExternalUrl: (String) -> Unit,
     initialOrderId: Int? = null,
-    openPromotionsOnStart: Boolean = false
+    openPromotionsOnStart: Boolean = false,
+    onPromotionsOpened: () -> Unit = {}
 ) {
     var page by remember {
         mutableStateOf(if (openPromotionsOnStart) IosAccountPage.WALLET else IosAccountPage.HOME)
@@ -86,6 +87,13 @@ fun CriosRangoIOSAccountScreen(
         PromotionRepository(bearerTokenProvider = { repository.currentToken() })
     }
     fun invalidateExpiredSession() { repository.clearLocalSession(); user = null; selectedOrder = null; error = null; page = IosAccountPage.HOME }
+
+    LaunchedEffect(openPromotionsOnStart, user?.id) {
+        if (openPromotionsOnStart && user != null) {
+            page = IosAccountPage.WALLET
+            onPromotionsOpened()
+        }
+    }
 
     LaunchedEffect(user?.id, pendingPushOrderId) {
         val id = pendingPushOrderId ?: return@LaunchedEffect
