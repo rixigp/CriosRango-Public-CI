@@ -278,8 +278,16 @@ class PushFirebaseMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         val type = message.data[PushNotificationContract.TYPE_KEY] ?: return
         val orderId = message.data[PushNotificationContract.ORDER_ID_KEY]
-        val title = message.data["title"] ?: "Críos&Rango"
-        val body = message.data["body"] ?: "Tienes una nueva notificación"
+        val title = if (type == PushNotificationType.BIRTHDAY_COUPON) {
+            "🎂 ¡Feliz cumpleaños!"
+        } else {
+            message.data["title"] ?: "Críos&Rango"
+        }
+        val body = if (type == PushNotificationType.BIRTHDAY_COUPON) {
+            "Tienes un 15% de descuento por tu cumpleaños. Disponible durante 15 días."
+        } else {
+            message.data["body"] ?: "Tienes una nueva notificación"
+        }
         val channel = if (type == PushNotificationType.ORDER_STATUS) {
             "criosrango_orders"
         } else {
