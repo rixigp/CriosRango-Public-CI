@@ -117,7 +117,7 @@ private fun createWooBrandStoreApi(session: StoreSession): WooBrandStoreApi {
  */
 class SharedCatalogStoreApiAdapter(
     private val sharedClient: StoreApiClient,
-    session: StoreSession
+    private val session: StoreSession
 ) : StoreApi {
     private val brandApi: WooBrandStoreApi = createWooBrandStoreApi(session)
 
