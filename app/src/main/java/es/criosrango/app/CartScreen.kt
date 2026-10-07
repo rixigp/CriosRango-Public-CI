@@ -103,13 +103,11 @@ internal fun CartScreen(
     loyaltyViewModel: LoyaltyViewModel,
     applyWalletCoupon: suspend (String) -> Boolean,
     accountUserId: Int?,
-    accountUserEmail: String?,
     onLogin: () -> Unit,
 ) {
     var clearCartConfirm by remember { mutableStateOf(false) }
     var couponExpanded by remember { mutableStateOf(false) }
     var couponCode by remember { mutableStateOf("") }
-    val walletDebugInfo by WalletDebugDiagnosticStore.state.collectAsStateWithLifecycle()
     val loyaltyWallet by loyaltyViewModel.wallet.collectAsStateWithLifecycle()
     val loyaltyLoading by loyaltyViewModel.loading.collectAsStateWithLifecycle()
     val loyaltyError by loyaltyViewModel.error.collectAsStateWithLifecycle()
@@ -156,33 +154,6 @@ internal fun CartScreen(
         if (cart.items.isNotEmpty()) item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Promociones y descuentos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                if (BuildConfig.DEBUG) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
-                    ) {
-                        Text("DIAG WALLET C1", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        walletDebugInfo?.let { debug ->
-                            val billingEmailMatchesAccount =
-                                !debug.billingEmail.isNullOrBlank() &&
-                                    !accountUserEmail.isNullOrBlank() &&
-                                    debug.billingEmail.equals(accountUserEmail, ignoreCase = true)
-                            Text("coupon=${debug.coupon}", style = MaterialTheme.typography.labelSmall)
-                            Text("status=${debug.status ?: ""}", style = MaterialTheme.typography.labelSmall)
-                            Text("apiCode=${debug.apiCode ?: ""}", style = MaterialTheme.typography.labelSmall)
-                            Text("message=${debug.message}", style = MaterialTheme.typography.labelSmall)
-                            Text("billing.email=${debug.billingEmail.orEmpty()}", style = MaterialTheme.typography.labelSmall)
-                            Text("billing.first_name=${debug.billingFirstName.orEmpty()}", style = MaterialTheme.typography.labelSmall)
-                            Text("billing.last_name=${debug.billingLastName.orEmpty()}", style = MaterialTheme.typography.labelSmall)
-                            Text("shipping.email=${debug.shippingEmail.orEmpty()}", style = MaterialTheme.typography.labelSmall)
-                            Text("billingEmailMatchesAccount=$billingEmailMatchesAccount", style = MaterialTheme.typography.labelSmall)
-                            Text("cartTokenPresent=${debug.cartTokenPresent}", style = MaterialTheme.typography.labelSmall)
-                            Text("noncePresent=${debug.noncePresent}", style = MaterialTheme.typography.labelSmall)
-                            Text("cookiePresent=${debug.cookiePresent}", style = MaterialTheme.typography.labelSmall)
-                            Text("updateCustomerBeforeApply=${debug.updateCustomerBeforeApply}", style = MaterialTheme.typography.labelSmall)
-                            Text("sameStoreSession=${debug.sameStoreSession}", style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
                 if (!couponExpanded) TextButton(onClick = { couponExpanded = true }, enabled = !couponLoading) { Text("Tengo un código de descuento") }
                 else {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
