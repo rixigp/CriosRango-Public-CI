@@ -1,9 +1,6 @@
 package es.criosrango.app
 
 import android.util.Log
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import es.criosrango.shared.api.StoreApiClient
 import es.criosrango.shared.api.StoreApiException
 import es.criosrango.shared.model.StoreCart
@@ -51,29 +48,6 @@ private data class WooBrandDto(
     val count: Int = 0,
     val image: WooBrandImageDto? = null
 )
-
-internal data class WalletDebugDiagnostic(
-    val coupon: String,
-    val status: Int?,
-    val apiCode: String?,
-    val message: String,
-    val billingEmail: String?,
-    val billingFirstName: String?,
-    val billingLastName: String?,
-    val shippingEmail: String?,
-    val cartTokenPresent: Boolean,
-    val noncePresent: Boolean,
-    val cookiePresent: Boolean,
-    val updateCustomerBeforeApply: Boolean,
-    val sameStoreSession: Boolean
-)
-
-internal object WalletDebugDiagnosticStore {
-    private val _state = MutableStateFlow<WalletDebugDiagnostic?>(null)
-    val state: StateFlow<WalletDebugDiagnostic?> = _state.asStateFlow()
-    fun clear() { _state.value = null }
-    fun set(value: WalletDebugDiagnostic) { _state.value = value }
-}
 
 private interface WooBrandStoreApi {
     @GET("products/brands")
@@ -167,23 +141,18 @@ class SharedCatalogStoreApiAdapter(
         if (BuildConfig.DEBUG && exception is StoreApiException) {
             val customer = sharedClient.diagnosticCustomer()
             val updateCustomerBeforeApply = sharedClient.diagnosticCustomerUpdatedBeforeCoupon()
-            WalletDebugDiagnosticStore.set(
-                WalletDebugDiagnostic(
-                    coupon = code.trim(),
-                    status = exception.statusCode,
-                    apiCode = exception.apiCode,
-                    message = exception.message,
-                    billingEmail = customer?.billingEmail,
-                    billingFirstName = customer?.billingFirstName,
-                    billingLastName = customer?.billingLastName,
-                    shippingEmail = customer?.shippingEmail,
-                    cartTokenPresent = session.cartToken?.isNullOrBlank() == false,
-                    noncePresent = session.nonce?.isNullOrBlank() == false,
-                    cookiePresent = session.cookieHeader?.isNullOrBlank() == false,
-                    updateCustomerBeforeApply = updateCustomerBeforeApply,
-                    sameStoreSession = updateCustomerBeforeApply
-                )
-            )
+            val debugMessage = buildString {
+                append("DBG status=")
+                append(exception.statusCode)
+                append(" code=")
+                append(exception.apiCode ?: "")
+                append(" message=")
+                append(exception.message)
+                customer?.billingEmail?.let { append(" billing=").append(it) }
+                customer?.shippingEmail?.let { append(" shipping=").append(it) }
+                append(" updateCustomer=").append(updateCustomerBeforeApply)
+            }
+            throw CartException(debugMessage)
         }
         throw exception.toAndroidCatalogException()
     }
