@@ -1,6 +1,9 @@
+
 package es.criosrango.shared.api
 
+import es.criosrango.shared.account.AccountTokenStore
 import io.ktor.client.HttpClient
+import io.ktor.client.request.HttpRequestData
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
@@ -9,6 +12,7 @@ import io.ktor.http.headersOf
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StoreApiClientTest {
@@ -43,8 +47,80 @@ class StoreApiClientTest {
         assertTrue(cart.errors.isEmpty())
     }
 
-    private fun mockClient(status: HttpStatusCode, body: String): HttpClient {
-        val engine = MockEngine { _ ->
+    @Test
+    fun withoutAccountTokenAuthorizationIsAbsent() = kotlinx.coroutines.test.runTest {
+        val session = InMemoryStoreSessionStore(
+            cartToken = "cart-token",
+            nonce = "nonce",
+            cookieHeader = "wordpress_logged_in=fake"
+        )
+        val tokenStore = FakeAccountTokenStore()
+        var requestHeaders: io.ktor.http.Headers? = null
+        val client = mockClient(HttpStatusCode.OK, "{}") { requestHeaders = it.headers }
+        val api = StoreApiClient(
+            client = client,
+            session = session,
+            accountTokenStore = tokenStore
+        )
+
+        api.applyCoupon("TEST")
+
+        assertNull(requestHeaders?.get(HttpHeaders.Authorization))
+    }
+
+    @Test
+    fun accountTokenIsSentAndExistingStoreHeadersArePreserved() = kotlinx.coroutines.test.runTest {
+        val session = InMemoryStoreSessionStore(
+            cartToken = "cart-token",
+            nonce = "nonce",
+            cookieHeader = "wordpress_logged_in=fake"
+        )
+        val tokenStore = FakeAccountTokenStore("123.abc")
+        var requestHeaders: io.ktor.http.Headers? = null
+        val client = mockClient(HttpStatusCode.OK, "{}") { requestHeaders = it.headers }
+        val api = StoreApiClient(
+            client = client,
+            session = session,
+            accountTokenStore = tokenStore
+        )
+
+        api.applyCoupon("TEST")
+
+        assertEquals("Bearer 123.abc", requestHeaders?.get(HttpHeaders.Authorization))
+        assertEquals("cart-token", requestHeaders?.get("Cart-Token"))
+        assertEquals("nonce", requestHeaders?.get("Nonce"))
+        assertEquals("wordpress_logged_in=fake", requestHeaders?.get(HttpHeaders.Cookie))
+    }
+
+    @Test
+    fun accountTokenIsReadDynamicallyOnEachRequest() = kotlinx.coroutines.test.runTest {
+        val tokenStore = FakeAccountTokenStore()
+        var requestHeaders: io.ktor.http.Headers? = null
+        val client = mockClient(HttpStatusCode.OK, "{}") { requestHeaders = it.headers }
+        val api = StoreApiClient(
+            client = client,
+            accountTokenStore = tokenStore
+        )
+
+        api.applyCoupon("TEST")
+        assertNull(requestHeaders?.get(HttpHeaders.Authorization))
+
+        tokenStore.token = "123.abc"
+        api.applyCoupon("TEST")
+        assertEquals("Bearer 123.abc", requestHeaders?.get(HttpHeaders.Authorization))
+
+        tokenStore.token = null
+        api.applyCoupon("TEST")
+        assertNull(requestHeaders?.get(HttpHeaders.Authorization))
+    }
+
+    private fun mockClient(
+        status: HttpStatusCode,
+        body: String,
+        onRequest: (HttpRequestData) -> Unit = {}
+    ): HttpClient {
+        val engine = MockEngine { request ->
+            onRequest(request)
             respond(
                 content = body,
                 status = status,
@@ -52,5 +128,18 @@ class StoreApiClientTest {
             )
         }
         return HttpClient(engine)
+    }
+
+    private class FakeAccountTokenStore(
+        var token: String? = null
+    ) : AccountTokenStore {
+        override fun load(): String? = token
+        override fun save(token: String): Boolean {
+            this.token = token
+            return true
+        }
+        override fun clear() {
+            token = null
+        }
     }
 }

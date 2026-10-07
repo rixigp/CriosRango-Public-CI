@@ -37,9 +37,16 @@ internal class SingleActionGate {
 }
 
 class AccountSessionStore(context: Context) : AccountTokenStore {
-    private companion object {
-        const val TOKEN = "account_token"
-        const val PREFS = "criosrango_account_session_v2"
+    companion object {
+        private const val TOKEN = "account_token"
+        private const val PREFS = "criosrango_account_session_v2"
+
+        @Volatile private var instance: AccountSessionStore? = null
+
+        fun shared(context: Context): AccountSessionStore =
+            instance ?: synchronized(this) {
+                instance ?: AccountSessionStore(context.applicationContext).also { instance = it }
+            }
     }
 
     private val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -96,7 +103,7 @@ class AccountSessionStore(context: Context) : AccountTokenStore {
 
 class AccountRepository(context: Context) {
     private val application = context.applicationContext
-    private val session = AccountSessionStore(context.applicationContext)
+    private val session = AccountSessionStore.shared(context.applicationContext)
     private val claimOrderStore = AndroidClaimOrderStore(context.applicationContext)
     private val sharedAccountRepository = SharedAccountRepository(
         tokenStore = session,

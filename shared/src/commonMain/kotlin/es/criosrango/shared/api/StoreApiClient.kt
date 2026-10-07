@@ -1,6 +1,8 @@
 package es.criosrango.shared.api
 
 import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
+import es.criosrango.shared.account.AccountTokenStore
 import es.criosrango.shared.createStoreHttpClient
 import es.criosrango.shared.model.StoreCart
 import es.criosrango.shared.model.StoreCartApiError
@@ -75,7 +77,8 @@ data class StoreCustomerDiagnostic(
 class StoreApiClient(
     private val baseUrl: String = "https://criosrango.es/wp-json/wc/store/v1/",
     private val client: HttpClient = createStoreHttpClient(),
-    private val session: StoreSessionStore = InMemoryStoreSessionStore()
+    private val session: StoreSessionStore = InMemoryStoreSessionStore(),
+    private val accountTokenStore: AccountTokenStore? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private var lastCustomerDiagnostic: StoreCustomerDiagnostic? = null
@@ -103,6 +106,9 @@ class StoreApiClient(
     }
 
     private fun io.ktor.client.request.HttpRequestBuilder.sessionHeaders() {
+        accountTokenStore?.load()?.takeIf { it.isNotBlank() }?.let {
+            header(HttpHeaders.Authorization, "Bearer $it")
+        }
         session.cartToken?.let { headers.append("Cart-Token", it) }
         session.nonce?.let { headers.append("Nonce", it) }
         session.cookieHeader?.let { headers.append("Cookie", it) }

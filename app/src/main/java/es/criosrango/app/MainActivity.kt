@@ -120,7 +120,11 @@ class MainActivity : ComponentActivity() {
         val preferences = getSharedPreferences("criosrango", MODE_PRIVATE)
         val session = StoreSession(preferences)
         val sharedSession = AndroidStoreSessionStore(session)
-        val sharedCatalogClient = es.criosrango.shared.api.StoreApiClient(session = sharedSession)
+        val accountTokenStore = AccountSessionStore.shared(applicationContext)
+        val sharedCatalogClient = es.criosrango.shared.api.StoreApiClient(
+            session = sharedSession,
+            accountTokenStore = accountTokenStore
+        )
         val catalogApi = SharedCatalogStoreApiAdapter(sharedCatalogClient, session)
         val cartStore = CartStore(catalogApi, session, preferences)
         val pendingCardPaymentStore = PendingCardPaymentStore.create(applicationContext)

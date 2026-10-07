@@ -13,9 +13,12 @@ private val iosPushNavigation = androidx.compose.runtime.mutableStateOf<IosPushN
 
 fun MainViewController() : UIViewController {
     val storeSession = IosStoreSessionStore()
-    val storeApi = StoreApiClient(session = storeSession)
-    val cartStore = StoreCartStore(storeApi)
     val accountTokenStore = IosAccountTokenStore()
+    val storeApi = StoreApiClient(
+        session = storeSession,
+        accountTokenStore = accountTokenStore
+    )
+    val cartStore = StoreCartStore(storeApi)
     val accountRepository = AccountRepository(
         tokenStore = accountTokenStore,
         claimOrderStore = IosClaimOrderStore()
