@@ -48,6 +48,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import es.criosrango.shared.promotions.Promotion
+import es.criosrango.shared.promotions.PromotionRepository
 import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.loyalty.redeemableOptions
 import es.criosrango.shared.loyalty.subtractMoneyAmounts
@@ -79,6 +81,10 @@ fun AccountLoginScreen(
     val loyaltyWallet by loyaltyViewModel.wallet.collectAsStateWithLifecycle()
     val loyaltyLoading by loyaltyViewModel.loading.collectAsStateWithLifecycle()
     val loyaltyError by loyaltyViewModel.error.collectAsStateWithLifecycle()
+    val promotionRepository = remember { PromotionRepository() }
+    var promotions by remember { mutableStateOf(emptyList<Promotion>()) }
+    var promotionsLoading by remember { mutableStateOf(false) }
+    var promotionsError by remember { mutableStateOf<String?>(null) }
     var login by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showRegister by remember { mutableStateOf(false) }
@@ -134,6 +140,15 @@ fun AccountLoginScreen(
         }
         if (currentUser != null && accountSection == AccountSection.WALLET) {
             loyaltyViewModel.refresh()
+            promotionsLoading = true
+            promotionsError = null
+            runCatching { promotionRepository.getPromotions() }
+                .onSuccess { promotions = it }
+                .onFailure {
+                    promotions = emptyList()
+                    promotionsError = it.message ?: "No se han podido cargar las promociones."
+                }
+            promotionsLoading = false
         }
     }
 
@@ -230,6 +245,9 @@ fun AccountLoginScreen(
                         wallet = loyaltyWallet,
                         loading = loyaltyLoading,
                         error = loyaltyError,
+                        promotions = promotions,
+                        promotionsLoading = promotionsLoading,
+                        promotionsError = promotionsError,
                         cartCouponCodes = cartCouponCodes,
                         onBack = { accountSection = AccountSection.HOME },
                         onRefresh = loyaltyViewModel::refresh,
@@ -330,10 +348,12 @@ private fun AccountCompactAccess(
         }
         Spacer(Modifier.width(12.dp))
         Text(
-            text = title,
+            text = if (title == "Cupones y promociones") "Cupones y\npromociones" else title,
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Medium
+            fontWeight = FontWeight.Medium,
+            maxLines = 2,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
 }
@@ -403,6 +423,9 @@ private fun AccountWalletContent(
     wallet: es.criosrango.shared.loyalty.LoyaltyWallet?,
     loading: Boolean,
     error: String?,
+    promotions: List<Promotion>,
+    promotionsLoading: Boolean,
+    promotionsError: String?,
     cartCouponCodes: Set<String>,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
@@ -461,6 +484,23 @@ private fun AccountWalletContent(
         error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = onRefresh, enabled = !loading) { Text("Reintentar") }
+        }
+
+        HorizontalDivider()
+        Text("Promociones", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        when {
+            promotionsLoading && promotions.isEmpty() -> CircularProgressIndicator(modifier = Modifier.padding(vertical = 8.dp))
+            promotionsError != null && promotions.isEmpty() -> Text(promotionsError!!, color = MaterialTheme.colorScheme.error)
+            promotions.isEmpty() -> Text("No hay promociones disponibles.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else -> promotions.sortedByDescending { it.priority }.forEach { promotion ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(promotion.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        if (promotion.description.isNotBlank()) Text(promotion.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        promotion.code?.takeIf { it.isNotBlank() }?.let { Text("Código: $it", fontWeight = FontWeight.Medium) }
+                    }
+                }
+            }
         }
     }
     if (showRedeemDialog && options.isNotEmpty()) {

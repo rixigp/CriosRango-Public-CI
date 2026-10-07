@@ -48,6 +48,8 @@ import es.criosrango.shared.account.AccountOrderSummary
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.account.AccountUser
 import es.criosrango.shared.loyalty.LoyaltyRepository
+import es.criosrango.shared.promotions.Promotion
+import es.criosrango.shared.promotions.PromotionRepository
 import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.loyalty.LoyaltyWallet
 import es.criosrango.shared.loyalty.redeemableOptions
@@ -77,6 +79,7 @@ fun CriosRangoIOSAccountScreen(
     var forgotReturnPage by remember { mutableStateOf(IosAccountPage.LOGIN) }
     var addressReturnPage by remember { mutableStateOf(IosAccountPage.HOME) }
     val scope = rememberCoroutineScope()
+    val promotionRepository = remember { PromotionRepository() }
     fun invalidateExpiredSession() { repository.clearLocalSession(); user = null; selectedOrder = null; error = null; page = IosAccountPage.HOME }
 
     LaunchedEffect(user?.id, pendingPushOrderId) {
@@ -178,6 +181,7 @@ fun CriosRangoIOSAccountScreen(
                 IosAccountPage.ORDERS -> IosOrdersScreen(repository, { selectedOrder = it; page = IosAccountPage.ORDER_DETAIL }, ::invalidateExpiredSession) { page = IosAccountPage.HOME }
                 IosAccountPage.WALLET -> IosWalletScreen(
                     repository = loyaltyRepository,
+                    promotionRepository = promotionRepository,
                     cartCouponCodes = cartCouponCodes,
                     onApplyCoupon = onApplyWalletCoupon,
                     onBack = { page = IosAccountPage.HOME }
@@ -194,6 +198,7 @@ fun CriosRangoIOSAccountScreen(
 @Composable
 private fun IosWalletScreen(
     repository: LoyaltyRepository,
+    promotionRepository: PromotionRepository,
     cartCouponCodes: Set<String>,
     onApplyCoupon: suspend (String) -> Unit,
     onBack: () -> Unit
@@ -204,6 +209,9 @@ private fun IosWalletScreen(
     var showRedeemDialog by remember { mutableStateOf(false) }
     var pendingPoints by remember { mutableStateOf<Int?>(null) }
     var pendingRequestId by remember { mutableStateOf<String?>(null) }
+    var promotions by remember { mutableStateOf(emptyList<Promotion>()) }
+    var promotionsLoading by remember { mutableStateOf(true) }
+    var promotionsError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     fun refresh() {
@@ -217,7 +225,18 @@ private fun IosWalletScreen(
         }
     }
 
-    LaunchedEffect(Unit) { refresh() }
+    LaunchedEffect(Unit) {
+        refresh()
+        promotionsLoading = true
+        promotionsError = null
+        runCatching { promotionRepository.getPromotions() }
+            .onSuccess { promotions = it }
+            .onFailure {
+                promotions = emptyList()
+                promotionsError = it.message ?: "No se han podido cargar las promociones."
+            }
+        promotionsLoading = false
+    }
 
     fun redeem(points: Int) {
         val requestId = if (pendingPoints == points && !pendingRequestId.isNullOrBlank()) {
@@ -292,6 +311,23 @@ private fun IosWalletScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { if (pendingPoints != null) redeem(pendingPoints!!) else refresh() }, enabled = !loading) {
                     Text(if (pendingPoints != null) "Reintentar" else "Reintentar carga")
+                }
+            }
+        }
+
+        HorizontalDivider()
+        Text("Promociones", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        when {
+            promotionsLoading && promotions.isEmpty() -> CircularProgressIndicator(modifier = Modifier.padding(vertical = 8.dp))
+            promotionsError != null && promotions.isEmpty() -> Text(promotionsError!!, color = MaterialTheme.colorScheme.error)
+            promotions.isEmpty() -> Text("No hay promociones disponibles.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else -> promotions.sortedByDescending { it.priority }.forEach { promotion ->
+                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(promotion.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        if (promotion.description.isNotBlank()) Text(promotion.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        promotion.code?.takeIf { it.isNotBlank() }?.let { Text("Código: $it", fontWeight = FontWeight.Medium) }
+                    }
                 }
             }
         }
