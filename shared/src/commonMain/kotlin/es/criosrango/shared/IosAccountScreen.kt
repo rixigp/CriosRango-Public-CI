@@ -67,9 +67,12 @@ fun CriosRangoIOSAccountScreen(
     onApplyWalletCoupon: suspend (String) -> Unit,
     modifier: Modifier = Modifier,
     onOpenExternalUrl: (String) -> Unit,
-    initialOrderId: Int? = null
+    initialOrderId: Int? = null,
+    openPromotionsOnStart: Boolean = false
 ) {
-    var page by remember { mutableStateOf(IosAccountPage.HOME) }
+    var page by remember {
+        mutableStateOf(if (openPromotionsOnStart) IosAccountPage.WALLET else IosAccountPage.HOME)
+    }
     var user by remember { mutableStateOf<AccountUser?>(null) }
     var startup by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -79,7 +82,9 @@ fun CriosRangoIOSAccountScreen(
     var forgotReturnPage by remember { mutableStateOf(IosAccountPage.LOGIN) }
     var addressReturnPage by remember { mutableStateOf(IosAccountPage.HOME) }
     val scope = rememberCoroutineScope()
-    val promotionRepository = remember { PromotionRepository() }
+    val promotionRepository = remember(repository) {
+        PromotionRepository(bearerTokenProvider = { repository.currentToken() })
+    }
     fun invalidateExpiredSession() { repository.clearLocalSession(); user = null; selectedOrder = null; error = null; page = IosAccountPage.HOME }
 
     LaunchedEffect(user?.id, pendingPushOrderId) {
@@ -326,6 +331,7 @@ private fun IosWalletScreen(
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(promotion.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         if (promotion.description.isNotBlank()) Text(promotion.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        promotion.expiresAt?.takeIf { it.isNotBlank() }?.let { Text("Caduca: ${it.replace("T", " ")}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         promotion.code?.takeIf { it.isNotBlank() }?.let { Text("Código: $it", fontWeight = FontWeight.Medium) }
                     }
                 }
