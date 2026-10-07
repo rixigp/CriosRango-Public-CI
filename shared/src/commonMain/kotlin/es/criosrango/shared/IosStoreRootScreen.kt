@@ -67,6 +67,8 @@ import es.criosrango.shared.loyalty.LoyaltyWallet
 import es.criosrango.shared.loyalty.redeemableOptions
 import es.criosrango.shared.loyalty.addMoneyAmounts
 import es.criosrango.shared.loyalty.subtractMoneyAmounts
+import es.criosrango.shared.promotions.Promotion
+import es.criosrango.shared.promotions.PromotionRepository
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.model.StoreCartVariation
@@ -584,8 +586,20 @@ private fun IosCartScreen(
     var clearCartConfirm by remember { mutableStateOf(false) }
     var couponExpanded by remember { mutableStateOf(false) }
     var couponCode by remember { mutableStateOf("") }
+    val promotionRepository = remember { PromotionRepository() }
+    var promotions by remember { mutableStateOf(emptyList<Promotion>()) }
+    var promotionsLoading by remember { mutableStateOf(true) }
+    var promotionsError by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) { cartStore.refresh() }
+    LaunchedEffect(Unit) {
+        cartStore.refresh()
+        promotionsLoading = true
+        promotionsError = null
+        runCatching { promotionRepository.getPromotions() }
+            .onSuccess { promotions = it }
+            .onFailure { promotionsError = it.message ?: "No se han podido cargar las promociones." }
+        promotionsLoading = false
+    }
 
     LazyColumn(
         Modifier.fillMaxSize().padding(padding),
@@ -603,6 +617,32 @@ private fun IosCartScreen(
         if (cart.items.isNotEmpty()) item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 20.dp)) {
                 Text("Promociones y descuentos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                when {
+                    promotionsLoading -> CircularProgressIndicator(Modifier.size(20.dp))
+                    !promotionsError.isNullOrBlank() -> Text(promotionsError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    promotions.isEmpty() -> Text("No hay promociones disponibles.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                    else -> promotions.sortedByDescending { it.priority }.forEach { promotion ->
+                        val code = promotion.code?.trim().orEmpty()
+                        val applied = code.isNotBlank() && cart.coupons.any { it.code.equals(code, ignoreCase = true) }
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(promotion.title, fontWeight = FontWeight.SemiBold)
+                            if (promotion.description.isNotBlank()) {
+                                Text(promotion.description, style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (code.isNotBlank()) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(code, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                                    TextButton(
+                                        onClick = { cartStore.applyCoupon(code) },
+                                        enabled = !applied && !couponLoading
+                                    ) {
+                                        Text(if (applied) "Aplicado" else "Aplicar")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 if (!couponExpanded) TextButton(onClick = { couponExpanded = true }, enabled = !couponLoading) { Text("Tengo un código de descuento") }
                 else {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
