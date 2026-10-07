@@ -79,8 +79,10 @@ class StoreApiClient(
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private var lastCustomerDiagnostic: StoreCustomerDiagnostic? = null
+    private var customerUpdatedBeforeCoupon = false
 
     fun diagnosticCustomer(): StoreCustomerDiagnostic? = lastCustomerDiagnostic
+    fun diagnosticCustomerUpdatedBeforeCoupon(): Boolean = customerUpdatedBeforeCoupon
     private suspend inline fun <reified T> executeCart(
         request: suspend () -> io.ktor.client.statement.HttpResponse
     ): T {
@@ -135,6 +137,7 @@ class StoreApiClient(
         }
 
     suspend fun applyCoupon(code: String): StoreCart {
+        customerUpdatedBeforeCoupon = lastCustomerDiagnostic != null
         val normalizedCode = code.trim()
         require(normalizedCode.isNotEmpty()) { "El código del cupón no puede estar vacío." }
         return executeCart {
@@ -168,6 +171,7 @@ class StoreApiClient(
                 billingLastName = request.billingAddress.lastName,
                 shippingEmail = request.shippingAddress.email
             )
+            customerUpdatedBeforeCoupon = false
             client.post(baseUrl + "cart/update-customer") {
                 sessionHeaders()
                 contentType(ContentType.Application.Json)
