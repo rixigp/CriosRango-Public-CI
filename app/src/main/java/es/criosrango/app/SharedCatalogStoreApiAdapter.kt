@@ -1,6 +1,7 @@
 package es.criosrango.app
 
 import android.util.Log
+import androidx.compose.runtime.mutableStateOf
 import es.criosrango.shared.api.StoreApiClient
 import es.criosrango.shared.api.StoreApiException
 import es.criosrango.shared.model.StoreCart
@@ -48,6 +49,28 @@ private data class WooBrandDto(
     val count: Int = 0,
     val image: WooBrandImageDto? = null
 )
+
+internal data class WalletDebugDiagnostic(
+    val coupon: String,
+    val status: Int?,
+    val apiCode: String?,
+    val message: String,
+    val billingEmail: String?,
+    val billingFirstName: String?,
+    val billingLastName: String?,
+    val shippingEmail: String?,
+    val cartTokenPresent: Boolean,
+    val noncePresent: Boolean,
+    val cookiePresent: Boolean,
+    val updateCustomerBeforeApply: Boolean,
+    val sameStoreSession: Boolean
+)
+
+internal object WalletDebugDiagnosticStore {
+    val state = mutableStateOf<WalletDebugDiagnostic?>(null)
+    fun clear() { state.value = null }
+    fun set(value: WalletDebugDiagnostic) { state.value = value }
+}
 
 private interface WooBrandStoreApi {
     @GET("products/brands")
@@ -140,15 +163,24 @@ class SharedCatalogStoreApiAdapter(
     } catch (exception: Exception) {
         if (BuildConfig.DEBUG && exception is StoreApiException) {
             val customer = sharedClient.diagnosticCustomer()
-            Log.e("CriosRangoWalletDebug",
-                "WALLET DEBUG coupon=${code.trim()} status=${exception.statusCode} apiCode=${exception.apiCode} " +
-                    "message=${exception.message} billing.email=${customer?.billingEmail.orEmpty()} " +
-                    "billing.first_name=${customer?.billingFirstName.orEmpty()} " +
-                    "billing.last_name=${customer?.billingLastName.orEmpty()} " +
-                    "shipping.email=${customer?.shippingEmail.orEmpty()} " +
-                    "cartTokenPresent=${session.cartToken?.isNullOrBlank() == false} " +
-                    "noncePresent=${session.nonce?.isNullOrBlank() == false} " +
-                    "cookiePresent=${session.cookieHeader?.isNullOrBlank() == false}")
+            val updateCustomerBeforeApply = sharedClient.diagnosticCustomerUpdatedBeforeCoupon()
+            WalletDebugDiagnosticStore.set(
+                WalletDebugDiagnostic(
+                    coupon = code.trim(),
+                    status = exception.statusCode,
+                    apiCode = exception.apiCode,
+                    message = exception.message,
+                    billingEmail = customer?.billingEmail,
+                    billingFirstName = customer?.billingFirstName,
+                    billingLastName = customer?.billingLastName,
+                    shippingEmail = customer?.shippingEmail,
+                    cartTokenPresent = session.cartToken?.isNullOrBlank() == false,
+                    noncePresent = session.nonce?.isNullOrBlank() == false,
+                    cookiePresent = session.cookieHeader?.isNullOrBlank() == false,
+                    updateCustomerBeforeApply = updateCustomerBeforeApply,
+                    sameStoreSession = updateCustomerBeforeApply
+                )
+            )
         }
         throw exception.toAndroidCatalogException()
     }
