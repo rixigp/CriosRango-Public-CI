@@ -31,6 +31,7 @@ import android.os.Build
 import android.net.Uri
 import android.util.Log
 import es.criosrango.shared.PushNotificationContract
+import es.criosrango.shared.PushNotificationType
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
@@ -243,12 +244,13 @@ private fun CriosRangoApp(
 
     LaunchedEffect(pushType, pushOrderId) {
         when (pushType) {
-            "new_products" -> {
+            PushNotificationType.NEW_PRODUCTS -> {
                 viewModel.refreshHome()
                 tab = AppTab.HOME
                 homeShowAll = true
             }
-            "order_status" -> { tab = AppTab.ACCOUNT }
+            PushNotificationType.ORDER_STATUS -> { tab = AppTab.ACCOUNT }
+            PushNotificationType.BIRTHDAY_COUPON -> { tab = AppTab.ACCOUNT }
         }
         if (pushType != null) { pushTypeState.value = null; pushOrderIdState.value = null }
     }
@@ -388,6 +390,7 @@ private fun CriosRangoApp(
                         vm = accountViewModel,
                         openLoginOnStart = returnToCartAfterLogin,
                         initialOrderId = pushOrderId,
+                        openPromotionsOnStart = pushType == PushNotificationType.BIRTHDAY_COUPON,
                         onRootBackAvailable = { accountRootBackAvailable = it },
                         loyaltyViewModel = loyaltyViewModel,
                         applyWalletCoupon = viewModel.cartStore::applyCoupon,
