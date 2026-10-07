@@ -1,9 +1,12 @@
 package es.criosrango.shared.promotions
 
 class PromotionRepository(
-    private val client: PromotionClient = PromotionClient()
+    private val client: PromotionClient? = null,
+    bearerTokenProvider: (() -> String?)? = null
 ) {
-    suspend fun getPromotions(): List<Promotion> = client.getPromotions()
+    private val resolvedClient = client ?: PromotionClient(bearerTokenProvider = bearerTokenProvider)
 
-    fun close() = client.close()
+    suspend fun getPromotions(): List<Promotion> = resolvedClient.getPromotions()
+
+    fun close() = resolvedClient.close()
 }
