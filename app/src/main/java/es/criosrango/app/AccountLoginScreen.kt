@@ -61,6 +61,7 @@ fun AccountLoginScreen(
     vm: AccountViewModel = viewModel(),
     openLoginOnStart: Boolean = false,
     initialOrderId: Int? = null,
+    openPromotionsOnStart: Boolean = false,
     onAuthenticated: (() -> Unit)? = null,
     onBackFromLogin: (() -> Unit)? = null,
     onRootBackAvailable: (Boolean) -> Unit = {},
@@ -81,7 +82,11 @@ fun AccountLoginScreen(
     val loyaltyWallet by loyaltyViewModel.wallet.collectAsStateWithLifecycle()
     val loyaltyLoading by loyaltyViewModel.loading.collectAsStateWithLifecycle()
     val loyaltyError by loyaltyViewModel.error.collectAsStateWithLifecycle()
-    val promotionRepository = remember { PromotionRepository() }
+    val promotionRepository = remember {
+        PromotionRepository(
+            bearerTokenProvider = { AccountSessionStore.shared(notificationContext.applicationContext).load() }
+        )
+    }
     var promotions by remember { mutableStateOf(emptyList<Promotion>()) }
     var promotionsLoading by remember { mutableStateOf(false) }
     var promotionsError by remember { mutableStateOf<String?>(null) }
@@ -92,7 +97,9 @@ fun AccountLoginScreen(
     var showLogin by remember { mutableStateOf(openLoginOnStart) }
     var selectedInfoPage by remember { mutableStateOf<AccountInfoPage?>(null) }
     val currentUser = user
-    var accountSection by remember(currentUser?.id) { mutableStateOf(AccountSection.HOME) }
+    var accountSection by remember(currentUser?.id) {
+        mutableStateOf(if (openPromotionsOnStart) AccountSection.WALLET else AccountSection.HOME)
+    }
     var selectedOrderId by remember { mutableStateOf<Int?>(initialOrderId) }
     val selectedOrder = orders.firstOrNull { it.id == selectedOrderId }
     val accountRootBackAvailable = selectedInfoPage == null && selectedOrder == null && !showLogin && accountSection == AccountSection.HOME
@@ -497,6 +504,7 @@ private fun AccountWalletContent(
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(promotion.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         if (promotion.description.isNotBlank()) Text(promotion.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        promotion.expiresAt?.takeIf { it.isNotBlank() }?.let { Text("Caduca: ${it.replace("T", " ")}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         promotion.code?.takeIf { it.isNotBlank() }?.let { Text("Código: $it", fontWeight = FontWeight.Medium) }
                     }
                 }

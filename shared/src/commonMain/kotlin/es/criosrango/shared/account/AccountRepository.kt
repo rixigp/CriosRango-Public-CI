@@ -33,6 +33,8 @@ class AccountRepository(
     val hasSession: Boolean
         get() = !tokenStore.load().isNullOrBlank()
 
+    fun currentToken(): String? = tokenStore.load()?.takeIf { it.isNotBlank() }
+
     suspend fun login(login: String, password: String): AccountUser {
         val response = client.login(AccountLoginRequest(login.trim(), password))
         persistToken(response.token)

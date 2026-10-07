@@ -9,6 +9,8 @@ data class Promotion(
     val title: String,
     val description: String = "",
     val code: String? = null,
+    val type: String? = null,
+    val personal: Boolean = false,
     @SerialName("requires_login") val requiresLogin: Boolean = false,
     @SerialName("starts_at") val startsAt: String? = null,
     @SerialName("expires_at") val expiresAt: String? = null,

@@ -3,18 +3,25 @@ package es.criosrango.shared.promotions
 import es.criosrango.shared.createStoreHttpClient
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.http.HttpHeaders
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import kotlinx.serialization.json.Json
 
 class PromotionClient(
     private val baseUrl: String = "https://criosrango.es/wp-json/criosrango/v1/",
-    private val client: HttpClient = createStoreHttpClient()
+    private val client: HttpClient = createStoreHttpClient(),
+    private val bearerTokenProvider: (() -> String?)? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun getPromotions(): List<Promotion> {
-        val response = client.get(baseUrl + "promotions")
+        val response = client.get(baseUrl + "promotions") {
+            bearerTokenProvider?.invoke()?.trim()?.takeIf { it.isNotBlank() }?.let { token ->
+                header(HttpHeaders.Authorization, "Bearer $token")
+            }
+        }
         val raw = response.bodyAsText()
 
         if (!response.status.isSuccess()) {

@@ -114,12 +114,17 @@ internal fun CartScreen(
     val loyaltyLoading by loyaltyViewModel.loading.collectAsStateWithLifecycle()
     val loyaltyError by loyaltyViewModel.error.collectAsStateWithLifecycle()
     var showWalletDialog by remember { mutableStateOf(false) }
-    val promotionRepository = remember { PromotionRepository() }
+    val context = LocalContext.current
+    val promotionRepository = remember {
+        PromotionRepository(
+            bearerTokenProvider = { AccountSessionStore.shared(context.applicationContext).load() }
+        )
+    }
     var promotions by remember { mutableStateOf(emptyList<Promotion>()) }
     var promotionsLoading by remember { mutableStateOf(true) }
     var promotionsError by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(accountUserId) {
         promotionsLoading = true
         promotionsError = null
         runCatching { promotionRepository.getPromotions() }
@@ -180,6 +185,9 @@ internal fun CartScreen(
                             Text(promotion.title, fontWeight = FontWeight.SemiBold)
                             if (promotion.description.isNotBlank()) {
                                 Text(promotion.description, style = MaterialTheme.typography.bodySmall)
+                            }
+                            promotion.expiresAt?.takeIf { it.isNotBlank() }?.let {
+                                Text("Caduca: ${it.replace("T", " ")}", style = MaterialTheme.typography.bodySmall)
                             }
                             if (code.isNotBlank()) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
