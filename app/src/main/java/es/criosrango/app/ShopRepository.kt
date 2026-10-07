@@ -521,7 +521,7 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
             _couponError.value = "No se ha podido quitar este código de descuento."
             return false
         }
-        return couponMutationMutex.withLock {
+        return cartMutex.withLock {
             if (_couponLoading.value) return@withLock false
             _couponLoading.value = true
             _couponError.value = null
