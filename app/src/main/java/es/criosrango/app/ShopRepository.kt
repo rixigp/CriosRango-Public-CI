@@ -501,11 +501,45 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
             _couponError.value = null
             try {
                 val response = withTimeout(18_000) { api.applyCoupon(normalizedCode) }
-                if (response.errors.isNotEmpty()) throw CartException(response.errors.joinToString("\n") { it.message })
+                if (response.errors.isNotEmpty()) {
+                    throw CartException(
+                        buildString {
+                            append("DBG path=cart.errors ")
+                            append(
+                                response.errors.joinToString(" | ") { error ->
+                                    "code=${error.code.ifBlank { "<blank>" }}" +
+                                        " message=${error.message.ifBlank { "<blank>" }}"
+                                }
+                            )
+                        }
+                    )
+                }
                 accept(response)
                 true
             } catch (exception: Exception) {
-                _couponError.value = exception.message?.takeIf(String::isNotBlank) ?: "No se ha podido aplicar este código de descuento."
+                val originalMessage =
+                    exception.message?.takeIf(String::isNotBlank)
+
+                _couponError.value =
+                    if (originalMessage?.startsWith("DBG path=cart.errors") == true) {
+                        originalMessage
+                    } else {
+                        buildString {
+                            append("DBG path=exception")
+                            append(" type=")
+                            append(exception::class.simpleName ?: "<unknown>")
+                            append(" message=")
+                            append(exception.message ?: "<null>")
+                            append(" causeType=")
+                            append(
+                                exception.cause?.let {
+                                    it::class.simpleName
+                                } ?: "<null>"
+                            )
+                            append(" causeMessage=")
+                            append(exception.cause?.message ?: "<null>")
+                        }
+                    }
                 false
             } finally {
                 _couponLoading.value = false
