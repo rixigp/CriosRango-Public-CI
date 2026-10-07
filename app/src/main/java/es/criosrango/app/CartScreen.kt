@@ -155,6 +155,33 @@ internal fun CartScreen(
         if (cart.items.isNotEmpty()) item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Promociones y descuentos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                if (BuildConfig.DEBUG) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                    ) {
+                        Text("DIAG WALLET C1", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        WalletDebugDiagnosticStore.state.value?.let { debug ->
+                            val billingEmailMatchesAccount =
+                                !debug.billingEmail.isNullOrBlank() &&
+                                    !accountUserEmail.isNullOrBlank() &&
+                                    debug.billingEmail.equals(accountUserEmail, ignoreCase = true)
+                            Text("coupon=${debug.coupon}", style = MaterialTheme.typography.labelSmall)
+                            Text("status=${debug.status ?: ""}", style = MaterialTheme.typography.labelSmall)
+                            Text("apiCode=${debug.apiCode ?: ""}", style = MaterialTheme.typography.labelSmall)
+                            Text("message=${debug.message}", style = MaterialTheme.typography.labelSmall)
+                            Text("billing.email=${debug.billingEmail.orEmpty()}", style = MaterialTheme.typography.labelSmall)
+                            Text("billing.first_name=${debug.billingFirstName.orEmpty()}", style = MaterialTheme.typography.labelSmall)
+                            Text("billing.last_name=${debug.billingLastName.orEmpty()}", style = MaterialTheme.typography.labelSmall)
+                            Text("shipping.email=${debug.shippingEmail.orEmpty()}", style = MaterialTheme.typography.labelSmall)
+                            Text("billingEmailMatchesAccount=$billingEmailMatchesAccount", style = MaterialTheme.typography.labelSmall)
+                            Text("cartTokenPresent=${debug.cartTokenPresent}", style = MaterialTheme.typography.labelSmall)
+                            Text("noncePresent=${debug.noncePresent}", style = MaterialTheme.typography.labelSmall)
+                            Text("cookiePresent=${debug.cookiePresent}", style = MaterialTheme.typography.labelSmall)
+                            Text("updateCustomerBeforeApply=${debug.updateCustomerBeforeApply}", style = MaterialTheme.typography.labelSmall)
+                            Text("sameStoreSession=${debug.sameStoreSession}", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
                 if (!couponExpanded) TextButton(onClick = { couponExpanded = true }, enabled = !couponLoading) { Text("Tengo un código de descuento") }
                 else {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -162,43 +189,6 @@ internal fun CartScreen(
                         Button(onClick = { applyCoupon(couponCode.trim()) }, enabled = couponCode.trim().isNotEmpty() && !couponLoading) { if (couponLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Aplicar") }
                     }
                     couponError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                    if (BuildConfig.DEBUG) {
-                        WalletDebugDiagnosticStore.state.value?.let { debug ->
-                            val billingEmailMatchesAccount =
-                                !debug.billingEmail.isNullOrBlank() &&
-                                    !accountUserEmail.isNullOrBlank() &&
-                                    debug.billingEmail.equals(accountUserEmail, ignoreCase = true)
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp)
-                                    .background(
-                                        MaterialTheme.colorScheme.surfaceVariant,
-                                        RoundedCornerShape(8.dp)
-                                    )
-                                    .padding(10.dp),
-                                verticalArrangement = Arrangement.spacedBy(2.dp)
-                            ) {
-                                Text("WALLET DEBUG", fontWeight = FontWeight.Bold)
-                                Text("coupon: ${debug.coupon}")
-                                Text("status: ${debug.status ?: ""}")
-                                Text("apiCode: ${debug.apiCode ?: ""}")
-                                Text("message: ${debug.message}")
-                                Spacer(Modifier.height(4.dp))
-                                Text("billing.email: ${debug.billingEmail.orEmpty()}")
-                                Text("billing.first_name: ${debug.billingFirstName.orEmpty()}")
-                                Text("billing.last_name: ${debug.billingLastName.orEmpty()}")
-                                Text("shipping.email: ${debug.shippingEmail.orEmpty()}")
-                                Spacer(Modifier.height(4.dp))
-                                Text("billingEmailMatchesAccount: $billingEmailMatchesAccount")
-                                Text("cartTokenPresent: ${debug.cartTokenPresent}")
-                                Text("noncePresent: ${debug.noncePresent}")
-                                Text("cookiePresent: ${debug.cookiePresent}")
-                                Text("updateCustomerBeforeApply: ${debug.updateCustomerBeforeApply}")
-                                Text("sameStoreSession: ${debug.sameStoreSession}")
-                            }
-                        }
-                    }
                 }
                 if (cart.coupons.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     cart.coupons.forEach { coupon ->
