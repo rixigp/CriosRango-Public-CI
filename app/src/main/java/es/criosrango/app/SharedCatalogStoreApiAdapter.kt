@@ -1,7 +1,9 @@
 package es.criosrango.app
 
 import android.util.Log
-import androidx.compose.runtime.mutableStateOf
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import es.criosrango.shared.api.StoreApiClient
 import es.criosrango.shared.api.StoreApiException
 import es.criosrango.shared.model.StoreCart
@@ -67,9 +69,10 @@ internal data class WalletDebugDiagnostic(
 )
 
 internal object WalletDebugDiagnosticStore {
-    val state = mutableStateOf<WalletDebugDiagnostic?>(null)
-    fun clear() { state.value = null }
-    fun set(value: WalletDebugDiagnostic) { state.value = value }
+    private val _state = MutableStateFlow<WalletDebugDiagnostic?>(null)
+    val state: StateFlow<WalletDebugDiagnostic?> = _state.asStateFlow()
+    fun clear() { _state.value = null }
+    fun set(value: WalletDebugDiagnostic) { _state.value = value }
 }
 
 private interface WooBrandStoreApi {
