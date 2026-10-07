@@ -47,7 +47,23 @@ class StoreCartStore(
                 _couponError.value = null
                 runCatching { api.applyCoupon(normalizedCode) }
                     .onSuccess { accept(it) }
-                    .onFailure { _couponError.value = it.message?.takeIf(String::isNotBlank) ?: "No se ha podido aplicar este código de descuento." }
+                    .onFailure {
+                        _couponError.value = buildString {
+                            append("DBG type=")
+                            append(it::class.simpleName ?: "<unknown>")
+
+                            append(" | message=")
+                            append(it.message ?: "<null>")
+
+                            append(" | causeType=")
+                            append(it.cause?.let { cause ->
+                                cause::class.simpleName
+                            } ?: "<null>")
+
+                            append(" | causeMessage=")
+                            append(it.cause?.message ?: "<null>")
+                        }
+                    }
                 _couponLoading.value = false
             }
         }
