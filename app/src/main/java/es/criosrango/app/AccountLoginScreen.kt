@@ -48,6 +48,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import es.criosrango.shared.loyalty.LoyaltyReward
+import es.criosrango.shared.loyalty.redeemableOptions
+import es.criosrango.shared.loyalty.subtractMoneyAmounts
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,7 +61,10 @@ fun AccountLoginScreen(
     initialOrderId: Int? = null,
     onAuthenticated: (() -> Unit)? = null,
     onBackFromLogin: (() -> Unit)? = null,
-    onRootBackAvailable: (Boolean) -> Unit = {}
+    onRootBackAvailable: (Boolean) -> Unit = {},
+    loyaltyViewModel: LoyaltyViewModel = viewModel(),
+    applyWalletCoupon: suspend (String) -> Boolean = { false },
+    cartCouponCodes: Set<String> = emptySet()
 ) {
     val authState by vm.authState.collectAsStateWithLifecycle()
     val user by vm.user.collectAsStateWithLifecycle()
@@ -70,6 +76,9 @@ fun AccountLoginScreen(
     val notificationContext = LocalContext.current
     val notice by vm.notice.collectAsStateWithLifecycle()
     val address by vm.address.collectAsStateWithLifecycle()
+    val loyaltyWallet by loyaltyViewModel.wallet.collectAsStateWithLifecycle()
+    val loyaltyLoading by loyaltyViewModel.loading.collectAsStateWithLifecycle()
+    val loyaltyError by loyaltyViewModel.error.collectAsStateWithLifecycle()
     var login by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showRegister by remember { mutableStateOf(false) }
@@ -123,6 +132,9 @@ fun AccountLoginScreen(
         if (currentUser != null && accountSection == AccountSection.ORDERS) {
             vm.refreshOrders()
         }
+        if (currentUser != null && accountSection == AccountSection.WALLET) {
+            loyaltyViewModel.refresh()
+        }
     }
 
     if (currentUser == null && accountError?.type == StoreErrorType.SESSION_EXPIRED) {
@@ -165,7 +177,7 @@ fun AccountLoginScreen(
     BackHandler(enabled = selectedOrder == null && !showLogin && accountSection != AccountSection.HOME) {
         accountSection = when (accountSection) {
             AccountSection.DATA, AccountSection.ADDRESSES -> AccountSection.PROFILE
-            AccountSection.PROFILE, AccountSection.ORDERS, AccountSection.HELP -> AccountSection.HOME
+            AccountSection.PROFILE, AccountSection.ORDERS, AccountSection.WALLET, AccountSection.HELP -> AccountSection.HOME
             AccountSection.HOME -> AccountSection.HOME
         }
     }
@@ -204,6 +216,7 @@ fun AccountLoginScreen(
                         fullName = fullName,
                         email = currentUser.email,
                         onOrders = { accountSection = AccountSection.ORDERS },
+                        onWallet = { accountSection = AccountSection.WALLET },
                         onProfile = { accountSection = AccountSection.PROFILE },
                         onLogin = { showLogin = true },
                         onHelp = { accountSection = AccountSection.HELP },
@@ -213,6 +226,16 @@ fun AccountLoginScreen(
                     AccountSection.DATA -> AccountPersonalDataContent(vm, currentUser) { accountSection = AccountSection.PROFILE }
                     AccountSection.ADDRESSES -> AccountAddressContent(vm, address) { accountSection = AccountSection.PROFILE }
                     AccountSection.HELP -> AccountHelpContent { accountSection = AccountSection.HOME }
+                    AccountSection.WALLET -> AccountWalletContent(
+                        wallet = loyaltyWallet,
+                        loading = loyaltyLoading,
+                        error = loyaltyError,
+                        cartCouponCodes = cartCouponCodes,
+                        onBack = { accountSection = AccountSection.HOME },
+                        onRefresh = loyaltyViewModel::refresh,
+                        onApplyReward = { reward -> loyaltyViewModel.applyPending(reward, applyWalletCoupon) },
+                        onRedeem = { points -> loyaltyViewModel.redeem(points, applyWalletCoupon) }
+                    )
                     AccountSection.ORDERS -> Unit
                 }
                 if (accountSection != AccountSection.HELP) Spacer(Modifier.height(24.dp))
@@ -231,6 +254,7 @@ fun AccountLoginScreen(
                     fullName = null,
                     email = null,
                     onOrders = { showLogin = true },
+                    onWallet = { showLogin = true },
                     onProfile = { showLogin = true },
                     onLogin = { showLogin = true },
                     onHelp = { accountSection = AccountSection.HELP },
@@ -275,7 +299,7 @@ internal fun accountAuthBackDestination(
     AccountAuthDestination.ACCOUNT, AccountAuthDestination.CART -> AccountAuthDestination.ACCOUNT
 }
 
-private enum class AccountSection { HOME, ORDERS, PROFILE, DATA, ADDRESSES, HELP }
+private enum class AccountSection { HOME, ORDERS, WALLET, PROFILE, DATA, ADDRESSES, HELP }
 
 @Composable
 private fun AccountCompactAccess(
@@ -319,12 +343,12 @@ private fun AccountHomeContentV2(
     fullName: String?,
     email: String?,
     onOrders: () -> Unit,
+    onWallet: () -> Unit,
     onProfile: () -> Unit,
     onLogin: () -> Unit,
     onHelp: () -> Unit,
     onInfoPage: (AccountInfoPage) -> Unit
 ) {
-    val context = LocalContext.current
     val isAuthenticated = !fullName.isNullOrBlank() && !email.isNullOrBlank()
     val nameParts = fullName.orEmpty().trim().split(Regex("\\s+")).filter { it.isNotBlank() }
     val initials = buildString { nameParts.firstOrNull()?.firstOrNull()?.let { append(it.uppercaseChar()) }; nameParts.drop(1).firstOrNull()?.firstOrNull()?.let { append(it.uppercaseChar()) } }.ifBlank { "CR" }
@@ -359,7 +383,7 @@ private fun AccountHomeContentV2(
         Spacer(Modifier.height(if (isAuthenticated) 24.dp else 12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             AccountCompactAccess(Modifier.weight(1f), "Pedidos", Icons.Outlined.History, onOrders)
-            AccountCompactAccess(Modifier.weight(1f), "Cupones", Icons.Outlined.Sell) { android.widget.Toast.makeText(context, "Próximamente", android.widget.Toast.LENGTH_SHORT).show() }
+            AccountCompactAccess(Modifier.weight(1f), "Cupones y promociones", Icons.Outlined.Sell, onWallet)
         }
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -371,6 +395,84 @@ private fun AccountHomeContentV2(
         Spacer(Modifier.height(20.dp))
         Text("Versión ${BuildConfig.VERSION_NAME}", Modifier.align(Alignment.CenterHorizontally), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun AccountWalletContent(
+    wallet: es.criosrango.shared.loyalty.LoyaltyWallet?,
+    loading: Boolean,
+    error: String?,
+    cartCouponCodes: Set<String>,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit,
+    onApplyReward: (LoyaltyReward) -> Unit,
+    onRedeem: (Int) -> Unit
+) {
+    var showRedeemDialog by remember { mutableStateOf(false) }
+    val options = wallet?.redeemableOptions()
+        ?: emptyList()
+    Column(
+        Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
+            }
+            Text("Monedero Críos & Rango", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        }
+        when {
+            loading && wallet == null -> CircularProgressIndicator(modifier = Modifier.padding(vertical = 20.dp))
+            wallet != null -> {
+                Text(
+                    loyaltyDisplayMoney(wallet.walletValue) + " disponibles",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(wallet.points.toString() + " puntos", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (options.isNotEmpty()) {
+                    Button(onClick = { showRedeemDialog = true }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
+                        Text("Utilizar saldo")
+                    }
+                }
+                if (wallet.pendingRewards.isNotEmpty()) {
+                    Text("Crédito listo para usar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    wallet.pendingRewards.forEach { reward ->
+                        val applied = cartCouponCodes.any { it.equals(reward.code, ignoreCase = true) }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(loyaltyDisplayMoney(reward.amount), fontWeight = FontWeight.SemiBold)
+                                Text(reward.code, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (applied) {
+                                Text("Aplicado", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                            } else {
+                                TextButton(
+                                    onClick = { onApplyReward(reward) },
+                                    enabled = !loading
+                                ) { Text("Aplicar") }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        error?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = onRefresh, enabled = !loading) { Text("Reintentar") }
+        }
+    }
+    if (showRedeemDialog && options.isNotEmpty()) {
+        LoyaltyRedeemDialog(
+            options = options,
+            loading = loading,
+            onDismiss = { showRedeemDialog = false },
+            onSelect = { option ->
+                showRedeemDialog = false
+                onRedeem(option.points)
+            }
+        )
     }
 }
 

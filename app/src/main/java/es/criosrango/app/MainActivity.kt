@@ -183,6 +183,7 @@ private fun CriosRangoApp(
     coldStartBranding: Boolean
 ) {
     val accountViewModel: AccountViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val loyaltyViewModel: LoyaltyViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val accountUser by accountViewModel.user.collectAsStateWithLifecycle()
     val products by viewModel.products.collectAsStateWithLifecycle()
     val activeCategoryProducts by viewModel.activeCategoryProducts.collectAsStateWithLifecycle()
@@ -384,6 +385,9 @@ private fun CriosRangoApp(
                         openLoginOnStart = returnToCartAfterLogin,
                         initialOrderId = pushOrderId,
                         onRootBackAvailable = { accountRootBackAvailable = it },
+                        loyaltyViewModel = loyaltyViewModel,
+                        applyWalletCoupon = viewModel.cartStore::applyCoupon,
+                        cartCouponCodes = remoteCart.coupons.map { it.code }.toSet(),
                         onAuthenticated = {
                             if (returnToCartAfterLogin) {
                                 returnToCartAfterLogin = false
@@ -414,6 +418,8 @@ private fun CriosRangoApp(
                         couponError = couponError,
                         applyCoupon = viewModel::applyCoupon,
                         removeCoupon = viewModel::removeCoupon,
+                        loyaltyViewModel = loyaltyViewModel,
+                        applyWalletCoupon = viewModel.cartStore::applyCoupon,
                         accountUserId = accountUser?.id,
                         onLogin = {
                             returnToCartAfterLogin = true

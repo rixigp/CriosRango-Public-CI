@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.text.HtmlCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import es.criosrango.shared.loyalty.redeemableOptions
 import coil.compose.AsyncImage
 import compose.icons.TablerIcons
 import compose.icons.tablericons.Bed
@@ -99,12 +100,22 @@ internal fun CartScreen(
     couponError: String?,
     applyCoupon: (String) -> Unit,
     removeCoupon: (String) -> Unit,
+    loyaltyViewModel: LoyaltyViewModel,
+    applyWalletCoupon: suspend (String) -> Boolean,
     accountUserId: Int?,
     onLogin: () -> Unit,
 ) {
     var clearCartConfirm by remember { mutableStateOf(false) }
     var couponExpanded by remember { mutableStateOf(false) }
     var couponCode by remember { mutableStateOf("") }
+    val loyaltyWallet by loyaltyViewModel.wallet.collectAsStateWithLifecycle()
+    val loyaltyLoading by loyaltyViewModel.loading.collectAsStateWithLifecycle()
+    val loyaltyError by loyaltyViewModel.error.collectAsStateWithLifecycle()
+    var showWalletDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(accountUserId) {
+        if (accountUserId != null) loyaltyViewModel.refresh()
+    }
 
     LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
@@ -162,6 +173,45 @@ internal fun CartScreen(
                         }
                     }
                 }
+                if (accountUserId == null) {
+                    TextButton(onClick = onLogin) { Text("Inicia sesión para usar tu Monedero Críos & Rango") }
+                } else if (loyaltyWallet != null) {
+                    val wallet = loyaltyWallet!!
+                    val eligibleSubtotal = es.criosrango.shared.loyalty.subtractMoneyAmounts(
+                        cart.totals.consumerSubtotal(),
+                        cart.totals.consumerDiscount()
+                    )
+                    val walletOptions = wallet.redeemableOptions(eligibleSubtotal)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Monedero Críos & Rango", fontWeight = FontWeight.SemiBold)
+                                Text(loyaltyDisplayMoney(wallet.walletValue) + " disponibles", style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (walletOptions.isNotEmpty()) {
+                                TextButton(onClick = { showWalletDialog = true }, enabled = !loyaltyLoading) { Text("Aplicar") }
+                            }
+                        }
+                        wallet.pendingRewards.forEach { reward ->
+                            val applied = cart.coupons.any { it.code.equals(reward.code, ignoreCase = true) }
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Crédito listo para usar", fontWeight = FontWeight.Medium)
+                                    Text(loyaltyDisplayMoney(reward.amount), style = MaterialTheme.typography.bodySmall)
+                                }
+                                if (applied) {
+                                    Text("Aplicado", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                                } else {
+                                    TextButton(
+                                        onClick = { loyaltyViewModel.applyPending(reward, applyWalletCoupon) },
+                                        enabled = !loyaltyLoading
+                                    ) { Text("Aplicar") }
+                                }
+                            }
+                        }
+                    }
+                }
+                loyaltyError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
         }
         items(cart.items, key = { it.key }) { item ->
@@ -242,6 +292,26 @@ internal fun CartScreen(
             ) {
                 Text("Finalizar compra")
             }
+        }
+    }
+
+    if (showWalletDialog && loyaltyWallet != null) {
+        val eligibleSubtotal = es.criosrango.shared.loyalty.subtractMoneyAmounts(
+            cart.totals.consumerSubtotal(),
+            cart.totals.consumerDiscount()
+        )
+        val wallet = loyaltyWallet!!
+        val walletOptions = wallet.redeemableOptions(eligibleSubtotal)
+        if (walletOptions.isNotEmpty()) {
+            LoyaltyRedeemDialog(
+                options = walletOptions,
+                loading = loyaltyLoading,
+                onDismiss = { showWalletDialog = false },
+                onSelect = { option ->
+                    showWalletDialog = false
+                    loyaltyViewModel.redeem(option.points, applyWalletCoupon)
+                }
+            )
         }
     }
 

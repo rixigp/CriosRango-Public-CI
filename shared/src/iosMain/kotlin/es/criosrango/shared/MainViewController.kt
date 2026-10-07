@@ -3,6 +3,7 @@ package es.criosrango.shared
 import androidx.compose.ui.window.ComposeUIViewController
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.api.StoreApiClient
+import es.criosrango.shared.loyalty.LoyaltyRepository
 import platform.Foundation.NSURL
 import platform.UIKit.UIApplication
 import platform.UIKit.UIViewController
@@ -14,10 +15,12 @@ fun MainViewController() : UIViewController {
     val storeSession = IosStoreSessionStore()
     val storeApi = StoreApiClient(session = storeSession)
     val cartStore = StoreCartStore(storeApi)
+    val accountTokenStore = IosAccountTokenStore()
     val accountRepository = AccountRepository(
-        tokenStore = IosAccountTokenStore(),
+        tokenStore = accountTokenStore,
         claimOrderStore = IosClaimOrderStore()
     )
+    val loyaltyRepository = LoyaltyRepository(accountTokenStore)
     val pendingStore = IosPendingCardPaymentStore()
     // Create and publish the payment store before UIKit can deliver a cold-start URL.
     // StorePaymentStore restores the durable pending state during construction.
@@ -28,6 +31,7 @@ fun MainViewController() : UIViewController {
         CriosRangoIOSRootScreen(
         storeApi = storeApi,
         accountRepository = accountRepository,
+        loyaltyRepository = loyaltyRepository,
         cartStore = cartStore,
         checkoutStore = StoreCheckoutStore(storeApi, cartStore, accountRepository),
         paymentStore = paymentStore,

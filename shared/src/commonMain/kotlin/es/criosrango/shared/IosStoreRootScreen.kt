@@ -61,6 +61,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import es.criosrango.shared.account.AccountRepository
+import es.criosrango.shared.loyalty.LoyaltyRepository
+import es.criosrango.shared.loyalty.LoyaltyReward
+import es.criosrango.shared.loyalty.LoyaltyWallet
+import es.criosrango.shared.loyalty.redeemableOptions
+import es.criosrango.shared.loyalty.addMoneyAmounts
+import es.criosrango.shared.loyalty.subtractMoneyAmounts
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.model.StoreCartVariation
@@ -98,6 +104,7 @@ internal sealed class IosCatalogPage {
 fun CriosRangoIOSRootScreen(
     storeApi: es.criosrango.shared.api.StoreApiClient,
     accountRepository: AccountRepository,
+    loyaltyRepository: LoyaltyRepository,
     cartStore: StoreCartStore,
     checkoutStore: StoreCheckoutStore,
     paymentStore: StorePaymentStore,
@@ -212,9 +219,18 @@ fun CriosRangoIOSRootScreen(
                     },
                     catalogRestoration = catalogRestoration
                 )
-                IosRootSection.CART -> IosCartScreen(cartStore, padding, onCheckout = { checkoutOpen = true }) { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) }
+                IosRootSection.CART -> IosCartScreen(
+                    cartStore = cartStore,
+                    loyaltyRepository = loyaltyRepository,
+                    walletEnabled = accountRepository.hasSession,
+                    padding = padding,
+                    onCheckout = { checkoutOpen = true }
+                ) { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) }
                 IosRootSection.ACCOUNT -> CriosRangoIOSAccountScreen(
                     repository = accountRepository,
+                    loyaltyRepository = loyaltyRepository,
+                    cartCouponCodes = cartStore.cart.collectAsState().value.coupons.map { it.code }.toSet(),
+                    onApplyWalletCoupon = { code -> cartStore.applyCoupon(code) },
                     modifier = Modifier.padding(padding),
                     initialOrderId = pushNavigation?.orderId,
                     onOpenExternalUrl = onOpenExternalUrl
@@ -497,10 +513,69 @@ internal fun IosProductCard(product: StoreProduct, onClick: (StoreProduct) -> Un
 @Composable
 private fun IosCartScreen(
     cartStore: StoreCartStore,
+    loyaltyRepository: LoyaltyRepository,
+    walletEnabled: Boolean,
     padding: PaddingValues,
     onCheckout: () -> Unit,
     onOpenProduct: (StoreProduct) -> Unit
 ) {
+    var loyaltyWallet by remember { mutableStateOf<LoyaltyWallet?>(null) }
+    var loyaltyLoading by remember { mutableStateOf(false) }
+    var loyaltyError by remember { mutableStateOf<String?>(null) }
+    var showWalletDialog by remember { mutableStateOf(false) }
+    var pendingRedeemPoints by remember { mutableStateOf<Int?>(null) }
+    var pendingRequestId by remember { mutableStateOf<String?>(null) }
+    val loyaltyScope = rememberCoroutineScope()
+
+    LaunchedEffect(walletEnabled) {
+        if (!walletEnabled) {
+            loyaltyWallet = null
+            return@LaunchedEffect
+        }
+        loyaltyLoading = true
+        loyaltyError = null
+        runCatching { loyaltyRepository.getWallet() }
+            .onSuccess { loyaltyWallet = it }
+            .onFailure { loyaltyError = it.message ?: "No se ha podido cargar el monedero." }
+        loyaltyLoading = false
+    }
+
+    fun redeemWallet(points: Int) {
+        val requestId = if (pendingRedeemPoints == points && !pendingRequestId.isNullOrBlank()) {
+            pendingRequestId!!
+        } else {
+            pendingRedeemPoints = points
+            loyaltyRepository.newRequestId().also { pendingRequestId = it }
+        }
+        loyaltyScope.launch {
+            loyaltyLoading = true
+            loyaltyError = null
+            runCatching { loyaltyRepository.redeem(points, requestId) }
+                .onSuccess { response ->
+                    loyaltyWallet = runCatching { loyaltyRepository.getWallet() }.getOrNull() ?: loyaltyWallet
+                    val coupon = response.coupon
+                    if (coupon == null) {
+                        loyaltyError = "El canje no ha devuelto un cupón utilizable."
+                    } else {
+                        cartStore.applyCoupon(coupon.code)
+                    }
+                    pendingRedeemPoints = null
+                    pendingRequestId = null
+                }
+                .onFailure { loyaltyError = it.message ?: "No se ha podido utilizar el monedero." }
+            loyaltyLoading = false
+        }
+    }
+
+    fun applyPendingReward(reward: LoyaltyReward) {
+        loyaltyScope.launch {
+            loyaltyLoading = true
+            loyaltyError = null
+            cartStore.applyCoupon(reward.code)
+            loyaltyWallet = runCatching { loyaltyRepository.getWallet() }.getOrNull() ?: loyaltyWallet
+            loyaltyLoading = false
+        }
+    }
     val cart by cartStore.cart.collectAsState()
     val state by cartStore.state.collectAsState()
     val error by cartStore.error.collectAsState()
@@ -549,6 +624,36 @@ private fun IosCartScreen(
                         }
                     }
                 }
+                if (walletEnabled && loyaltyWallet != null) {
+                    val eligibleSubtotal = subtractMoneyAmounts(
+                        addMoneyAmounts(cart.totals.totalItems, cart.totals.totalItemsTax),
+                        cart.totals.consumerDiscount()
+                    )
+                    val walletOptions = loyaltyWallet!!.redeemableOptions(eligibleSubtotal)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Monedero Críos & Rango", fontWeight = FontWeight.SemiBold)
+                                Text(loyaltyWallet!!.walletValue.replace('.', ',') + " € disponibles", style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (walletOptions.isNotEmpty()) {
+                                TextButton(onClick = { showWalletDialog = true }, enabled = !loyaltyLoading) { Text("Aplicar") }
+                            }
+                        }
+                        loyaltyWallet!!.pendingRewards.forEach { reward ->
+                            val applied = cart.coupons.any { it.code.equals(reward.code, ignoreCase = true) }
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Crédito listo para usar", fontWeight = FontWeight.Medium)
+                                    Text(reward.amount.replace('.', ',') + " €", style = MaterialTheme.typography.bodySmall)
+                                }
+                                if (applied) Text("Aplicado", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                                else TextButton(onClick = { applyPendingReward(reward) }, enabled = !loyaltyLoading) { Text("Aplicar") }
+                            }
+                        }
+                    }
+                }
+                loyaltyError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
         }
         items(cart.items, key = { it.key }) { line ->
@@ -604,6 +709,35 @@ private fun IosCartScreen(
                 Button(onClick = onCheckout, enabled = state == StoreCartLoadState.SUCCESS_ITEMS, modifier = Modifier.fillMaxWidth()) { Text("Finalizar compra") }
                 OutlinedButton(onClick = { clearCartConfirm = true }, modifier = Modifier.fillMaxWidth()) { Text("Vaciar carrito") }
             }
+        }
+    }
+    if (showWalletDialog && loyaltyWallet != null) {
+        val eligibleSubtotal = subtractMoneyAmounts(
+            addMoneyAmounts(cart.totals.totalItems, cart.totals.totalItemsTax),
+            cart.totals.consumerDiscount()
+        )
+        val options = loyaltyWallet!!.redeemableOptions(eligibleSubtotal)
+        if (options.isNotEmpty()) {
+            AlertDialog(
+                onDismissRequest = { if (!loyaltyLoading) showWalletDialog = false },
+                title = { Text("¿Cuánto quieres utilizar?") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        options.forEach { option ->
+                            Button(
+                                onClick = { showWalletDialog = false; redeemWallet(option.points) },
+                                enabled = !loyaltyLoading,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(if (option.isMaximum) "Máximo: " + option.value + " €" else option.value + " €")
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showWalletDialog = false }, enabled = !loyaltyLoading) { Text("Cancelar") }
+                }
+            )
         }
     }
     if (clearCartConfirm) AlertDialog(

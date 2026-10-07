@@ -47,15 +47,22 @@ import es.criosrango.shared.account.AccountCustomerAddress
 import es.criosrango.shared.account.AccountOrderSummary
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.account.AccountUser
+import es.criosrango.shared.loyalty.LoyaltyRepository
+import es.criosrango.shared.loyalty.LoyaltyReward
+import es.criosrango.shared.loyalty.LoyaltyWallet
+import es.criosrango.shared.loyalty.redeemableOptions
 import kotlinx.coroutines.launch
 
 private val SPANISH_PROVINCE_CODES = setOf("C","VI","AB","A","AL","O","AV","BA","B","BI","BU","CC","CA","S","CS","CE","CR","CO","CU","GI","GR","GU","SS","H","HU","J","LE","L","LO","LU","M","MA","ML","MU","NA","OR","P","GC","PO","SA","TF","SG","SE","SO","T","TE","TO","V","VA","ZA","Z")
 
-private enum class IosAccountPage { HOME, LOGIN, REGISTER, FORGOT, PROFILE, DATA, ADDRESS, ORDERS, INFO, HELP, ORDER_DETAIL }
+private enum class IosAccountPage { HOME, LOGIN, REGISTER, FORGOT, PROFILE, DATA, ADDRESS, ORDERS, WALLET, INFO, HELP, ORDER_DETAIL }
 
 @Composable
 fun CriosRangoIOSAccountScreen(
     repository: AccountRepository,
+    loyaltyRepository: LoyaltyRepository,
+    cartCouponCodes: Set<String> = emptySet(),
+    onApplyWalletCoupon: suspend (String) -> Unit,
     modifier: Modifier = Modifier,
     onOpenExternalUrl: (String) -> Unit,
     initialOrderId: Int? = null
@@ -131,6 +138,7 @@ fun CriosRangoIOSAccountScreen(
                     onProfile = { error = null; page = IosAccountPage.PROFILE },
                     onAddress = { error = null; addressReturnPage = IosAccountPage.HOME; page = IosAccountPage.ADDRESS },
                     onOrders = { error = null; page = IosAccountPage.ORDERS },
+                    onWallet = { error = null; page = IosAccountPage.WALLET },
                     onInfoPage = { selectedInfoPage = it; error = null; page = IosAccountPage.INFO },
                     onHelp = { error = null; page = IosAccountPage.HELP },
                     onLogout = { user = null; error = null; page = IosAccountPage.HOME },
@@ -168,12 +176,145 @@ fun CriosRangoIOSAccountScreen(
                 IosAccountPage.DATA -> IosProfileScreen(repository, user, { user = it }, ::invalidateExpiredSession) { page = IosAccountPage.PROFILE }
                 IosAccountPage.ADDRESS -> IosAddressScreen(repository, ::invalidateExpiredSession) { page = addressReturnPage }
                 IosAccountPage.ORDERS -> IosOrdersScreen(repository, { selectedOrder = it; page = IosAccountPage.ORDER_DETAIL }, ::invalidateExpiredSession) { page = IosAccountPage.HOME }
+                IosAccountPage.WALLET -> IosWalletScreen(
+                    repository = loyaltyRepository,
+                    cartCouponCodes = cartCouponCodes,
+                    onApplyCoupon = onApplyWalletCoupon,
+                    onBack = { page = IosAccountPage.HOME }
+                )
                 IosAccountPage.INFO -> selectedInfoPage?.let { infoPage -> IosInformationPageScreen(infoPage) { page = IosAccountPage.HOME } }
                 IosAccountPage.HELP -> IosHelpScreen { page = IosAccountPage.HOME }
                 IosAccountPage.ORDER_DETAIL -> selectedOrder?.let { IosOrderDetailScreen(it) { page = IosAccountPage.ORDERS } }
             }
         }
         }
+    }
+}
+
+@Composable
+private fun IosWalletScreen(
+    repository: LoyaltyRepository,
+    cartCouponCodes: Set<String>,
+    onApplyCoupon: suspend (String) -> Unit,
+    onBack: () -> Unit
+) {
+    var wallet by remember { mutableStateOf<LoyaltyWallet?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var showRedeemDialog by remember { mutableStateOf(false) }
+    var pendingPoints by remember { mutableStateOf<Int?>(null) }
+    var pendingRequestId by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    fun refresh() {
+        scope.launch {
+            loading = true
+            error = null
+            runCatching { repository.getWallet() }
+                .onSuccess { wallet = it }
+                .onFailure { error = it.message ?: "No se ha podido cargar el monedero." }
+            loading = false
+        }
+    }
+
+    LaunchedEffect(Unit) { refresh() }
+
+    fun redeem(points: Int) {
+        val requestId = if (pendingPoints == points && !pendingRequestId.isNullOrBlank()) {
+            pendingRequestId!!
+        } else {
+            pendingPoints = points
+            repository.newRequestId().also { pendingRequestId = it }
+        }
+        scope.launch {
+            loading = true
+            error = null
+            runCatching { repository.redeem(points, requestId) }
+                .onSuccess { response ->
+                    wallet = runCatching { repository.getWallet() }.getOrNull() ?: wallet
+                    val coupon = response.coupon
+                    if (coupon == null) {
+                        error = "El canje no ha devuelto un cupón utilizable."
+                    } else {
+                        onApplyCoupon(coupon.code)
+                    }
+                    pendingPoints = null
+                    pendingRequestId = null
+                }
+                .onFailure { error = it.message ?: "No se ha podido utilizar el monedero." }
+            loading = false
+        }
+    }
+
+    fun applyReward(reward: LoyaltyReward) {
+        scope.launch {
+            loading = true
+            error = null
+            onApplyCoupon(reward.code)
+            wallet = runCatching { repository.getWallet() }.getOrNull() ?: wallet
+            loading = false
+        }
+    }
+
+    val options = wallet?.redeemableOptions() ?: emptyList()
+    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onBack, enabled = !loading) { Text("Atrás") }
+            Spacer(Modifier.width(8.dp))
+            Text("Monedero Críos & Rango", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        }
+        when {
+            loading && wallet == null -> FullScreenLoading("Cargando monedero")
+            wallet != null -> {
+                Text(wallet!!.walletValue.replace('.', ',') + " € disponibles", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text(wallet!!.points.toString() + " puntos", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (options.isNotEmpty()) {
+                    Button(onClick = { showRedeemDialog = true }, enabled = !loading, modifier = Modifier.fillMaxWidth()) { Text("Utilizar saldo") }
+                }
+                if (wallet!!.pendingRewards.isNotEmpty()) {
+                    Text("Crédito listo para usar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    wallet!!.pendingRewards.forEach { reward ->
+                        val applied = cartCouponCodes.any { it.equals(reward.code, ignoreCase = true) }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(reward.amount.replace('.', ',') + " €", fontWeight = FontWeight.SemiBold)
+                                Text(reward.code, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (applied) Text("Aplicado", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                            else TextButton(onClick = { applyReward(reward) }, enabled = !loading) { Text("Aplicar") }
+                        }
+                    }
+                }
+            }
+        }
+        error?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { if (pendingPoints != null) redeem(pendingPoints!!) else refresh() }, enabled = !loading) {
+                    Text(if (pendingPoints != null) "Reintentar" else "Reintentar carga")
+                }
+            }
+        }
+    }
+    if (showRedeemDialog && options.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { if (!loading) showRedeemDialog = false },
+            title = { Text("¿Cuánto quieres utilizar?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    options.forEach { option ->
+                        Button(
+                            onClick = { showRedeemDialog = false; redeem(option.points) },
+                            enabled = !loading,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (option.isMaximum) "Máximo: " + option.value + " €" else option.value + " €")
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showRedeemDialog = false }, enabled = !loading) { Text("Cancelar") } }
+        )
     }
 }
 
@@ -253,6 +394,7 @@ private fun IosAccountHome(
     onLogin: () -> Unit,
     onRegister: () -> Unit,
     onProfile: () -> Unit,
+    onWallet: () -> Unit,
     onAddress: () -> Unit,
     onOrders: () -> Unit,
     onInfoPage: (AccountInfoPage) -> Unit,
@@ -281,6 +423,7 @@ private fun IosAccountHome(
             Button(onClick = onProfile, modifier = Modifier.fillMaxWidth()) { Text("Mi perfil") }
             Button(onClick = onAddress, modifier = Modifier.fillMaxWidth()) { Text("Mi dirección") }
             Button(onClick = onOrders, modifier = Modifier.fillMaxWidth()) { Text("Mis pedidos") }
+            Button(onClick = onWallet, modifier = Modifier.fillMaxWidth()) { Text("Cupones y promociones") }
             Button(onClick = onHelp, modifier = Modifier.fillMaxWidth()) { Text("Ayuda") }
             Button(onClick = { onInfoPage(AccountInfoPage.RETURNS) }, modifier = Modifier.fillMaxWidth()) { Text("Cambios y devoluciones") }
             Button(onClick = { onInfoPage(AccountInfoPage.TERMS) }, modifier = Modifier.fillMaxWidth()) { Text("Condiciones de contratación") }
