@@ -1,5 +1,7 @@
 package es.criosrango.app
 
+import es.criosrango.shared.api.StoreApiException
+
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -525,19 +527,29 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
                         originalMessage
                     } else {
                         buildString {
-                            append("DBG path=exception")
-                            append(" type=")
-                            append(exception::class.simpleName ?: "<unknown>")
-                            append(" message=")
-                            append(exception.message ?: "<null>")
-                            append(" causeType=")
-                            append(
-                                exception.cause?.let {
-                                    it::class.simpleName
-                                } ?: "<null>"
-                            )
-                            append(" causeMessage=")
-                            append(exception.cause?.message ?: "<null>")
+                            if (exception is StoreApiException) {
+                                append("DBG path=exception")
+                                append(" status=")
+                                append(exception.statusCode)
+                                append(" apiCode=")
+                                append(exception.apiCode ?: "<null>")
+                                append(" message=")
+                                append(exception.message ?: "<null>")
+                            } else {
+                                append("DBG path=exception")
+                                append(" type=")
+                                append(exception::class.simpleName ?: "<unknown>")
+                                append(" message=")
+                                append(exception.message ?: "<null>")
+                                append(" causeType=")
+                                append(
+                                    exception.cause?.let {
+                                        it::class.simpleName
+                                    } ?: "<null>"
+                                )
+                                append(" causeMessage=")
+                                append(exception.cause?.message ?: "<null>")
+                            }
                         }
                     }
                 false
