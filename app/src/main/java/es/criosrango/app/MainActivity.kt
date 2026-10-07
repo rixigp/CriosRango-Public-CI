@@ -233,6 +233,7 @@ private fun CriosRangoApp(
     var utilityReturnTab by remember { mutableStateOf<AppTab?>(null) }
     var accountRootBackAvailable by remember { mutableStateOf(false) }
     var returnToCartAfterLogin by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var openPromotionsOnStart by remember { mutableStateOf(false) }
 
     fun openUtilityTab(destination: AppTab) {
         if (tab != AppTab.CART && tab != AppTab.ACCOUNT) {
@@ -250,7 +251,10 @@ private fun CriosRangoApp(
                 homeShowAll = true
             }
             PushNotificationType.ORDER_STATUS -> { tab = AppTab.ACCOUNT }
-            PushNotificationType.BIRTHDAY_COUPON -> { tab = AppTab.ACCOUNT }
+            PushNotificationType.BIRTHDAY_COUPON -> {
+                openPromotionsOnStart = true
+                tab = AppTab.ACCOUNT
+            }
         }
         if (pushType != null) { pushTypeState.value = null; pushOrderIdState.value = null }
     }
@@ -390,7 +394,8 @@ private fun CriosRangoApp(
                         vm = accountViewModel,
                         openLoginOnStart = returnToCartAfterLogin,
                         initialOrderId = pushOrderId,
-                        openPromotionsOnStart = pushType == PushNotificationType.BIRTHDAY_COUPON,
+                        openPromotionsOnStart = openPromotionsOnStart,
+                        onPromotionsOpened = { openPromotionsOnStart = false },
                         onRootBackAvailable = { accountRootBackAvailable = it },
                         loyaltyViewModel = loyaltyViewModel,
                         applyWalletCoupon = viewModel.cartStore::applyCoupon,
