@@ -109,6 +109,7 @@ internal fun CartScreen(
     var clearCartConfirm by remember { mutableStateOf(false) }
     var couponExpanded by remember { mutableStateOf(false) }
     var couponCode by remember { mutableStateOf("") }
+    val walletDebugInfo by WalletDebugDiagnosticStore.state.collectAsStateWithLifecycle()
     val loyaltyWallet by loyaltyViewModel.wallet.collectAsStateWithLifecycle()
     val loyaltyLoading by loyaltyViewModel.loading.collectAsStateWithLifecycle()
     val loyaltyError by loyaltyViewModel.error.collectAsStateWithLifecycle()
@@ -160,7 +161,7 @@ internal fun CartScreen(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                     ) {
                         Text("DIAG WALLET C1", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        WalletDebugDiagnosticStore.state.value?.let { debug ->
+                        walletDebugInfo?.let { debug ->
                             val billingEmailMatchesAccount =
                                 !debug.billingEmail.isNullOrBlank() &&
                                     !accountUserEmail.isNullOrBlank() &&
