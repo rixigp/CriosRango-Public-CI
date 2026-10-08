@@ -552,6 +552,13 @@ private fun PromotionVisualIcon(promotion: Promotion, isBirthday: Boolean) {
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.rotate(45f)
                     )
+                    androidx.compose.foundation.layout.Box(
+                        modifier = Modifier
+                            .size(4.dp)
+                            .align(Alignment.TopEnd)
+                            .offset(x = (-2).dp, y = 2.dp)
+                            .background(iconColor, androidx.compose.foundation.shape.CircleShape)
+                    )
                 }
             }
         }
@@ -573,7 +580,6 @@ private fun promotionVisualKind(promotion: Promotion, isBirthday: Boolean): Prom
 }
 
 
-@Composable
 @Composable
 private fun PromotionDateRow(text: String) {
     Row(
@@ -615,6 +621,7 @@ private fun PromotionDateRow(text: String) {
     }
 }
 
+@Composable
 fun AccountWalletContent(
     wallet: es.criosrango.shared.loyalty.LoyaltyWallet?,
     loading: Boolean,
@@ -812,7 +819,7 @@ Card(
                                 Button(
                                     onClick = {},
                                     enabled = false,
-                                    modifier = Modifier.width(82.dp).height(36.dp),
+                                    modifier = Modifier.width(78.dp).height(36.dp),
                                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                                     shape = RoundedCornerShape(18.dp),
                                     colors = ButtonDefaults.buttonColors(

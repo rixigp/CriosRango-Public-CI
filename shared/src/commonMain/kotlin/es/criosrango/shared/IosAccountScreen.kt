@@ -327,6 +327,13 @@ private fun PromotionVisualIcon(promotion: Promotion, isBirthday: Boolean) {
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.rotate(45f)
                     )
+                    androidx.compose.foundation.layout.Box(
+                        modifier = Modifier
+                            .size(4.dp)
+                            .align(Alignment.TopEnd)
+                            .offset(x = (-2).dp, y = 2.dp)
+                            .background(iconColor, androidx.compose.foundation.shape.CircleShape)
+                    )
                 }
             }
         }
