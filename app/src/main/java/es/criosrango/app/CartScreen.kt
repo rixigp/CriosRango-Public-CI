@@ -320,6 +320,7 @@ internal fun CartScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             wallet.pendingRewards.forEach { reward ->
                                 val applied = cart.coupons.any { it.code.equals(reward.code, ignoreCase = true) }
+                                if (!applied) {
                                 Row(
                                     Modifier
                                         .fillMaxWidth()
@@ -362,6 +363,7 @@ internal fun CartScreen(
                                             modifier = Modifier.height(30.dp)
                                         ) { Text("Aplicar", style = MaterialTheme.typography.labelSmall) }
                                     }
+                                }
                                 }
                             }
                         }
@@ -481,7 +483,13 @@ internal fun CartScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    cartFriendlyCouponName(coupon.label, coupon.code),
+                                    if (loyaltyWallet?.pendingRewards?.any { it.code.equals(coupon.code, ignoreCase = true) } == true) {
+                                        "Crédito " + loyaltyDisplayMoney(
+                                            loyaltyWallet!!.pendingRewards.first { it.code.equals(coupon.code, ignoreCase = true) }.amount
+                                        )
+                                    } else {
+                                        cartFriendlyCouponName(coupon.label, coupon.code)
+                                    },
                                     fontWeight = FontWeight.Medium,
                                     modifier = Modifier.weight(1f),
                                     maxLines = 1,

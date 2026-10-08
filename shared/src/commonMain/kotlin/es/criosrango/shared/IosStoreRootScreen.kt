@@ -774,6 +774,7 @@ private fun IosCartScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             loyaltyWallet!!.pendingRewards.forEach { reward ->
                                 val applied = cart.coupons.any { it.code.equals(reward.code, ignoreCase = true) }
+                                if (!applied) {
                                 Row(
                                     Modifier
                                         .fillMaxWidth()
@@ -815,6 +816,7 @@ private fun IosCartScreen(
                                             modifier = Modifier.height(30.dp)
                                         ) { Text("Aplicar", style = MaterialTheme.typography.labelSmall) }
                                     }
+                                }
                                 }
                             }
                         }
@@ -890,7 +892,11 @@ private fun IosCartScreen(
                         cart.coupons.forEach { coupon ->
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    iosFriendlyCouponName(coupon.label, coupon.code),
+                                    if (loyaltyWallet?.pendingRewards?.any { it.code.equals(coupon.code, ignoreCase = true) } == true) {
+                                    "Crédito " + loyaltyWallet!!.pendingRewards.first { it.code.equals(coupon.code, ignoreCase = true) }.amount.replace('.', ',') + " €"
+                                } else {
+                                    iosFriendlyCouponName(coupon.label, coupon.code)
+                                },
                                     fontWeight = FontWeight.Medium,
                                     modifier = Modifier.weight(1f),
                                     maxLines = 1,
