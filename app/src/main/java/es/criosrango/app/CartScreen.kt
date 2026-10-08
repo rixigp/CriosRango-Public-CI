@@ -84,6 +84,56 @@ import compose.icons.tablericons.Shirt
 import compose.icons.tablericons.Tag
 import kotlinx.coroutines.launch
 
+private fun cartPromotionTitle(promotion: Promotion): String {
+    val key = listOfNotNull(promotion.code, promotion.title, promotion.description).joinToString(" ").lowercase()
+    return when {
+        key.contains("blackcrios") || key.contains("black friday") -> "Black Friday 20%"
+        key.contains("bienvenida") || key.contains("welcome") -> "Promoción de bienvenida"
+        key.contains("cumple") || key.contains("birthday") -> "Tu regalo de cumpleaños"
+        else -> promotion.title
+    }
+}
+
+private fun cartPromotionIcon(promotion: Promotion): String {
+    val key = listOfNotNull(promotion.code, promotion.title, promotion.description).joinToString(" ").lowercase()
+    return when {
+        key.contains("blackcrios") || key.contains("black friday") -> "％"
+        key.contains("bienvenida") || key.contains("welcome") -> "🏷"
+        key.contains("cumple") || key.contains("birthday") -> "🎂"
+        else -> "🏷"
+    }
+}
+
+@Composable
+private fun cartPromotionBackground(promotion: Promotion): Color {
+    val key = listOfNotNull(promotion.code, promotion.title, promotion.description).joinToString(" ").lowercase()
+    return when {
+        key.contains("blackcrios") || key.contains("black friday") -> Color(0xFFFFF7D6)
+        key.contains("bienvenida") || key.contains("welcome") -> Color(0xFFEAF3FF)
+        key.contains("cumple") || key.contains("birthday") -> Color(0xFFFDECEF)
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+}
+
+private fun cartPromotionDate(value: String): String? {
+    val date = value.substringBefore("T").substringBefore(" ")
+    val parts = date.split("-")
+    return if (parts.size == 3 && parts[0].length == 4) {
+        parts[2].padStart(2, '0') + "/" + parts[1].padStart(2, '0') + "/" + parts[0]
+    } else null
+}
+
+private fun cartFriendlyCouponName(label: String, code: String): String {
+    val key = "$label $code".lowercase()
+    return when {
+        key.contains("blackcrios") || key.contains("black friday") -> "Black Friday 20%"
+        key.contains("bienvenida") || key.contains("welcome") -> "Bienvenida 10%"
+        key.contains("cumple") || key.contains("birthday") -> "Cumpleaños 15%"
+        label.isNotBlank() && !label.equals(code, ignoreCase = true) -> label
+        else -> "Descuento aplicado"
+    }
+}
+
 @Composable
 internal fun CartScreen(
     cart: WooCart,
@@ -172,58 +222,15 @@ internal fun CartScreen(
         if (state == CartLoadState.ERROR && cart.items.isEmpty()) item { Text("No se ha podido recuperar el carrito.", color = Color.Gray) }
         if (state == CartLoadState.SUCCESS_EMPTY) item { Text("Tu carrito está vacío", color = Color.Gray) }
         if (cart.items.isNotEmpty()) item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Promociones y descuentos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                when {
-                    promotionsLoading -> CircularProgressIndicator(Modifier.size(20.dp))
-                    !promotionsError.isNullOrBlank() -> Text(promotionsError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    promotions.isEmpty() -> Text("No hay promociones disponibles.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                    else -> promotions.sortedByDescending { it.priority }.forEach { promotion ->
-                        val code = promotion.code?.trim().orEmpty()
-                        val applied = code.isNotBlank() && cart.coupons.any { it.code.equals(code, ignoreCase = true) }
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(promotion.title, fontWeight = FontWeight.SemiBold)
-                            if (promotion.description.isNotBlank()) {
-                                Text(promotion.description, style = MaterialTheme.typography.bodySmall)
-                            }
-                            promotion.expiresAt?.takeIf { it.isNotBlank() }?.let {
-                                Text("Caduca: ${it.replace("T", " ")}", style = MaterialTheme.typography.bodySmall)
-                            }
-                            if (code.isNotBlank()) {
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(code, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                                    TextButton(
-                                        onClick = { applyCoupon(code) },
-                                        enabled = !applied && !couponLoading
-                                    ) {
-                                        Text(if (applied) "Aplicado" else "Aplicar")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                if (!couponExpanded) TextButton(onClick = { couponExpanded = true }, enabled = !couponLoading) { Text("Tengo un código de descuento") }
-                else {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(value = couponCode, onValueChange = { couponCode = it }, label = { Text("Código del cupón") }, singleLine = true, enabled = !couponLoading, modifier = Modifier.weight(1f))
-                        Button(onClick = { applyCoupon(couponCode.trim()) }, enabled = couponCode.trim().isNotEmpty() && !couponLoading) { if (couponLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Aplicar") }
-                    }
-                    couponError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                }
-                if (cart.coupons.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    cart.coupons.forEach { coupon ->
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(coupon.label.ifBlank { coupon.code }, fontWeight = FontWeight.SemiBold)
-                                Text("-" + formatMinorUnits(coupon.totals.consumerDiscount(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol), style = MaterialTheme.typography.bodySmall)
-                            }
-                            TextButton(onClick = { removeCoupon(coupon.code) }, enabled = !couponLoading) { Text("Quitar") }
-                        }
-                    }
-                }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Promociones y descuentos",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+
                 if (accountUserId == null) {
-                    TextButton(onClick = onLogin) { Text("Inicia sesión para usar tu Monedero Críos & Rango") }
+                    TextButton(onClick = onLogin) { Text("Inicia sesión para usar tu Monedero") }
                 } else if (loyaltyWallet != null) {
                     val wallet = loyaltyWallet!!
                     val eligibleSubtotal = es.criosrango.shared.loyalty.subtractMoneyAmounts(
@@ -231,36 +238,212 @@ internal fun CartScreen(
                         cart.totals.consumerDiscount()
                     )
                     val walletOptions = wallet.redeemableOptions(eligibleSubtotal)
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFFE8F5EF)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("◉", color = Color(0xFF0F5C4D), fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
-                                Text("Monedero Críos & Rango", fontWeight = FontWeight.SemiBold)
-                                Text(loyaltyDisplayMoney(wallet.walletValue) + " disponibles", style = MaterialTheme.typography.bodySmall)
+                                Text("Monedero", fontWeight = FontWeight.SemiBold, color = Color(0xFF0F5C4D))
+                                Text(
+                                    loyaltyDisplayMoney(wallet.walletValue) + " disponibles",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF315B52)
+                                )
                             }
                             if (walletOptions.isNotEmpty()) {
-                                TextButton(onClick = { showWalletDialog = true }, enabled = !loyaltyLoading) { Text("Aplicar") }
+                                Button(
+                                    onClick = { showWalletDialog = true },
+                                    enabled = !loyaltyLoading,
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 5.dp),
+                                    modifier = Modifier.heightIn(min = 36.dp)
+                                ) { Text("Aplicar") }
                             }
                         }
-                        wallet.pendingRewards.forEach { reward ->
-                            val applied = cart.coupons.any { it.code.equals(reward.code, ignoreCase = true) }
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("Crédito listo para usar", fontWeight = FontWeight.Medium)
-                                    Text(loyaltyDisplayMoney(reward.amount), style = MaterialTheme.typography.bodySmall)
-                                }
-                                if (applied) {
-                                    Text("Aplicado", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                                } else {
-                                    TextButton(
-                                        onClick = { loyaltyViewModel.applyPending(reward, applyWalletCoupon) },
-                                        enabled = !loyaltyLoading
-                                    ) { Text("Aplicar") }
+                    }
+
+                    if (wallet.pendingRewards.isNotEmpty()) {
+                        Text(
+                            "Créditos listos para usar",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            wallet.pendingRewards.forEach { reward ->
+                                val applied = cart.coupons.any { it.code.equals(reward.code, ignoreCase = true) }
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    tonalElevation = 1.dp
+                                ) {
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text("Crédito listo para usar", fontWeight = FontWeight.Medium)
+                                            Text(loyaltyDisplayMoney(reward.amount), style = MaterialTheme.typography.bodySmall)
+                                        }
+                                        if (applied) {
+                                            Text("Aplicado", color = Color(0xFF0F5C4D), fontWeight = FontWeight.SemiBold)
+                                        } else {
+                                            TextButton(
+                                                onClick = { loyaltyViewModel.applyPending(reward, applyWalletCoupon) },
+                                                enabled = !loyaltyLoading
+                                            ) { Text("Aplicar") }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                loyaltyError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+
+                when {
+                    promotionsLoading -> CircularProgressIndicator(Modifier.size(20.dp))
+                    !promotionsError.isNullOrBlank() -> Text(
+                        promotionsError!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    promotions.isEmpty() -> Text(
+                        "No hay promociones disponibles.",
+                        color = Color.Gray,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Promociones disponibles",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        promotions.sortedByDescending { it.priority }.forEach { promotion ->
+                            val code = promotion.code?.trim().orEmpty()
+                            val applied = code.isNotBlank() && cart.coupons.any { it.code.equals(code, ignoreCase = true) }
+                            val title = cartPromotionTitle(promotion)
+                            val description = promotion.description.trim()
+                            val background = cartPromotionBackground(promotion)
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                color = background
+                            ) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Text(cartPromotionIcon(promotion), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 1.dp))
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(title, fontWeight = FontWeight.SemiBold)
+                                        if (description.isNotBlank()) {
+                                            Text(description, style = MaterialTheme.typography.bodySmall)
+                                        }
+                                        promotion.expiresAt?.let { expires ->
+                                            cartPromotionDate(expires)?.let { date ->
+                                                Text(
+                                                    "Válido hasta $date",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = Color(0xFF5F6368)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (code.isNotBlank()) {
+                                        TextButton(
+                                            onClick = { applyCoupon(code) },
+                                            enabled = !applied && !couponLoading
+                                        ) {
+                                            Text(if (applied) "Aplicado" else "Aplicar")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (!couponExpanded) {
+                    TextButton(
+                        onClick = { couponExpanded = true },
+                        enabled = !couponLoading
+                    ) { Text("Tengo otro código de descuento") }
+                } else {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = couponCode,
+                            onValueChange = { couponCode = it },
+                            label = { Text("Código") },
+                            singleLine = true,
+                            enabled = !couponLoading,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(
+                            onClick = { applyCoupon(couponCode.trim()) },
+                            enabled = couponCode.trim().isNotEmpty() && !couponLoading
+                        ) {
+                            if (couponLoading) {
+                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            } else {
+                                Text("Aplicar")
+                            }
+                        }
+                    }
+                    couponError?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+
+                if (cart.coupons.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            "Descuentos aplicados",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        cart.coupons.forEach { coupon ->
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    cartFriendlyCouponName(coupon.label, coupon.code),
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    "-" + formatMinorUnits(
+                                        coupon.totals.consumerDiscount(),
+                                        cart.totals.currencyMinorUnit,
+                                        cart.totals.currencySymbol
+                                    ),
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF0F5C4D)
+                                )
+                                TextButton(
+                                    onClick = { removeCoupon(coupon.code) },
+                                    enabled = !couponLoading
+                                ) { Text("Quitar") }
+                            }
+                        }
+                    }
+                }
+
+                loyaltyError?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
         items(cart.items, key = { it.key }) { item ->
