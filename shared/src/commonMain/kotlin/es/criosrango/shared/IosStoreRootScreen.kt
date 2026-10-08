@@ -28,6 +28,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
@@ -926,44 +927,65 @@ private fun IosCartScreen(
             ) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Subtotal", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                    Text(formatStorePrice(cart.totals.totalItems, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), fontWeight = FontWeight.Medium)
+                    Text(
+                        formatStorePrice(cart.totals.totalItems, cart.totals.currencyMinorUnit, cart.totals.currencySymbol),
+                        fontWeight = FontWeight.Medium
+                    )
                 }
+
                 val discount = cart.totals.consumerDiscount()
                 if (discount.toLongOrNull()?.let { it > 0L } == true) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Descuentos", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = Color(0xFF315B52))
-                        Text("-" + formatStorePrice(discount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), style = MaterialTheme.typography.bodySmall, color = Color(0xFF0F5C4D), fontWeight = FontWeight.Medium)
+                        Text(
+                            "-" + formatStorePrice(discount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF0F5C4D),
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
+
                 when {
-                    cart.totals.totalShipping == null -> Row(Modifier.fillMaxWidth()) {
+                    cart.totals.totalShipping == null -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Envío", modifier = Modifier.weight(1f), color = Color.Gray)
                         Text("Se calcula en el checkout", color = Color.Gray)
                     }
-                    cart.totals.totalShipping == "0" || cart.totals.totalShipping == "0.00" -> Row(Modifier.fillMaxWidth()) {
+                    cart.totals.totalShipping == "0" || cart.totals.totalShipping == "0.00" -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Envío", modifier = Modifier.weight(1f))
                         Text("Gratis")
                     }
-                    else -> Row(Modifier.fillMaxWidth()) {
+                    else -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Envío", modifier = Modifier.weight(1f))
                         Text(formatStorePrice(cart.totals.totalShipping.orEmpty(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
                     }
                 }
-                HorizontalDivider(color = Color(0xFFE8E8E3), modifier = Modifier.padding(vertical = 3.dp))
+
+                HorizontalDivider(
+                    color = Color(0xFFE8E8E3),
+                    modifier = Modifier.padding(vertical = 3.dp)
+                )
+
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Total", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text(formatStorePrice(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(
+                        formatStorePrice(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
+
                 Button(
                     onClick = onCheckout,
                     enabled = state == StoreCartLoadState.SUCCESS_ITEMS,
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(50),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))
-                ) { Text("Continuar compra") }
+                ) {
+                    Text("Continuar compra")
+                }
             }
         }
-}
     }
     if (showWalletDialog && loyaltyWallet != null) {
         val eligibleSubtotal = subtractMoneyAmounts(
