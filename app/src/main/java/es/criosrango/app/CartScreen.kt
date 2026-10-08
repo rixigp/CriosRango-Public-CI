@@ -311,7 +311,9 @@ internal fun CartScreen(
                         }
                     }
 
-                    if (wallet.pendingRewards.isNotEmpty()) {
+                    if (wallet.pendingRewards.any { reward ->
+                        cart.coupons.none { it.code.equals(reward.code, ignoreCase = true) }
+                    }) {
                         Text(
                             "Créditos listos para usar",
                             style = MaterialTheme.typography.titleSmall,
@@ -382,7 +384,12 @@ internal fun CartScreen(
                         color = Color.Gray,
                         style = MaterialTheme.typography.bodySmall
                     )
-                    else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    else -> {
+                        val hasAvailablePromotions = promotions.any { promotion ->
+                            val code = promotion.code?.trim().orEmpty()
+                            code.isBlank() || cart.coupons.none { it.code.equals(code, ignoreCase = true) }
+                        }
+                        if (hasAvailablePromotions) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
                             "Promociones disponibles",
                             style = MaterialTheme.typography.titleSmall,
@@ -433,6 +440,7 @@ internal fun CartScreen(
                             }
                             }
                         }
+                    }
                     }
                 }
 
