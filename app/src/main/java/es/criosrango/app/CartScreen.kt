@@ -372,41 +372,43 @@ internal fun CartScreen(
                             val title = cartPromotionTitle(promotion)
                             val description = promotion.description.trim()
                             val background = cartPromotionBackground(promotion)
+                            if (!applied) {
                             Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                color = background
-                            ) {
-                                Row(
-                                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.Top
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = background
                                 ) {
-                                    Text(cartPromotionIcon(promotion), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 1.dp))
-                                    Spacer(Modifier.width(10.dp))
-                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        Text(title, fontWeight = FontWeight.SemiBold)
-                                        if (description.isNotBlank()) {
-                                            Text(description, style = MaterialTheme.typography.bodySmall)
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Text(cartPromotionIcon(promotion), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 1.dp))
+                                        Spacer(Modifier.width(10.dp))
+                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(title, fontWeight = FontWeight.SemiBold)
+                                            if (description.isNotBlank()) {
+                                                Text(description, style = MaterialTheme.typography.bodySmall)
+                                            }
+                                            promotion.expiresAt?.let { expires ->
+                                                cartPromotionDate(expires)?.let { date ->
+                                                    Text(
+                                                        "Válido hasta $date",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = Color(0xFF5F6368)
+                                                    )
+                                                }
+                                            }
                                         }
-                                        promotion.expiresAt?.let { expires ->
-                                            cartPromotionDate(expires)?.let { date ->
-                                                Text(
-                                                    "Válido hasta $date",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = Color(0xFF5F6368)
-                                                )
+                                        if (code.isNotBlank()) {
+                                            TextButton(
+                                                onClick = { applyCoupon(code) },
+                                                enabled = !applied && !couponLoading
+                                            ) {
+                                                Text(if (applied) "Aplicado" else "Aplicar")
                                             }
                                         }
                                     }
-                                    if (code.isNotBlank()) {
-                                        TextButton(
-                                            onClick = { applyCoupon(code) },
-                                            enabled = !applied && !couponLoading
-                                        ) {
-                                            Text(if (applied) "Aplicado" else "Aplicar")
-                                        }
-                                    }
-                                }
+                            }
                             }
                         }
                     }

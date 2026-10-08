@@ -807,32 +807,34 @@ private fun IosCartScreen(
                             val applied = code.isNotBlank() && cart.coupons.any { it.code.equals(code, ignoreCase = true) }
                             val title = iosCartPromotionTitle(promotion)
                             val description = promotion.description.trim()
+                            if (!applied) {
                             Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                color = iosCartPromotionBackground(promotion)
-                            ) {
-                                Row(
-                                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.Top
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = iosCartPromotionBackground(promotion)
                                 ) {
-                                    Text(iosCartPromotionIcon(promotion), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 1.dp))
-                                    Spacer(Modifier.width(10.dp))
-                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        Text(title, fontWeight = FontWeight.SemiBold)
-                                        if (description.isNotBlank()) Text(description, style = MaterialTheme.typography.bodySmall)
-                                        promotion.expiresAt?.let { expires ->
-                                            iosCartPromotionDate(expires)?.let { date ->
-                                                Text("Válido hasta $date", style = MaterialTheme.typography.bodySmall, color = Color(0xFF5F6368))
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Text(iosCartPromotionIcon(promotion), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 1.dp))
+                                        Spacer(Modifier.width(10.dp))
+                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(title, fontWeight = FontWeight.SemiBold)
+                                            if (description.isNotBlank()) Text(description, style = MaterialTheme.typography.bodySmall)
+                                            promotion.expiresAt?.let { expires ->
+                                                iosCartPromotionDate(expires)?.let { date ->
+                                                    Text("Válido hasta $date", style = MaterialTheme.typography.bodySmall, color = Color(0xFF5F6368))
+                                                }
+                                            }
+                                        }
+                                        if (code.isNotBlank()) {
+                                            TextButton(onClick = { cartStore.applyCoupon(code) }, enabled = !applied && !couponLoading) {
+                                                Text(if (applied) "Aplicado" else "Aplicar")
                                             }
                                         }
                                     }
-                                    if (code.isNotBlank()) {
-                                        TextButton(onClick = { cartStore.applyCoupon(code) }, enabled = !applied && !couponLoading) {
-                                            Text(if (applied) "Aplicado" else "Aplicar")
-                                        }
-                                    }
-                                }
+                            }
                             }
                         }
                     }
