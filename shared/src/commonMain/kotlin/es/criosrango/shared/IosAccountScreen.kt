@@ -63,8 +63,6 @@ import es.criosrango.shared.promotions.PromotionRepository
 import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.loyalty.LoyaltyWallet
 import es.criosrango.shared.loyalty.redeemableOptions
-import es.criosrango.shared.loyalty.parseMoneyMinorUnits
-import es.criosrango.shared.loyalty.formatMoneyMinorUnits
 import kotlinx.coroutines.launch
 
 private val SPANISH_PROVINCE_CODES = setOf("C","VI","AB","A","AL","O","AV","BA","B","BI","BU","CC","CA","S","CS","CE","CR","CO","CU","GI","GR","GU","SS","H","HU","J","LE","L","LO","LU","M","MA","ML","MU","NA","OR","P","GC","PO","SA","TF","SG","SE","SO","T","TE","TO","V","VA","ZA","Z")
@@ -530,8 +528,7 @@ Card(
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                 Text("Monedero Críos & Rango", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Color(0xFF183B35))
                                 Text(
-                                    loyaltyDisplayMoney(wallet!!.walletValue) +
-                                        if (parseMoneyMinorUnits(wallet!!.walletValue) >= parseMoneyMinorUnits(wallet!!.minimumRedeemValue)) " disponibles" else " acumulados",
+                                    loyaltyDisplayMoney(wallet!!.walletValue) + if (walletAmount >= minimumAmount) " disponibles" else " acumulados",
                                     style = MaterialTheme.typography.headlineSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF0F5C4D)
@@ -549,10 +546,24 @@ Card(
                             }
                         }
                         
-                        val walletValueMinor = parseMoneyMinorUnits(wallet!!.walletValue)
-                        val minimumValueMinor = parseMoneyMinorUnits(wallet!!.minimumRedeemValue)
-                        if (minimumValueMinor > 0L && walletValueMinor < minimumValueMinor) {
-                            val progress = (walletValueMinor.toFloat() / minimumValueMinor.toFloat()).coerceIn(0f, 1f)
+                        val walletAmount = wallet!!.walletValue
+                             .replace(',', '.')
+                             .toDoubleOrNull()
+                             ?: 0.0
+                         val minimumAmount = wallet!!.minimumRedeemValue
+                             .replace(',', '.')
+                             .toDoubleOrNull()
+                             ?: 0.0
+                         val progress =
+                             if (minimumAmount > 0.0)
+                                 (walletAmount / minimumAmount).coerceIn(0.0, 1.0)
+                             else
+                                 0.0
+                         val remaining =
+                             (minimumAmount - walletAmount).coerceAtLeast(0.0)
+
+                         if (walletAmount < minimumAmount) {
+                             val progress = progress.toFloat()
                             Text(
                                 "Has acumulado " + loyaltyDisplayMoney(wallet!!.walletValue) +
                                     " de " + loyaltyDisplayMoney(wallet!!.minimumRedeemValue),
@@ -570,7 +581,7 @@ Card(
                             }
                             Text(
                                 "Te faltan " + loyaltyDisplayMoney(
-                                    formatMoneyMinorUnits(minimumValueMinor - walletValueMinor)
+                                    formatWalletRemaining(remaining)
                                 ) + " para desbloquear tu saldo.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF40514D)
@@ -1502,3 +1513,10 @@ private fun birthCivilFromDays(daysSinceEpoch: Long): BirthCivilDate {
     y += if (m <= 2) 1 else 0
     return BirthCivilDate(y.toInt(), m.toInt(), d.toInt())
 }
+private fun formatWalletRemaining(value: Double): String {
+    val cents = kotlin.math.round(value * 100.0).toLong()
+    val whole = cents / 100L
+    val fraction = kotlin.math.abs(cents % 100L)
+    return whole.toString() + "," + fraction.toString().padStart(2, '0')
+}
+

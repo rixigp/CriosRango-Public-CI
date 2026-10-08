@@ -56,8 +56,6 @@ import es.criosrango.shared.promotions.PromotionRepository
 import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.loyalty.redeemableOptions
 import es.criosrango.shared.loyalty.subtractMoneyAmounts
-import es.criosrango.shared.loyalty.parseMoneyMinorUnits
-import es.criosrango.shared.loyalty.formatMoneyMinorUnits
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -704,8 +702,7 @@ Card(
                                     color = Color(0xFF183B35)
                                 )
                                 Text(
-                                    loyaltyDisplayMoney(wallet.walletValue) +
-                                        if (parseMoneyMinorUnits(wallet.walletValue) >= parseMoneyMinorUnits(wallet.minimumRedeemValue)) " disponibles" else " acumulados",
+                                    loyaltyDisplayMoney(wallet.walletValue) + if (walletAmount >= minimumAmount) " disponibles" else " acumulados",
                                     style = MaterialTheme.typography.headlineSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF0F5C4D)
@@ -726,10 +723,24 @@ Card(
                             }
                         }
                         
-                        val walletValueMinor = parseMoneyMinorUnits(wallet.walletValue)
-                        val minimumValueMinor = parseMoneyMinorUnits(wallet.minimumRedeemValue)
-                        if (minimumValueMinor > 0L && walletValueMinor < minimumValueMinor) {
-                            val progress = (walletValueMinor.toFloat() / minimumValueMinor.toFloat()).coerceIn(0f, 1f)
+                        val walletAmount = wallet.walletValue
+                             .replace(',', '.')
+                             .toDoubleOrNull()
+                             ?: 0.0
+                         val minimumAmount = wallet.minimumRedeemValue
+                             .replace(',', '.')
+                             .toDoubleOrNull()
+                             ?: 0.0
+                         val progress =
+                             if (minimumAmount > 0.0)
+                                 (walletAmount / minimumAmount).coerceIn(0.0, 1.0)
+                             else
+                                 0.0
+                         val remaining =
+                             (minimumAmount - walletAmount).coerceAtLeast(0.0)
+
+                         if (walletAmount < minimumAmount) {
+                             val progress = progress.toFloat()
                             Text(
                                 "Has acumulado " + loyaltyDisplayMoney(wallet.walletValue) +
                                     " de " + loyaltyDisplayMoney(wallet.minimumRedeemValue),
@@ -747,7 +758,7 @@ Card(
                             }
                             Text(
                                 "Te faltan " + loyaltyDisplayMoney(
-                                    formatMoneyMinorUnits(minimumValueMinor - walletValueMinor)
+                                    formatWalletRemaining(remaining)
                                 ) + " para desbloquear tu saldo.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF40514D)
@@ -1206,3 +1217,10 @@ private fun AccountForgotPasswordDialog(initialLogin: String, loading: Boolean, 
     var login by remember(initialLogin) { mutableStateOf(initialLogin) }
     AlertDialog(onDismissRequest = { if (!loading) onDismiss() }, title = { Text("Recuperar contraseña") }, text = { Column { Text("Introduce tu correo o nombre de usuario."); Spacer(Modifier.height(12.dp)); OutlinedTextField(login, { login = it }, label = { Text("Correo o usuario") }, singleLine = true); error?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error) }; notice?.let { Spacer(Modifier.height(8.dp)); Text(it) } } }, confirmButton = { if (notice == null) TextButton({ onSend(login.trim()) }, enabled = !loading && login.isNotBlank()) { if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Enviar correo") } else TextButton(onDismiss) { Text("Cerrar") } }, dismissButton = { if (notice == null) TextButton(onDismiss, enabled = !loading) { Text("Cancelar") } })
 }
+private fun formatWalletRemaining(value: Double): String {
+    val cents = kotlin.math.round(value * 100.0).toLong()
+    val whole = cents / 100L
+    val fraction = kotlin.math.abs(cents % 100L)
+    return whole.toString() + "," + fraction.toString().padStart(2, '0')
+}
+
