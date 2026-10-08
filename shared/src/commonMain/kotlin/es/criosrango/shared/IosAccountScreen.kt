@@ -39,6 +39,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.Composable
@@ -336,6 +337,7 @@ private val InfoLineIcon = buildLineIcon("InfoLineIcon") {
     cubicTo(7.6f, 20f, 4f, 16.4f, 4f, 12f)
 }
 
+@Composable
 private fun WalletVisualIcon() {
     Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
         Icon(
@@ -563,7 +565,7 @@ Card(
                         
                          if (walletAmount < minimumAmount) {
                             Text(
-                                "Has acumulado " + loyaltyDisplayMoney(wallet!!.walletValue) +
+                                "Has acumulado " + wallet!!.walletValue +
                                     " de " + wallet!!.minimumRedeemValue,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF40514D)
@@ -583,7 +585,8 @@ Card(
                                 color = Color(0xFF40514D)
                             )
                         }
-                        IconButton(
+                    }
+                    IconButton(
                             onClick = { showWalletInfo = true },
                             modifier = Modifier.align(Alignment.TopEnd).size(32.dp)
                         ) {
