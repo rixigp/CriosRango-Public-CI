@@ -30,6 +30,7 @@ import es.criosrango.shared.loyalty.LoyaltyWallet
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.coroutines.cancellation.CancellationException
 
 class LoyaltyViewModel(application: android.app.Application) : AndroidViewModel(application) {
     private val repository = LoyaltyRepository(AccountSessionStore(application))
@@ -51,6 +52,8 @@ class LoyaltyViewModel(application: android.app.Application) : AndroidViewModel(
             _error.value = null
             try {
                 _wallet.value = repository.getWallet()
+            } catch (exception: CancellationException) {
+                throw exception
             } catch (exception: Exception) {
                 _error.value = exception.message ?: "No se ha podido cargar el monedero."
             } finally {
@@ -82,6 +85,8 @@ class LoyaltyViewModel(application: android.app.Application) : AndroidViewModel(
                 }
                 pendingPoints = null
                 pendingRequestId = null
+            } catch (exception: CancellationException) {
+                throw exception
             } catch (exception: LoyaltyApiException) {
                 _error.value = exception.message
                 // pendingRequestId deliberately remains unchanged so a retry reuses it.
@@ -104,6 +109,8 @@ class LoyaltyViewModel(application: android.app.Application) : AndroidViewModel(
                     _error.value = "No se ha podido aplicar el crédito. Puedes volver a intentarlo."
                 }
                 _wallet.value = repository.getWallet()
+            } catch (exception: CancellationException) {
+                throw exception
             } catch (exception: Exception) {
                 _error.value = exception.message ?: "No se ha podido aplicar el crédito."
             } finally {

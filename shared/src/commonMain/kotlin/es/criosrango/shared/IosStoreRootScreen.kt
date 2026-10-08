@@ -77,6 +77,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.coroutines.cancellation.CancellationException
 
 internal enum class IosRootSection { HOME, CATEGORIES, OUTLET, CART, ACCOUNT }
 internal enum class IosCatalogSortModeState { RECENT, PRICE_ASC, PRICE_DESC, NAME_ASC }
@@ -591,10 +592,15 @@ private fun IosCartScreen(
         }
         loyaltyLoading = true
         loyaltyError = null
-        runCatching { loyaltyRepository.getWallet() }
-            .onSuccess { loyaltyWallet = it }
-            .onFailure { loyaltyError = it.message ?: "No se ha podido cargar el monedero." }
-        loyaltyLoading = false
+        try {
+            loyaltyWallet = loyaltyRepository.getWallet()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            loyaltyError = e.message ?: "No se ha podido cargar el monedero."
+        } finally {
+            loyaltyLoading = false
+        }
     }
 
     fun redeemWallet(points: Int) {
@@ -607,20 +613,24 @@ private fun IosCartScreen(
         loyaltyScope.launch {
             loyaltyLoading = true
             loyaltyError = null
-            runCatching { loyaltyRepository.redeem(points, requestId) }
-                .onSuccess { response ->
-                    loyaltyWallet = runCatching { loyaltyRepository.getWallet() }.getOrNull() ?: loyaltyWallet
-                    val coupon = response.coupon
-                    if (coupon == null) {
-                        loyaltyError = "El canje no ha devuelto un cupón utilizable."
-                    } else {
-                        cartStore.applyCoupon(coupon.code)
-                    }
-                    pendingRedeemPoints = null
-                    pendingRequestId = null
+            try {
+                val response = loyaltyRepository.redeem(points, requestId)
+                loyaltyWallet = loyaltyRepository.getWallet()
+                val coupon = response.coupon
+                if (coupon == null) {
+                    loyaltyError = "El canje no ha devuelto un cupón utilizable."
+                } else {
+                    cartStore.applyCoupon(coupon.code)
                 }
-                .onFailure { loyaltyError = it.message ?: "No se ha podido utilizar el monedero." }
-            loyaltyLoading = false
+                pendingRedeemPoints = null
+                pendingRequestId = null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                loyaltyError = e.message ?: "No se ha podido utilizar el monedero."
+            } finally {
+                loyaltyLoading = false
+            }
         }
     }
 
@@ -628,9 +638,16 @@ private fun IosCartScreen(
         loyaltyScope.launch {
             loyaltyLoading = true
             loyaltyError = null
-            cartStore.applyCoupon(reward.code)
-            loyaltyWallet = runCatching { loyaltyRepository.getWallet() }.getOrNull() ?: loyaltyWallet
-            loyaltyLoading = false
+            try {
+                cartStore.applyCoupon(reward.code)
+                loyaltyWallet = loyaltyRepository.getWallet()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                loyaltyError = e.message ?: "No se ha podido aplicar el crédito."
+            } finally {
+                loyaltyLoading = false
+            }
         }
     }
     val cart by cartStore.cart.collectAsState()
@@ -650,10 +667,15 @@ private fun IosCartScreen(
         cartStore.refresh()
         promotionsLoading = true
         promotionsError = null
-        runCatching { promotionRepository.getPromotions() }
-            .onSuccess { promotions = it }
-            .onFailure { promotionsError = it.message ?: "No se han podido cargar las promociones." }
-        promotionsLoading = false
+        try {
+            promotions = promotionRepository.getPromotions()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            promotionsError = e.message ?: "No se han podido cargar las promociones."
+        } finally {
+            promotionsLoading = false
+        }
     }
 
     LazyColumn(
