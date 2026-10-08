@@ -320,27 +320,47 @@ internal fun CartScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             wallet.pendingRewards.forEach { reward ->
                                 val applied = cart.coupons.any { it.code.equals(reward.code, ignoreCase = true) }
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(12.dp),
-                                    tonalElevation = 1.dp
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(
-                                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text("Crédito listo para usar", fontWeight = FontWeight.Medium)
-                                            Text(loyaltyDisplayMoney(reward.amount), style = MaterialTheme.typography.bodySmall)
+                                    Text(
+                                        "◉",
+                                        color = Color(0xFF0F5C4D),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = MaterialTheme.typography.titleMedium.fontSize
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        "Crédito " + loyaltyDisplayMoney(reward.amount),
+                                        modifier = Modifier.weight(1f),
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (applied) {
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = Color(0xFFE8F5EF)
+                                        ) {
+                                            Text(
+                                                "Aplicado",
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                                color = Color(0xFF0F5C4D),
+                                                fontWeight = FontWeight.SemiBold,
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
                                         }
-                                        if (applied) {
-                                            Text("Aplicado", color = Color(0xFF0F5C4D), fontWeight = FontWeight.SemiBold)
-                                        } else {
-                                            TextButton(
-                                                onClick = { loyaltyViewModel.applyPending(reward, applyWalletCoupon) },
-                                                enabled = !loyaltyLoading
-                                            ) { Text("Aplicar") }
-                                        }
+                                    } else {
+                                        Button(
+                                            onClick = { loyaltyViewModel.applyPending(reward, applyWalletCoupon) },
+                                            enabled = !loyaltyLoading,
+                                            shape = RoundedCornerShape(50),
+                                            contentPadding = PaddingValues(horizontal = 11.dp, vertical = 0.dp),
+                                            modifier = Modifier.height(30.dp)
+                                        ) { Text("Aplicar", style = MaterialTheme.typography.labelSmall) }
                                     }
                                 }
                             }
