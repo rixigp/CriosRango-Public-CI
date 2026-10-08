@@ -883,7 +883,6 @@ private fun IosCartScreen(
                             value = couponCode,
                             onValueChange = { couponCode = it },
                             placeholder = { Text("Código") },
-                             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
                             singleLine = true,
                             enabled = !couponLoading,
                             modifier = Modifier.weight(1f).height(48.dp)
