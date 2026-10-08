@@ -1,6 +1,9 @@
 package es.criosrango.shared
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -10,12 +13,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -209,6 +215,132 @@ fun CriosRangoIOSAccountScreen(
 }
 
 @Composable
+private fun WalletVisualIcon() {
+    androidx.compose.foundation.layout.Box(
+        modifier = Modifier.size(40.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier
+                .width(30.dp)
+                .height(22.dp)
+                .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(5.dp))
+        )
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier
+                .width(17.dp)
+                .height(6.dp)
+                .align(Alignment.CenterEnd)
+                .offset(x = (-1).dp)
+                .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(3.dp))
+        )
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier
+                .size(3.dp)
+                .align(Alignment.CenterEnd)
+                .offset(x = (-5).dp)
+                .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape)
+        )
+    }
+}
+
+@Composable
+private fun PromotionVisualIcon(promotion: Promotion, isBirthday: Boolean) {
+    val kind = promotionVisualKind(promotion, isBirthday)
+    val background = when (kind) {
+        PromotionVisualKind.BIRTHDAY -> Color(0xFFFDECEF)
+        PromotionVisualKind.WELCOME -> Color(0xFFEAF3FB)
+        PromotionVisualKind.DISCOUNT -> Color(0xFFFDF5DF)
+    }
+    val iconColor = when (kind) {
+        PromotionVisualKind.BIRTHDAY -> Color(0xFFD94A6A)
+        PromotionVisualKind.WELCOME -> Color(0xFF1769A6)
+        PromotionVisualKind.DISCOUNT -> Color(0xFFD99400)
+    }
+    androidx.compose.foundation.layout.Box(
+        modifier = Modifier
+            .size(40.dp)
+            .background(background, RoundedCornerShape(11.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        when (kind) {
+            PromotionVisualKind.BIRTHDAY -> {
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier
+                        .width(23.dp)
+                        .height(11.dp)
+                        .border(2.dp, iconColor, RoundedCornerShape(3.dp))
+                        .align(Alignment.Center)
+                        .offset(y = 5.dp)
+                )
+                Row(
+                    modifier = Modifier.offset(y = (-4).dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    repeat(3) {
+                        androidx.compose.foundation.layout.Box(
+                            modifier = Modifier
+                                .width(2.dp)
+                                .height(8.dp)
+                                .background(iconColor, RoundedCornerShape(1.dp))
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.offset(y = (-9).dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    repeat(3) {
+                        androidx.compose.foundation.layout.Box(
+                            modifier = Modifier
+                                .size(3.dp)
+                                .background(iconColor, androidx.compose.foundation.shape.CircleShape)
+                        )
+                    }
+                }
+            }
+            PromotionVisualKind.WELCOME -> {
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .rotate(-45f)
+                        .border(2.dp, iconColor, RoundedCornerShape(4.dp))
+                ) {
+                    androidx.compose.foundation.layout.Box(
+                        modifier = Modifier
+                            .size(4.dp)
+                            .align(Alignment.TopEnd)
+                            .offset(x = (-2).dp, y = 2.dp)
+                            .background(iconColor, androidx.compose.foundation.shape.CircleShape)
+                    )
+                }
+            }
+            PromotionVisualKind.DISCOUNT -> {
+                Text(
+                    "%",
+                    color = iconColor,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+private enum class PromotionVisualKind { BIRTHDAY, WELCOME, DISCOUNT }
+
+private fun promotionVisualKind(promotion: Promotion, isBirthday: Boolean): PromotionVisualKind {
+    if (isBirthday) return PromotionVisualKind.BIRTHDAY
+    val text = listOfNotNull(promotion.type, promotion.title, promotion.description)
+        .joinToString(" ")
+        .lowercase()
+    return if ("bienvenida" in text || "welcome" in text) {
+        PromotionVisualKind.WELCOME
+    } else {
+        PromotionVisualKind.DISCOUNT
+    }
+}
+@Composable
 private fun IosWalletScreen(
     repository: LoyaltyRepository,
     promotionRepository: PromotionRepository,
@@ -265,11 +397,7 @@ private fun IosWalletScreen(
                 .onSuccess { response ->
                     wallet = runCatching { repository.getWallet() }.getOrNull() ?: wallet
                     val coupon = response.coupon
-                    if (coupon == null) {
-                        error = "El canje no ha devuelto un cupón utilizable."
-                    } else {
-                        onApplyCoupon(coupon.code)
-                    }
+                    if (coupon == null) error = "El canje no ha devuelto un cupón utilizable." else onApplyCoupon(coupon.code)
                     pendingPoints = null
                     pendingRequestId = null
                 }
@@ -278,86 +406,175 @@ private fun IosWalletScreen(
         }
     }
 
-    fun applyReward(reward: LoyaltyReward) {
-        scope.launch {
-            loading = true
-            error = null
-            onApplyCoupon(reward.code)
-            wallet = runCatching { repository.getWallet() }.getOrNull() ?: wallet
-            loading = false
-        }
-    }
-
     val options = wallet?.redeemableOptions() ?: emptyList()
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack, enabled = !loading) { Text("Atrás") }
-            Spacer(Modifier.width(8.dp))
-            Text("Monedero Críos & Rango", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 0.dp).offset(y = (-14).dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextButton(
+                onClick = onBack,
+                enabled = !loading,
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+            ) { Text("←", style = MaterialTheme.typography.titleLarge) }
+            Spacer(Modifier.width(5.dp))
+            Text(
+                "Cupones y promociones",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
         }
+
         when {
             loading && wallet == null -> FullScreenLoading("Cargando monedero")
             wallet != null -> {
-                Text(wallet!!.walletValue.replace('.', ',') + " € disponibles", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text(wallet!!.points.toString() + " puntos", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (options.isNotEmpty()) {
-                    Button(onClick = { showRedeemDialog = true }, enabled = !loading, modifier = Modifier.fillMaxWidth()) { Text("Utilizar saldo") }
-                }
-                if (wallet!!.pendingRewards.isNotEmpty()) {
-                    Text("Crédito listo para usar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    wallet!!.pendingRewards.forEach { reward ->
-                        val applied = cartCouponCodes.any { it.equals(reward.code, ignoreCase = true) }
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(reward.amount.replace('.', ',') + " €", fontWeight = FontWeight.SemiBold)
-                                Text(reward.code, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+Card(
+                    Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF5F0))
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            WalletVisualIcon()
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                Text("Monedero Críos & Rango", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Color(0xFF183B35))
+                                Text(wallet!!.walletValue.replace(".", ",") + " €", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color(0xFF0F5B4E))
                             }
-                            if (applied) Text("Aplicado", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                            else TextButton(onClick = { applyReward(reward) }, enabled = !loading) { Text("Aplicar") }
+                            if (options.isNotEmpty()) {
+                                Button(
+                                    onClick = { showRedeemDialog = true },
+                                    enabled = !loading,
+                                    modifier = Modifier.width(76.dp).height(36.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                    shape = RoundedCornerShape(18.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F5B4E), contentColor = Color.White)
+                                ) { Text("Usar", style = MaterialTheme.typography.labelMedium) }
+                            }
+                        }
+                        
+                        if (wallet!!.points < wallet!!.minimumRedeemPoints && wallet!!.minimumRedeemPoints > 0) {
+                            val currentPoints = wallet!!.points.coerceAtLeast(0)
+                            val targetPoints = wallet!!.minimumRedeemPoints
+                            val remainingPoints = targetPoints - currentPoints
+                            val progress = (currentPoints.toFloat() / targetPoints.toFloat()).coerceIn(0f, 1f)
+                            Text(
+                                currentPoints.toString() + " de " + targetPoints + " puntos",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF40514D)
+                            )
+                            androidx.compose.foundation.layout.Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(6.dp)
+                                    .background(Color(0xFFD7E8E1), RoundedCornerShape(3.dp))
+                            ) {
+                                androidx.compose.foundation.layout.Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(progress)
+                                        .height(6.dp)
+                                        .background(Color(0xFF0F5B4E), RoundedCornerShape(3.dp))
+                                )
+                            }
+                            Text(
+                                if (currentPoints == 0) {
+                                    "Consigue " + targetPoints + " puntos para desbloquear " + wallet!!.minimumRedeemValue.replace(".", ",") + " € de saldo."
+                                } else {
+                                    "Te faltan " + remainingPoints + " puntos para poder usar " + wallet!!.minimumRedeemValue.replace(".", ",") + " €."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF40514D)
+                            )
                         }
                     }
                 }
             }
         }
+
         error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { if (pendingPoints != null) redeem(pendingPoints!!) else refresh() }, enabled = !loading) {
-                    Text(if (pendingPoints != null) "Reintentar" else "Reintentar carga")
-                }
-            }
+            TextButton(
+                onClick = { if (pendingPoints != null) redeem(pendingPoints!!) else refresh() },
+                enabled = !loading
+            ) { Text(if (pendingPoints != null) "Reintentar" else "Reintentar carga") }
         }
 
-        HorizontalDivider()
-        Text("Promociones", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            "Promociones disponibles (${promotions.size})",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+
         when {
             promotionsLoading && promotions.isEmpty() -> CircularProgressIndicator(modifier = Modifier.padding(vertical = 8.dp))
             promotionsError != null && promotions.isEmpty() -> Text(promotionsError!!, color = MaterialTheme.colorScheme.error)
             promotions.isEmpty() -> Text("No hay promociones disponibles.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            else -> promotions.sortedByDescending { it.priority }.forEach { promotion ->
-                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(promotion.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        if (promotion.description.isNotBlank()) Text(promotion.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        promotion.expiresAt?.takeIf { it.isNotBlank() }?.let { Text("Caduca: ${it.replace("T", " ")}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        promotion.code?.takeIf { it.isNotBlank() }?.let { Text("Código: $it", fontWeight = FontWeight.Medium) }
+            else -> promotions.sortedByDescending { it.priority }.forEachIndexed { index, promotion ->
+                val code = promotion.code?.takeIf { it.isNotBlank() }
+                val applied = code?.let { couponCode -> cartCouponCodes.any { it.equals(couponCode, ignoreCase = true) } } == true
+                val isBirthday = promotion.type.equals("birthday_coupon", ignoreCase = true)
+                Card(
+                    Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(15.dp),
+                    colors = CardDefaults.cardColors(containerColor = promotionCardColor(promotion, isBirthday))
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        PromotionVisualIcon(promotion = promotion, isBirthday = isBirthday)
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                if (isBirthday) "Tu regalo de cumpleaños" else promotion.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF183B35)
+                            )
+                            val description = if (isBirthday) "15% de descuento por tu cumpleaños." else promotion.description.trim()
+                            if (description.isNotBlank()) Text(description, style = MaterialTheme.typography.bodySmall, color = Color(0xFF40514D))
+                            if (isBirthday) Text("Válido durante 15 días.", style = MaterialTheme.typography.labelSmall, color = Color(0xFF40514D))
+                            promotion.expiresAt?.takeIf { it.isNotBlank() }?.let {
+                                Text("Válido hasta " + formatPromotionExpiry(it), style = MaterialTheme.typography.labelSmall, color = Color(0xFF40514D))
+                            }
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        code?.let { couponCode ->
+                            Button(
+                                onClick = { if (!applied) scope.launch { onApplyCoupon(couponCode) } },
+                                enabled = !loading,
+                                modifier = Modifier.width(if (applied) 82.dp else 78.dp).height(36.dp),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                shape = RoundedCornerShape(18.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F5B4E), contentColor = Color.White)
+                            ) { Text(if (applied) "Aplicado" else "Aplicar", style = MaterialTheme.typography.labelMedium) }
+                        }
                     }
                 }
             }
         }
     }
+
     if (showRedeemDialog && options.isNotEmpty()) {
         AlertDialog(
             onDismissRequest = { if (!loading) showRedeemDialog = false },
-            title = { Text("¿Cuánto quieres utilizar?") },
+            title = { Text("¿Cuánto quieres utilizar?" ) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     options.forEach { option ->
-                        Button(
-                            onClick = { showRedeemDialog = false; redeem(option.points) },
-                            enabled = !loading,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
+                        Button(onClick = { showRedeemDialog = false; redeem(option.points) }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
                             Text(if (option.isMaximum) "Máximo: " + option.value + " €" else option.value + " €")
                         }
                     }
@@ -366,6 +583,21 @@ private fun IosWalletScreen(
             confirmButton = { TextButton(onClick = { showRedeemDialog = false }, enabled = !loading) { Text("Cancelar") } }
         )
     }
+}
+
+private fun promotionCardColor(promotion: Promotion, isBirthday: Boolean): Color = when (promotionVisualKind(promotion, isBirthday)) {
+    PromotionVisualKind.BIRTHDAY -> Color(0xFFFDECEF)
+    PromotionVisualKind.WELCOME -> Color(0xFFEAF3FB)
+    PromotionVisualKind.DISCOUNT -> Color(0xFFFDF5DF)
+}
+
+
+private fun formatPromotionExpiry(value: String): String {
+    val date = value.trim().take(10)
+    val parts = date.split("-")
+    return if (parts.size == 3 && parts[0].length == 4 && parts[1].length == 2 && parts[2].length == 2) {
+        parts[2] + "/" + parts[1] + "/" + parts[0]
+    } else value
 }
 
 @Composable
@@ -473,7 +705,9 @@ private fun IosAccountHome(
             Button(onClick = onProfile, modifier = Modifier.fillMaxWidth()) { Text("Mi perfil") }
             Button(onClick = onAddress, modifier = Modifier.fillMaxWidth()) { Text("Mi dirección") }
             Button(onClick = onOrders, modifier = Modifier.fillMaxWidth()) { Text("Mis pedidos") }
-            Button(onClick = onWallet, modifier = Modifier.fillMaxWidth()) { Text("Cupones y promociones") }
+            Button(onClick = onWallet, modifier = Modifier.fillMaxWidth()) {
+                Text("Cupones y promociones", maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Clip, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
             Button(onClick = onHelp, modifier = Modifier.fillMaxWidth()) { Text("Ayuda") }
             Button(onClick = { onInfoPage(AccountInfoPage.RETURNS) }, modifier = Modifier.fillMaxWidth()) { Text("Cambios y devoluciones") }
             Button(onClick = { onInfoPage(AccountInfoPage.TERMS) }, modifier = Modifier.fillMaxWidth()) { Text("Condiciones de contratación") }
