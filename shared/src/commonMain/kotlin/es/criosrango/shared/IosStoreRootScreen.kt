@@ -881,10 +881,10 @@ private fun IosCartScreen(
                         OutlinedTextField(
                             value = couponCode,
                             onValueChange = { couponCode = it },
-                            label = { Text("Código") },
+                            placeholder = { Text("Código") },
                             singleLine = true,
                             enabled = !couponLoading,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f).height(48.dp)
                         )
                         IosCartApplyButton({ cartStore.applyCoupon(couponCode.trim()) }, enabled=couponCode.trim().isNotEmpty() && !couponLoading, loading=couponLoading)
                     }
@@ -919,21 +919,51 @@ private fun IosCartScreen(
             }
         }
         if (cart.items.isNotEmpty()) item {
-            HorizontalDivider()
-            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text("Subtotal: " + formatStorePrice(cart.totals.totalItems, cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
-                val discount = cart.totals.consumerDiscount()
-                if (discount.toLongOrNull()?.let { it > 0L } == true) Text("Descuentos: -" + formatStorePrice(discount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
-                when {
-                    cart.totals.totalShipping == null -> Text("Envío: Se calcula en el checkout", color = Color.Gray)
-                    cart.totals.totalShipping == "0" || cart.totals.totalShipping == "0.00" -> Text("Envío: Gratis")
-                    else -> Text("Envío: " + formatStorePrice(cart.totals.totalShipping.orEmpty(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
+            HorizontalDivider(color = Color(0xFFE8E8E3))
+            Column(
+                Modifier.fillMaxWidth().padding(top = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Subtotal", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    Text(formatStorePrice(cart.totals.totalItems, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), fontWeight = FontWeight.Medium)
                 }
-                Text("Total: " + formatStorePrice(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Button(onClick = onCheckout, enabled = state == StoreCartLoadState.SUCCESS_ITEMS, modifier = Modifier.fillMaxWidth()) { Text("Finalizar compra") }
-                OutlinedButton(onClick = { clearCartConfirm = true }, modifier = Modifier.fillMaxWidth()) { Text("Vaciar carrito") }
+                val discount = cart.totals.consumerDiscount()
+                if (discount.toLongOrNull()?.let { it > 0L } == true) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Descuentos", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = Color(0xFF315B52))
+                        Text("-" + formatStorePrice(discount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), style = MaterialTheme.typography.bodySmall, color = Color(0xFF0F5C4D), fontWeight = FontWeight.Medium)
+                    }
+                }
+                when {
+                    cart.totals.totalShipping == null -> Row(Modifier.fillMaxWidth()) {
+                        Text("Envío", modifier = Modifier.weight(1f), color = Color.Gray)
+                        Text("Se calcula en el checkout", color = Color.Gray)
+                    }
+                    cart.totals.totalShipping == "0" || cart.totals.totalShipping == "0.00" -> Row(Modifier.fillMaxWidth()) {
+                        Text("Envío", modifier = Modifier.weight(1f))
+                        Text("Gratis")
+                    }
+                    else -> Row(Modifier.fillMaxWidth()) {
+                        Text("Envío", modifier = Modifier.weight(1f))
+                        Text(formatStorePrice(cart.totals.totalShipping.orEmpty(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
+                    }
+                }
+                HorizontalDivider(color = Color(0xFFE8E8E3), modifier = Modifier.padding(vertical = 3.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Total", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(formatStorePrice(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                }
+                Button(
+                    onClick = onCheckout,
+                    enabled = state == StoreCartLoadState.SUCCESS_ITEMS,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))
+                ) { Text("Continuar compra") }
             }
         }
+}
     }
     if (showWalletDialog && loyaltyWallet != null) {
         val eligibleSubtotal = subtractMoneyAmounts(
