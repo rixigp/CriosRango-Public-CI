@@ -586,7 +586,7 @@ Card(
                                 color = Color(0xFF40514D)
                             )
                         }
-                        }                        IconButton(
+                        IconButton(
                             onClick = { showWalletInfo = true },
                             modifier = Modifier.align(Alignment.TopEnd).size(32.dp)
                         ) {
