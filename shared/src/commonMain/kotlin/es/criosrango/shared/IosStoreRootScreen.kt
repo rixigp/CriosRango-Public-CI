@@ -703,8 +703,7 @@ private fun IosCartScreen(
                                 Button(
                                     onClick = { showWalletDialog = true },
                                     enabled = !loyaltyLoading,
-                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 5.dp),
-                                    modifier = Modifier.heightIn(min = 36.dp)
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 5.dp)
                                 ) { Text("Aplicar") }
                             }
                         }
