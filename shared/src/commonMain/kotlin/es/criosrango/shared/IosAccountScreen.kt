@@ -18,6 +18,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.Cake
+import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.LocalOffer
+import androidx.compose.material.icons.outlined.Percent
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -59,6 +66,8 @@ import es.criosrango.shared.promotions.PromotionRepository
 import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.loyalty.LoyaltyWallet
 import es.criosrango.shared.loyalty.redeemableOptions
+import es.criosrango.shared.loyalty.parseMoneyMinorUnits
+import es.criosrango.shared.loyalty.formatMoneyMinorUnits
 import kotlinx.coroutines.launch
 
 private val SPANISH_PROVINCE_CODES = setOf("C","VI","AB","A","AL","O","AV","BA","B","BI","BU","CC","CA","S","CS","CE","CR","CO","CU","GI","GR","GU","SS","H","HU","J","LE","L","LO","LU","M","MA","ML","MU","NA","OR","P","GC","PO","SA","TF","SG","SE","SO","T","TE","TO","V","VA","ZA","Z")
@@ -216,125 +225,58 @@ fun CriosRangoIOSAccountScreen(
 
 @Composable
 private fun WalletVisualIcon() {
-    androidx.compose.foundation.layout.Box(
-        modifier = Modifier.size(40.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        androidx.compose.foundation.layout.Box(
-            modifier = Modifier
-                .width(30.dp)
-                .height(22.dp)
-                .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(5.dp))
-        )
-        androidx.compose.foundation.layout.Box(
-            modifier = Modifier
-                .width(17.dp)
-                .height(6.dp)
-                .align(Alignment.CenterEnd)
-                .offset(x = (-1).dp)
-                .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(3.dp))
-        )
-        androidx.compose.foundation.layout.Box(
-            modifier = Modifier
-                .size(3.dp)
-                .align(Alignment.CenterEnd)
-                .offset(x = (-5).dp)
-                .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape)
+    Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+        Icon(
+            imageVector = Icons.Outlined.AccountBalanceWallet,
+            contentDescription = null,
+            tint = Color(0xFF0F5C4D),
+            modifier = Modifier.size(28.dp)
         )
     }
 }
-
 @Composable
 private fun PromotionVisualIcon(promotion: Promotion, isBirthday: Boolean) {
     val kind = promotionVisualKind(promotion, isBirthday)
     val background = when (kind) {
         PromotionVisualKind.BIRTHDAY -> Color(0xFFFDECEF)
-        PromotionVisualKind.WELCOME -> Color(0xFFEAF3FB)
-        PromotionVisualKind.DISCOUNT -> Color(0xFFFDF5DF)
+        PromotionVisualKind.WELCOME -> Color(0xFFEAF4FC)
+        PromotionVisualKind.DISCOUNT -> Color(0xFFFFF6DF)
     }
     val iconColor = when (kind) {
-        PromotionVisualKind.BIRTHDAY -> Color(0xFFD94A6A)
-        PromotionVisualKind.WELCOME -> Color(0xFF1769A6)
-        PromotionVisualKind.DISCOUNT -> Color(0xFFD99400)
+        PromotionVisualKind.BIRTHDAY -> Color(0xFFD96A86)
+        PromotionVisualKind.WELCOME -> Color(0xFF2E7BB4)
+        PromotionVisualKind.DISCOUNT -> Color(0xFFD49A00)
     }
-    androidx.compose.foundation.layout.Box(
-        modifier = Modifier
-            .size(40.dp)
-            .background(background, RoundedCornerShape(11.dp)),
+    Box(
+        modifier = Modifier.size(40.dp).background(background, RoundedCornerShape(11.dp)),
         contentAlignment = Alignment.Center
     ) {
         when (kind) {
-            PromotionVisualKind.BIRTHDAY -> {
-                androidx.compose.foundation.layout.Box(
-                    modifier = Modifier
-                        .width(24.dp)
-                        .height(11.dp)
-                        .border(2.dp, iconColor, RoundedCornerShape(3.dp))
-                        .align(Alignment.Center)
-                        .offset(y = 5.dp)
+            PromotionVisualKind.BIRTHDAY -> Icon(
+                imageVector = Icons.Outlined.Cake,
+                contentDescription = "Cumpleaños",
+                tint = iconColor,
+                modifier = Modifier.size(24.dp)
+            )
+            PromotionVisualKind.WELCOME -> Icon(
+                imageVector = Icons.Outlined.LocalOffer,
+                contentDescription = "Promoción de bienvenida",
+                tint = iconColor,
+                modifier = Modifier.size(24.dp)
+            )
+            PromotionVisualKind.DISCOUNT -> Box(Modifier.size(25.dp), contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Outlined.LocalOffer,
+                    contentDescription = "Descuento",
+                    tint = iconColor,
+                    modifier = Modifier.size(25.dp)
                 )
-                androidx.compose.foundation.layout.Box(
-                    modifier = Modifier
-                        .width(20.dp)
-                        .height(5.dp)
-                        .background(iconColor, RoundedCornerShape(3.dp))
-                        .align(Alignment.Center)
-                        .offset(y = (-2).dp)
+                Icon(
+                    imageVector = Icons.Outlined.Percent,
+                    contentDescription = null,
+                    tint = iconColor,
+                    modifier = Modifier.size(12.dp)
                 )
-                Row(
-                    modifier = Modifier.offset(y = (-8).dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                ) {
-                    repeat(3) {
-                        androidx.compose.foundation.layout.Box(
-                            modifier = Modifier
-                                .width(2.dp)
-                                .height(7.dp)
-                                .background(iconColor, RoundedCornerShape(1.dp))
-                        )
-                    }
-                }
-            }
-            PromotionVisualKind.WELCOME -> {
-                androidx.compose.foundation.layout.Box(
-                    modifier = Modifier
-                        .size(22.dp)
-                        .rotate(-45f)
-                        .border(2.dp, iconColor, RoundedCornerShape(4.dp))
-                ) {
-                    androidx.compose.foundation.layout.Box(
-                        modifier = Modifier
-                            .size(4.dp)
-                            .align(Alignment.TopEnd)
-                            .offset(x = (-2).dp, y = 2.dp)
-                            .background(iconColor, androidx.compose.foundation.shape.CircleShape)
-                    )
-                }
-            }
-            PromotionVisualKind.DISCOUNT -> {
-                androidx.compose.foundation.layout.Box(
-                    modifier = Modifier
-                        .width(23.dp)
-                        .height(19.dp)
-                        .rotate(-45f)
-                        .border(2.dp, iconColor, RoundedCornerShape(4.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "%",
-                        color = iconColor,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.rotate(45f)
-                    )
-                    androidx.compose.foundation.layout.Box(
-                        modifier = Modifier
-                            .size(4.dp)
-                            .align(Alignment.TopEnd)
-                            .offset(x = (-2).dp, y = 2.dp)
-                            .background(iconColor, androidx.compose.foundation.shape.CircleShape)
-                    )
-                }
             }
         }
     }
@@ -356,42 +298,14 @@ private fun promotionVisualKind(promotion: Promotion, isBirthday: Boolean): Prom
 
 @Composable
 private fun PromotionDateRow(text: String) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp)
-    ) {
-        androidx.compose.foundation.layout.Box(
-            modifier = Modifier
-                .size(13.dp)
-                .border(1.5.dp, Color(0xFF7A8884), RoundedCornerShape(2.dp))
-        ) {
-            androidx.compose.foundation.layout.Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp)
-                    .background(Color(0xFF7A8884))
-                    .align(Alignment.TopCenter)
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 2.dp)
-                    .align(Alignment.TopCenter),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                androidx.compose.foundation.layout.Box(
-                    Modifier.width(1.5.dp).height(3.dp).background(Color(0xFF7A8884))
-                )
-                androidx.compose.foundation.layout.Box(
-                    Modifier.width(1.5.dp).height(3.dp).background(Color(0xFF7A8884))
-                )
-            }
-        }
-        Text(
-            text,
-            style = MaterialTheme.typography.labelSmall,
-            color = Color(0xFF40514D)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Icon(
+            imageVector = Icons.Outlined.CalendarToday,
+            contentDescription = null,
+            tint = Color(0xFF7A8884),
+            modifier = Modifier.size(13.dp)
         )
+        Text(text, style = MaterialTheme.typography.labelSmall, color = Color(0xFF687773))
     }
 }
 
@@ -407,6 +321,7 @@ private fun IosWalletScreen(
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var showRedeemDialog by remember { mutableStateOf(false) }
+    var showWalletInfo by remember { mutableStateOf(false) }
     var pendingPoints by remember { mutableStateOf<Int?>(null) }
     var pendingRequestId by remember { mutableStateOf<String?>(null) }
     var promotions by remember { mutableStateOf(emptyList<Promotion>()) }
@@ -492,21 +407,28 @@ private fun IosWalletScreen(
 Card(
                     Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF5F0))
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF6F0))
                 ) {
+                    Box(Modifier.fillMaxWidth()) {
                     Column(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(7.dp)
                     ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().padding(end = 34.dp),
                             verticalAlignment = Alignment.Top
                         ) {
                             WalletVisualIcon()
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                 Text("Monedero Críos & Rango", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Color(0xFF183B35))
-                                Text(wallet!!.walletValue.replace(".", ",") + " €", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color(0xFF0F5B4E))
+                                Text(
+                                    loyaltyDisplayMoney(wallet!!.walletValue) +
+                                        if (parseMoneyMinorUnits(wallet!!.walletValue) >= parseMoneyMinorUnits(wallet!!.minimumRedeemValue)) " disponibles" else " acumulados",
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0F5C4D)
+                                )
                             }
                             if (options.isNotEmpty()) {
                                 Button(
@@ -515,44 +437,51 @@ Card(
                                     modifier = Modifier.width(76.dp).height(36.dp),
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                     shape = RoundedCornerShape(18.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F5B4E), contentColor = Color.White)
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F5C4D), contentColor = Color.White)
                                 ) { Text("Usar", style = MaterialTheme.typography.labelMedium) }
                             }
                         }
                         
-                        if (wallet!!.points < wallet!!.minimumRedeemPoints && wallet!!.minimumRedeemPoints > 0) {
-                            val currentPoints = wallet!!.points.coerceAtLeast(0)
-                            val targetPoints = wallet!!.minimumRedeemPoints
-                            val remainingPoints = targetPoints - currentPoints
-                            val progress = (currentPoints.toFloat() / targetPoints.toFloat()).coerceIn(0f, 1f)
+                        val walletValueMinor = parseMoneyMinorUnits(wallet!!.walletValue)
+                        val minimumValueMinor = parseMoneyMinorUnits(wallet!!.minimumRedeemValue)
+                        if (minimumValueMinor > 0L && walletValueMinor < minimumValueMinor) {
+                            val progress = (walletValueMinor.toFloat() / minimumValueMinor.toFloat()).coerceIn(0f, 1f)
                             Text(
-                                currentPoints.toString() + " de " + targetPoints + " puntos",
+                                "Has acumulado " + loyaltyDisplayMoney(wallet!!.walletValue) +
+                                    " de " + loyaltyDisplayMoney(wallet!!.minimumRedeemValue),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF40514D)
                             )
-                            androidx.compose.foundation.layout.Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(6.dp)
+                            Box(
+                                modifier = Modifier.fillMaxWidth().height(6.dp)
                                     .background(Color(0xFFD7E8E1), RoundedCornerShape(3.dp))
                             ) {
-                                androidx.compose.foundation.layout.Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth(progress)
-                                        .height(6.dp)
-                                        .background(Color(0xFF0F5B4E), RoundedCornerShape(3.dp))
+                                Box(
+                                    modifier = Modifier.fillMaxWidth(progress).height(6.dp)
+                                        .background(Color(0xFF0F5C4D), RoundedCornerShape(3.dp))
                                 )
                             }
                             Text(
-                                if (currentPoints == 0) {
-                                    "Consigue " + targetPoints + " puntos para desbloquear " + wallet!!.minimumRedeemValue.replace(".", ",") + " € de saldo."
-                                } else {
-                                    "Te faltan " + remainingPoints + " puntos para poder usar " + wallet!!.minimumRedeemValue.replace(".", ",") + " €."
-                                },
+                                "Te faltan " + loyaltyDisplayMoney(
+                                    formatMoneyMinorUnits(minimumValueMinor - walletValueMinor)
+                                ) + " para desbloquear tu saldo.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF40514D)
                             )
                         }
+                        }                        IconButton(
+                            onClick = { showWalletInfo = true },
+                            modifier = Modifier.align(Alignment.TopEnd).size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = "Cómo funciona el monedero",
+                                tint = Color(0xFF0F5C4D),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                    }
                     }
                 }
             }
@@ -610,16 +539,34 @@ Card(
                             Button(
                                 onClick = { if (!applied) scope.launch { onApplyCoupon(couponCode) } },
                                 enabled = !loading,
-                                modifier = Modifier.width(82.dp).height(36.dp),
+                                modifier = Modifier.width(78.dp).height(36.dp),
                                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                                 shape = RoundedCornerShape(18.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F5B4E), contentColor = Color.White)
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F5C4D), contentColor = Color.White)
                             ) { Text(if (applied) "Aplicado" else "Aplicar", style = MaterialTheme.typography.labelMedium) }
                         }
                     }
                 }
             }
         }
+    }
+
+    if (showWalletInfo) {
+        AlertDialog(
+            onDismissRequest = { showWalletInfo = false },
+            title = { Text("¿Cómo funciona tu monedero?") },
+            text = {
+                Text(
+                    "1 € gastado = 1 punto.\n\n" +
+                        "Cuando acumules 100 puntos, podrás convertirlos en 10 € de saldo para tus compras.\n\n" +
+                        "La barra te indica cuánto te falta para desbloquear el saldo.\n\n" +
+                        "Cuando tengas saldo disponible, pulsa “Usar” para elegir cuánto quieres aplicar a tu compra."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showWalletInfo = false }) { Text("Entendido") }
+            }
+        )
     }
 
     if (showRedeemDialog && options.isNotEmpty()) {
@@ -642,8 +589,8 @@ Card(
 
 private fun promotionCardColor(promotion: Promotion, isBirthday: Boolean): Color = when (promotionVisualKind(promotion, isBirthday)) {
     PromotionVisualKind.BIRTHDAY -> Color(0xFFFDECEF)
-    PromotionVisualKind.WELCOME -> Color(0xFFEAF3FB)
-    PromotionVisualKind.DISCOUNT -> Color(0xFFFDF5DF)
+    PromotionVisualKind.WELCOME -> Color(0xFFEAF4FC)
+    PromotionVisualKind.DISCOUNT -> Color(0xFFFFF6DF)
 }
 
 
