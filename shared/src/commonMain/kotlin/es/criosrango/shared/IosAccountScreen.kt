@@ -538,16 +538,23 @@ Card(
 
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(end = 34.dp),
-                            verticalAlignment = Alignment.Top
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             WalletVisualIcon()
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                                Text("Monedero Críos & Rango", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Color(0xFF183B35))
+                                Text(
+                                    "Monedero Críos & Rango",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    color = Color(0xFF183B35)
+                                )
                                 Text(
                                     wallet!!.walletValue + if (walletAmount >= minimumAmount) " disponibles" else " acumulados",
                                     style = MaterialTheme.typography.headlineSmall,
                                     fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
                                     color = Color(0xFF0F5C4D)
                                 )
                             }
@@ -670,7 +677,13 @@ Card(
     if (showWalletInfo) {
         AlertDialog(
             onDismissRequest = { showWalletInfo = false },
-            title = { Text("¿Cómo funciona tu monedero?") },
+            title = {
+                Text(
+                    "¿Cómo funciona tu monedero?",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            },
             text = {
                 Text(
                     "1 € gastado = 1 punto.\n\n" +
@@ -680,7 +693,16 @@ Card(
                 )
             },
             confirmButton = {
-                TextButton(onClick = { showWalletInfo = false }) { Text("Entendido") }
+                Button(
+                    onClick = { showWalletInfo = false },
+                    modifier = Modifier.height(36.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF0F5C4D),
+                        contentColor = Color.White
+                    )
+                ) { Text("Entendido", style = MaterialTheme.typography.labelMedium) }
             }
         )
     }
