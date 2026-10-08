@@ -569,6 +569,12 @@ private fun iosFriendlyCouponName(label: String, code: String): String {
 }
 
 @Composable
+private fun IosCartApplyButton(onClick: () -> Unit, enabled: Boolean = true, loading: Boolean = false) = Button(onClick=onClick, enabled=enabled, shape=RoundedCornerShape(50), colors=androidx.compose.material3.ButtonDefaults.buttonColors(containerColor=Color(0xFF0F5C4D), contentColor=Color.White), contentPadding=PaddingValues(horizontal=12.dp, vertical=0.dp), modifier=Modifier.height(36.dp)) { if (loading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth=2.dp, color=Color.White) else Text("Aplicar", style=MaterialTheme.typography.labelMedium) }
+private fun iosCartIsWalletCoupon(code: String): Boolean = code.trim().startsWith("CR-MONEDERO-", ignoreCase=true)
+private fun iosBuildLineIcon(name:String, content: androidx.compose.ui.graphics.vector.PathBuilder.()->Unit): androidx.compose.ui.graphics.vector.ImageVector = androidx.compose.ui.graphics.vector.ImageVector.Builder(name=name,defaultWidth=24.dp,defaultHeight=24.dp,viewportWidth=24f,viewportHeight=24f).apply { androidx.compose.ui.graphics.vector.path(fill=null,stroke=androidx.compose.ui.graphics.SolidColor(Color.Black),strokeLineWidth=1.8f,strokeLineCap=androidx.compose.ui.graphics.StrokeCap.Round,strokeLineJoin=androidx.compose.ui.graphics.StrokeJoin.Round,pathBuilder=content) }.build()
+private val IosCartWalletLineIcon = iosBuildLineIcon("IosCartWalletLineIcon") { moveTo(3.5f,6.5f); lineTo(18.5f,6.5f); lineTo(20.5f,8.5f); lineTo(20.5f,18f); lineTo(3.5f,18f); close(); moveTo(3.5f,6.5f); lineTo(3.5f,5f); lineTo(17f,5f); moveTo(15.5f,12.5f); lineTo(20.5f,12.5f); moveTo(17.5f,12.5f); lineTo(17.5f,12.5f) }
+
+@Composable
 private fun IosCartScreen(
     cartStore: StoreCartStore,
     loyaltyRepository: LoyaltyRepository,
@@ -739,8 +745,9 @@ private fun IosCartScreen(
                         cart.totals.consumerDiscount()
                     )
                     val walletOptions = loyaltyWallet!!.redeemableOptions(eligibleSubtotal)
+                    val walletApplied = cart.coupons.any { iosCartIsWalletCoupon(it.code) }
 
-                    Surface(
+                    if (!walletApplied) Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
                         color = Color(0xFFE8F5EF)
@@ -749,7 +756,7 @@ private fun IosCartScreen(
                             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("◉", color = Color(0xFF0F5C4D), fontWeight = FontWeight.Bold)
+                            androidx.compose.material3.Icon(IosCartWalletLineIcon,null,tint=Color(0xFF0F5C4D),modifier=Modifier.size(28.dp))
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
                                 Text("Monedero", fontWeight = FontWeight.SemiBold, color = Color(0xFF0F5C4D))
@@ -759,13 +766,7 @@ private fun IosCartScreen(
                                     color = Color(0xFF315B52)
                                 )
                             }
-                            if (walletOptions.isNotEmpty()) {
-                                Button(
-                                    onClick = { showWalletDialog = true },
-                                    enabled = !loyaltyLoading,
-                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 5.dp)
-                                ) { Text("Aplicar") }
-                            }
+                            if (walletOptions.isNotEmpty()) IosCartApplyButton({ showWalletDialog=true }, enabled=!loyaltyLoading)
                         }
                     }
 
@@ -773,7 +774,8 @@ private fun IosCartScreen(
                         cart.coupons.none { it.code.equals(reward.code, ignoreCase = true) }
                     }) {
                         Text("Créditos listos para usar", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Surface(Modifier.fillMaxWidth(), shape=RoundedCornerShape(14.dp), color=Color(0xFFF4F0F5)) {
+                            Column(Modifier.fillMaxWidth().padding(horizontal=12.dp, vertical=8.dp), verticalArrangement=Arrangement.spacedBy(4.dp)) {
                             loyaltyWallet!!.pendingRewards.forEach { reward ->
                                 val applied = cart.coupons.any { it.code.equals(reward.code, ignoreCase = true) }
                                 if (!applied) {
@@ -783,11 +785,7 @@ private fun IosCartScreen(
                                         .padding(vertical = 2.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        "◉",
-                                        color = Color(0xFF0F5C4D),
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    androidx.compose.material3.Icon(IosCartWalletLineIcon,null,tint=Color(0xFF0F5C4D),modifier=Modifier.size(22.dp))
                                     Spacer(Modifier.width(8.dp))
                                     Text(
                                         "Crédito " + reward.amount.replace('.', ',') + " €",
@@ -810,17 +808,12 @@ private fun IosCartScreen(
                                             )
                                         }
                                     } else {
-                                        Button(
-                                            onClick = { applyPendingReward(reward) },
-                                            enabled = !loyaltyLoading,
-                                            shape = RoundedCornerShape(50),
-                                            contentPadding = PaddingValues(horizontal = 11.dp, vertical = 0.dp),
-                                            modifier = Modifier.height(30.dp)
-                                        ) { Text("Aplicar", style = MaterialTheme.typography.labelSmall) }
+                                        IosCartApplyButton({ applyPendingReward(reward) }, enabled=!loyaltyLoading)
                                     }
                                 }
                                 }
                             }
+                        }
                         }
                     }
                 }
@@ -849,7 +842,7 @@ private fun IosCartScreen(
                                 ) {
                                     Row(
                                         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.Top
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(iosCartPromotionIcon(promotion), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 1.dp))
                                         Spacer(Modifier.width(10.dp))
@@ -863,9 +856,7 @@ private fun IosCartScreen(
                                             }
                                         }
                                         if (code.isNotBlank()) {
-                                            TextButton(onClick = { cartStore.applyCoupon(code) }, enabled = !applied && !couponLoading) {
-                                                Text(if (applied) "Aplicado" else "Aplicar")
-                                            }
+                                            IosCartApplyButton({ cartStore.applyCoupon(code) }, enabled=!applied && !couponLoading)
                                         }
                                     }
                             }
@@ -876,8 +867,9 @@ private fun IosCartScreen(
                 }
 
                 if (!couponExpanded) {
-                    TextButton(onClick = { couponExpanded = true }, enabled = !couponLoading) { Text("Tengo otro código de descuento") }
+                    Row(Modifier.fillMaxWidth().clickable(enabled=!couponLoading) { couponExpanded=true }.padding(vertical=8.dp), verticalAlignment=Alignment.CenterVertically) { Text("+", fontWeight=FontWeight.Bold, color=Color(0xFF0F5C4D)); Spacer(Modifier.width(8.dp)); Text("Tengo otro código de descuento", Modifier.weight(1f), fontWeight=FontWeight.Medium); Text("⌄", color=Color(0xFF5F6368)) }
                 } else {
+                    Row(Modifier.fillMaxWidth().clickable(enabled=!couponLoading) { couponExpanded=false }.padding(vertical=8.dp), verticalAlignment=Alignment.CenterVertically) { Text("−", fontWeight=FontWeight.Bold, color=Color(0xFF0F5C4D)); Spacer(Modifier.width(8.dp)); Text("Tengo otro código de descuento", Modifier.weight(1f), fontWeight=FontWeight.Medium); Text("⌃", color=Color(0xFF5F6368)) }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
                             value = couponCode,
@@ -887,11 +879,9 @@ private fun IosCartScreen(
                             enabled = !couponLoading,
                             modifier = Modifier.weight(1f)
                         )
-                        Button(onClick = { cartStore.applyCoupon(couponCode.trim()) }, enabled = couponCode.trim().isNotEmpty() && !couponLoading) {
-                            if (couponLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Aplicar")
-                        }
+                        IosCartApplyButton({ cartStore.applyCoupon(couponCode.trim()) }, enabled=couponCode.trim().isNotEmpty() && !couponLoading, loading=couponLoading)
                     }
-                    couponError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    if (!couponError.isNullOrBlank()) Text("🔴 Este cupón no es válido.", color=MaterialTheme.colorScheme.error, style=MaterialTheme.typography.bodySmall)
                 }
 
                 if (cart.coupons.isNotEmpty()) {
@@ -900,7 +890,9 @@ private fun IosCartScreen(
                         cart.coupons.forEach { coupon ->
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    if (loyaltyWallet?.pendingRewards?.any { it.code.equals(coupon.code, ignoreCase = true) } == true) {
+                                    if (iosCartIsWalletCoupon(coupon.code)) {
+                                        "Monedero"
+                                    } else if (loyaltyWallet?.pendingRewards?.any { it.code.equals(coupon.code, ignoreCase = true) } == true) {
                                     "Crédito " + loyaltyWallet!!.pendingRewards.first { it.code.equals(coupon.code, ignoreCase = true) }.amount.replace('.', ',') + " €"
                                 } else {
                                     iosFriendlyCouponName(coupon.label, coupon.code)
