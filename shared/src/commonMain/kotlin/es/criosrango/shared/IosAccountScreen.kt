@@ -233,7 +233,7 @@ private fun buildLineIcon(name: String, content: androidx.compose.ui.graphics.ve
             strokeLineWidth = 1.8f,
             strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round,
             strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round,
-            content = content
+            pathBuilder = content
         )
     }.build()
 
@@ -331,10 +331,10 @@ private val InfoLineIcon = buildLineIcon("InfoLineIcon") {
     moveTo(12f, 7f)
     lineTo(12f, 7f)
     moveTo(4f, 12f)
-    cubicTo(4f, 7.6f, 7.6f, 4f, 12f, 4f)
-    cubicTo(16.4f, 4f, 20f, 7.6f, 20f, 12f)
-    cubicTo(20f, 16.4f, 16.4f, 20f, 12f, 20f)
-    cubicTo(7.6f, 20f, 4f, 16.4f, 4f, 12f)
+    curveTo(4f, 7.6f, 7.6f, 4f, 12f, 4f)
+    curveTo(16.4f, 4f, 20f, 7.6f, 20f, 12f)
+    curveTo(20f, 16.4f, 16.4f, 20f, 12f, 20f)
+    curveTo(7.6f, 20f, 4f, 16.4f, 4f, 12f)
 }
 
 @Composable
@@ -602,7 +602,6 @@ Card(
                     }
                 }
             }
-        }
 
         error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
