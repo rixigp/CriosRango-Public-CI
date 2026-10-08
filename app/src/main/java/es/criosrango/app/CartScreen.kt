@@ -144,6 +144,11 @@ private fun buildLineIcon(name: String, content: androidx.compose.ui.graphics.ve
 private fun CartApplyButton(onClick: () -> Unit, enabled: Boolean = true, loading: Boolean = false) = Button(onClick=onClick, enabled=enabled, shape=RoundedCornerShape(50), colors=ButtonDefaults.buttonColors(containerColor=Color(0xFF0F5C4D), contentColor=Color.White), contentPadding=PaddingValues(horizontal=12.dp, vertical=0.dp), modifier=Modifier.height(36.dp)) { if (loading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth=2.dp, color=Color.White) else Text("Aplicar", style=MaterialTheme.typography.labelMedium) }
 private fun cartIsWalletCoupon(code: String): Boolean = code.trim().startsWith("CR-MONEDERO-", ignoreCase=true)
 private val CartWalletLineIcon = buildLineIcon("CartWalletLineIcon") { moveTo(3.5f,6.5f); lineTo(18.5f,6.5f); lineTo(20.5f,8.5f); lineTo(20.5f,18f); lineTo(3.5f,18f); close(); moveTo(3.5f,6.5f); lineTo(3.5f,5f); lineTo(17f,5f); moveTo(15.5f,12.5f); lineTo(20.5f,12.5f); moveTo(17.5f,12.5f); lineTo(17.5f,12.5f) }
+private val CartDiscountLineIcon = buildLineIcon("CartDiscountLineIcon") { moveTo(4f,7f); lineTo(20f,7f); lineTo(20f,17f); lineTo(4f,17f); close(); moveTo(8f,12f); lineTo(16f,12f) }
+private val CartTagLineIcon = buildLineIcon("CartTagLineIcon") { moveTo(3.5f,11f); lineTo(11f,3.5f); lineTo(20f,12.5f); lineTo(12.5f,20f); close(); moveTo(8f,8f); lineTo(8f,8f) }
+private val CartCakeLineIcon = buildLineIcon("CartCakeLineIcon") { moveTo(4f,10f); lineTo(20f,10f); lineTo(20f,19f); lineTo(4f,19f); close(); moveTo(4f,14f); lineTo(20f,14f); moveTo(8f,10f); lineTo(8f,7f); moveTo(12f,10f); lineTo(12f,6f); moveTo(16f,10f); lineTo(16f,7f) }
+private val CartCloseLineIcon = buildLineIcon("CartCloseLineIcon") { moveTo(7f,7f); lineTo(17f,17f); moveTo(17f,7f); lineTo(7f,17f) }
+@Composable private fun CartAppliedCouponIcon(kind:String) { val icon=when(kind){"wallet"->CartWalletLineIcon;"credit"->CartWalletLineIcon;"discount"->CartDiscountLineIcon;"cake"->CartCakeLineIcon;else->CartTagLineIcon}; Icon(icon,null,tint=Color(0xFF0F5C4D),modifier=Modifier.size(20.dp)) }
 
 @Composable
 internal fun CartScreen(
@@ -458,44 +463,23 @@ internal fun CartScreen(
 
                 if (cart.coupons.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            "Descuentos aplicados",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        cart.coupons.forEach { coupon ->
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    if (cartIsWalletCoupon(coupon.code)) {
-                                        "Monedero"
-                                    } else if (loyaltyWallet?.pendingRewards?.any { it.code.equals(coupon.code, ignoreCase = true) } == true) {
-                                        "Crédito " + loyaltyDisplayMoney(
-                                            loyaltyWallet!!.pendingRewards.first { it.code.equals(coupon.code, ignoreCase = true) }.amount
-                                        )
-                                    } else {
-                                        cartFriendlyCouponName(coupon.label, coupon.code)
-                                    },
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.weight(1f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    "-" + formatMinorUnits(
-                                        coupon.totals.consumerDiscount(),
-                                        cart.totals.currencyMinorUnit,
-                                        cart.totals.currencySymbol
-                                    ),
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF0F5C4D)
-                                )
-                                TextButton(
-                                    onClick = { removeCoupon(coupon.code) },
-                                    enabled = !couponLoading
-                                ) { Text("Quitar") }
+                        Text("Descuentos aplicados", style=MaterialTheme.typography.titleSmall, fontWeight=FontWeight.SemiBold)
+                        Surface(Modifier.fillMaxWidth(), shape=RoundedCornerShape(14.dp), color=Color(0xFFF9F9F7)) {
+                            Column(Modifier.fillMaxWidth().padding(horizontal=10.dp, vertical=6.dp)) {
+                                cart.coupons.forEachIndexed { index, coupon ->
+                                    val isCredit = loyaltyWallet?.pendingRewards?.any { it.code.equals(coupon.code, ignoreCase=true) } == true
+                                    val name = if (cartIsWalletCoupon(coupon.code)) "Monedero" else if (isCredit) "Crédito " + loyaltyDisplayMoney(loyaltyWallet!!.pendingRewards.first { it.code.equals(coupon.code, ignoreCase=true) }.amount) else cartFriendlyCouponName(coupon.label, coupon.code)
+                                    val key = "${coupon.label} ${coupon.code}".lowercase()
+                                    val iconKind = when { cartIsWalletCoupon(coupon.code) -> "wallet"; isCredit -> "credit"; key.contains("blackcrios") || key.contains("black friday") -> "discount"; key.contains("cumple") || key.contains("birthday") -> "cake"; else -> "tag" }
+                                    Row(Modifier.fillMaxWidth().heightIn(min=36.dp).padding(vertical=2.dp), verticalAlignment=Alignment.CenterVertically) {
+                                        CartAppliedCouponIcon(iconKind)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(name, fontWeight=FontWeight.Medium, modifier=Modifier.weight(1f), maxLines=1, overflow=TextOverflow.Ellipsis)
+                                        Text("-" + formatMinorUnits(coupon.totals.consumerDiscount(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol), fontWeight=FontWeight.SemiBold, color=Color(0xFF0F5C4D), modifier=Modifier.padding(start=8.dp))
+                                        IconButton({ removeCoupon(coupon.code) }, enabled=!couponLoading, modifier=Modifier.size(32.dp)) { Icon(CartCloseLineIcon, "Quitar", tint=Color(0xFF5F6368), modifier=Modifier.size(18.dp)) }
+                                    }
+                                    if (index < cart.coupons.lastIndex) HorizontalDivider(Modifier.padding(start=28.dp), color=Color(0xFFE8E8E3), thickness=1.dp)
+                                }
                             }
                         }
                     }
