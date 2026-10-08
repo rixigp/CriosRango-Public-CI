@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.Chat
@@ -44,6 +45,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -438,7 +440,6 @@ private fun AccountHomeContentV2(
     }
 }
 
-@Composable
 private fun buildLineIcon(name: String, content: androidx.compose.ui.graphics.vector.PathBuilder.() -> Unit): ImageVector =
     ImageVector.Builder(
         name = name,
@@ -453,7 +454,7 @@ private fun buildLineIcon(name: String, content: androidx.compose.ui.graphics.ve
             strokeLineWidth = 1.8f,
             strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round,
             strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round,
-            content = content
+            pathBuilder = content
         )
     }.build()
 
@@ -551,12 +552,13 @@ private val InfoLineIcon = buildLineIcon("InfoLineIcon") {
     moveTo(12f, 7f)
     lineTo(12f, 7f)
     moveTo(4f, 12f)
-    cubicTo(4f, 7.6f, 7.6f, 4f, 12f, 4f)
-    cubicTo(16.4f, 4f, 20f, 7.6f, 20f, 12f)
-    cubicTo(20f, 16.4f, 16.4f, 20f, 12f, 20f)
-    cubicTo(7.6f, 20f, 4f, 16.4f, 4f, 12f)
+    curveTo(4f, 7.6f, 7.6f, 4f, 12f, 4f)
+    curveTo(16.4f, 4f, 20f, 7.6f, 20f, 12f)
+    curveTo(20f, 16.4f, 16.4f, 20f, 12f, 20f)
+    curveTo(7.6f, 20f, 4f, 16.4f, 4f, 12f)
 }
 
+@Composable
 private fun WalletVisualIcon() {
     Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
         Icon(
@@ -751,7 +753,7 @@ Card(
                                     .background(Color(0xFFD7E8E1), RoundedCornerShape(3.dp))
                             ) {
                                 Box(
-                                    modifier = Modifier.fillMaxWidth(progress).height(6.dp)
+                                    modifier = Modifier.fillMaxWidth(progress.toFloat()).height(6.dp)
                                         .background(Color(0xFF0F5C4D), RoundedCornerShape(3.dp))
                                 )
                             }
@@ -763,7 +765,7 @@ Card(
                                 color = Color(0xFF40514D)
                             )
                         }
-                        }                        IconButton(
+                        IconButton(
                             onClick = { showWalletInfo = true },
                             modifier = Modifier.align(Alignment.TopEnd).size(32.dp)
                         ) {
