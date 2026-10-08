@@ -624,7 +624,7 @@ Card(
             else -> promotions.sortedByDescending { it.priority }.forEachIndexed { index, promotion ->
                 val code = promotion.code?.takeIf { it.isNotBlank() }
                 val applied = code?.let { couponCode -> cartCouponCodes.any { it.equals(couponCode, ignoreCase = true) } } == true
-                val isBirthday = promotion.type.equals("birthday_coupon", ignoreCase = true)
+                val isBirthday = promotion.type.equals("birthday_coupon", ignoreCase = true) || listOfNotNull(promotion.title, promotion.description).any { it.contains("cumpleaños", ignoreCase = true) || it.contains("birthday", ignoreCase = true) }
                 Card(
                     Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(15.dp),

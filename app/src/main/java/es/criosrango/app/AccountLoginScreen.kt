@@ -803,7 +803,7 @@ Card(
                 val applied = code?.let { couponCode ->
                     cartCouponCodes.any { it.equals(couponCode, ignoreCase = true) }
                 } == true
-                val isBirthday = promotion.type.equals("birthday_coupon", ignoreCase = true)
+                val isBirthday = promotion.type.equals("birthday_coupon", ignoreCase = true) || listOfNotNull(promotion.title, promotion.description).any { it.contains("cumpleaños", ignoreCase = true) || it.contains("birthday", ignoreCase = true) }
 
                 Card(
                     Modifier.fillMaxWidth(),
