@@ -688,6 +688,22 @@ Card(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(7.dp)
                     ) {
+                        val walletAmount = wallet.walletValue
+                            .replace(',', '.')
+                            .toDoubleOrNull()
+                            ?: 0.0
+                        val minimumAmount = wallet.minimumRedeemValue
+                            .replace(',', '.')
+                            .toDoubleOrNull()
+                            ?: 0.0
+                        val progress =
+                            if (minimumAmount > 0.0)
+                                (walletAmount / minimumAmount).coerceIn(0.0, 1.0)
+                            else
+                                0.0
+                        val remaining =
+                            (minimumAmount - walletAmount).coerceAtLeast(0.0)
+
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(end = 34.dp),
                             verticalAlignment = Alignment.Top
@@ -723,24 +739,7 @@ Card(
                             }
                         }
                         
-                        val walletAmount = wallet.walletValue
-                             .replace(',', '.')
-                             .toDoubleOrNull()
-                             ?: 0.0
-                         val minimumAmount = wallet.minimumRedeemValue
-                             .replace(',', '.')
-                             .toDoubleOrNull()
-                             ?: 0.0
-                         val progress =
-                             if (minimumAmount > 0.0)
-                                 (walletAmount / minimumAmount).coerceIn(0.0, 1.0)
-                             else
-                                 0.0
-                         val remaining =
-                             (minimumAmount - walletAmount).coerceAtLeast(0.0)
-
                          if (walletAmount < minimumAmount) {
-                             val progress = progress.toFloat()
                             Text(
                                 "Has acumulado " + loyaltyDisplayMoney(wallet.walletValue) +
                                     " de " + loyaltyDisplayMoney(wallet.minimumRedeemValue),
