@@ -22,7 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.Chat
@@ -36,12 +35,6 @@ import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Sell
-import androidx.compose.material.icons.outlined.AccountBalanceWallet
-import androidx.compose.material.icons.outlined.Cake
-import androidx.compose.material.icons.outlined.CalendarToday
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.LocalOffer
-import androidx.compose.material.icons.outlined.Percent
 import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -448,10 +441,128 @@ private fun AccountHomeContentV2(
 }
 
 @Composable
+private fun buildLineIcon(name: String, content: androidx.compose.ui.graphics.vector.PathBuilder.() -> Unit): ImageVector =
+    ImageVector.Builder(
+        name = name,
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            fill = null,
+            stroke = androidx.compose.ui.graphics.SolidColor(Color.Black),
+            strokeLineWidth = 1.8f,
+            strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round,
+            strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round,
+            content = content
+        )
+    }.build()
+
+private val WalletLineIcon = buildLineIcon("WalletLineIcon") {
+    moveTo(3.5f, 6.5f)
+    lineTo(18.5f, 6.5f)
+    lineTo(20.5f, 8.5f)
+    lineTo(20.5f, 18f)
+    lineTo(3.5f, 18f)
+    close()
+    moveTo(3.5f, 6.5f)
+    lineTo(3.5f, 5f)
+    lineTo(17f, 5f)
+    moveTo(15.5f, 12.5f)
+    lineTo(20.5f, 12.5f)
+    moveTo(17.5f, 12.5f)
+    lineTo(17.5f, 12.5f)
+}
+
+private val CakeLineIcon = buildLineIcon("CakeLineIcon") {
+    moveTo(4f, 11f)
+    lineTo(20f, 11f)
+    lineTo(20f, 19f)
+    lineTo(4f, 19f)
+    close()
+    moveTo(3f, 11f)
+    lineTo(21f, 11f)
+    moveTo(7f, 7f)
+    lineTo(7f, 11f)
+    moveTo(12f, 7f)
+    lineTo(12f, 11f)
+    moveTo(17f, 7f)
+    lineTo(17f, 11f)
+    moveTo(7f, 5f)
+    lineTo(7f, 7f)
+    moveTo(12f, 5f)
+    lineTo(12f, 7f)
+    moveTo(17f, 5f)
+    lineTo(17f, 7f)
+    moveTo(7f, 15f)
+    lineTo(7f, 15f)
+    moveTo(12f, 15f)
+    lineTo(12f, 15f)
+    moveTo(17f, 15f)
+    lineTo(17f, 15f)
+}
+
+private val TagLineIcon = buildLineIcon("TagLineIcon") {
+    moveTo(4f, 5f)
+    lineTo(12f, 5f)
+    lineTo(20f, 13f)
+    lineTo(13f, 20f)
+    lineTo(5f, 12f)
+    close()
+    moveTo(8f, 8f)
+    lineTo(8f, 8f)
+}
+
+private val DiscountTagLineIcon = buildLineIcon("DiscountTagLineIcon") {
+    moveTo(4f, 5f)
+    lineTo(12f, 5f)
+    lineTo(20f, 13f)
+    lineTo(13f, 20f)
+    lineTo(5f, 12f)
+    close()
+    moveTo(8f, 8f)
+    lineTo(8f, 8f)
+    moveTo(10f, 15f)
+    lineTo(15f, 10f)
+    moveTo(10.5f, 10.5f)
+    lineTo(10.5f, 10.5f)
+    moveTo(14.5f, 14.5f)
+    lineTo(14.5f, 14.5f)
+}
+
+private val CalendarLineIcon = buildLineIcon("CalendarLineIcon") {
+    moveTo(4f, 6f)
+    lineTo(20f, 6f)
+    lineTo(20f, 20f)
+    lineTo(4f, 20f)
+    close()
+    moveTo(4f, 10f)
+    lineTo(20f, 10f)
+    moveTo(8f, 4f)
+    lineTo(8f, 8f)
+    moveTo(16f, 4f)
+    lineTo(16f, 8f)
+}
+
+private val InfoLineIcon = buildLineIcon("InfoLineIcon") {
+    moveTo(12f, 4f)
+    lineTo(12f, 4f)
+    moveTo(12f, 10f)
+    lineTo(12f, 18f)
+    moveTo(12f, 7f)
+    lineTo(12f, 7f)
+    moveTo(4f, 12f)
+    cubicTo(4f, 7.6f, 7.6f, 4f, 12f, 4f)
+    cubicTo(16.4f, 4f, 20f, 7.6f, 20f, 12f)
+    cubicTo(20f, 16.4f, 16.4f, 20f, 12f, 20f)
+    cubicTo(7.6f, 20f, 4f, 16.4f, 4f, 12f)
+}
+
 private fun WalletVisualIcon() {
     Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
         Icon(
-            imageVector = Icons.Outlined.AccountBalanceWallet,
+            imageVector = WalletLineIcon,
             contentDescription = null,
             tint = Color(0xFF0F5C4D),
             modifier = Modifier.size(28.dp)
@@ -477,31 +588,23 @@ private fun PromotionVisualIcon(promotion: Promotion, isBirthday: Boolean) {
     ) {
         when (kind) {
             PromotionVisualKind.BIRTHDAY -> Icon(
-                imageVector = Icons.Outlined.Cake,
+                imageVector = CakeLineIcon,
                 contentDescription = "Cumpleaños",
                 tint = iconColor,
                 modifier = Modifier.size(24.dp)
             )
             PromotionVisualKind.WELCOME -> Icon(
-                imageVector = Icons.Outlined.LocalOffer,
+                imageVector = TagLineIcon,
                 contentDescription = "Promoción de bienvenida",
                 tint = iconColor,
                 modifier = Modifier.size(24.dp)
             )
-            PromotionVisualKind.DISCOUNT -> Box(Modifier.size(25.dp), contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Outlined.LocalOffer,
-                    contentDescription = "Descuento",
-                    tint = iconColor,
-                    modifier = Modifier.size(25.dp)
-                )
-                Icon(
-                    imageVector = Icons.Outlined.Percent,
-                    contentDescription = null,
-                    tint = iconColor,
-                    modifier = Modifier.size(12.dp)
-                )
-            }
+            PromotionVisualKind.DISCOUNT -> Icon(
+                imageVector = DiscountTagLineIcon,
+                contentDescription = "Descuento",
+                tint = iconColor,
+                modifier = Modifier.size(25.dp)
+            )
         }
     }
 }
@@ -525,7 +628,7 @@ private fun promotionVisualKind(promotion: Promotion, isBirthday: Boolean): Prom
 private fun PromotionDateRow(text: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         Icon(
-            imageVector = Icons.Outlined.CalendarToday,
+            imageVector = CalendarLineIcon,
             contentDescription = null,
             tint = Color(0xFF7A8884),
             modifier = Modifier.size(13.dp)
@@ -655,7 +758,7 @@ Card(
                             modifier = Modifier.align(Alignment.TopEnd).size(32.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Outlined.Info,
+                                imageVector = InfoLineIcon,
                                 contentDescription = "Cómo funciona el monedero",
                                 tint = Color(0xFF0F5C4D),
                                 modifier = Modifier.size(18.dp)
