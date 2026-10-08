@@ -195,10 +195,15 @@ internal fun CartScreen(
     LaunchedEffect(accountUserId) {
         promotionsLoading = true
         promotionsError = null
-        runCatching { promotionRepository.getPromotions() }
-            .onSuccess { promotions = it }
-            .onFailure { promotionsError = it.message ?: "No se han podido cargar las promociones." }
-        promotionsLoading = false
+        try {
+            promotions = promotionRepository.getPromotions()
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            promotionsError = exception.message ?: "No se han podido cargar las promociones."
+        } finally {
+            promotionsLoading = false
+        }
     }
 
     LaunchedEffect(accountUserId) {
