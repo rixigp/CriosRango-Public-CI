@@ -691,6 +691,44 @@ private fun IosCartScreen(
                 Text("Tu carrito está vacío", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        items(cart.items, key = { it.key }) { line ->
+            Surface(
+                modifier = Modifier.fillMaxWidth().clickable {
+                    onOpenProduct(StoreProduct(id = line.id, name = line.name, images = line.images, prices = line.prices))
+                },
+                shape = RoundedCornerShape(12.dp),
+                tonalElevation = 1.dp
+            ) {
+                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RemoteStoreImage(line.images.firstOrNull()?.src, line.name, Modifier.size(84.dp), ContentScale.Crop)
+                    Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(line.name, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (line.variation.isNotEmpty()) Text(
+                            line.variation.joinToString(" · ") { "${it.attribute.removePrefix("pa_")}: ${it.value}" },
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(formatStorePrice(line.prices.price, line.prices.currencyMinorUnit, line.prices.currencySymbol) + " / ud.", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Subtotal: " + formatStorePrice(line.totals.lineTotal, line.prices.currencyMinorUnit, line.prices.currencySymbol),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        val increment = line.quantityLimits?.multipleOf?.takeIf { it > 0 } ?: 1
+                        val maximum = line.quantityLimits?.maximum?.takeUnless { it == 9999 }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = { cartStore.update(line, line.quantity - increment) }
+                            ) { Text("−", style = MaterialTheme.typography.titleLarge) }
+                            Text(line.quantity.toString(), modifier = Modifier.padding(horizontal = 8.dp), fontWeight = FontWeight.SemiBold)
+                            IconButton(
+                                onClick = { cartStore.update(line, line.quantity + increment) },
+                                enabled = maximum == null || line.quantity < maximum
+                            ) { Text("+", style = MaterialTheme.typography.titleLarge) }
+                        }
+                    }
+                    IconButton(onClick = { cartStore.remove(line) }) { Text("×", style = MaterialTheme.typography.titleLarge) }
+                }
+            }
+        }
         if (cart.items.isNotEmpty()) item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(horizontal = 20.dp)) {
                 Text("Promociones y descuentos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -843,44 +881,6 @@ private fun IosCartScreen(
                 }
 
                 loyaltyError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-            }
-        }
-        items(cart.items, key = { it.key }) { line ->
-            Surface(
-                modifier = Modifier.fillMaxWidth().clickable {
-                    onOpenProduct(StoreProduct(id = line.id, name = line.name, images = line.images, prices = line.prices))
-                },
-                shape = RoundedCornerShape(12.dp),
-                tonalElevation = 1.dp
-            ) {
-                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RemoteStoreImage(line.images.firstOrNull()?.src, line.name, Modifier.size(84.dp), ContentScale.Crop)
-                    Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(line.name, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        if (line.variation.isNotEmpty()) Text(
-                            line.variation.joinToString(" · ") { "${it.attribute.removePrefix("pa_")}: ${it.value}" },
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(formatStorePrice(line.prices.price, line.prices.currencyMinorUnit, line.prices.currencySymbol) + " / ud.", fontWeight = FontWeight.Bold)
-                        Text(
-                            "Subtotal: " + formatStorePrice(line.totals.lineTotal, line.prices.currencyMinorUnit, line.prices.currencySymbol),
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        val increment = line.quantityLimits?.multipleOf?.takeIf { it > 0 } ?: 1
-                        val maximum = line.quantityLimits?.maximum?.takeUnless { it == 9999 }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = { cartStore.update(line, line.quantity - increment) }
-                            ) { Text("−", style = MaterialTheme.typography.titleLarge) }
-                            Text(line.quantity.toString(), modifier = Modifier.padding(horizontal = 8.dp), fontWeight = FontWeight.SemiBold)
-                            IconButton(
-                                onClick = { cartStore.update(line, line.quantity + increment) },
-                                enabled = maximum == null || line.quantity < maximum
-                            ) { Text("+", style = MaterialTheme.typography.titleLarge) }
-                        }
-                    }
-                    IconButton(onClick = { cartStore.remove(line) }) { Text("×", style = MaterialTheme.typography.titleLarge) }
-                }
             }
         }
         if (cart.items.isNotEmpty()) item {

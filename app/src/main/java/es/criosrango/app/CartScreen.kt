@@ -221,6 +221,48 @@ internal fun CartScreen(
         if (!error.isNullOrBlank()) item { Row(verticalAlignment = Alignment.CenterVertically) { Text(error, color = Color(0xFFB3261E), modifier = Modifier.weight(1f)); TextButton(retry) { Text("Reintentar") } } }
         if (state == CartLoadState.ERROR && cart.items.isEmpty()) item { Text("No se ha podido recuperar el carrito.", color = Color.Gray) }
         if (state == CartLoadState.SUCCESS_EMPTY) item { Text("Tu carrito está vacío", color = Color.Gray) }
+        items(cart.items, key = { it.key }) { item ->
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    val openModifier = Modifier.clickable { openLine(item) }
+                    BoxWithConstraints(openModifier.size(78.dp)) {
+                        val targetWidthPx = with(LocalDensity.current) { maxWidth.roundToPx() }
+                        val image = item.images.firstOrNull()
+                        CatalogImage(
+                            selectResponsiveImageUrl(
+                                src = image?.src.orEmpty(),
+                                thumbnail = image?.thumbnail.orEmpty(),
+                                srcSet = image?.srcSet.orEmpty(),
+                                targetWidthPx = targetWidthPx,
+                                preferThumbnailFallback = true
+                            ),
+                            item.name.cleanWooText(),
+                            Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(10.dp))
+                        )
+                    }
+                    Column(openModifier.weight(1f).padding(horizontal = 12.dp)) {
+                        Text(item.name.cleanWooText(), fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (item.variation.isNotEmpty()) Text(item.variation.joinToString(" · ") { "${it.attribute.removePrefix("pa_")}: ${it.value}" }, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                        Text("${formatMinorUnits(item.consumerUnitPrice(), item.prices.currencyMinorUnit, item.prices.currencySymbol)} / ud.", fontWeight = FontWeight.Bold, color = Color(0xFF183B35))
+                        Text("Subtotal: ${formatMinorUnits(item.totals.consumerSubtotal(), item.prices.currencyMinorUnit, item.prices.currencySymbol)}", style = MaterialTheme.typography.bodySmall)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton({
+                                if (item.quantity <= 1) {
+                                    removeLine(item)
+                                } else {
+                                    updateQuantity(item, item.quantity - increment(item))
+                                }
+                            }) { Icon(Icons.Default.Remove, "Reducir") }
+                            Text(item.quantity.toString())
+                            IconButton({ updateQuantity(item, item.quantity + increment(item)) }, enabled = canIncrease(item)) { Icon(Icons.Default.Add, "Aumentar") }
+                        }
+                    }
+                    IconButton({ removeLine(item) }) { Icon(Icons.Default.DeleteOutline, "Eliminar") }
+                }
+            }
+        }
         if (cart.items.isNotEmpty()) item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
@@ -443,48 +485,6 @@ internal fun CartScreen(
 
                 loyaltyError?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-        items(cart.items, key = { it.key }) { item ->
-            Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    val openModifier = Modifier.clickable { openLine(item) }
-                    BoxWithConstraints(openModifier.size(78.dp)) {
-                        val targetWidthPx = with(LocalDensity.current) { maxWidth.roundToPx() }
-                        val image = item.images.firstOrNull()
-                        CatalogImage(
-                            selectResponsiveImageUrl(
-                                src = image?.src.orEmpty(),
-                                thumbnail = image?.thumbnail.orEmpty(),
-                                srcSet = image?.srcSet.orEmpty(),
-                                targetWidthPx = targetWidthPx,
-                                preferThumbnailFallback = true
-                            ),
-                            item.name.cleanWooText(),
-                            Modifier
-                                .fillMaxSize()
-                                .clip(RoundedCornerShape(10.dp))
-                        )
-                    }
-                    Column(openModifier.weight(1f).padding(horizontal = 12.dp)) {
-                        Text(item.name.cleanWooText(), fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        if (item.variation.isNotEmpty()) Text(item.variation.joinToString(" · ") { "${it.attribute.removePrefix("pa_")}: ${it.value}" }, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                        Text("${formatMinorUnits(item.consumerUnitPrice(), item.prices.currencyMinorUnit, item.prices.currencySymbol)} / ud.", fontWeight = FontWeight.Bold, color = Color(0xFF183B35))
-                        Text("Subtotal: ${formatMinorUnits(item.totals.consumerSubtotal(), item.prices.currencyMinorUnit, item.prices.currencySymbol)}", style = MaterialTheme.typography.bodySmall)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton({
-                                if (item.quantity <= 1) {
-                                    removeLine(item)
-                                } else {
-                                    updateQuantity(item, item.quantity - increment(item))
-                                }
-                            }) { Icon(Icons.Default.Remove, "Reducir") }
-                            Text(item.quantity.toString())
-                            IconButton({ updateQuantity(item, item.quantity + increment(item)) }, enabled = canIncrease(item)) { Icon(Icons.Default.Add, "Aumentar") }
-                        }
-                    }
-                    IconButton({ removeLine(item) }) { Icon(Icons.Default.DeleteOutline, "Eliminar") }
                 }
             }
         }
