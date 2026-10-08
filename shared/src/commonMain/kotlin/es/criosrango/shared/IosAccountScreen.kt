@@ -267,34 +267,30 @@ private fun PromotionVisualIcon(promotion: Promotion, isBirthday: Boolean) {
             PromotionVisualKind.BIRTHDAY -> {
                 androidx.compose.foundation.layout.Box(
                     modifier = Modifier
-                        .width(23.dp)
+                        .width(24.dp)
                         .height(11.dp)
                         .border(2.dp, iconColor, RoundedCornerShape(3.dp))
                         .align(Alignment.Center)
                         .offset(y = 5.dp)
                 )
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier
+                        .width(20.dp)
+                        .height(5.dp)
+                        .background(iconColor, RoundedCornerShape(3.dp))
+                        .align(Alignment.Center)
+                        .offset(y = (-2).dp)
+                )
                 Row(
-                    modifier = Modifier.offset(y = (-4).dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    repeat(3) {
-                        androidx.compose.foundation.layout.Box(
-                            modifier = Modifier
-                                .width(2.dp)
-                                .height(8.dp)
-                                .background(iconColor, RoundedCornerShape(1.dp))
-                        )
-                    }
-                }
-                Row(
-                    modifier = Modifier.offset(y = (-9).dp),
+                    modifier = Modifier.offset(y = (-8).dp),
                     horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     repeat(3) {
                         androidx.compose.foundation.layout.Box(
                             modifier = Modifier
-                                .size(3.dp)
-                                .background(iconColor, androidx.compose.foundation.shape.CircleShape)
+                                .width(2.dp)
+                                .height(7.dp)
+                                .background(iconColor, RoundedCornerShape(1.dp))
                         )
                     }
                 }
@@ -316,12 +312,22 @@ private fun PromotionVisualIcon(promotion: Promotion, isBirthday: Boolean) {
                 }
             }
             PromotionVisualKind.DISCOUNT -> {
-                Text(
-                    "%",
-                    color = iconColor,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier
+                        .width(23.dp)
+                        .height(19.dp)
+                        .rotate(-45f)
+                        .border(2.dp, iconColor, RoundedCornerShape(4.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "%",
+                        color = iconColor,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.rotate(45f)
+                    )
+                }
             }
         }
     }
@@ -340,6 +346,48 @@ private fun promotionVisualKind(promotion: Promotion, isBirthday: Boolean): Prom
         PromotionVisualKind.DISCOUNT
     }
 }
+
+@Composable
+private fun PromotionDateRow(text: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier
+                .size(13.dp)
+                .border(1.5.dp, Color(0xFF7A8884), RoundedCornerShape(2.dp))
+        ) {
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .background(Color(0xFF7A8884))
+                    .align(Alignment.TopCenter)
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 2.dp)
+                    .align(Alignment.TopCenter),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                androidx.compose.foundation.layout.Box(
+                    Modifier.width(1.5.dp).height(3.dp).background(Color(0xFF7A8884))
+                )
+                androidx.compose.foundation.layout.Box(
+                    Modifier.width(1.5.dp).height(3.dp).background(Color(0xFF7A8884))
+                )
+            }
+        }
+        Text(
+            text,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color(0xFF40514D)
+        )
+    }
+}
+
 @Composable
 private fun IosWalletScreen(
     repository: LoyaltyRepository,
@@ -547,7 +595,7 @@ Card(
                             if (description.isNotBlank()) Text(description, style = MaterialTheme.typography.bodySmall, color = Color(0xFF40514D))
                             if (isBirthday) Text("Válido durante 15 días.", style = MaterialTheme.typography.labelSmall, color = Color(0xFF40514D))
                             promotion.expiresAt?.takeIf { it.isNotBlank() }?.let {
-                                Text("Válido hasta " + formatPromotionExpiry(it), style = MaterialTheme.typography.labelSmall, color = Color(0xFF40514D))
+                                PromotionDateRow("Válido hasta " + formatPromotionExpiry(it))
                             }
                         }
                         Spacer(Modifier.width(8.dp))
@@ -555,7 +603,7 @@ Card(
                             Button(
                                 onClick = { if (!applied) scope.launch { onApplyCoupon(couponCode) } },
                                 enabled = !loading,
-                                modifier = Modifier.width(if (applied) 82.dp else 78.dp).height(36.dp),
+                                modifier = Modifier.width(82.dp).height(36.dp),
                                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                                 shape = RoundedCornerShape(18.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F5B4E), contentColor = Color.White)
