@@ -31,6 +31,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
@@ -448,15 +450,30 @@ internal fun CartScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedTextField(
+                        BasicTextField(
                             value = couponCode,
                             onValueChange = { couponCode = it },
-                            placeholder = { Text("Código") },
                             singleLine = true,
                             enabled = !couponLoading,
-                            modifier = Modifier.weight(1f).height(48.dp)
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(54.dp)
+                                .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
+                                .padding(horizontal = 18.dp),
+                            decorationBox = { innerTextField ->
+                                Box(
+                                    Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    if (couponCode.isEmpty()) {
+                                        Text("Código", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    innerTextField()
+                                }
+                            }
                         )
-                        CartApplyButton({ applyCoupon(couponCode.trim()) }, enabled=couponCode.trim().isNotEmpty() && !couponLoading, loading=couponLoading)
+                        CartApplyButton({ applyCoupon(couponCode.trim()) }, enabled=couponCode.trim().isNotEmpty() && !couponLoading, loading=couponLoading, modifier=Modifier.height(54.dp))
                     }
                     if (!couponError.isNullOrBlank()) Text("🔴 Este cupón no es válido.", color=MaterialTheme.colorScheme.error, style=MaterialTheme.typography.bodySmall)
                 }

@@ -1,6 +1,8 @@
 package es.criosrango.shared
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -879,15 +881,30 @@ private fun IosCartScreen(
                 } else {
                     Row(Modifier.fillMaxWidth().clickable(enabled=!couponLoading) { couponExpanded=false }.padding(vertical=8.dp), verticalAlignment=Alignment.CenterVertically) { Text("−", fontWeight=FontWeight.Bold, color=Color(0xFF0F5C4D)); Spacer(Modifier.width(8.dp)); Text("Tengo otro código de descuento", Modifier.weight(1f), fontWeight=FontWeight.Medium); Text("⌃", color=Color(0xFF5F6368)) }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
+                        BasicTextField(
                             value = couponCode,
                             onValueChange = { couponCode = it },
-                            placeholder = { Text("Código") },
                             singleLine = true,
                             enabled = !couponLoading,
-                            modifier = Modifier.weight(1f).height(48.dp)
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(54.dp)
+                                .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
+                                .padding(horizontal = 18.dp),
+                            decorationBox = { innerTextField ->
+                                Box(
+                                    Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    if (couponCode.isEmpty()) {
+                                        Text("Código", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    innerTextField()
+                                }
+                            }
                         )
-                        IosCartApplyButton({ cartStore.applyCoupon(couponCode.trim()) }, enabled=couponCode.trim().isNotEmpty() && !couponLoading, loading=couponLoading)
+                        IosCartApplyButton({ cartStore.applyCoupon(couponCode.trim()) }, enabled=couponCode.trim().isNotEmpty() && !couponLoading, loading=couponLoading, modifier=Modifier.height(54.dp))
                     }
                     if (!couponError.isNullOrBlank()) Text("🔴 Este cupón no es válido.", color=MaterialTheme.colorScheme.error, style=MaterialTheme.typography.bodySmall)
                 }
