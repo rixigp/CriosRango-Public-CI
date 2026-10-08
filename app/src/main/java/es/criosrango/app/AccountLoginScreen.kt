@@ -724,7 +724,7 @@ Card(
                                     color = Color(0xFF0F5C4D)
                                 )
                             }
-                            if (options.isNotEmpty()) {
+                            if (walletAmount >= minimumAmount && options.isNotEmpty()) {
                                 Button(
                                     onClick = { showRedeemDialog = true },
                                     enabled = !loading,

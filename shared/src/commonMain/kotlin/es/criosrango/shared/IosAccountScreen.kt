@@ -218,7 +218,6 @@ fun CriosRangoIOSAccountScreen(
     }
 }
 
-@Composable
 private fun buildLineIcon(name: String, content: androidx.compose.ui.graphics.vector.PathBuilder.() -> Unit): ImageVector =
     ImageVector.Builder(
         name = name,
@@ -544,13 +543,13 @@ Card(
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                 Text("Monedero Críos & Rango", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Color(0xFF183B35))
                                 Text(
-                                    loyaltyDisplayMoney(wallet!!.walletValue) + if (walletAmount >= minimumAmount) " disponibles" else " acumulados",
+                                    wallet!!.walletValue + if (walletAmount >= minimumAmount) " disponibles" else " acumulados",
                                     style = MaterialTheme.typography.headlineSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF0F5C4D)
                                 )
                             }
-                            if (options.isNotEmpty()) {
+                            if (walletAmount >= minimumAmount && options.isNotEmpty()) {
                                 Button(
                                     onClick = { showRedeemDialog = true },
                                     enabled = !loading,
@@ -565,7 +564,7 @@ Card(
                          if (walletAmount < minimumAmount) {
                             Text(
                                 "Has acumulado " + loyaltyDisplayMoney(wallet!!.walletValue) +
-                                    " de " + loyaltyDisplayMoney(wallet!!.minimumRedeemValue),
+                                    " de " + wallet!!.minimumRedeemValue,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF40514D)
                             )
@@ -574,14 +573,12 @@ Card(
                                     .background(Color(0xFFD7E8E1), RoundedCornerShape(3.dp))
                             ) {
                                 Box(
-                                    modifier = Modifier.fillMaxWidth(progress).height(6.dp)
+                                    modifier = Modifier.fillMaxWidth(progress.toFloat()).height(6.dp)
                                         .background(Color(0xFF0F5C4D), RoundedCornerShape(3.dp))
                                 )
                             }
                             Text(
-                                "Te faltan " + loyaltyDisplayMoney(
-                                    formatWalletRemaining(remaining)
-                                ) + " para desbloquear tu saldo.",
+                                "Te faltan " + formatWalletRemaining(remaining) + " para desbloquear tu saldo.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF40514D)
                             )
