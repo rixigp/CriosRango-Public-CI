@@ -452,12 +452,11 @@ internal fun CartScreen(
                             value = couponCode,
                             onValueChange = { couponCode = it },
                             placeholder = { Text("Código") },
-                             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
                             singleLine = true,
                             enabled = !couponLoading,
                             modifier = Modifier.weight(1f).height(48.dp)
                         )
-                        CartApplyButton({ applyCoupon(couponCode.trim()) }, enabled=couponCode.trim().isNotEmpty() && !couponLoading, loading=couponLoading, modifier=Modifier.height(58.dp))
+                        CartApplyButton({ applyCoupon(couponCode.trim()) }, enabled=couponCode.trim().isNotEmpty() && !couponLoading, loading=couponLoading)
                     }
                     if (!couponError.isNullOrBlank()) Text("🔴 Este cupón no es válido.", color=MaterialTheme.colorScheme.error, style=MaterialTheme.typography.bodySmall)
                 }
