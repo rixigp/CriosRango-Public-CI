@@ -212,6 +212,7 @@ class SharedCatalogStoreApiAdapter(
                 httpStatus = exception.statusCode,
                 backendCode = exception.apiCode.orEmpty(),
                 removedCouponNames = friendlyNames,
+                removedCoupons = exception.removedCoupons,
                 updatedCart = exception.updatedCart?.toAndroid(),
                 backendMessage = exception.message
             )

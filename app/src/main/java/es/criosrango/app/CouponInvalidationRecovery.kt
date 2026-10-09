@@ -1,11 +1,13 @@
 package es.criosrango.app
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.JsonElement
 
 internal class CouponInvalidatedCheckoutException(
     val httpStatus: Int,
     val backendCode: String,
     val removedCouponNames: List<String>,
+    val removedCoupons: Map<String, JsonElement>,
     val updatedCart: WooCart?,
     val backendMessage: String
 ) : Exception(backendMessage) {

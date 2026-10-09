@@ -6,6 +6,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class CheckoutCouponInvalidationTest {
     @Test
@@ -70,6 +72,35 @@ class CheckoutCouponInvalidationTest {
         assertEquals(message, visibleError)
         assertEquals(CheckoutPhase.FAILED, phase)
         assertEquals(0, checkoutGetCalls)
+    }
+
+    @Test
+    fun couponInvalidationExceptionPreservesOriginalRemovedCouponPayload() {
+        val removedCoupons = mapOf(
+            "bienvenida" to buildJsonObject {
+                put("code", "bienvenida")
+                put("label", "Bienvenida")
+                put("reason", "usage_limit_reached")
+            }
+        )
+        val exception = CouponInvalidatedCheckoutException(
+            httpStatus = 409,
+            backendCode = "woocommerce_rest_cart_coupon_errors",
+            removedCouponNames = listOf("Bienvenida"),
+            removedCoupons = removedCoupons,
+            updatedCart = null,
+            backendMessage = "El cupón se ha eliminado del carrito."
+        )
+
+        assertEquals(409, exception.httpStatus)
+        assertEquals("woocommerce_rest_cart_coupon_errors", exception.backendCode)
+        assertEquals("El cupón se ha eliminado del carrito.", exception.backendMessage)
+        assertEquals(removedCoupons, exception.removedCoupons)
+        assertEquals("Bienvenida", exception.removedCoupons["bienvenida"]?.let {
+            (it as? kotlinx.serialization.json.JsonObject)?.get("label")?.let { label ->
+                label.toString().trim('"')
+            }
+        })
     }
 
     @Test
