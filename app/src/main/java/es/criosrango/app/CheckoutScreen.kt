@@ -162,11 +162,6 @@ fun RedesignedCheckoutScreen(
         Unit
     }
 
-    val subtotalMinor = cart.totals.consumerSubtotal().toBigDecimalOrNull() ?: BigDecimal.ZERO
-    val scale = cart.totals.currencyMinorUnit
-    val threshold = BigDecimal("50").movePointRight(scale)
-    val remaining = (threshold - subtotalMinor).max(BigDecimal.ZERO)
-    val freeMessage = if (subtotalMinor >= threshold) "¡Ya tienes envío gratis!" else "Te faltan ${formatMinorUnits(remaining.toBigInteger().toString(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol)} para conseguir envío gratis"
 
     BackHandler(onBack = onBack)
     Scaffold(topBar = {
@@ -184,7 +179,7 @@ fun RedesignedCheckoutScreen(
         }
     }) { padding ->
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding(), contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            item {
+            if (ready && shippingOptions.any { it.price.toBigDecimalOrNull() == BigDecimal.ZERO }) item {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
@@ -204,7 +199,7 @@ fun RedesignedCheckoutScreen(
                         )
                         Spacer(Modifier.width(12.dp))
                         Text(
-                            text = freeMessage,
+                            text = "¡Ya tienes envío gratis!",
                             style = MaterialTheme.typography.bodyMedium,
                             color = CheckoutUiGreen,
                             maxLines = 1
@@ -296,7 +291,7 @@ fun RedesignedCheckoutScreen(
                                 selected = selected,
                                 onClick = null
                             )
-                            Text(if (rate.displayShippingName().contains("CORREOS EXPRESS", true)) "CORREOS EXPRESS" else rate.displayShippingName(), Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                            Text(rate.displayShippingName(), Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                             Text(if (rate.price.toBigDecimalOrNull() == BigDecimal.ZERO) "Gratis" else formatMinorUnits(rate.price, rate.currencyMinorUnit, rate.currencySymbol), color = CheckoutUiGreen, fontWeight = FontWeight.SemiBold)
                         }
                     } } }

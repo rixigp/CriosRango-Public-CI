@@ -112,11 +112,6 @@ fun IosCheckoutScreen(
         StoreCardPaymentState.RECONCILING
     )
     val checkoutBusy = phase == StoreCheckoutPhase.LOADING || phase == StoreCheckoutPhase.CREATING_ORDER
-    val subtotalMinor = cart.totals.totalItems.toLongOrNull() ?: 0L
-    val scale = cart.totals.currencyMinorUnit
-    val freeThreshold = 50L * pow10(scale)
-    val remaining = (freeThreshold - subtotalMinor).coerceAtLeast(0L)
-    val freeMessage = if (subtotalMinor >= freeThreshold) "¡Ya tienes envío gratis!" else "Te faltan " + formatStorePrice(remaining.toString(), scale, cart.totals.currencySymbol) + " para conseguir envío gratis"
 
     val canSubmit = cart.items.isNotEmpty() &&
         phase == StoreCheckoutPhase.READY &&
@@ -140,13 +135,13 @@ fun IosCheckoutScreen(
                 Text("Finalizar compra", style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.weight(1f))
             }
         }
-        item {
+        if (phase == StoreCheckoutPhase.READY && shippingOptions.any { it.second.price.toLongOrNull() == 0L }) item {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.secondaryContainer
             ) {
-                Text(freeMessage, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.onSecondaryContainer)
+                Text("¡Ya tienes envío gratis!", modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.onSecondaryContainer)
             }
         }
         if (phase == StoreCheckoutPhase.LOADING && checkout == null) item {
@@ -214,8 +209,8 @@ fun IosCheckoutScreen(
                     }
                 )
                 Column(Modifier.weight(1f)) {
-                    Text(rate.name)
-                    Text(formatStorePrice(rate.price, rate.currencyMinorUnit, rate.currencySymbol), style = MaterialTheme.typography.bodySmall)
+                    Text(resolveShippingPresentationName(rate.methodId, rate.rateId, rate.name))
+                    Text(if (rate.price.toLongOrNull() == 0L) "Gratis" else formatStorePrice(rate.price, rate.currencyMinorUnit, rate.currencySymbol), style = MaterialTheme.typography.bodySmall)
                 }
             }
         }

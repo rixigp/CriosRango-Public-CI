@@ -572,9 +572,8 @@ fun ShippingOption.isTarancónLocalMethod(): Boolean {
     return haystack.contains("tarancon") && localKeywords.any { haystack.contains(it) }
 }
 
-fun ShippingOption.displayShippingName(): String {
-    return name.cleanWooText()
-}
+fun ShippingOption.displayShippingName(): String =
+    es.criosrango.shared.resolveShippingPresentationName(methodId, rateId, name.cleanWooText())
 
 fun isTarancónDestination(destination: ShippingDestination?): Boolean {
     if (destination == null) return false
