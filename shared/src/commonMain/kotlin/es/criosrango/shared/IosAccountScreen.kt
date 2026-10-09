@@ -254,59 +254,39 @@ private val WalletLineIcon = buildLineIcon("WalletLineIcon") {
 }
 
 private val CakeLineIcon = buildLineIcon("CakeLineIcon") {
-    moveTo(4f, 11f)
-    lineTo(20f, 11f)
+    moveTo(4f, 10f)
+    lineTo(20f, 10f)
     lineTo(20f, 19f)
     lineTo(4f, 19f)
     close()
-    moveTo(3f, 11f)
-    lineTo(21f, 11f)
-    moveTo(7f, 7f)
-    lineTo(7f, 11f)
-    moveTo(12f, 7f)
-    lineTo(12f, 11f)
-    moveTo(17f, 7f)
-    lineTo(17f, 11f)
-    moveTo(7f, 5f)
-    lineTo(7f, 7f)
-    moveTo(12f, 5f)
-    lineTo(12f, 7f)
-    moveTo(17f, 5f)
-    lineTo(17f, 7f)
-    moveTo(7f, 15f)
-    lineTo(7f, 15f)
-    moveTo(12f, 15f)
-    lineTo(12f, 15f)
-    moveTo(17f, 15f)
-    lineTo(17f, 15f)
+    moveTo(4f, 14f)
+    lineTo(20f, 14f)
+    moveTo(8f, 10f)
+    lineTo(8f, 7f)
+    moveTo(12f, 10f)
+    lineTo(12f, 6f)
+    moveTo(16f, 10f)
+    lineTo(16f, 7f)
 }
 
 private val TagLineIcon = buildLineIcon("TagLineIcon") {
-    moveTo(4f, 5f)
-    lineTo(12f, 5f)
-    lineTo(20f, 13f)
-    lineTo(13f, 20f)
-    lineTo(5f, 12f)
+    moveTo(3.5f, 11f)
+    lineTo(11f, 3.5f)
+    lineTo(20f, 12.5f)
+    lineTo(12.5f, 20f)
     close()
     moveTo(8f, 8f)
     lineTo(8f, 8f)
 }
 
 private val DiscountTagLineIcon = buildLineIcon("DiscountTagLineIcon") {
-    moveTo(4f, 5f)
-    lineTo(12f, 5f)
-    lineTo(20f, 13f)
-    lineTo(13f, 20f)
-    lineTo(5f, 12f)
+    moveTo(4f, 7f)
+    lineTo(20f, 7f)
+    lineTo(20f, 17f)
+    lineTo(4f, 17f)
     close()
-    moveTo(8f, 8f)
-    lineTo(8f, 8f)
-    moveTo(10f, 15f)
-    lineTo(15f, 10f)
-    moveTo(10.5f, 10.5f)
-    lineTo(10.5f, 10.5f)
-    moveTo(14.5f, 14.5f)
-    lineTo(14.5f, 14.5f)
+    moveTo(8f, 12f)
+    lineTo(16f, 12f)
 }
 
 private val CalendarLineIcon = buildLineIcon("CalendarLineIcon") {
@@ -370,19 +350,19 @@ private fun PromotionVisualIcon(promotion: Promotion, isBirthday: Boolean) {
                 imageVector = CakeLineIcon,
                 contentDescription = "Cumpleaños",
                 tint = iconColor,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(20.dp)
             )
             PromotionVisualKind.WELCOME -> Icon(
                 imageVector = TagLineIcon,
                 contentDescription = "Promoción de bienvenida",
                 tint = iconColor,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(20.dp)
             )
             PromotionVisualKind.DISCOUNT -> Icon(
                 imageVector = DiscountTagLineIcon,
                 contentDescription = "Descuento",
                 tint = iconColor,
-                modifier = Modifier.size(25.dp)
+                modifier = Modifier.size(20.dp)
             )
         }
     }
@@ -478,6 +458,16 @@ private fun IosWalletScreen(
                     pendingRequestId = null
                 }
                 .onFailure { error = it.message ?: "No se ha podido utilizar el monedero." }
+            loading = false
+        }
+    }
+
+    fun applyReward(reward: LoyaltyReward) {
+        scope.launch {
+            loading = true
+            error = null
+            onApplyCoupon(reward.code)
+            wallet = runCatching { repository.getWallet() }.getOrNull() ?: wallet
             loading = false
         }
     }
@@ -609,6 +599,76 @@ Card(
                     }
                 }
             }
+
+        if (!wallet?.pendingRewards.isNullOrEmpty()) {
+            Text(
+                "Créditos listos para usar",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Card(
+                Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF2F0F8))
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp)
+                ) {
+                    wallet!!.pendingRewards.forEachIndexed { index, reward ->
+                        val applied = cartCouponCodes.any { it.equals(reward.code, ignoreCase = true) }
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = WalletLineIcon,
+                                contentDescription = "Crédito",
+                                tint = Color(0xFF0F5C4D),
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column(
+                                Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(1.dp)
+                            ) {
+                                Text(
+                                    "Crédito " + reward.amount.replace('.', ',') + " €",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF183B35)
+                                )
+                                Text(
+                                    reward.code,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (applied) {
+                                Text(
+                                    "Aplicado",
+                                    color = Color(0xFF0F5C4D),
+                                    fontWeight = FontWeight.SemiBold,
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            } else {
+                                TextButton(
+                                    onClick = { applyReward(reward) },
+                                    enabled = !loading,
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                                ) { Text("Aplicar") }
+                            }
+                        }
+                        if (index < wallet!!.pendingRewards.lastIndex) {
+                            HorizontalDivider(
+                                Modifier.padding(start = 30.dp),
+                                color = Color(0xFFDCD8E8),
+                                thickness = 1.dp
+                            )
+                        }
+                    }
+                }
+            }
+        }
 
         error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
