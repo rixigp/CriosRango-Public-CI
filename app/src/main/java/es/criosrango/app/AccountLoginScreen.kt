@@ -792,35 +792,42 @@ Card(
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(Modifier.width(8.dp))
-                            Column(
-                                Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(1.dp)
-                            ) {
-                                Text(
-                                    "Crédito " + reward.amount.replace('.', ',') + " €",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF183B35)
-                                )
-                                Text(
-                                    reward.code,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            Text(
+                                "Crédito " + reward.amount.replace('.', ',') + " €",
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF183B35),
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
                             if (applied) {
-                                Text(
-                                    "Aplicado",
-                                    color = Color(0xFF0F5C4D),
-                                    fontWeight = FontWeight.SemiBold,
-                                    style = MaterialTheme.typography.labelMedium
-                                )
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = Color(0xFFE8F5EF)
+                                ) {
+                                    Text(
+                                        "Aplicado",
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        color = Color(0xFF0F5C4D),
+                                        fontWeight = FontWeight.SemiBold,
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
                             } else {
-                                TextButton(
+                                Button(
                                     onClick = { onApplyReward(reward) },
                                     enabled = !loading,
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                                ) { Text("Aplicar") }
+                                    shape = RoundedCornerShape(50),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFF0F5C4D),
+                                        contentColor = Color.White
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                    modifier = Modifier.height(36.dp)
+                                ) {
+                                    Text("Aplicar", style = MaterialTheme.typography.labelMedium)
+                                }
                             }
                         }
                         if (index < wallet!!.pendingRewards.lastIndex) {
