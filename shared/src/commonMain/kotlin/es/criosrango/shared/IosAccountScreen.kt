@@ -61,6 +61,7 @@ import es.criosrango.shared.account.AccountUser
 import es.criosrango.shared.loyalty.LoyaltyRepository
 import es.criosrango.shared.promotions.Promotion
 import es.criosrango.shared.promotions.PromotionRepository
+import es.criosrango.shared.promotions.isVisibleToAnonymous
 import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.loyalty.LoyaltyWallet
 import es.criosrango.shared.loyalty.redeemableOptions
@@ -603,7 +604,7 @@ Card(
                 }
             }
 
-        if (!wallet?.pendingRewards.isNullOrEmpty()) {
+        if (user != null && !wallet?.pendingRewards.isNullOrEmpty()) {
             Text(
                 "Saldo listo para usar",
                 style = MaterialTheme.typography.titleSmall,
@@ -681,17 +682,18 @@ Card(
             ) { Text(if (pendingPoints != null) "Reintentar" else "Reintentar carga") }
         }
 
+        val visiblePromotions = if (user == null) promotions.filter { it.isVisibleToAnonymous() } else promotions
         Text(
-            "Promociones disponibles (${promotions.size})",
+            "Promociones disponibles (${visiblePromotions.size})",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold
         )
 
         when {
-            promotionsLoading && promotions.isEmpty() -> CircularProgressIndicator(modifier = Modifier.padding(vertical = 8.dp))
-            promotionsError != null && promotions.isEmpty() -> Text(promotionsError!!, color = MaterialTheme.colorScheme.error)
-            promotions.isEmpty() -> Text("No hay promociones disponibles.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            else -> promotions.sortedByDescending { it.priority }.forEachIndexed { index, promotion ->
+            promotionsLoading && visiblePromotions.isEmpty() -> CircularProgressIndicator(modifier = Modifier.padding(vertical = 8.dp))
+            promotionsError != null && visiblePromotions.isEmpty() -> Text(promotionsError!!, color = MaterialTheme.colorScheme.error)
+            visiblePromotions.isEmpty() -> Text("No hay promociones disponibles.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else -> visiblePromotions.sortedByDescending { it.priority }.forEachIndexed { index, promotion ->
                 val code = promotion.code?.takeIf { it.isNotBlank() }
                 val applied = code?.let { couponCode -> cartCouponCodes.any { it.equals(couponCode, ignoreCase = true) } } == true
                 val isBirthday = promotion.type.equals("birthday_coupon", ignoreCase = true) || listOfNotNull(promotion.title, promotion.description).any { it.contains("cumpleaños", ignoreCase = true) || it.contains("birthday", ignoreCase = true) }

@@ -915,6 +915,8 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     fun resetForLogout() {
         invalidateCheckout()
         _cardPaymentResult.value = null
+        lastCheckout = null
+        pendingCardPaymentStore.clear()
         _error.value = null
     }
     fun abandonCheckout() = invalidateCheckout()
