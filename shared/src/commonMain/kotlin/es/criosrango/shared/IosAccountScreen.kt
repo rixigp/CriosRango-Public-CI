@@ -504,8 +504,8 @@ private fun IosWalletScreen(
         }
 
         when {
-            loading && wallet == null -> FullScreenLoading("Cargando monedero")
-            wallet != null -> {
+            authenticated && loading && wallet == null -> FullScreenLoading("Cargando monedero")
+            authenticated && wallet != null -> {
 Card(
                     Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),

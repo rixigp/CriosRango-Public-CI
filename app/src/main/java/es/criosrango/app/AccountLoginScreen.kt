@@ -582,8 +582,8 @@ fun AccountWalletContent(
         }
 
         when {
-            loading && wallet == null -> CircularProgressIndicator(modifier = Modifier.padding(vertical = 12.dp))
-            wallet != null -> {
+            authenticated && loading && wallet == null -> CircularProgressIndicator(modifier = Modifier.padding(vertical = 12.dp))
+            authenticated && wallet != null -> {
 Card(
                     Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
