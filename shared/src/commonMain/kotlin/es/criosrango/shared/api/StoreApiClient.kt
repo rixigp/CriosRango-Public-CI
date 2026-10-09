@@ -29,6 +29,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.Json
+import es.criosrango.shared.checkoutDiagLog
 
 interface StoreSessionStore {
     var cartToken: String?
@@ -87,11 +88,25 @@ class StoreApiClient(
     fun diagnosticCustomer(): StoreCustomerDiagnostic? = lastCustomerDiagnostic
     fun diagnosticCustomerUpdatedBeforeCoupon(): Boolean = customerUpdatedBeforeCoupon
     private suspend inline fun <reified T> executeCart(
+        operation: String? = null,
+        method: String? = null,
+        path: String? = null,
         request: suspend () -> io.ktor.client.statement.HttpResponse
     ): T {
         val response = request()
         session.updateFromResponse(response.headers)
         val raw = response.bodyAsText()
+        if (operation != null && !response.status.isSuccess()) {
+            val error = runCatching {
+                json.decodeFromString<es.criosrango.shared.model.StoreCartApiError>(raw)
+            }.getOrNull()
+            checkoutDiagLog(
+                "HTTP ERROR operation=$operation method=$method path=$path status=${response.status.value} " +
+                    "backendCode=${error?.code?.let { sanitizeCheckoutDiag(it) } ?: "null"} " +
+                    "backendMessage=${sanitizeCheckoutDiag(error?.message.orEmpty())} " +
+                    "body=${sanitizeCheckoutDiag(raw)}"
+            )
+        }
         if (!response.status.isSuccess()) {
             val error = runCatching {
                 json.decodeFromString<es.criosrango.shared.model.StoreCartApiError>(raw)
@@ -103,6 +118,15 @@ class StoreApiClient(
             )
         }
         return json.decodeFromString(raw)
+    }
+
+    private fun sanitizeCheckoutDiag(value: String): String {
+        var safe = value
+        safe = safe.replace(Regex("""(?i)("?(?:email|phone|first_name|last_name|name|address_1|address_2|address|postcode|postal_code|city|state|country|token|nonce|cookie|authorization|password|order_key|key)"?\s*:\s*)("[^"]*"|[^,}\]\s]+)"""), "$1\"[REDACTED]\"")
+        safe = safe.replace(Regex("(?i)bearer\\s+[a-z0-9._~+/-]+=*"), "Bearer [REDACTED]")
+        safe = safe.replace(Regex("[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", RegexOption.IGNORE_CASE), "[EMAIL]")
+        safe = safe.replace(Regex("(?<!\\w)(?:\\+?\\d[\\d .()/-]{7,}\\d)(?!\\w)"), "[PHONE]")
+        return safe.take(1800)
     }
 
     private fun io.ktor.client.request.HttpRequestBuilder.sessionHeaders() {
@@ -167,10 +191,12 @@ class StoreApiClient(
 
 
     suspend fun checkout(): CheckoutResponse =
-        executeCart { client.get(baseUrl + "checkout") { sessionHeaders() } }
+        executeCart(operation = "checkout", method = "GET", path = "checkout") {
+            client.get(baseUrl + "checkout") { sessionHeaders() }
+        }
 
     suspend fun updateCustomer(request: UpdateCustomerRequest): StoreCart =
-        executeCart {
+        executeCart(operation = "update-customer", method = "POST", path = "cart/update-customer") {
             lastCustomerDiagnostic = StoreCustomerDiagnostic(
                 billingEmail = request.billingAddress.email,
                 billingFirstName = request.billingAddress.firstName,
@@ -186,7 +212,7 @@ class StoreApiClient(
         }
 
     suspend fun selectShippingRate(request: SelectShippingRateRequest): StoreCart =
-        executeCart {
+        executeCart(operation = "select-shipping-rate", method = "POST", path = "cart/select-shipping-rate") {
             client.post(baseUrl + "cart/select-shipping-rate") {
                 sessionHeaders()
                 contentType(ContentType.Application.Json)

@@ -3,6 +3,7 @@ package es.criosrango.shared
 import es.criosrango.shared.account.AccountCustomerAddress
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.api.StoreApiClient
+import es.criosrango.shared.checkoutDiagLog
 import es.criosrango.shared.model.CheckoutResponse
 import es.criosrango.shared.model.CreateOrderRequest
 import es.criosrango.shared.model.CustomerAddress
@@ -109,13 +110,17 @@ class StoreCheckoutStore(
                 _phase.value = StoreCheckoutPhase.LOADING
                 _error.value = null
                 runCatching {
+                    checkoutDiagLog("START submit=Consultar entrega")
+                    checkoutDiagLog("START update-customer " + checkoutCartSummary(_cart.value))
                     if (accountRepository.hasSession) {
                         runCatching {
                             accountRepository.saveCustomerAddress(address.toAccountCustomerAddress())
                         }
                     }
                     var updatedCart = api.updateCustomer(es.criosrango.shared.model.UpdateCustomerRequest(address, address))
+                    checkoutDiagLog("HTTP 2xx operation=update-customer " + checkoutCartSummary(updatedCart))
                     if (updatedCart.errors.isNotEmpty()) {
+                        logCheckoutErrors("update-customer", updatedCart.errors.map { it.code to it.message })
                         throw IllegalStateException(updatedCart.errors.joinToString("\n") { it.message })
                     }
                     val visibleRates = updatedCart.shippingRates
@@ -123,12 +128,31 @@ class StoreCheckoutStore(
                     val fallbackRate = visibleRates.firstOrNull { it.rates.isNotEmpty() }?.let { it to it.rates.first() }
                     val checkoutResponse = if (!hasSelectedRate && fallbackRate != null) {
                         val (pack, rate) = fallbackRate
+                        checkoutDiagLog("START select-shipping-rate " + checkoutCartSummary(updatedCart))
                         updatedCart = api.selectShippingRate(SelectShippingRateRequest(pack.packageId, rate.rateId))
+                        checkoutDiagLog("HTTP 2xx operation=select-shipping-rate " + checkoutCartSummary(updatedCart))
                         if (updatedCart.errors.isNotEmpty()) {
+                            logCheckoutErrors("select-shipping-rate", updatedCart.errors.map { it.code to it.message })
                             throw IllegalStateException(updatedCart.errors.joinToString("\n") { it.message })
                         }
-                        api.checkout()
-                    } else api.checkout()
+                        checkoutDiagLog("START checkout posterior " + checkoutCartSummary(updatedCart))
+                        api.checkout().also { response ->
+                            if (response.errors.isNotEmpty()) {
+                                logCheckoutErrors("checkout posterior", response.errors.map { it.code to it.message })
+                            } else {
+                                checkoutDiagLog("HTTP 2xx operation=checkout posterior errors=0")
+                            }
+                        }
+                    } else {
+                        checkoutDiagLog("START checkout " + checkoutCartSummary(updatedCart))
+                        api.checkout().also { response ->
+                            if (response.errors.isNotEmpty()) {
+                                logCheckoutErrors("checkout", response.errors.map { it.code to it.message })
+                            } else {
+                                checkoutDiagLog("HTTP 2xx operation=checkout errors=0")
+                            }
+                        }
+                    }
                     if (checkoutResponse.errors.isNotEmpty()) {
                         throw IllegalStateException(checkoutResponse.errors.joinToString("\n") { it.message })
                     }
@@ -230,6 +254,26 @@ class StoreCheckoutStore(
 
     fun clearCreatedOrder() { _createdOrder.value = null }
 
+    private fun checkoutCartSummary(cart: StoreCart): String =
+        "coupons=${cart.coupons.size} couponCodes=${cart.coupons.joinToString(",") { it.code }} " +
+            "subtotal=${cart.totals.totalItems} discount=${cart.totals.totalDiscount} total=${cart.totals.totalPrice}"
+
+    private fun logCheckoutErrors(operation: String, errors: List<Pair<String, String>>) {
+        errors.forEach { (code, message) ->
+            checkoutDiagLog(
+                "HTTP 2xx with errors[] operation=$operation code=${code.take(120)} " +
+                    "message=${sanitizeCheckoutErrorMessage(message)}"
+            )
+        }
+    }
+
+    private fun sanitizeCheckoutErrorMessage(message: String): String {
+        var safe = message
+            .replace(Regex("[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", RegexOption.IGNORE_CASE), "[EMAIL]")
+            .replace(Regex("(?<!\\w)(?:\\+?\\d[\\d .()/-]{7,}\\d)(?!\\w)"), "[PHONE]")
+        safe = safe.replace(Regex("(?i)bearer\\s+[a-z0-9._~+/-]+=*"), "Bearer [REDACTED]")
+        return safe.take(500)
+    }
     private fun fail(t: Throwable) {
         _error.value = t.message ?: "No se ha podido cargar el checkout."
         _phase.value = StoreCheckoutPhase.ERROR
