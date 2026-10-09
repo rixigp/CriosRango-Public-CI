@@ -84,6 +84,7 @@ import compose.icons.tablericons.Bed
 import compose.icons.tablericons.Hanger
 import compose.icons.tablericons.Shirt
 import compose.icons.tablericons.Tag
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 private fun cartPromotionTitle(promotion: Promotion): String {
