@@ -474,42 +474,6 @@ private val WalletLineIcon = buildLineIcon("WalletLineIcon") {
     lineTo(17.5f, 12.5f)
 }
 
-private val CakeLineIcon = buildLineIcon("CakeLineIcon") {
-    moveTo(4f, 10f)
-    lineTo(20f, 10f)
-    lineTo(20f, 19f)
-    lineTo(4f, 19f)
-    close()
-    moveTo(4f, 14f)
-    lineTo(20f, 14f)
-    moveTo(8f, 10f)
-    lineTo(8f, 7f)
-    moveTo(12f, 10f)
-    lineTo(12f, 6f)
-    moveTo(16f, 10f)
-    lineTo(16f, 7f)
-}
-
-private val TagLineIcon = buildLineIcon("TagLineIcon") {
-    moveTo(3.5f, 11f)
-    lineTo(11f, 3.5f)
-    lineTo(20f, 12.5f)
-    lineTo(12.5f, 20f)
-    close()
-    moveTo(8f, 8f)
-    lineTo(8f, 8f)
-}
-
-private val DiscountTagLineIcon = buildLineIcon("DiscountTagLineIcon") {
-    moveTo(4f, 7f)
-    lineTo(20f, 7f)
-    lineTo(20f, 17f)
-    lineTo(4f, 17f)
-    close()
-    moveTo(8f, 12f)
-    lineTo(16f, 12f)
-}
-
 private val CalendarLineIcon = buildLineIcon("CalendarLineIcon") {
     moveTo(4f, 6f)
     lineTo(20f, 6f)
@@ -549,57 +513,13 @@ private fun WalletVisualIcon() {
         )
     }
 }
-@Composable
-private fun PromotionVisualIcon(promotion: Promotion, isBirthday: Boolean) {
-    val kind = promotionVisualKind(promotion, isBirthday)
-    val background = when (kind) {
-        PromotionVisualKind.BIRTHDAY -> Color(0xFFFDECEF)
-        PromotionVisualKind.WELCOME -> Color(0xFFEAF4FC)
-        PromotionVisualKind.DISCOUNT -> Color(0xFFFFF6DF)
-    }
-    val iconColor = when (kind) {
-        PromotionVisualKind.BIRTHDAY -> Color(0xFFD96A86)
-        PromotionVisualKind.WELCOME -> Color(0xFF2E7BB4)
-        PromotionVisualKind.DISCOUNT -> Color(0xFFD49A00)
-    }
-    Box(
-        modifier = Modifier.size(40.dp).background(background, RoundedCornerShape(11.dp)),
-        contentAlignment = Alignment.Center
-    ) {
-        when (kind) {
-            PromotionVisualKind.BIRTHDAY -> Icon(
-                imageVector = CakeLineIcon,
-                contentDescription = "Cumpleaños",
-                tint = iconColor,
-                modifier = Modifier.size(20.dp)
-            )
-            PromotionVisualKind.WELCOME -> Icon(
-                imageVector = TagLineIcon,
-                contentDescription = "Promoción de bienvenida",
-                tint = iconColor,
-                modifier = Modifier.size(20.dp)
-            )
-            PromotionVisualKind.DISCOUNT -> Icon(
-                imageVector = DiscountTagLineIcon,
-                contentDescription = "Descuento",
-                tint = iconColor,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-    }
-}
-
-private enum class PromotionVisualKind { BIRTHDAY, WELCOME, DISCOUNT }
-
-private fun promotionVisualKind(promotion: Promotion, isBirthday: Boolean): PromotionVisualKind {
-    if (isBirthday) return PromotionVisualKind.BIRTHDAY
-    val text = listOfNotNull(promotion.type, promotion.title, promotion.description)
-        .joinToString(" ")
-        .lowercase()
-    return if ("bienvenida" in text || "welcome" in text) {
-        PromotionVisualKind.WELCOME
-    } else {
-        PromotionVisualKind.DISCOUNT
+private fun accountPromotionIcon(promotion: Promotion): String {
+    val key = listOfNotNull(promotion.code, promotion.title, promotion.description).joinToString(" ").lowercase()
+    return when {
+        key.contains("blackcrios") || key.contains("black friday") -> "％"
+        key.contains("bienvenida") || key.contains("welcome") -> "🏷"
+        key.contains("cumple") || key.contains("birthday") -> "🎂"
+        else -> "🏷"
     }
 }
 
@@ -875,7 +795,7 @@ Card(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.Top
                     ) {
-                        PromotionVisualIcon(promotion = promotion, isBirthday = isBirthday)
+                        Text(accountPromotionIcon(promotion), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 1.dp))
                         Spacer(Modifier.width(10.dp))
                         Column(
                             modifier = Modifier.weight(1f),
