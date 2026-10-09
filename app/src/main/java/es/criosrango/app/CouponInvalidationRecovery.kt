@@ -21,7 +21,7 @@ internal class CouponInvalidatedCheckoutException(
 }
 
 internal const val COUPON_INVALIDATED_CHECKOUT_MESSAGE =
-    "El cupón ya no está disponible y se ha eliminado del carrito. Hemos actualizado el total de tu pedido."
+    "El cupón ya no está disponible y se ha eliminado del carrito. Revisa el nuevo total y vuelve a pagar."
 
 @Suppress("UNUSED_PARAMETER")
 internal fun couponInvalidationUserMessage(removedCouponNames: List<String>): String =
@@ -30,12 +30,28 @@ internal fun couponInvalidationUserMessage(removedCouponNames: List<String>): St
 internal fun isCouponInvalidationMessage(message: String?): Boolean =
     message == COUPON_INVALIDATED_CHECKOUT_MESSAGE
 
+internal fun cartWithoutInvalidatedCoupons(cart: WooCart, removedCouponCodes: Set<String>): WooCart {
+    val normalizedRemoved = removedCouponCodes.map { it.trim().lowercase() }.filter(String::isNotBlank).toSet()
+    val remainingCoupons = cart.coupons.filterNot { it.code.trim().lowercase() in normalizedRemoved }
+    val discount = cart.totals.totalDiscount.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO
+    val discountTax = cart.totals.totalDiscountTax.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO
+    val adjustedTotal = (cart.totals.totalPrice.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO)
+        .add(discount)
+        .add(discountTax)
+        .toPlainString()
+    return cart.copy(coupons = remainingCoupons, totals = cart.totals.copy(totalDiscount = "0", totalDiscountTax = "0", totalPrice = adjustedTotal))
+}
+
+internal fun checkoutErrorAfterRefreshFailure(exceptionMessage: String?, couponInvalidationMessage: String?): String? =
+    couponInvalidationMessage ?: exceptionMessage
+
 internal suspend fun reconcileCouponInvalidation(
     updatedCart: WooCart?,
     removedCouponCodes: Set<String>,
     replaceCart: (WooCart) -> Unit,
     refreshCart: suspend () -> Unit,
     currentCartCouponCodes: () -> List<String>,
+    sanitizeCurrentCart: () -> Unit,
     onCheckout: (CheckoutResponse?) -> Unit,
     onPhase: (CheckoutPhase) -> Unit,
     refreshCheckoutOnce: () -> Unit,
@@ -51,6 +67,7 @@ internal suspend fun reconcileCouponInvalidation(
     if (updatedCart == null || containsInvalidCoupon()) {
         runCatching { refreshCart() }
     }
+    sanitizeCurrentCart()
     val remainingCodes = currentCartCouponCodes()
     val stillContainsInvalidCoupon = remainingCodes.any { it.trim().lowercase() in removedCouponCodes }
     onCartVerified(remainingCodes, stillContainsInvalidCoupon)

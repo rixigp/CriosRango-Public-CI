@@ -517,7 +517,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 checkoutDiagLog("AFTER_FINAL_ASSIGN phase=${_checkoutPhase.value} checkoutIsNull=${_checkout.value == null} checkoutError=${sanitizeCheckoutDiag(_checkoutError.value.orEmpty(), 500)} orderId=${_checkout.value?.orderId} experimentalCart=${_checkout.value?.experimentalCart != null} totalShipping=${_checkout.value?.totals?.totalShipping}")
             } catch (exception: CancellationException) { throw exception } catch (exception: Exception) {
                 checkoutDiagLog("CATCH point=$checkoutDiagPoint type=${exception::class.qualifiedName} message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 500)}")
-                _checkoutError.value = exception.message; _checkout.value = null; _checkoutPhase.value = CheckoutPhase.FAILED
+                _checkoutError.value = checkoutErrorAfterRefreshFailure(exception.message, successMessage); _checkout.value = null; _checkoutPhase.value = CheckoutPhase.FAILED
                 checkoutDiagLog("CATCH_STATE phase=${_checkoutPhase.value} checkoutIsNull=${_checkout.value == null} checkoutError=${sanitizeCheckoutDiag(_checkoutError.value.orEmpty(), 500)}")
             }
             finally { if (generation == checkoutGeneration) _checkoutLoading.value = false }
@@ -747,10 +747,11 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                         updatedCart = exception.updatedCart,
                         removedCouponCodes = exception.removedCouponCodes,
                         replaceCart = { updated ->
-                            cartStore.replace(updated)
+                            val reconciledCart = cartWithoutInvalidatedCoupons(updated, exception.removedCouponCodes)
+                            cartStore.replace(reconciledCart)
                             checkoutDiagLog(
-                                "CREATE_ORDER COUPON_CART_REPLACED coupons=${updated.coupons.joinToString(",") { sanitizeCheckoutDiag(it.code, 80) }} " +
-                                    "discount=${updated.totals.totalDiscount} total=${updated.totals.totalPrice}"
+                                "CREATE_ORDER COUPON_CART_REPLACED coupons=${reconciledCart.coupons.joinToString(",") { sanitizeCheckoutDiag(it.code, 80) }} " +
+                                    "discount=${reconciledCart.totals.totalDiscount} total=${reconciledCart.totals.totalPrice}"
                             )
                         },
                         refreshCart = {
@@ -762,6 +763,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                             )
                         },
                         currentCartCouponCodes = { cartStore.cart.value.coupons.map { it.code } },
+                        sanitizeCurrentCart = { cartStore.replace(cartWithoutInvalidatedCoupons(cartStore.cart.value, exception.removedCouponCodes)) },
                         onCheckout = { _checkout.value = it },
                         onPhase = { _checkoutPhase.value = it },
                         refreshCheckoutOnce = {

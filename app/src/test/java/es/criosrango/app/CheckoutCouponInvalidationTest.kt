@@ -13,7 +13,7 @@ class CheckoutCouponInvalidationTest {
     @Test fun friendlyMessageIsExactAndRecognizedByCheckoutUi() {
         val message = couponInvalidationUserMessage(listOf("Bienvenida"))
         assertEquals(COUPON_INVALIDATED_CHECKOUT_MESSAGE, message)
-        assertEquals("El cupón ya no está disponible y se ha eliminado del carrito. Hemos actualizado el total de tu pedido.", message)
+        assertEquals("El cupón ya no está disponible y se ha eliminado del carrito. Revisa el nuevo total y vuelve a pagar.", message)
         assertFalse(message.contains("woocommerce_rest_cart_coupon_errors"))
         assertTrue(isCouponInvalidationMessage(message))
         assertFalse(isCouponInvalidationMessage("Inténtalo de nuevo."))
@@ -37,6 +37,7 @@ class CheckoutCouponInvalidationTest {
                 replaceCart = { replacedCart = it; events += "cart" },
                 refreshCart = { events += "cart-fallback" },
                 currentCartCouponCodes = { replacedCart?.coupons?.map { it.code }.orEmpty() },
+                sanitizeCurrentCart = {},
                 onCheckout = { assignedCheckout = it; events += "checkout-invalidated" },
                 onPhase = { phase = it; events += "phase:$it" },
                 refreshCheckoutOnce = { refreshCount++; events += "checkout-refresh" }
@@ -61,6 +62,7 @@ class CheckoutCouponInvalidationTest {
                 replaceCart = { currentCodes = it.coupons.map { coupon -> coupon.code }; events += "replace" },
                 refreshCart = { events += "cart-refresh"; currentCodes = emptyList() },
                 currentCartCouponCodes = { currentCodes },
+                sanitizeCurrentCart = {},
                 onCheckout = { events += "checkout-invalidated" },
                 onPhase = { events += "phase:$it" },
                 refreshCheckoutOnce = { refreshCount++; events += "checkout-refresh" },
@@ -87,6 +89,7 @@ class CheckoutCouponInvalidationTest {
                 replaceCart = { error("No cart should be replaced") },
                 refreshCart = { cartRefreshCount++ },
                 currentCartCouponCodes = { emptyList() },
+                sanitizeCurrentCart = {},
                 onCheckout = {},
                 onPhase = {},
                 refreshCheckoutOnce = { checkoutRefreshCount++ }
@@ -104,6 +107,50 @@ class CheckoutCouponInvalidationTest {
         assertEquals("El cupón se ha eliminado del carrito.", exception.backendMessage)
         assertEquals(removedCoupons, exception.removedCoupons)
         assertEquals("Bienvenida", exception.removedCoupons["bienvenida"]?.let { (it as? kotlinx.serialization.json.JsonObject)?.get("label")?.toString()?.trim('"') })
+    }
+
+    @Test fun invalidCouponCartIsUpdatedInCheckoutScreenSourceBeforeRefresh() {
+        val original = WooCart(coupons = listOf(CartCoupon(code = "blackcrios", label = "Blackcrios")), totals = CartTotals(totalPrice = "4990", totalDiscount = "1600", totalDiscountTax = "0"))
+        var screenCart = original
+        val events = mutableListOf<String>()
+        runBlocking {
+            reconcileCouponInvalidation(
+                updatedCart = original,
+                removedCouponCodes = setOf("blackcrios"),
+                replaceCart = { screenCart = cartWithoutInvalidatedCoupons(it, setOf("blackcrios")); events += "cart-updated" },
+                refreshCart = {},
+                currentCartCouponCodes = { screenCart.coupons.map { it.code } },
+                sanitizeCurrentCart = { screenCart = cartWithoutInvalidatedCoupons(screenCart, setOf("blackcrios")) },
+                onCheckout = { events += "checkout-invalidated" },
+                onPhase = {},
+                refreshCheckoutOnce = {
+                    assertTrue(screenCart.coupons.none { it.code.equals("blackcrios", true) })
+                    assertEquals("0", screenCart.totals.totalDiscount)
+                    assertEquals("6590", screenCart.totals.totalPrice)
+                    assertEquals(listOf("cart-updated", "checkout-invalidated"), events)
+                    events += "checkout-refresh"
+                },
+                onCartVerified = { codes, stillInvalid -> assertTrue(codes.none { it.equals("blackcrios", true) }); assertFalse(stillInvalid) }
+            )
+        }
+        assertEquals(listOf("cart-updated", "checkout-invalidated", "checkout-refresh"), events)
+    }
+
+    @Test fun failedAutomaticCheckoutRefreshKeepsCouponSpecificMessage() {
+        val specific = COUPON_INVALIDATED_CHECKOUT_MESSAGE
+        assertEquals(specific, checkoutErrorAfterRefreshFailure("Inténtalo de nuevo.", specific))
+        assertEquals(specific, checkoutErrorAfterRefreshFailure("Network failure", specific))
+    }
+
+    @Test fun successfulCartRefreshRemovesCouponAndDiscountAndRecalculatesTotal() {
+        val cart = cartWithoutInvalidatedCoupons(
+            WooCart(coupons = listOf(CartCoupon(code = "blackcrios", label = "Blackcrios")), totals = CartTotals(totalPrice = "4990", totalDiscount = "1600", totalDiscountTax = "0")),
+            setOf("blackcrios")
+        )
+        assertTrue(cart.coupons.isEmpty())
+        assertEquals("0", cart.totals.totalDiscount)
+        assertEquals("6590", cart.totals.totalPrice)
+        assertEquals(COUPON_INVALIDATED_CHECKOUT_MESSAGE, checkoutErrorAfterRefreshFailure(null, COUPON_INVALIDATED_CHECKOUT_MESSAGE))
     }
 
     @Test fun unrelatedCheckoutErrorStillUsesGenericStoreMessage() {
