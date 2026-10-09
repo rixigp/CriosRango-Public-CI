@@ -730,17 +730,42 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 }
             } catch (exception: Exception) {
                 if (generation != checkoutGeneration) return@launch
-                val transformedError = exception.toStoreUiError().message
-                val apiDetail = exception as? StoreApiException
-                checkoutDiagLog(
-                    "CREATE_ORDER CATCH point=$createOrderPoint type=${exception::class.qualifiedName} " +
-                        "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 600)} " +
-                        "httpStatus=${apiDetail?.statusCode ?: "null"} backendCode=${sanitizeCheckoutDiag(apiDetail?.apiCode.orEmpty(), 120)} " +
-                        "backendMessage=${sanitizeCheckoutDiag(apiDetail?.message.orEmpty(), 600)} " +
-                        "transformedMessage=${sanitizeCheckoutDiag(transformedError, 500)}"
-                )
-                _checkoutError.value = transformedError
-                _checkoutPhase.value = CheckoutPhase.FAILED
+                if (exception is CouponInvalidatedCheckoutException) {
+                    checkoutDiagLog(
+                        "CREATE_ORDER COUPON_INVALIDATED status=${exception.httpStatus} " +
+                            "backendCode=${sanitizeCheckoutDiag(exception.backendCode, 120)} " +
+                            "cartPresent=${exception.updatedCart != null} removedCouponCount=${exception.removedCouponNames.size}"
+                    )
+                    _paymentRedirect.value = null
+                    _bizumOrderId.value = null
+                    reconcileCouponInvalidation(
+                        updatedCart = exception.updatedCart,
+                        replaceCart = cartStore::replace,
+                        reloadCheckout = {
+                            if (generation != checkoutGeneration) throw CancellationException("Checkout generation changed")
+                            repository.checkout().also { response ->
+                                if (response.errors.isNotEmpty()) throw CartException(response.errors.joinToString("\\n") { it.message })
+                            }
+                        },
+                        onCheckout = { _checkout.value = it },
+                        onError = { _checkoutError.value = it },
+                        onPhase = { _checkoutPhase.value = it },
+                        userMessage = exception.userMessage
+                    )
+                } else {
+                    val transformedError = exception.toStoreUiError().message
+                    val apiDetail = exception as? StoreApiException
+                    checkoutDiagLog(
+                        "CREATE_ORDER CATCH point=$createOrderPoint type=${exception::class.qualifiedName} " +
+                            "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 600)} " +
+                            "httpStatus=${apiDetail?.statusCode ?: "null"} backendCode=${sanitizeCheckoutDiag(apiDetail?.apiCode.orEmpty(), 120)} " +
+                            "backendMessage=${sanitizeCheckoutDiag(apiDetail?.message.orEmpty(), 600)} " +
+                            "transformedMessage=${sanitizeCheckoutDiag(transformedError, 500)}"
+                    )
+                    _checkout.value = null
+                    _checkoutError.value = transformedError
+                    _checkoutPhase.value = CheckoutPhase.FAILED
+                }
             } finally {
                 checkoutSubmissionGate.release()
                 if (generation == checkoutGeneration) _checkoutLoading.value = false

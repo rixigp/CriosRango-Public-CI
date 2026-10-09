@@ -133,4 +133,11 @@ data class StoreCartRequest(
 data class StoreCartApiError(
     val code: String = "",
     val message: String = "",
+    val data: StoreCartApiErrorData? = null
+)
+
+@Serializable
+data class StoreCartApiErrorData(
+    @SerialName("removed_coupons") val removedCoupons: Map<String, kotlinx.serialization.json.JsonElement> = emptyMap(),
+    val cart: StoreCart? = null
 )

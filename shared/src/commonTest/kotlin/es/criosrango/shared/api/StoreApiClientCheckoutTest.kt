@@ -48,6 +48,62 @@ class StoreApiClientCheckoutTest {
     )
 
     @Test
+    fun couponInvalidation409PreservesCodeRemovedCouponsAndUpdatedCart() = runTest {
+        val body = """{"code":"woocommerce_rest_cart_coupon_errors","message":"Coupon removed","data":{"removed_coupons":{"bienvenida":{"code":"bienvenida","label":"Bienvenida"}},"cart":{"items":[],"coupons":[{"code":"blackcrios","label":"Blackcrios","totals":{"total_discount":"100"}}],"totals":{"total_price":"4613","total_discount":"100","total_shipping":"0"},"payment_methods":["cheque"],"shipping_rates":[{"package_id":0,"shipping_rates":[{"rate_id":"local_pickup:6","selected":true,"price":"0"}]}],"items_count":0,"errors":[]}}}"""
+        val api = StoreApiClient(
+            "https://example.test/wp-json/wc/store/v1/",
+            HttpClient(MockEngine {
+                respond(body, HttpStatusCode.Conflict, headersOf(HttpHeaders.ContentType to listOf(ContentType.Application.Json.toString())))
+            }) { install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) } }
+        )
+        val exception = runCatching {
+            api.createCheckout(CreateOrderRequest(
+                paymentMethod = "cheque",
+                billingAddress = address(),
+                shippingAddress = address(),
+                shippingRate = "local_pickup:6",
+                expectedTotal = "4613"
+            ))
+        }.exceptionOrNull() as StoreApiException
+
+        assertEquals(409, exception.statusCode)
+        assertEquals("woocommerce_rest_cart_coupon_errors", exception.apiCode)
+        assertEquals(listOf("bienvenida"), exception.removedCoupons.keys.toList())
+        assertEquals("Bienvenida", (exception.removedCoupons["bienvenida"] as? kotlinx.serialization.json.JsonObject)?.get("label")?.let { it.toString().trim('"') })
+        assertTrue(exception.updatedCart != null)
+        assertEquals(listOf("blackcrios"), exception.updatedCart?.coupons?.map { it.code })
+        assertEquals("4613", exception.updatedCart?.totals?.totalPrice)
+        assertEquals("local_pickup:6", exception.updatedCart?.shippingRates?.firstOrNull()?.rates?.firstOrNull()?.rateId)
+        api.close()
+    }
+
+    @Test
+    fun genericCheckoutErrorKeepsExistingExceptionContract() = runTest {
+        val body = """{"code":"woocommerce_rest_checkout_error","message":"Generic checkout failure"}"""
+        val api = StoreApiClient(
+            "https://example.test/wp-json/wc/store/v1/",
+            HttpClient(MockEngine {
+                respond(body, HttpStatusCode.Conflict, headersOf(HttpHeaders.ContentType to listOf(ContentType.Application.Json.toString())))
+            }) { install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) } }
+        )
+        val exception = runCatching {
+            api.createCheckout(CreateOrderRequest(
+                paymentMethod = "cheque",
+                billingAddress = address(),
+                shippingAddress = address(),
+                shippingRate = "local_pickup:6",
+                expectedTotal = "4613"
+            ))
+        }.exceptionOrNull() as StoreApiException
+
+        assertEquals(409, exception.statusCode)
+        assertEquals("woocommerce_rest_checkout_error", exception.apiCode)
+        assertTrue(exception.updatedCart == null)
+        assertTrue(exception.removedCoupons.isEmpty())
+        api.close()
+    }
+
+    @Test
     fun checkoutShippingAndOrderUseSameSharedSession() = runTest {
         val requests = mutableListOf<io.ktor.client.request.HttpRequestData>()
         val session = InMemoryStoreSessionStore("cart-initial", "nonce-initial", "woocommerce_cart_hash=old")

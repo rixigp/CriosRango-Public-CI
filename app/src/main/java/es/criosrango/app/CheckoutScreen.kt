@@ -126,8 +126,9 @@ fun RedesignedCheckoutScreen(
     } == true
     val hasSelectedShipping = selectedShipping in shippingOptions.map { it.rateId }.filter { it.isNotBlank() }
     val hasValidTotal = cart.totals.totalPrice.toBigDecimalOrNull()?.let { it >= BigDecimal.ZERO } == true
-    val ready = checkoutPhase == CheckoutPhase.READY && !loading && error.isNullOrBlank() && checkout != null && addressMatchesQuote
-    val canPay = !loading && error.isNullOrBlank() && lastValidAddress != null && addressMatchesQuote && checkout != null &&
+    val couponInvalidationNotice = isCouponInvalidationMessage(error)
+    val ready = checkoutPhase == CheckoutPhase.READY && !loading && (error.isNullOrBlank() || couponInvalidationNotice) && checkout != null && addressMatchesQuote
+    val canPay = !loading && (error.isNullOrBlank() || couponInvalidationNotice) && lastValidAddress != null && addressMatchesQuote && checkout != null &&
         checkoutPhase == CheckoutPhase.READY && hasSelectedShipping && selectedPayment in paymentMethods && hasValidTotal
 
     val submit: () -> Unit = {
@@ -257,7 +258,7 @@ fun RedesignedCheckoutScreen(
             item { CheckoutSection(2, "Envío") }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (!error.isNullOrBlank()) { Text(error, color = MaterialTheme.colorScheme.error); TextButton(onClick = { retryAddress?.let(loadCheckout) }, enabled = retryAddress != null) { Text("Reintentar") } }
+                    if (!error.isNullOrBlank()) { TextButton(onClick = { retryAddress?.let(loadCheckout) }, enabled = retryAddress != null) { Text("Reintentar") } }
                     Button(onClick = submit, enabled = !loading, modifier = Modifier.fillMaxWidth().height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = CheckoutUiGreen)) { Text(if (loading) "Consultando..." else "Consultar entrega") }
                     if (shippingOptions.isEmpty()) {
                         Text("Consulta la entrega para ver las opciones disponibles", color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
@@ -267,7 +268,6 @@ fun RedesignedCheckoutScreen(
             item {
                 when {
                     loading -> Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = CheckoutUiGreen); Spacer(Modifier.width(10.dp)); Text("Calculando envío...", color = Color.Gray) }
-                    !error.isNullOrBlank() -> Text(error, color = MaterialTheme.colorScheme.error)
                     lastValidAddress == null -> Unit
                     shippingOptions.isEmpty() -> Text("No encontramos una opción de entrega para esta dirección.", color = Color.Gray)
                     else -> Column(Modifier.selectableGroup()) { visibleShipping.forEach { pack -> pack.rates.forEach { rate ->
@@ -343,8 +343,11 @@ fun RedesignedCheckoutScreen(
                 }
             }
             item {
-                Button(onClick = { if (canPay) createOrder(lastValidAddress!!, selectedPayment, selectedShipping) }, enabled = canPay, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(30.dp), colors = ButtonDefaults.buttonColors(containerColor = CheckoutUiGreen)) {
-                    Text(if (loading) "Procesando..." else if (ready) "Pagar ${formatMinorUnits(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)}" else "Pagar", fontWeight = FontWeight.SemiBold)
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (!error.isNullOrBlank()) Text(error, color = MaterialTheme.colorScheme.error)
+                    Button(onClick = { if (canPay) createOrder(lastValidAddress!!, selectedPayment, selectedShipping) }, enabled = canPay, modifier = Modifier.fillMaxWidth().height(60.dp), shape = RoundedCornerShape(30.dp), colors = ButtonDefaults.buttonColors(containerColor = CheckoutUiGreen)) {
+                        Text(if (loading) "Procesando..." else if (ready) "Pagar ${formatMinorUnits(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)}" else "Pagar", fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
             item { Spacer(Modifier.height(24.dp)) }

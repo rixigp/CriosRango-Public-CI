@@ -66,7 +66,9 @@ class InMemoryStoreSessionStore(
 class StoreApiException(
     val statusCode: Int,
     val apiCode: String?,
-    override val message: String
+    override val message: String,
+    val removedCoupons: Map<String, kotlinx.serialization.json.JsonElement> = emptyMap(),
+    val updatedCart: StoreCart? = null
 ) : Exception(message)
 
 data class StoreCustomerDiagnostic(
@@ -130,10 +132,12 @@ class StoreApiClient(
                     "body=${sanitizeCheckoutDiag(raw)}"
             )
         }
-        if (operation != null && !response.status.isSuccess()) {
-            val error = runCatching {
+        val error = if (!response.status.isSuccess()) {
+            runCatching {
                 json.decodeFromString<es.criosrango.shared.model.StoreCartApiError>(raw)
             }.getOrNull()
+        } else null
+        if (operation != null && !response.status.isSuccess()) {
             checkoutDiagLog(
                 "HTTP ERROR operation=$operation method=$method path=$path status=${response.status.value} " +
                     "backendCode=${error?.code?.let { sanitizeCheckoutDiag(it) } ?: "null"} " +
@@ -142,13 +146,12 @@ class StoreApiClient(
             )
         }
         if (!response.status.isSuccess()) {
-            val error = runCatching {
-                json.decodeFromString<es.criosrango.shared.model.StoreCartApiError>(raw)
-            }.getOrNull()
             throw StoreApiException(
-                response.status.value,
-                error?.code,
-                error?.message?.takeIf { it.isNotBlank() } ?: raw.ifBlank { response.status.description }
+                statusCode = response.status.value,
+                apiCode = error?.code,
+                message = error?.message?.takeIf { it.isNotBlank() } ?: raw.ifBlank { response.status.description },
+                removedCoupons = error?.data?.removedCoupons.orEmpty(),
+                updatedCart = error?.data?.cart
             )
         }
         return try {

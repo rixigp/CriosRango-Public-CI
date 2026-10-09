@@ -37,6 +37,10 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Query
 import okhttp3.OkHttpClient
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 private data class WooBrandImageDto(
     val src: String = "",
@@ -201,7 +205,27 @@ class SharedCatalogStoreApiAdapter(
     override suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse = try {
         Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=POST")
         sharedClient.createCheckout(request.toShared()).toAndroid()
+    } catch (exception: StoreApiException) {
+        if (exception.apiCode == "woocommerce_rest_cart_coupon_errors") {
+            val friendlyNames = exception.removedCoupons.values.mapNotNull { it.friendlyCouponName() }.distinct()
+            throw CouponInvalidatedCheckoutException(
+                httpStatus = exception.statusCode,
+                backendCode = exception.apiCode.orEmpty(),
+                removedCouponNames = friendlyNames,
+                updatedCart = exception.updatedCart?.toAndroid(),
+                backendMessage = exception.message
+            )
+        }
+        throw exception.toAndroidCatalogException()
     } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
+
+    private fun JsonElement.friendlyCouponName(): String? {
+        val fields = runCatching { jsonObject }.getOrNull() ?: return null
+        return listOf("label", "name", "description").firstNotNullOfOrNull { key ->
+            fields[key]?.let { value -> runCatching { value.jsonPrimitive.contentOrNull }.getOrNull() }
+                ?.trim()?.takeIf(String::isNotBlank)
+        }
+    }
 
     override suspend fun getOrderStatus(orderId: Int, orderKey: String): OrderStatusResponse {
         Log.d("CriosRangoSharedPayment", "PAYMENT_STATUS source=shared operation=GET orderId=$orderId")
