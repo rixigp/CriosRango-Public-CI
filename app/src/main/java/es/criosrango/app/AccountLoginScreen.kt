@@ -116,7 +116,6 @@ fun AccountLoginScreen(
             showForgot = false
             login = ""
             password = ""
-            selectedOrderId = null
             selectedInfoPage = null
             accountSection = AccountSection.HOME
             vm.clearAccountMessages()
