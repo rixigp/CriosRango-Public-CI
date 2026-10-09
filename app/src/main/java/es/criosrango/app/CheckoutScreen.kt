@@ -316,7 +316,9 @@ fun RedesignedCheckoutScreen(
                         cart.coupons.forEach { coupon -> Text("• " + coupon.label.ifBlank { coupon.code }, style = MaterialTheme.typography.bodySmall, color = Color.Gray) }
                     }
                     val discount = cart.totals.consumerDiscount()
-                    if (discount.toLongOrNull()?.let { it > 0L } == true) {
+                    if (isCouponInvalidationMessage(checkoutError) && !ready) {
+                        CheckoutAmount("Descuentos", "Pendiente")
+                    } else if (discount.toLongOrNull()?.let { it > 0L } == true) {
                         CheckoutAmount("Descuentos", "-" + formatMinorUnits(discount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
                     }
                     if (ready) {

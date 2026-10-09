@@ -125,8 +125,8 @@ class CheckoutCouponInvalidationTest {
                 onPhase = {},
                 refreshCheckoutOnce = {
                     assertTrue(screenCart.coupons.none { it.code.equals("blackcrios", true) })
-                    assertEquals("0", screenCart.totals.totalDiscount)
-                    assertEquals("6590", screenCart.totals.totalPrice)
+                    assertEquals("1600", screenCart.totals.totalDiscount)
+                    assertEquals("4990", screenCart.totals.totalPrice)
                     assertEquals(listOf("cart-updated", "checkout-invalidated"), events)
                     events += "checkout-refresh"
                 },
@@ -142,14 +142,14 @@ class CheckoutCouponInvalidationTest {
         assertEquals(specific, checkoutErrorAfterRefreshFailure("Network failure", specific))
     }
 
-    @Test fun successfulCartRefreshRemovesCouponAndDiscountAndRecalculatesTotal() {
+    @Test fun fallbackRemovesCouponWithoutCalculatingWooCommerceAmounts() {
         val cart = cartWithoutInvalidatedCoupons(
             WooCart(coupons = listOf(CartCoupon(code = "blackcrios", label = "Blackcrios")), totals = CartTotals(totalPrice = "4990", totalDiscount = "1600", totalDiscountTax = "0")),
             setOf("blackcrios")
         )
         assertTrue(cart.coupons.isEmpty())
-        assertEquals("0", cart.totals.totalDiscount)
-        assertEquals("6590", cart.totals.totalPrice)
+        assertEquals("1600", cart.totals.totalDiscount)
+        assertEquals("4990", cart.totals.totalPrice)
         assertEquals(COUPON_INVALIDATED_CHECKOUT_MESSAGE, checkoutErrorAfterRefreshFailure(null, COUPON_INVALIDATED_CHECKOUT_MESSAGE))
     }
 

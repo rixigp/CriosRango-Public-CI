@@ -32,14 +32,8 @@ internal fun isCouponInvalidationMessage(message: String?): Boolean =
 
 internal fun cartWithoutInvalidatedCoupons(cart: WooCart, removedCouponCodes: Set<String>): WooCart {
     val normalizedRemoved = removedCouponCodes.map { it.trim().lowercase() }.filter(String::isNotBlank).toSet()
-    val remainingCoupons = cart.coupons.filterNot { it.code.trim().lowercase() in normalizedRemoved }
-    val discount = cart.totals.totalDiscount.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO
-    val discountTax = cart.totals.totalDiscountTax.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO
-    val adjustedTotal = (cart.totals.totalPrice.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO)
-        .add(discount)
-        .add(discountTax)
-        .toPlainString()
-    return cart.copy(coupons = remainingCoupons, totals = cart.totals.copy(totalDiscount = "0", totalDiscountTax = "0", totalPrice = adjustedTotal))
+    // Fallback only: remove stale coupon labels, but never synthesize WooCommerce amounts.
+    return cart.copy(coupons = cart.coupons.filterNot { it.code.trim().lowercase() in normalizedRemoved })
 }
 
 internal fun checkoutErrorAfterRefreshFailure(exceptionMessage: String?, couponInvalidationMessage: String?): String? =
@@ -67,7 +61,8 @@ internal suspend fun reconcileCouponInvalidation(
     if (updatedCart == null || containsInvalidCoupon()) {
         runCatching { refreshCart() }
     }
-    sanitizeCurrentCart()
+    val needsFallbackSanitization = updatedCart == null || containsInvalidCoupon()
+    if (needsFallbackSanitization) sanitizeCurrentCart()
     val remainingCodes = currentCartCouponCodes()
     val stillContainsInvalidCoupon = remainingCodes.any { it.trim().lowercase() in removedCouponCodes }
     onCartVerified(remainingCodes, stillContainsInvalidCoupon)
