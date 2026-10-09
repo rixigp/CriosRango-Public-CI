@@ -78,6 +78,31 @@ class StoreApiClientCheckoutTest {
     }
 
     @Test
+    fun couponErrorCodeSurvivesMalformedNestedCartPayload() = runTest {
+        val body = """{"code":"woocommerce_rest_cart_coupon_errors","message":"Coupon removed","data":{"removed_coupons":{"blackcrios":{"code":"blackcrios","label":"Blackcrios"}},"cart":{"items":"unexpected"}}}"""
+        val api = StoreApiClient(
+            "https://example.test/wp-json/wc/store/v1/",
+            HttpClient(MockEngine {
+                respond(body, HttpStatusCode.Conflict, headersOf(HttpHeaders.ContentType to listOf(ContentType.Application.Json.toString())))
+            }) { install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) } }
+        )
+        val exception = runCatching {
+            api.createCheckout(CreateOrderRequest(
+                paymentMethod = "cheque",
+                billingAddress = address(),
+                shippingAddress = address(),
+                shippingRate = "local_pickup:6",
+                expectedTotal = "4613"
+            ))
+        }.exceptionOrNull() as StoreApiException
+
+        assertEquals("woocommerce_rest_cart_coupon_errors", exception.apiCode)
+        assertEquals(listOf("blackcrios"), exception.removedCoupons.keys.toList())
+        assertTrue(exception.updatedCart == null)
+        api.close()
+    }
+
+    @Test
     fun genericCheckoutErrorKeepsExistingExceptionContract() = runTest {
         val body = """{"code":"woocommerce_rest_checkout_error","message":"Generic checkout failure"}"""
         val api = StoreApiClient(

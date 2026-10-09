@@ -740,11 +740,33 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                     _bizumOrderId.value = null
                     reconcileCouponInvalidation(
                         updatedCart = exception.updatedCart,
-                        replaceCart = cartStore::replace,
+                        removedCouponCodes = exception.removedCouponCodes,
+                        replaceCart = { updated ->
+                            cartStore.replace(updated)
+                            checkoutDiagLog(
+                                "CREATE_ORDER COUPON_CART_REPLACED coupons=${updated.coupons.joinToString(",") { sanitizeCheckoutDiag(it.code, 80) }} " +
+                                    "discount=${updated.totals.totalDiscount} total=${updated.totals.totalPrice}"
+                            )
+                        },
+                        refreshCart = {
+                            checkoutDiagLog("CREATE_ORDER COUPON_CART_REFRESH START")
+                            cartStore.refresh()
+                            checkoutDiagLog(
+                                "CREATE_ORDER COUPON_CART_REFRESH END coupons=${cartStore.cart.value.coupons.joinToString(",") { sanitizeCheckoutDiag(it.code, 80) }} " +
+                                    "discount=${cartStore.cart.value.totals.totalDiscount} total=${cartStore.cart.value.totals.totalPrice}"
+                            )
+                        },
+                        currentCartCouponCodes = { cartStore.cart.value.coupons.map { it.code } },
                         onCheckout = { _checkout.value = it },
                         onError = { _checkoutError.value = it },
                         onPhase = { _checkoutPhase.value = it },
-                        userMessage = exception.userMessage
+                        userMessage = exception.userMessage,
+                        onCartVerified = { codes, stillInvalid ->
+                            checkoutDiagLog(
+                                "CREATE_ORDER COUPON_CART_VERIFIED coupons=${codes.joinToString(",") { sanitizeCheckoutDiag(it, 80) }} " +
+                                    "stillInvalidCoupon=$stillInvalid"
+                            )
+                        }
                     )
                 } else {
                     val transformedError = exception.toStoreUiError().message

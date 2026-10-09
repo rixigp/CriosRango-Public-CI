@@ -7,17 +7,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.coroutines.runBlocking
 
 class CheckoutCouponInvalidationTest {
     @Test fun friendlyMessageUsesPromotionNameWithoutTechnicalCode() {
         val message = couponInvalidationUserMessage(listOf("Bienvenida"))
-        assertEquals("El cupón Bienvenida ya no está disponible y se ha eliminado del carrito. Revisa el nuevo total y vuelve a pagar.", message)
+        assertEquals("El cupón ya no está disponible y se ha eliminado del carrito. Revisa el nuevo total y vuelve a pagar.", message)
         assertFalse(message.contains("woocommerce_rest_cart_coupon_errors"))
         assertTrue(isCouponInvalidationMessage(message))
     }
 
     @Test fun technicalCouponIdentifiersAreNeverShownToTheUser() {
-        assertEquals("El cupón aplicado ya no está disponible y se ha eliminado del carrito. Revisa el nuevo total y vuelve a pagar.", couponInvalidationUserMessage(listOf("blackcrios", "cr-monedero-1234", "cr-cumple-5678")))
+        assertEquals("El cupón ya no está disponible y se ha eliminado del carrito. Revisa el nuevo total y vuelve a pagar.", couponInvalidationUserMessage(listOf("blackcrios", "cr-monedero-1234", "cr-cumple-5678")))
     }
 
     @Test fun reconciliationReplacesCartBeforePublishingErrorAndInvalidatesCheckout() {
@@ -28,7 +29,19 @@ class CheckoutCouponInvalidationTest {
         var phase = CheckoutPhase.CREATING_ORDER
         val events = mutableListOf<String>()
         val message = couponInvalidationUserMessage(listOf("Bienvenida"))
-        reconcileCouponInvalidation(updatedCart, { replacedCart = it; events += "cart" }, { assignedCheckout = it; events += "checkout" }, { visibleError = it; events += "error" }, { phase = it; events += "phase:$it" }, message)
+        runBlocking {
+            reconcileCouponInvalidation(
+                updatedCart = updatedCart,
+                removedCouponCodes = setOf("blackcrios"),
+                replaceCart = { replacedCart = it; events += "cart" },
+                refreshCart = { events += "refresh" },
+                currentCartCouponCodes = { replacedCart?.coupons?.map { it.code }.orEmpty() },
+                onCheckout = { assignedCheckout = it; events += "checkout" },
+                onError = { visibleError = it; events += "error" },
+                onPhase = { phase = it; events += "phase:$it" },
+                userMessage = message
+            )
+        }
         assertEquals(updatedCart, replacedCart)
         assertEquals(null, assignedCheckout)
         assertEquals(message, visibleError)
@@ -43,10 +56,50 @@ class CheckoutCouponInvalidationTest {
         var visibleError: String? = null
         var phase = CheckoutPhase.CREATING_ORDER
         val message = couponInvalidationUserMessage(emptyList())
-        reconcileCouponInvalidation(null, { error("No cart should be replaced") }, { assignedCheckout = it }, { visibleError = it }, { phase = it }, message)
+        runBlocking {
+            reconcileCouponInvalidation(
+                updatedCart = null,
+                removedCouponCodes = setOf("blackcrios"),
+                replaceCart = { error("No cart should be replaced") },
+                refreshCart = { },
+                currentCartCouponCodes = { emptyList() },
+                onCheckout = { assignedCheckout = it },
+                onError = { visibleError = it },
+                onPhase = { phase = it },
+                userMessage = message
+            )
+        }
         assertEquals(null, assignedCheckout)
         assertEquals(message, visibleError)
         assertEquals(CheckoutPhase.FAILED, phase)
+    }
+
+    @Test fun refreshesAuthoritativeCartWhen409PayloadStillContainsInvalidCoupon() {
+        var currentCodes = listOf("blackcrios")
+        val events = mutableListOf<String>()
+        var visibleError: String? = null
+        runBlocking {
+            reconcileCouponInvalidation(
+                updatedCart = WooCart(coupons = listOf(CartCoupon(code = "blackcrios", label = "Blackcrios"))),
+                removedCouponCodes = setOf("blackcrios"),
+                replaceCart = { currentCodes = it.coupons.map { coupon -> coupon.code }; events += "replace" },
+                refreshCart = { events += "refresh"; currentCodes = emptyList() },
+                currentCartCouponCodes = { currentCodes },
+                onCheckout = { events += "checkout" },
+                onError = { visibleError = it; events += "error" },
+                onPhase = { events += "phase:$it" },
+                userMessage = COUPON_INVALIDATED_CHECKOUT_MESSAGE,
+                onCartVerified = { codes, stillInvalid ->
+                    assertTrue(codes.isEmpty())
+                    assertFalse(stillInvalid)
+                    events += "verified"
+                }
+            )
+        }
+        assertTrue(events.indexOf("replace") < events.indexOf("refresh"))
+        assertTrue(events.indexOf("refresh") < events.indexOf("verified"))
+        assertTrue(events.indexOf("verified") < events.indexOf("error"))
+        assertEquals(COUPON_INVALIDATED_CHECKOUT_MESSAGE, visibleError)
     }
 
     @Test fun couponInvalidationExceptionPreservesOriginalRemovedCouponPayload() {

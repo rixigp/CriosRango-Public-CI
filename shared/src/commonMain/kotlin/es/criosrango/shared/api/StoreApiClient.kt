@@ -29,6 +29,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
 import es.criosrango.shared.checkoutDiagLog
 import es.criosrango.shared.sanitizeCheckoutDiag
 
@@ -132,26 +137,46 @@ class StoreApiClient(
                     "body=${sanitizeCheckoutDiag(raw)}"
             )
         }
-        val error = if (!response.status.isSuccess()) {
-            runCatching {
-                json.decodeFromString<es.criosrango.shared.model.StoreCartApiError>(raw)
-            }.getOrNull()
+        // Parse the top-level error independently from its optional cart payload.
+        // A malformed/variant data.cart must never erase the coupon error code itself.
+        val errorEnvelope = if (!response.status.isSuccess()) {
+            runCatching { json.parseToJsonElement(raw).jsonObject }.getOrNull()
         } else null
+        val errorCode = errorEnvelope?.get("code")
+            ?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }
+        val errorMessage = errorEnvelope?.get("message")
+            ?.let { runCatching { it.jsonPrimitive.contentOrNull }.getOrNull() }
+        val errorData = errorEnvelope?.get("data")
+            ?.let { runCatching { it.jsonObject }.getOrNull() }
+        val removedCoupons = errorData?.get("removed_coupons")
+            ?.let { element -> runCatching { json.decodeFromJsonElement<Map<String, JsonElement>>(element) }.getOrNull() }
+            .orEmpty()
+        val updatedCart = errorData?.get("cart")?.let { element ->
+            runCatching { json.decodeFromJsonElement<es.criosrango.shared.model.StoreCart>(element) }
+                .onFailure { exception ->
+                    checkoutDiagLog(
+                        "HTTP ERROR CART_PARSE_ERROR operation=$operation status=${response.status.value} " +
+                            "type=${exception::class.qualifiedName} message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 300)}"
+                    )
+                }
+                .getOrNull()
+        }
         if (operation != null && !response.status.isSuccess()) {
             checkoutDiagLog(
                 "HTTP ERROR operation=$operation method=$method path=$path status=${response.status.value} " +
-                    "backendCode=${error?.code?.let { sanitizeCheckoutDiag(it) } ?: "null"} " +
-                    "backendMessage=${sanitizeCheckoutDiag(error?.message.orEmpty())} " +
+                    "backendCode=${errorCode?.let { sanitizeCheckoutDiag(it) } ?: "null"} " +
+                    "backendMessage=${sanitizeCheckoutDiag(errorMessage.orEmpty())} " +
+                    "cartPresent=${updatedCart != null} removedCouponCount=${removedCoupons.size} " +
                     "body=${sanitizeCheckoutDiag(raw)}"
             )
         }
         if (!response.status.isSuccess()) {
             throw StoreApiException(
                 statusCode = response.status.value,
-                apiCode = error?.code,
-                message = error?.message?.takeIf { it.isNotBlank() } ?: raw.ifBlank { response.status.description },
-                removedCoupons = error?.data?.removedCoupons.orEmpty(),
-                updatedCart = error?.data?.cart
+                apiCode = errorCode,
+                message = errorMessage?.takeIf { it.isNotBlank() } ?: raw.ifBlank { response.status.description },
+                removedCoupons = removedCoupons,
+                updatedCart = updatedCart
             )
         }
         return try {
