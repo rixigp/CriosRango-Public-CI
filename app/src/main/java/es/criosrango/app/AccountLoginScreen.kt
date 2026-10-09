@@ -687,7 +687,7 @@ Card(
 
         if (!wallet?.pendingRewards.isNullOrEmpty()) {
             Text(
-                "Créditos listos para usar",
+                "Saldo listo para usar",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold
             )
@@ -707,13 +707,13 @@ Card(
                         ) {
                             Icon(
                                 imageVector = WalletLineIcon,
-                                contentDescription = "Crédito",
+                                contentDescription = "Saldo de monedero",
                                 tint = Color(0xFF0F5C4D),
                                 modifier = Modifier.size(22.dp)
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                "Crédito " + reward.amount.replace('.', ',') + " €",
+                                "Saldo de monedero · " + reward.amount.replace('.', ',') + " €",
                                 modifier = Modifier.weight(1f),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,

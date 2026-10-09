@@ -2,6 +2,8 @@
 
 package es.criosrango.app
 
+import es.criosrango.shared.friendlyAppliedCouponName
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
@@ -313,7 +315,12 @@ fun RedesignedCheckoutScreen(
                     CheckoutAmount("Subtotal", formatMinorUnits(cart.totals.consumerSubtotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
                     if (cart.coupons.isNotEmpty()) {
                         Text("Cupones aplicados", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        cart.coupons.forEach { coupon -> Text("• " + friendlyAppliedCouponName(coupon.label, coupon.code), style = MaterialTheme.typography.bodySmall, color = Color.Gray) }
+                        cart.coupons.forEach { coupon ->
+                            val appliedAmount = coupon.totals.consumerDiscount()
+                            val walletAmount = appliedAmount.toLongOrNull()?.takeIf { it > 0L }
+                                ?.let { formatMinorUnits(appliedAmount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol) }
+                            Text("• " + friendlyAppliedCouponName(coupon.label, coupon.code, walletAmount), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                        }
                     }
                     val discount = cart.totals.consumerDiscount()
                     if (couponInvalidationNotice && !ready) {

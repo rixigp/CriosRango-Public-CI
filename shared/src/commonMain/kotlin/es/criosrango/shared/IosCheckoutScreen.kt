@@ -244,21 +244,10 @@ fun IosCheckoutScreen(
                 if (cart.coupons.isNotEmpty()) {
                     Text("Cupones aplicados", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     cart.coupons.forEach { coupon ->
-                        val key = "${coupon.label} ${coupon.code}".lowercase()
-                        val walletCoupon = coupon.code.trim().startsWith("cr-monedero-", ignoreCase = true)
                         val appliedAmount = coupon.totals.consumerDiscount()
-                        val friendlyName = when {
-                            walletCoupon && (appliedAmount.toLongOrNull() ?: 0L) > 0L ->
-                                "Saldo de monedero · " + formatStorePrice(appliedAmount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)
-                            walletCoupon -> "Saldo de monedero"
-                            key.contains("blackcrios") || key.contains("black friday") -> "Black Friday 20%"
-                            key.contains("bienvenida") || key.contains("welcome") -> "Bienvenida 10%"
-                            key.contains("cr-cumple-") || key.contains("cumple") || key.contains("birthday") -> "Cumpleaños 15%"
-                            coupon.label.isNotBlank() && !coupon.label.equals(coupon.code, ignoreCase = true) &&
-                                !coupon.label.startsWith("cr-", ignoreCase = true) -> coupon.label
-                            else -> "Descuento aplicado"
-                        }
-                        Text("• " + friendlyName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val walletAmount = appliedAmount.toLongOrNull()?.takeIf { it > 0L }
+                            ?.let { formatStorePrice(appliedAmount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol) }
+                        Text("• " + friendlyAppliedCouponName(coupon.label, coupon.code, walletAmount), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 val discount = cart.totals.consumerDiscount()

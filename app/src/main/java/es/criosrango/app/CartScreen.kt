@@ -1,5 +1,7 @@
 package es.criosrango.app
 
+import es.criosrango.shared.friendlyAppliedCouponName
+
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -124,19 +126,6 @@ private fun cartPromotionDate(value: String): String? {
     return if (parts.size == 3 && parts[0].length == 4) {
         parts[2].padStart(2, '0') + "/" + parts[1].padStart(2, '0') + "/" + parts[0]
     } else null
-}
-
-internal fun friendlyAppliedCouponName(label: String, code: String): String {
-    val key = "$label $code".lowercase()
-    return when {
-        cartIsWalletCoupon(code) -> "Saldo de monedero"
-        key.contains("blackcrios") || key.contains("black friday") -> "Black Friday 20%"
-        key.contains("bienvenida") || key.contains("welcome") -> "Bienvenida 10%"
-        key.contains("cr-cumple-") || key.contains("cumple") || key.contains("birthday") -> "Cumpleaños 15%"
-        label.isNotBlank() && !label.equals(code, ignoreCase = true) &&
-            !label.startsWith("cr-", ignoreCase = true) -> label
-        else -> "Descuento aplicado"
-    }
 }
 
 private fun buildLineIcon(name: String, content: androidx.compose.ui.graphics.vector.PathBuilder.() -> Unit): ImageVector =
@@ -334,7 +323,7 @@ internal fun CartScreen(
                         cart.coupons.none { it.code.equals(reward.code, ignoreCase = true) }
                     }) {
                         Text(
-                            "Créditos listos para usar",
+                            "Saldo listo para usar",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -352,7 +341,7 @@ internal fun CartScreen(
                                     Icon(CartWalletLineIcon, null, tint=Color(0xFF0F5C4D), modifier=Modifier.size(22.dp))
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        "Crédito " + loyaltyDisplayMoney(reward.amount),
+                                        "Saldo de monedero · " + loyaltyDisplayMoney(reward.amount),
                                         modifier = Modifier.weight(1f),
                                         fontWeight = FontWeight.Medium,
                                         maxLines = 1,
@@ -492,14 +481,17 @@ internal fun CartScreen(
                             Column(Modifier.fillMaxWidth().padding(horizontal=10.dp, vertical=6.dp)) {
                                 cart.coupons.forEachIndexed { index, coupon ->
                                     val isCredit = loyaltyWallet?.pendingRewards?.any { it.code.equals(coupon.code, ignoreCase=true) } == true
-                                    val name = if (isCredit) "Saldo de monedero · " + loyaltyDisplayMoney(loyaltyWallet!!.pendingRewards.first { it.code.equals(coupon.code, ignoreCase=true) }.amount) else friendlyAppliedCouponName(coupon.label, coupon.code)
+                                    val appliedAmount = coupon.totals.consumerDiscount()
+                                    val walletAmount = appliedAmount.toLongOrNull()?.takeIf { it > 0L }
+                                        ?.let { formatMinorUnits(appliedAmount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol) }
+                                    val name = friendlyAppliedCouponName(coupon.label, coupon.code, walletAmount)
                                     val key = "${coupon.label} ${coupon.code}".lowercase()
                                     val iconKind = when { cartIsWalletCoupon(coupon.code) -> "wallet"; isCredit -> "credit"; key.contains("blackcrios") || key.contains("black friday") -> "discount"; key.contains("cumple") || key.contains("birthday") -> "cake"; else -> "tag" }
                                     Row(Modifier.fillMaxWidth().heightIn(min=36.dp).padding(vertical=2.dp), verticalAlignment=Alignment.CenterVertically) {
                                         CartAppliedCouponIcon(iconKind)
                                         Spacer(Modifier.width(8.dp))
-                                        Text(name, fontWeight=FontWeight.Medium, modifier=Modifier.weight(1f), maxLines=1, overflow=TextOverflow.Ellipsis)
-                                        Text("-" + formatMinorUnits(coupon.totals.consumerDiscount(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol), fontWeight=FontWeight.SemiBold, color=Color(0xFF0F5C4D), modifier=Modifier.padding(start=8.dp))
+                                        Text(name, fontWeight=FontWeight.Medium, style=MaterialTheme.typography.bodySmall, modifier=Modifier.weight(1f, fill=true), maxLines=1, softWrap=false, overflow=TextOverflow.Ellipsis)
+                                        Text("-" + formatMinorUnits(coupon.totals.consumerDiscount(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol), fontWeight=FontWeight.SemiBold, color=Color(0xFF0F5C4D), modifier=Modifier.padding(start=4.dp))
                                         IconButton({ removeCoupon(coupon.code) }, enabled=!couponLoading, modifier=Modifier.size(32.dp)) { Icon(CartCloseLineIcon, "Quitar", tint=Color(0xFF5F6368), modifier=Modifier.size(18.dp)) }
                                     }
                                     if (index < cart.coupons.lastIndex) HorizontalDivider(Modifier.padding(start=28.dp), color=Color(0xFFE8E8E3), thickness=1.dp)
