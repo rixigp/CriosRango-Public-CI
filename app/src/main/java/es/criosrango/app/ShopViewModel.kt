@@ -912,6 +912,11 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     fun consumeCardPaymentResult() { _cardPaymentResult.value = null }
     fun consumePaymentRedirect(redirect: PaymentRedirect) { if (_paymentRedirect.value == redirect && redirect.generation == checkoutGeneration) _paymentRedirect.value = null }
     fun consumeBizumOrder() { _bizumOrderId.value = null }
+    fun resetForLogout() {
+        invalidateCheckout()
+        _cardPaymentResult.value = null
+        _error.value = null
+    }
     fun abandonCheckout() = invalidateCheckout()
     private fun invalidateCheckout() { checkoutSubmissionGate.release(); ++checkoutGeneration; checkoutJob?.cancel(); clearCheckoutForNewGeneration(); _checkoutLoading.value = false; _checkoutPhase.value = CheckoutPhase.IDLE }
     private fun clearCheckoutForNewGeneration() { _checkout.value = null; _checkoutError.value = null; _paymentRedirect.value = null; _bizumOrderId.value = null }

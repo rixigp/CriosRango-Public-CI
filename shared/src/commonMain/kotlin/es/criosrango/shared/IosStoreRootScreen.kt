@@ -74,6 +74,7 @@ import es.criosrango.shared.loyalty.addMoneyAmounts
 import es.criosrango.shared.loyalty.subtractMoneyAmounts
 import es.criosrango.shared.promotions.Promotion
 import es.criosrango.shared.promotions.PromotionRepository
+import es.criosrango.shared.promotions.isVisibleToAnonymous
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.model.StoreCartVariation
@@ -250,6 +251,7 @@ fun CriosRangoIOSRootScreen(
                     initialOrderId = pushNavigation?.orderId,
                     openPromotionsOnStart = openPromotionsOnStart,
                     onPromotionsOpened = { openPromotionsOnStart = false },
+                    onBeforeLogout = { cartStore.clearForLogoutAwait(); checkoutStore.resetForLogout(); checkoutOpen = false },
                     onOpenExternalUrl = onOpenExternalUrl
                 )
             }
@@ -818,18 +820,19 @@ private fun IosCartScreen(
                     }
                 }
 
+                val visiblePromotions = if (walletEnabled) promotions else promotions.filter { it.isVisibleToAnonymous() }
                 when {
                     promotionsLoading -> CircularProgressIndicator(Modifier.size(20.dp))
                     !promotionsError.isNullOrBlank() -> Text(promotionsError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    promotions.isEmpty() -> Text("No hay promociones disponibles.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                    visiblePromotions.isEmpty() -> Text("No hay promociones disponibles.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                     else -> {
-                        val hasAvailablePromotions = promotions.any { promotion ->
+                        val hasAvailablePromotions = visiblePromotions.any { promotion ->
                             val code = promotion.code?.trim().orEmpty()
                             code.isBlank() || cart.coupons.none { it.code.equals(code, ignoreCase = true) }
                         }
                         if (hasAvailablePromotions) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Promociones disponibles", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        promotions.sortedByDescending { it.priority }.forEach { promotion ->
+                        visiblePromotions.sortedByDescending { it.priority }.forEach { promotion ->
                             val code = promotion.code?.trim().orEmpty()
                             val applied = code.isNotBlank() && cart.coupons.any { it.code.equals(code, ignoreCase = true) }
                             val title = iosCartPromotionTitle(promotion)

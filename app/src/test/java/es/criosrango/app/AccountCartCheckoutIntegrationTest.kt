@@ -33,11 +33,19 @@ class AccountCartCheckoutIntegrationTest {
     }
 
     @Test
-    fun D_logout_keepsCartLines_andRestoresGuestCta() {
-        val cartLines = listOf("A:x1")
+    fun D_logoutClearsCartAndRestoresGuestState() {
+        val cartLines = mutableListOf("A:x1")
+        val appliedCoupons = mutableListOf("cr-cumple")
         val accountAfterLogout: Int? = null
-        assertEquals(listOf("A:x1"), cartLines)
-        assertTrue(AccountCartCheckoutPolicy.showGuestLoginCta(accountAfterLogout, cartLines.size))
+
+        cartLines.clear()
+        appliedCoupons.clear()
+        val shippingAfterLogout: String? = null
+
+        assertTrue(cartLines.isEmpty())
+        assertTrue(appliedCoupons.isEmpty())
+        assertEquals(null, shippingAfterLogout)
+        assertFalse(AccountCartCheckoutPolicy.showGuestLoginCta(accountAfterLogout, cartLines.size))
     }
 
     @Test

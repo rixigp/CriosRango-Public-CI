@@ -658,12 +658,13 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun logout() {
+    fun logout(beforeLogout: suspend () -> Unit = {}) {
         val generation = ++accountGeneration
         restoreJob?.cancel()
         viewModelScope.launch {
             _loading.value = true
             try {
+                runCatching { beforeLogout() }
                 repository.logout()
             } finally {
                 if (generation == accountGeneration) {

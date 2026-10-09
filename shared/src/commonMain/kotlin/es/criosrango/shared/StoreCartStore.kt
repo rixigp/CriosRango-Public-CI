@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -145,6 +147,32 @@ class StoreCartStore(
         _state.value = if (cart.items.isEmpty()) StoreCartLoadState.SUCCESS_EMPTY else StoreCartLoadState.SUCCESS_ITEMS
         _error.value = null
         _couponError.value = null
+    }
+
+    /** Best-effort remote cleanup, followed by unconditional local/session isolation. */
+    suspend fun clearForLogoutAwait() {
+        try {
+            withTimeout(15_000) {
+                mutex.withLock {
+                    var current = runCatching { api.cart() }.getOrNull() ?: _cart.value
+                    current.coupons.toList().forEach { coupon ->
+                        current = runCatching { api.removeCoupon(coupon.code) }.getOrDefault(current)
+                    }
+                    current.items.toList().forEach { line ->
+                        current = runCatching { api.removeCartItem(line.key) }.getOrDefault(current)
+                    }
+                }
+            }
+        } catch (_: TimeoutCancellationException) {
+            // Remote cleanup timed out; dropping the old token still isolates the next session.
+        } finally {
+            api.clearSession()
+            _cart.value = StoreCart()
+            _state.value = StoreCartLoadState.SUCCESS_EMPTY
+            _error.value = null
+            _couponError.value = null
+            _couponLoading.value = false
+        }
     }
 
     fun clearAfterConfirmedPayment() {

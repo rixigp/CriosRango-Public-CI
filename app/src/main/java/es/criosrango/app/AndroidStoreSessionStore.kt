@@ -17,4 +17,6 @@ class AndroidStoreSessionStore(
     override var cookieHeader: String?
         get() = session.cookieHeader
         set(value) { session.cookieHeader = value }
+
+    override fun clear() = session.clear()
 }

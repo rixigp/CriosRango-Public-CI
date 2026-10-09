@@ -34,3 +34,12 @@ class PromotionApiException(
     val code: String,
     override val message: String
 ) : Exception(message)
+/** Promotions offered to guests must not depend on an account or personal eligibility. */
+fun Promotion.isVisibleToAnonymous(): Boolean {
+    if (personal || requiresLogin) return false
+    val identity = "${id} ${code.orEmpty()} ${title}".lowercase().trim()
+    if (identity.contains("bienvenida") || identity.contains("welcome")) return false
+    if (identity.contains("cumple") || identity.contains("birthday")) return false
+    if (identity.contains("cr-monedero-") || identity.contains("cr-monedero")) return false
+    return true
+}

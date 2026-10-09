@@ -399,6 +399,7 @@ private fun CriosRangoApp(
                         openPromotionsOnStart = openPromotionsOnStart,
                         onPromotionsOpened = { openPromotionsOnStart = false },
                         onRootBackAvailable = { accountRootBackAvailable = it },
+                        onBeforeLogout = { viewModel.cartStore.clearForLogoutAwait(); viewModel.resetForLogout() },
                         loyaltyViewModel = loyaltyViewModel,
                         applyWalletCoupon = viewModel.cartStore::applyCoupon,
                         cartCouponCodes = remoteCart.coupons.map { it.code }.toSet(),

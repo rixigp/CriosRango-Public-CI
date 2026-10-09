@@ -252,6 +252,16 @@ class StoreCheckoutStore(
         }
     }
 
+    fun resetForLogout() {
+        _checkout.value = null
+        _cart.value = StoreCart()
+        _phase.value = StoreCheckoutPhase.IDLE
+        _error.value = null
+        _accountAddress.value = null
+        _createdOrder.value = null
+        scope.launch { submissionGate.release() }
+    }
+
     fun clearCreatedOrder() { _createdOrder.value = null }
 
     private fun checkoutCartSummary(cart: StoreCart): String =

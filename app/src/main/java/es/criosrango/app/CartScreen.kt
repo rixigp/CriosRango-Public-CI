@@ -81,6 +81,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import es.criosrango.shared.loyalty.redeemableOptions
 import es.criosrango.shared.promotions.Promotion
 import es.criosrango.shared.promotions.PromotionRepository
+import es.criosrango.shared.promotions.isVisibleToAnonymous
 import coil.compose.AsyncImage
 import compose.icons.TablerIcons
 import compose.icons.tablericons.Bed
@@ -371,6 +372,7 @@ internal fun CartScreen(
                     }
                 }
 
+                val visiblePromotions = if (accountUserId == null) promotions.filter { it.isVisibleToAnonymous() } else promotions
                 when {
                     promotionsLoading -> CircularProgressIndicator(Modifier.size(20.dp))
                     !promotionsError.isNullOrBlank() -> Text(
@@ -378,13 +380,13 @@ internal fun CartScreen(
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall
                     )
-                    promotions.isEmpty() -> Text(
+                    visiblePromotions.isEmpty() -> Text(
                         "No hay promociones disponibles.",
                         color = Color.Gray,
                         style = MaterialTheme.typography.bodySmall
                     )
                     else -> {
-                        val hasAvailablePromotions = promotions.any { promotion ->
+                        val hasAvailablePromotions = visiblePromotions.any { promotion ->
                             val code = promotion.code?.trim().orEmpty()
                             code.isBlank() || cart.coupons.none { it.code.equals(code, ignoreCase = true) }
                         }
@@ -394,7 +396,7 @@ internal fun CartScreen(
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold
                         )
-                        promotions.sortedByDescending { it.priority }.forEach { promotion ->
+                        visiblePromotions.sortedByDescending { it.priority }.forEach { promotion ->
                             val code = promotion.code?.trim().orEmpty()
                             val applied = code.isNotBlank() && cart.coupons.any { it.code.equals(code, ignoreCase = true) }
                             val title = cartPromotionTitle(promotion)

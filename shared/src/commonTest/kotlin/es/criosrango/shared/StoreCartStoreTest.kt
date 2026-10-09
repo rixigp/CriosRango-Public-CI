@@ -19,6 +19,21 @@ class StoreCartStoreTest {
     }
 
     @Test
+    fun clearInvalidatesAllPersistedStoreApiCredentials() {
+        val session = InMemoryStoreSessionStore(
+            cartToken = "old-cart-token",
+            nonce = "old-nonce",
+            cookieHeader = "wp_woocommerce_session=old"
+        )
+
+        session.clear()
+
+        assertNull(session.cartToken)
+        assertNull(session.nonce)
+        assertNull(session.cookieHeader)
+    }
+
+    @Test
     fun emptySessionStartsWithoutCartCredentials() {
         val session: StoreSessionStore = InMemoryStoreSessionStore()
         assertNull(session.cartToken)

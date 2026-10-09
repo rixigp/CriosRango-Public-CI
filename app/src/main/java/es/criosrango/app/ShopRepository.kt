@@ -561,6 +561,40 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
         } else remote
     }
 
+    /** Best-effort remote cleanup while the old Store API credentials still exist. */
+    suspend fun clearForLogoutAwait() {
+        try {
+            withTimeout(15_000) {
+                couponMutationMutex.withLock {
+                    cartMutex.withLock {
+                        var current = runCatching { api.cart() }.getOrNull() ?: _cart.value
+                        current.coupons.toList().forEach { coupon ->
+                            val response = runCatching { api.removeCoupon(coupon.code) }.getOrNull()
+                            if (response != null && response.errors.isEmpty()) current = response
+                        }
+                        current.items.toList().forEach { line ->
+                            val response = runCatching { api.removeCartItem(line.key) }.getOrNull()
+                            if (response != null && response.errors.isEmpty()) current = response
+                        }
+                    }
+                }
+            }
+        } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+            // Logout must complete even if WooCommerce cannot be reached.
+        } finally {
+            session.clear()
+            preferences.edit().remove("cart_snapshot").remove("cart_line_parents")
+                .remove(cleanupPendingPreference).apply()
+            confirmedCart = WooCart()
+            _cart.value = confirmedCart
+            _state.value = CartLoadState.SUCCESS_EMPTY
+            _error.value = null
+            _couponError.value = null
+            _couponLoading.value = false
+            _postPurchaseCartCleanupPending.value = false
+        }
+    }
+
     suspend fun clearAfterConfirmedPayment(): Boolean {
         val items = _cart.value.items.toList()
         if (!clearConfirmedPaymentLines(items, ::remove)) {

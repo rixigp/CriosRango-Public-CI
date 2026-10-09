@@ -71,6 +71,7 @@ fun AccountLoginScreen(
     onPromotionsOpened: () -> Unit = {},
     onBackFromLogin: (() -> Unit)? = null,
     onRootBackAvailable: (Boolean) -> Unit = {},
+    onBeforeLogout: suspend () -> Unit = {},
     loyaltyViewModel: LoyaltyViewModel = viewModel(),
     applyWalletCoupon: suspend (String) -> Boolean = { false },
     cartCouponCodes: Set<String> = emptySet()
@@ -258,7 +259,7 @@ fun AccountLoginScreen(
                         onHelp = { accountSection = AccountSection.HELP },
                         onInfoPage = { selectedInfoPage = it }
                     )
-                    AccountSection.PROFILE -> AccountProfileContent(loading, { accountSection = AccountSection.HOME }, { accountSection = AccountSection.DATA }, { accountSection = AccountSection.ADDRESSES }, { vm.clearAccountMessages(); showForgot = true }, { vm.logout() })
+                    AccountSection.PROFILE -> AccountProfileContent(loading, { accountSection = AccountSection.HOME }, { accountSection = AccountSection.DATA }, { accountSection = AccountSection.ADDRESSES }, { vm.clearAccountMessages(); showForgot = true }, { vm.logout(onBeforeLogout) })
                     AccountSection.DATA -> AccountPersonalDataContent(vm, currentUser) { accountSection = AccountSection.PROFILE }
                     AccountSection.ADDRESSES -> AccountAddressContent(vm, address) { accountSection = AccountSection.PROFILE }
                     AccountSection.HELP -> AccountHelpContent { accountSection = AccountSection.HOME }

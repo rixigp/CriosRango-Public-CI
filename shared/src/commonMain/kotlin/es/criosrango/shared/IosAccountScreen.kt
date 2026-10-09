@@ -80,7 +80,8 @@ fun CriosRangoIOSAccountScreen(
     onOpenExternalUrl: (String) -> Unit,
     initialOrderId: Int? = null,
     openPromotionsOnStart: Boolean = false,
-    onPromotionsOpened: () -> Unit = {}
+    onPromotionsOpened: () -> Unit = {},
+    onBeforeLogout: suspend () -> Unit = {}
 ) {
     var page by remember {
         mutableStateOf(if (openPromotionsOnStart) IosAccountPage.WALLET else IosAccountPage.HOME)
@@ -169,7 +170,8 @@ fun CriosRangoIOSAccountScreen(
                     onInfoPage = { selectedInfoPage = it; error = null; page = IosAccountPage.INFO },
                     onHelp = { error = null; page = IosAccountPage.HELP },
                     onLogout = { user = null; error = null; page = IosAccountPage.HOME },
-                    repository = repository
+                    repository = repository,
+                    onBeforeLogout = onBeforeLogout
                 )
                 IosAccountPage.LOGIN -> IosLoginScreen(
                     repository,
@@ -192,6 +194,7 @@ fun CriosRangoIOSAccountScreen(
                     onDeleteAccount = { onOpenExternalUrl(AccountDeletion.URL) },
                     onLogout = {
                         scope.launch {
+                            runCatching { onBeforeLogout() }
                             runCatching { repository.logout() }
                             user = null
                             error = null
@@ -882,7 +885,8 @@ private fun IosAccountHome(
     onInfoPage: (AccountInfoPage) -> Unit,
     onHelp: () -> Unit,
     onLogout: () -> Unit,
-    repository: AccountRepository
+    repository: AccountRepository,
+    onBeforeLogout: suspend () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     var loggingOut by remember { mutableStateOf(false) }
@@ -919,6 +923,7 @@ private fun IosAccountHome(
                 onClick = {
                     loggingOut = true
                     scope.launch {
+                        runCatching { onBeforeLogout() }
                         runCatching { repository.logout() }
                         loggingOut = false
                         onLogout()

@@ -42,6 +42,12 @@ interface StoreSessionStore {
     var nonce: String?
     var cookieHeader: String?
 
+    fun clear() {
+        cartToken = null
+        nonce = null
+        cookieHeader = null
+    }
+
     fun updateFromResponse(headers: Headers) {
         headers["Cart-Token"]?.takeIf { it.isNotBlank() }?.let { cartToken = it }
         headers["Nonce"]?.takeIf { it.isNotBlank() }?.let { nonce = it }
@@ -200,6 +206,9 @@ class StoreApiClient(
             throw exception
         }
     }
+
+    /** Drops local Store API credentials after best-effort remote cleanup. */
+    fun clearSession() = session.clear()
 
     private fun io.ktor.client.request.HttpRequestBuilder.sessionHeaders() {
         accountTokenStore?.load()?.takeIf { it.isNotBlank() }?.let {
