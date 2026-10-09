@@ -95,6 +95,7 @@ class StoreApiClient(
         request: suspend () -> io.ktor.client.statement.HttpResponse
     ): T {
         val isCheckoutGet = operation == "checkout" && method == "GET" && path == "checkout"
+        val isCheckoutPost = operation == "checkout-post" && method == "POST" && path == "checkout"
         if (isCheckoutGet) checkoutDiagLog("HTTP_CHECKOUT START method=GET path=/checkout")
         val response = try {
             request()
@@ -105,6 +106,12 @@ class StoreApiClient(
                         "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 500)}"
                 )
             }
+            if (isCheckoutPost) {
+                checkoutDiagLog(
+                    "HTTP_CHECKOUT_POST REQUEST_EXCEPTION type=${exception::class.qualifiedName} " +
+                        "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 600)}"
+                )
+            }
             throw exception
         }
         session.updateFromResponse(response.headers)
@@ -112,6 +119,13 @@ class StoreApiClient(
         if (isCheckoutGet) {
             checkoutDiagLog(
                 "HTTP_CHECKOUT RESPONSE status=${response.status.value} " +
+                    "contentType=${sanitizeCheckoutDiag(response.headers[HttpHeaders.ContentType].orEmpty(), 120)} " +
+                    "body=${sanitizeCheckoutDiag(raw)}"
+            )
+        }
+        if (isCheckoutPost) {
+            checkoutDiagLog(
+                "HTTP_CHECKOUT_POST RESPONSE status=${response.status.value} " +
                     "contentType=${sanitizeCheckoutDiag(response.headers[HttpHeaders.ContentType].orEmpty(), 120)} " +
                     "body=${sanitizeCheckoutDiag(raw)}"
             )
@@ -140,12 +154,19 @@ class StoreApiClient(
         return try {
             json.decodeFromString<T>(raw).also {
                 if (isCheckoutGet) checkoutDiagLog("HTTP_CHECKOUT PARSE_OK")
+                if (isCheckoutPost) checkoutDiagLog("HTTP_CHECKOUT_POST PARSE_OK")
             }
         } catch (exception: Exception) {
             if (isCheckoutGet) {
                 checkoutDiagLog(
                     "HTTP_CHECKOUT PARSE_ERROR type=${exception::class.qualifiedName} " +
                         "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 500)}"
+                )
+            }
+            if (isCheckoutPost) {
+                checkoutDiagLog(
+                    "HTTP_CHECKOUT_POST PARSE_ERROR type=${exception::class.qualifiedName} " +
+                        "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 600)}"
                 )
             }
             throw exception
@@ -243,8 +264,11 @@ class StoreApiClient(
             }
         }
 
-    suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse =
-        executeCart {
+    suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse {
+        checkoutDiagLog(
+            "HTTP_CHECKOUT_POST START path=/checkout payment_method=${sanitizeCheckoutDiag(request.paymentMethod, 80)}"
+        )
+        return executeCart(operation = "checkout-post", method = "POST", path = "checkout") {
             client.post(baseUrl + "checkout") {
                 sessionHeaders()
                 header("X-CriosRango-App", "1")
@@ -252,6 +276,7 @@ class StoreApiClient(
                 setBody(request)
             }
         }
+    }
 
     suspend fun paymentStatus(orderId: Int, orderKey: String): es.criosrango.shared.model.PaymentStatusResponse =
         executeCart {

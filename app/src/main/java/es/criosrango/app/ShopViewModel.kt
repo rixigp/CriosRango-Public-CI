@@ -657,7 +657,16 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         _checkoutLoading.value = true
         _checkoutPhase.value = CheckoutPhase.CREATING_ORDER
         _checkoutError.value = null
+        val checkoutAtPaymentStart = _checkout.value
+        checkoutDiagLog(
+            "PAYMENT START paymentMethod=${sanitizeCheckoutDiag(paymentMethod, 80)} " +
+                "checkoutPhase=${_checkoutPhase.value} currentOrderId=${checkoutAtPaymentStart?.orderId} " +
+                "experimentalCart=${checkoutAtPaymentStart?.experimentalCart != null} " +
+                "checkoutTotal=${checkoutAtPaymentStart?.totals?.totalPrice} cartTotal=${cartStore.cart.value.totals.totalPrice}"
+        )
+        checkoutDiagLog("CREATE_ORDER START")
         viewModelScope.launch {
+            var createOrderPoint = "VALIDATE_INPUT"
             try {
                 if (shippingRateId.isNullOrBlank() || paymentMethod.isNullOrBlank()) {
                     _checkoutError.value = "Selecciona una tarifa y un método de pago válidos."
@@ -690,8 +699,20 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
 
                 val finalCart = cartStore.cart.value
                 val request = CreateOrderRequest(paymentMethod = paymentMethod, billing_address = address, shipping_address = address, shippingRate = shippingRateId, expectedTotal = finalCart.totals.totalPrice, paymentData = emptyMap())
+                createOrderPoint = "POST_CHECKOUT"
+                checkoutDiagLog(
+                    "CREATE_ORDER REQUEST paymentMethod=${sanitizeCheckoutDiag(paymentMethod, 80)} " +
+                        "shippingRateId=${sanitizeCheckoutDiag(shippingRateId, 100)} expectedTotal=${finalCart.totals.totalPrice} " +
+                        "priorOrderId=${_checkout.value?.orderId} experimentalCart=${_checkout.value?.experimentalCart != null}"
+                )
                 val response = repository.createCheckout(request)
                 if (generation != checkoutGeneration) return@launch
+                checkoutDiagLog(
+                    "CREATE_ORDER OK orderId=${response.orderId} status=${sanitizeCheckoutDiag(response.status.orEmpty(), 100)} " +
+                        "paymentResultStatus=${sanitizeCheckoutDiag(response.paymentResult?.paymentStatus.orEmpty(), 100)} " +
+                        "redirectPresent=${response.paymentRedirectUrl().isNullOrBlank().not()} " +
+                        "errors_count=${response.errors.size} errors=${response.errors.joinToString("|") { "${sanitizeCheckoutDiag(it.code, 100)}:${sanitizeCheckoutDiag(it.message, 400)}" }}"
+                )
                 if (response.errors.isNotEmpty()) throw CartException(response.errors.joinToString("\n") { it.message })
                 if (response.orderId == null) throw CartException("La tienda no ha confirmado la creación del pedido.")
                 _checkout.value = response; _checkoutPhase.value = CheckoutPhase.ORDER_CREATED
@@ -709,7 +730,16 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 }
             } catch (exception: Exception) {
                 if (generation != checkoutGeneration) return@launch
-                _checkoutError.value = exception.toStoreUiError().message
+                val transformedError = exception.toStoreUiError().message
+                val apiDetail = exception as? StoreApiException
+                checkoutDiagLog(
+                    "CREATE_ORDER CATCH point=$createOrderPoint type=${exception::class.qualifiedName} " +
+                        "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 600)} " +
+                        "httpStatus=${apiDetail?.statusCode ?: "null"} backendCode=${sanitizeCheckoutDiag(apiDetail?.apiCode.orEmpty(), 120)} " +
+                        "backendMessage=${sanitizeCheckoutDiag(apiDetail?.message.orEmpty(), 600)} " +
+                        "transformedMessage=${sanitizeCheckoutDiag(transformedError, 500)}"
+                )
+                _checkoutError.value = transformedError
                 _checkoutPhase.value = CheckoutPhase.FAILED
             } finally {
                 checkoutSubmissionGate.release()
