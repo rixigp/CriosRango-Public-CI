@@ -201,6 +201,9 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     private val _loading = MutableStateFlow(false)
     val loading = _loading.asStateFlow()
 
+    private val _forgotPasswordLoading = MutableStateFlow(false)
+    val forgotPasswordLoading = _forgotPasswordLoading.asStateFlow()
+
     private val _ordersRefreshing = MutableStateFlow(false)
     val ordersRefreshing = _ordersRefreshing.asStateFlow()
     private val ordersLoadGate = SingleActionGate()
@@ -479,7 +482,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         if (!authActionGate.tryAcquire()) return
 
         viewModelScope.launch {
-            _loading.value = true
+            _forgotPasswordLoading.value = true
             _error.value = null
             _notice.value = null
             try {
@@ -492,7 +495,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
             } catch (_: Exception) {
                 _error.value = "No hemos podido solicitar el cambio de contraseña."
             } finally {
-                _loading.value = false
+                _forgotPasswordLoading.value = false
                 authActionGate.release()
             }
         }

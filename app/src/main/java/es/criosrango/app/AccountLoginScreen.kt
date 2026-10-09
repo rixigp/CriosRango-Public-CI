@@ -81,6 +81,7 @@ fun AccountLoginScreen(
     val user by vm.user.collectAsStateWithLifecycle()
     val orders by vm.orders.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
+    val forgotPasswordLoading by vm.forgotPasswordLoading.collectAsStateWithLifecycle()
     val ordersRefreshing by vm.ordersRefreshing.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val accountError by vm.accountError.collectAsStateWithLifecycle()
@@ -292,7 +293,7 @@ fun AccountLoginScreen(
                 if (accountSection != AccountSection.HELP) Spacer(Modifier.height(24.dp))
             }
         }
-        if (showForgot) AccountForgotPasswordDialog(login, loading, error, notice, { showForgot = false; vm.clearAccountMessages() }, vm::forgotPassword)
+        if (showForgot) AccountForgotPasswordDialog(login, forgotPasswordLoading, error, notice, { showForgot = false; vm.clearAccountMessages() }, vm::forgotPassword)
     } else if (!showLogin) {
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
@@ -334,7 +335,7 @@ fun AccountLoginScreen(
                 OutlinedButton({ vm.clearAccountMessages(); showRegister = true }, modifier = Modifier.fillMaxWidth()) { Text("Crear cuenta") }
             }
             if (showRegister) AccountRegisterDialog(login, loading, error, dismissRegister, vm::createAccount)
-            if (showForgot) AccountForgotPasswordDialog(login, loading, error, notice, dismissForgot, vm::forgotPassword)
+            if (showForgot) AccountForgotPasswordDialog(login, forgotPasswordLoading, error, notice, dismissForgot, vm::forgotPassword)
         }
     }
 }
