@@ -732,7 +732,21 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                         "shippingRateId=${sanitizeCheckoutDiag(shippingRateId, 100)} expectedTotal=${finalCart.totals.totalPrice} " +
                         "priorOrderId=${_checkout.value?.orderId} experimentalCart=${_checkout.value?.experimentalCart != null}"
                 )
-                val response = repository.createCheckout(request)
+                couponInvalidationDiag("PAYMENT_CALL_START implementation=StoreRepository.createCheckout -> CategoryCacheStoreApi (delegates) -> SharedCatalogStoreApiAdapter.createCheckout -> StoreApiClient.createCheckout POST /wc/store/v1/checkout")
+                val response = try {
+                    repository.createCheckout(request).also {
+                        couponInvalidationDiag("PAYMENT_CALL_SUCCESS")
+                    }
+                } catch (throwable: Throwable) {
+                    val cause = throwable.cause
+                    couponInvalidationDiag(
+                        "PAYMENT_CALL_THROW type=${throwable::class.qualifiedName} " +
+                            "message=${sanitizeCheckoutDiag(throwable.message.orEmpty(), 500)} " +
+                            "causeType=${cause?.let { it::class.qualifiedName } ?: "null"} " +
+                            "causeMessage=${sanitizeCheckoutDiag(cause?.message.orEmpty(), 500)}"
+                    )
+                    throw throwable
+                }
                 if (generation != checkoutGeneration) return@launch
                 checkoutDiagLog(
                     "CREATE_ORDER OK orderId=${response.orderId} status=${sanitizeCheckoutDiag(response.status.orEmpty(), 100)} " +
@@ -826,6 +840,16 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 } else {
                     val transformedError = exception.toStoreUiError().message
                     val apiDetail = exception as? StoreApiException
+                    val cause = exception.cause
+                    val causeCause = cause?.cause
+                    couponInvalidationDiag(
+                        "GENERIC_THROWABLE type=${exception::class.qualifiedName} " +
+                            "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 500)} " +
+                            "causeType=${cause?.let { it::class.qualifiedName } ?: "null"} " +
+                            "causeMessage=${sanitizeCheckoutDiag(cause?.message.orEmpty(), 500)} " +
+                            "causeCauseType=${causeCause?.let { it::class.qualifiedName } ?: "null"} " +
+                            "causeCauseMessage=${sanitizeCheckoutDiag(causeCause?.message.orEmpty(), 500)}"
+                    )
                     checkoutDiagLog(
                         "CREATE_ORDER CATCH point=$createOrderPoint type=${exception::class.qualifiedName} " +
                             "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 600)} " +
