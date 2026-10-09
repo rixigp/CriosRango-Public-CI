@@ -2,7 +2,8 @@
 
 package es.criosrango.app
 
-import es.criosrango.shared.friendlyAppliedCouponName
+import es.criosrango.shared.resolveCouponPresentation
+import es.criosrango.shared.loyalty.LoyaltyWallet
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -57,6 +58,7 @@ fun RedesignedCheckoutScreen(
     selectShipping: (Int, String) -> Unit,
     createOrder: (CustomerAddress, String, String?) -> Unit,
     deliveryAddressStore: DeliveryAddressStore,
+    loyaltyWallet: LoyaltyWallet?,
 ) {
     val accountVm: AccountViewModel = viewModel()
     val accountUser by accountVm.user.collectAsStateWithLifecycle()
@@ -316,12 +318,7 @@ fun RedesignedCheckoutScreen(
                     if (cart.coupons.isNotEmpty()) {
                         Text("Cupones aplicados", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                         cart.coupons.forEach { coupon ->
-                            val appliedAmount = coupon.totals.consumerDiscount()
-                            val walletDiscountMinor = appliedAmount.toLongOrNull()?.let { kotlin.math.abs(it) }?.takeIf { it > 0L }
-                            val walletAmount = walletDiscountMinor?.let {
-                                formatMinorUnits(it.toString(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol)
-                            }
-                            Text("• " + friendlyAppliedCouponName(coupon.label, coupon.code.ifBlank { coupon.label }, walletAmount), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                            Text("• " + resolveCouponPresentation(coupon, loyaltyWallet?.pendingRewards.orEmpty()).title, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                         }
                     }
                     val discount = cart.totals.consumerDiscount()

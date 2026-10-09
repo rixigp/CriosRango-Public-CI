@@ -189,6 +189,7 @@ private fun CriosRangoApp(
 ) {
     val accountViewModel: AccountViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val loyaltyViewModel: LoyaltyViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val loyaltyWallet by loyaltyViewModel.wallet.collectAsStateWithLifecycle()
     val accountUser by accountViewModel.user.collectAsStateWithLifecycle()
     val products by viewModel.products.collectAsStateWithLifecycle()
     val activeCategoryProducts by viewModel.activeCategoryProducts.collectAsStateWithLifecycle()
@@ -343,7 +344,8 @@ private fun CriosRangoApp(
                     viewModel::loadCheckout,
                     viewModel::selectShippingRate,
                     viewModel::createOrder,
-                    viewModel.deliveryAddressStore
+                    viewModel.deliveryAddressStore,
+                    loyaltyWallet
                 )
             } else if (selectedProduct != null) {
                 ProductDetail(
