@@ -128,6 +128,7 @@ class MainActivity : ComponentActivity() {
         )
         val catalogApi = SharedCatalogStoreApiAdapter(sharedCatalogClient, session)
         val cartStore = CartStore(catalogApi, session, preferences)
+        Log.d("LOGOUT_CART_DIAG", "MAIN_CARTSTORE instance=${System.identityHashCode(cartStore)}")
         val pendingCardPaymentStore = PendingCardPaymentStore.create(applicationContext)
         val categoryDatabase = CategoryProductCacheDatabase.create(applicationContext)
         val categoryCache = CategoryCatalogCache(categoryDatabase)
@@ -136,6 +137,7 @@ class MainActivity : ComponentActivity() {
         categoryCache.bindRepository(repository)
         val outletAvailabilityStore = OutletAvailabilityStore(repository, preferences)
         val shopViewModel = androidx.lifecycle.ViewModelProvider(this, ShopViewModel.Factory(repository, cartStore, DeliveryAddressStore(preferences), pendingCardPaymentStore))[ShopViewModel::class.java]
+        Log.d("LOGOUT_CART_DIAG", "SHOPVIEWMODEL_CARTSTORE instance=${System.identityHashCode(shopViewModel.cartStore)}")
         val coldStartBranding = !startupBrandingShownInProcess
         startupBrandingShownInProcess = true
         setContent { CriosRangoApp(shopViewModel, categoryCache, outletAvailabilityStore, coldStartBranding) }
@@ -360,7 +362,7 @@ private fun CriosRangoApp(
                 )
             } else Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
-                topBar = { StoreTopBar(remoteCart.itemsCount, { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH }, { openUtilityTab(AppTab.CART) }) },
+                topBar = { StoreTopBar(remoteCart.itemsCount, System.identityHashCode(viewModel.cartStore), { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH }, { openUtilityTab(AppTab.CART) }) },
                 bottomBar = {
                     Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
                         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -399,7 +401,7 @@ private fun CriosRangoApp(
                         openPromotionsOnStart = openPromotionsOnStart,
                         onPromotionsOpened = { openPromotionsOnStart = false },
                         onRootBackAvailable = { accountRootBackAvailable = it },
-                        onBeforeLogout = { viewModel.cartStore.clearForLogoutAwait(); viewModel.resetForLogout() },
+                        onBeforeLogout = { Log.d("LOGOUT_CART_DIAG", "LOGOUT_CARTSTORE instance=${System.identityHashCode(viewModel.cartStore)}"); viewModel.cartStore.clearForLogoutAwait(); viewModel.resetForLogout() },
                         loyaltyViewModel = loyaltyViewModel,
                         applyWalletCoupon = viewModel.cartStore::applyCoupon,
                         cartCouponCodes = remoteCart.coupons.map { it.code }.toSet(),
@@ -416,7 +418,7 @@ private fun CriosRangoApp(
                             }
                         } else null
                     )
-                    else -> saveableStateHolder.SaveableStateProvider("CART") { CartScreen(
+                    else -> saveableStateHolder.SaveableStateProvider("CART") { Log.d("LOGOUT_CART_DIAG", "CARTSCREEN_CARTSTORE instance=${System.identityHashCode(viewModel.cartStore)}"); CartScreen(
                         cart = remoteCart,
                         state = cartState,
                         error = cartError,
@@ -512,7 +514,7 @@ private fun CriosRangoApp(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun StoreTopBar(cartQuantity: Int, onSearch: () -> Unit, onCart: () -> Unit) = TopAppBar(
+internal fun StoreTopBar(cartQuantity: Int, cartStoreInstance: Int, onSearch: () -> Unit, onCart: () -> Unit) = TopAppBar(
     title = {},
     navigationIcon = {
         Image(
@@ -533,7 +535,7 @@ internal fun StoreTopBar(cartQuantity: Int, onSearch: () -> Unit, onCart: () -> 
                 modifier = Modifier
                     .size(48.dp)
                     .align(Alignment.CenterStart),
-                badge = { if (cartQuantity > 0) Badge { Text(cartQuantity.toString(), maxLines = 1) } }
+                badge = { if (cartQuantity > 0) { Log.d("LOGOUT_CART_DIAG", "BADGE_CARTSTORE instance=$cartStoreInstance"); Badge { Text(cartQuantity.toString(), maxLines = 1) } } }
             ) {
                 IconButton(onCart) { Icon(Icons.Outlined.ShoppingBag, "Carrito") }
             }

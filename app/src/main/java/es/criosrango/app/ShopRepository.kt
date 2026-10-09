@@ -88,7 +88,11 @@ class StoreSession(private val preferences: android.content.SharedPreferences) {
         set(value) { preferences.edit().putString(COOKIE_HEADER, value).apply() }
 
     @Synchronized
-    fun update(headers: okhttp3.Headers) {
+    fun update(headers: okhttp3.Headers, source: String = "unknown") {
+        val cartTokenWritten = headers["Cart-Token"]?.isNotBlank() == true
+        val nonceWritten = headers["Nonce"]?.isNotBlank() == true
+        val cookieWritten = headers.values("Set-Cookie").any { it.substringBefore(";").trim().let { pair -> pair.substringBefore("=", "").isNotBlank() && pair.contains("=") } }
+        Log.d("LOGOUT_CART_DIAG", "SESSION_UPDATE source=$source cartTokenWritten=$cartTokenWritten nonceWritten=$nonceWritten cookieWritten=$cookieWritten")
         headers["Cart-Token"]?.takeIf { it.isNotBlank() }?.let { cartToken = it }
         headers["Nonce"]?.takeIf { it.isNotBlank() }?.let { nonce = it }
         headers.values("Set-Cookie").forEach { raw ->
@@ -108,7 +112,9 @@ class StoreSession(private val preferences: android.content.SharedPreferences) {
     }
 
     fun clear() {
+        Log.d("LOGOUT_CART_DIAG", "SESSION_BEFORE_CLEAR cartTokenPresent=${cartToken?.isNotBlank() == true} noncePresent=${nonce?.isNotBlank() == true} cookiePresent=${cookieHeader?.isNotBlank() == true}")
         preferences.edit().remove(CART_TOKEN).remove(NONCE).remove(COOKIE_HEADER).apply()
+        Log.d("LOGOUT_CART_DIAG", "SESSION_CLEAR_END cartTokenPresent=${cartToken?.isNotBlank() == true} noncePresent=${nonce?.isNotBlank() == true} cookiePresent=${cookieHeader?.isNotBlank() == true}")
     }
 }
 
@@ -436,14 +442,20 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
     private val addGate = CartAddGate()
 
     suspend fun refresh() {
+        Log.d("LOGOUT_CART_DIAG", "CART_REFRESH_START source=refresh")
         cartMutex.withLock {
             _state.value = CartLoadState.LOADING
             try {
+                Log.d("LOGOUT_CART_DIAG", "GET_CART_START cartTokenPresent=${session.cartToken?.isNotBlank() == true} noncePresent=${session.nonce?.isNotBlank() == true} cookiePresent=${session.cookieHeader?.isNotBlank() == true}")
                 val remote = withTimeout(18_000) { api.cart() }
-                val snapshot = localSnapshot()
-                val restored = if (remote.items.isEmpty() && snapshot.isNotEmpty()) rebuildRemote(snapshot) else remote
-                accept(restored)
+                Log.d("LOGOUT_CART_DIAG", "GET_CART_RESPONSE status=success items=${remote.items.size} coupons=${remote.coupons.size}")
+                val snapshot = localSnapshot("refresh")
+                val fallbackUsed = remote.items.isEmpty() && snapshot.isNotEmpty()
+                if (fallbackUsed) Log.d("LOGOUT_CART_DIAG", "CART_SNAPSHOT_FALLBACK_USED items=${snapshot.size} coupons=0")
+                val restored = if (fallbackUsed) rebuildRemote(snapshot) else remote
+                accept(restored, if (fallbackUsed) "refresh_snapshot_fallback" else "refresh_remote")
             } catch (exception: Exception) {
+                Log.d("LOGOUT_CART_DIAG", "GET_CART_RESPONSE status=exception items=unknown coupons=unknown")
                 _cart.value = confirmedCart
                 _state.value = CartLoadState.ERROR
                 _error.value = exception.toStoreUiError().message
@@ -563,26 +575,41 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
 
     /** Best-effort remote cleanup while the old Store API credentials still exist. */
     suspend fun clearForLogoutAwait() {
+        Log.d("LOGOUT_CART_DIAG", "LOGOUT_START")
+        Log.d("LOGOUT_CART_DIAG", "LOCAL_BEFORE items=${_cart.value.items.size} coupons=${_cart.value.coupons.size}")
+        var remoteClearSuccess = true
         try {
             withTimeout(15_000) {
                 couponMutationMutex.withLock {
                     cartMutex.withLock {
-                        var current = runCatching { api.cart() }.getOrNull() ?: _cart.value
+                        Log.d("LOGOUT_CART_DIAG", "REMOTE_CLEAR_START")
+                        var current = runCatching { api.cart() }.onFailure { remoteClearSuccess = false }.getOrNull() ?: _cart.value
                         current.coupons.toList().forEach { coupon ->
-                            val response = runCatching { api.removeCoupon(coupon.code) }.getOrNull()
-                            if (response != null && response.errors.isEmpty()) current = response
+                            val result = runCatching { api.removeCoupon(coupon.code) }
+                            val response = result.getOrNull()
+                            val ok = response != null && response.errors.isEmpty()
+                            Log.d("LOGOUT_CART_DIAG", "REMOVE_COUPON status=${if (result.isFailure) "exception" else if (ok) "success" else "error"}")
+                            if (ok) current = response!! else remoteClearSuccess = false
                         }
                         current.items.toList().forEach { line ->
-                            val response = runCatching { api.removeCartItem(line.key) }.getOrNull()
-                            if (response != null && response.errors.isEmpty()) current = response
+                            val result = runCatching { api.removeCartItem(line.key) }
+                            val response = result.getOrNull()
+                            val ok = response != null && response.errors.isEmpty()
+                            Log.d("LOGOUT_CART_DIAG", "REMOVE_ITEM status=${if (result.isFailure) "exception" else if (ok) "success" else "error"}")
+                            if (ok) current = response!! else remoteClearSuccess = false
                         }
+                        Log.d("LOGOUT_CART_DIAG", "REMOTE_CLEAR_END success=$remoteClearSuccess")
                     }
                 }
             }
         } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+            remoteClearSuccess = false
+            Log.d("LOGOUT_CART_DIAG", "REMOTE_CLEAR_END success=false")
             // Logout must complete even if WooCommerce cannot be reached.
         } finally {
+            Log.d("LOGOUT_CART_DIAG", "LOCAL_CLEAR_START")
             session.clear()
+            Log.d("LOGOUT_CART_DIAG", "CART_SNAPSHOT_CLEAR")
             preferences.edit().remove("cart_snapshot").remove("cart_line_parents")
                 .remove(cleanupPendingPreference).apply()
             confirmedCart = WooCart()
@@ -592,6 +619,8 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
             _couponError.value = null
             _couponLoading.value = false
             _postPurchaseCartCleanupPending.value = false
+            Log.d("LOGOUT_CART_DIAG", "CART_STATE_SET source=logout_local_clear items=${_cart.value.items.size} coupons=${_cart.value.coupons.size}")
+            Log.d("LOGOUT_CART_DIAG", "LOCAL_CLEAR_END items=${_cart.value.items.size} coupons=${_cart.value.coupons.size}")
         }
     }
 
@@ -640,7 +669,7 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
                 response.errors.forEach { error -> Log.d("CriosRangoStore", "WooCommerce code=${error.code} message=${error.message} endpoint=$endpoint") }
                 throw CartException(response.errors.joinToString("\n") { it.message })
             }
-            accept(response)
+            accept(response, endpoint)
             return true
         } catch (exception: Exception) {
             _cart.value = confirmedCart
@@ -650,12 +679,13 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
         }
     }
 
-    private fun accept(response: WooCart) {
+    private fun accept(response: WooCart, source: String = "accept") {
         _couponError.value = null
         confirmedCart = response.withParentIds()
         _cart.value = confirmedCart
         _state.value = if (confirmedCart.itemsCount == 0) CartLoadState.SUCCESS_EMPTY else CartLoadState.SUCCESS_ITEMS
-        persistSnapshot(confirmedCart.items)
+        Log.d("LOGOUT_CART_DIAG", "CART_STATE_SET source=$source items=${confirmedCart.items.size} coupons=${confirmedCart.coupons.size}")
+        persistSnapshot(confirmedCart.items, source)
     }
 
     private suspend fun rebuildRemote(snapshot: List<CartLine>): WooCart {
@@ -669,14 +699,20 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
         return withTimeout(18_000) { api.cart() }
     }
 
-    private fun persistSnapshot(items: List<CartLine>) {
-        if (items.isEmpty()) preferences.edit().remove("cart_snapshot").apply()
-        else preferences.edit().putString("cart_snapshot", Gson().toJson(items)).apply()
+    private fun persistSnapshot(items: List<CartLine>, source: String = "unknown") {
+        Log.d("LOGOUT_CART_DIAG", "CART_SNAPSHOT_WRITE source=$source items=${items.size} coupons=0")
+        if (items.isEmpty()) {
+            preferences.edit().remove("cart_snapshot").apply()
+            Log.d("LOGOUT_CART_DIAG", "CART_SNAPSHOT_CLEAR")
+        } else preferences.edit().putString("cart_snapshot", Gson().toJson(items)).apply()
     }
 
-    private fun localSnapshot(): List<CartLine> = preferences.getString("cart_snapshot", null)?.let {
-        runCatching { Gson().fromJson<List<CartLine>>(it, object : TypeToken<List<CartLine>>() {}.type) }.getOrDefault(emptyList())
-    }.orEmpty().filter { it.id > 0 && it.quantity > 0 }
+    private fun localSnapshot(source: String = "unknown"): List<CartLine> {
+        val raw = preferences.getString("cart_snapshot", null)
+        val parsed = raw?.let { runCatching { Gson().fromJson<List<CartLine>>(it, object : TypeToken<List<CartLine>>() {}.type) }.getOrDefault(emptyList()) }.orEmpty().filter { it.id > 0 && it.quantity > 0 }
+        Log.d("LOGOUT_CART_DIAG", "CART_SNAPSHOT_READ source=$source exists=${raw != null} items=${parsed.size} coupons=0")
+        return parsed
+    }
 
     private fun WooCart.withParentIds(): WooCart = copy(items = items.map { line ->
         line.copy(

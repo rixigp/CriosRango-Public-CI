@@ -1,5 +1,7 @@
 package es.criosrango.app
 
+import android.util.Log
+
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
@@ -659,6 +661,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun logout(beforeLogout: suspend () -> Unit = {}) {
+        Log.d("LOGOUT_CART_DIAG", "ACCOUNT_LOGOUT_START")
         val generation = ++accountGeneration
         restoreJob?.cancel()
         viewModelScope.launch {
@@ -679,6 +682,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                     _savingAccountDetails.value = false
                     _savingAddress.value = false
                 }
+                Log.d("LOGOUT_CART_DIAG", "ACCOUNT_LOGOUT_END")
             }
         }
     }

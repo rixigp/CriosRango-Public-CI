@@ -107,8 +107,10 @@ class StoreApiClient(
         path: String? = null,
         request: suspend () -> io.ktor.client.statement.HttpResponse
     ): T {
+        val isCartGet = method == "GET" && path == "cart"
         val isCheckoutGet = operation == "checkout" && method == "GET" && path == "checkout"
         val isCheckoutPost = operation == "checkout-post" && method == "POST" && path == "checkout"
+        if (isCartGet) checkoutDiagLog("LOGOUT_CART_DIAG GET_CART_START cartTokenPresent=${session.cartToken?.isNotBlank() == true} noncePresent=${session.nonce?.isNotBlank() == true} cookiePresent=${session.cookieHeader?.isNotBlank() == true}")
         if (isCheckoutGet) checkoutDiagLog("HTTP_CHECKOUT START method=GET path=/checkout")
         val response = try {
             request()
@@ -129,6 +131,7 @@ class StoreApiClient(
         }
         session.updateFromResponse(response.headers)
         val raw = response.bodyAsText()
+        if (isCartGet) checkoutDiagLog("LOGOUT_CART_DIAG GET_CART_RESPONSE status=${response.status.value} items=${runCatching { json.decodeFromString<es.criosrango.shared.model.StoreCart>(raw).items.size }.getOrDefault(-1)} coupons=${runCatching { json.decodeFromString<es.criosrango.shared.model.StoreCart>(raw).coupons.size }.getOrDefault(-1)}")
         if (isCheckoutGet) {
             checkoutDiagLog(
                 "HTTP_CHECKOUT RESPONSE status=${response.status.value} " +
@@ -220,7 +223,7 @@ class StoreApiClient(
     }
 
     suspend fun cart(): es.criosrango.shared.model.StoreCart =
-        executeCart { client.get(baseUrl + "cart") { sessionHeaders() } }
+        executeCart(method = "GET", path = "cart") { client.get(baseUrl + "cart") { sessionHeaders() } }
 
     suspend fun addCartItem(request: es.criosrango.shared.model.StoreCartRequest): es.criosrango.shared.model.StoreCart =
         executeCart {
