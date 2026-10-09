@@ -261,7 +261,7 @@ fun AccountLoginScreen(
                 Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
                     .then(if (accountSection == AccountSection.HELP) Modifier else Modifier.padding(horizontal = 24.dp))
             ) {
-                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(20.dp))
+                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection == AccountSection.PROFILE) 8.dp else 20.dp))
                 when (accountSection) {
                     AccountSection.HOME -> AccountHomeContentV2(
                         fullName = fullName,
@@ -302,7 +302,7 @@ fun AccountLoginScreen(
                     )
                     AccountSection.ORDERS -> Unit
                 }
-                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(24.dp))
+                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection == AccountSection.PROFILE) 12.dp else 24.dp))
             }
         }
         if (showForgot) AccountForgotPasswordDialog(login, forgotPasswordLoading, error, notice, { showForgot = false; vm.clearAccountMessages() }, vm::forgotPassword)
@@ -1143,7 +1143,7 @@ private fun AccountProfileContent(loading: Boolean, onBack: () -> Unit, onPerson
     val context = LocalContext.current
 
     AccountSectionHeader("Perfil", onBack)
-    Spacer(Modifier.height(22.dp))
+    Spacer(Modifier.height(12.dp))
     ProfileMenuRow("Datos personales", Icons.Outlined.Person, onPersonalData)
     Spacer(Modifier.height(12.dp))
     ProfileMenuRow("Dirección de entrega", Icons.Outlined.LocationOn, onAddress)
