@@ -21,15 +21,14 @@ internal class CouponInvalidatedCheckoutException(
 }
 
 internal const val COUPON_INVALIDATED_CHECKOUT_MESSAGE =
-    "El cupón ya no está disponible y se ha eliminado del carrito. Revisa el nuevo total y vuelve a pagar."
+    "El cupón ya no está disponible y se ha eliminado del carrito. Hemos actualizado el total de tu pedido."
 
 @Suppress("UNUSED_PARAMETER")
 internal fun couponInvalidationUserMessage(removedCouponNames: List<String>): String =
     COUPON_INVALIDATED_CHECKOUT_MESSAGE
 
 internal fun isCouponInvalidationMessage(message: String?): Boolean =
-    message?.startsWith("El cupón ") == true &&
-        message.contains("ya no está disponible y se ha eliminado del carrito. Revisa el nuevo total y vuelve a pagar.")
+    message == COUPON_INVALIDATED_CHECKOUT_MESSAGE
 
 internal suspend fun reconcileCouponInvalidation(
     updatedCart: WooCart?,
@@ -38,26 +37,26 @@ internal suspend fun reconcileCouponInvalidation(
     refreshCart: suspend () -> Unit,
     currentCartCouponCodes: () -> List<String>,
     onCheckout: (CheckoutResponse?) -> Unit,
-    onError: (String) -> Unit,
     onPhase: (CheckoutPhase) -> Unit,
-    userMessage: String,
+    refreshCheckoutOnce: () -> Unit,
     onCartVerified: (List<String>, Boolean) -> Unit = { _, _ -> }
 ) {
-    // Apply the cart returned in the 409 first, before changing visible checkout state.
+    // Stop payment in the caller. First apply the cart carried by the 409, if valid.
     updatedCart?.let(replaceCart)
     val containsInvalidCoupon = {
         currentCartCouponCodes().any { it.trim().lowercase() in removedCouponCodes }
     }
-    // If data.cart could not be decoded, or still contains the invalidated coupon,
-    // immediately reconcile against the authoritative Store API cart. Never re-POST /checkout.
+    // If data.cart is absent/unusable or still has the invalid coupon, refresh the cart
+    // synchronously before starting the one allowed checkout/shipping refresh.
     if (updatedCart == null || containsInvalidCoupon()) {
         runCatching { refreshCart() }
     }
     val remainingCodes = currentCartCouponCodes()
     val stillContainsInvalidCoupon = remainingCodes.any { it.trim().lowercase() in removedCouponCodes }
     onCartVerified(remainingCodes, stillContainsInvalidCoupon)
-    // Invalidate the old quote/shipping state only after the cart reconciliation attempt.
+    // Discard the stale quote and launch one normal delivery/checkout refresh. It never
+    // retries payment; failure is surfaced by loadCheckout and manual consultation remains available.
     onCheckout(null)
-    onPhase(CheckoutPhase.FAILED)
-    onError(userMessage)
+    onPhase(CheckoutPhase.QUOTING)
+    refreshCheckoutOnce()
 }

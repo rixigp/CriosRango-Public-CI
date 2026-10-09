@@ -453,7 +453,12 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     }
     fun refreshCart() { invalidateCheckout(); viewModelScope.launch { cartStore.refresh() } }
 
-    fun loadCheckout(address: CustomerAddress) {
+    fun loadCheckout(address: CustomerAddress) = loadCheckoutInternal(address, successMessage = null)
+
+    private fun loadCheckoutAfterCouponInvalidation(address: CustomerAddress) =
+        loadCheckoutInternal(address, successMessage = COUPON_INVALIDATED_CHECKOUT_MESSAGE)
+
+    private fun loadCheckoutInternal(address: CustomerAddress, successMessage: String?) {
         val generation = ++checkoutGeneration; clearCheckoutForNewGeneration(); checkoutJob?.cancel(); checkoutJob = viewModelScope.launch {
             _checkoutLoading.value = true; _checkoutPhase.value = CheckoutPhase.QUOTING; _checkoutError.value = null
             var checkoutDiagPoint = "LOAD_CHECKOUT_START"
@@ -507,7 +512,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
 
                 checkoutDiagPoint = "BEFORE_FINAL_ASSIGN"
                 checkoutDiagLog("BEFORE_FINAL_ASSIGN phase=${_checkoutPhase.value} checkoutIsNull=${_checkout.value == null} checkoutError=${sanitizeCheckoutDiag(_checkoutError.value.orEmpty(), 500)} finalOrderId=${finalCheckoutResponse.orderId} experimentalCart=${finalCheckoutResponse.experimentalCart != null} totalShipping=${finalCheckoutResponse.totals.totalShipping}")
-                _checkout.value = finalCheckoutResponse; _checkoutError.value = null; _checkoutPhase.value = CheckoutPhase.READY
+                _checkout.value = finalCheckoutResponse; _checkoutError.value = successMessage; _checkoutPhase.value = CheckoutPhase.READY
                 checkoutDiagPoint = "AFTER_FINAL_ASSIGN"
                 checkoutDiagLog("AFTER_FINAL_ASSIGN phase=${_checkoutPhase.value} checkoutIsNull=${_checkout.value == null} checkoutError=${sanitizeCheckoutDiag(_checkoutError.value.orEmpty(), 500)} orderId=${_checkout.value?.orderId} experimentalCart=${_checkout.value?.experimentalCart != null} totalShipping=${_checkout.value?.totals?.totalShipping}")
             } catch (exception: CancellationException) { throw exception } catch (exception: Exception) {
@@ -758,9 +763,11 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                         },
                         currentCartCouponCodes = { cartStore.cart.value.coupons.map { it.code } },
                         onCheckout = { _checkout.value = it },
-                        onError = { _checkoutError.value = it },
                         onPhase = { _checkoutPhase.value = it },
-                        userMessage = exception.userMessage,
+                        refreshCheckoutOnce = {
+                            checkoutDiagLog("CREATE_ORDER COUPON_AUTO_CHECKOUT_REFRESH START")
+                            loadCheckoutAfterCouponInvalidation(address)
+                        },
                         onCartVerified = { codes, stillInvalid ->
                             checkoutDiagLog(
                                 "CREATE_ORDER COUPON_CART_VERIFIED coupons=${codes.joinToString(",") { sanitizeCheckoutDiag(it, 80) }} " +
