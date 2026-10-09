@@ -22,6 +22,9 @@ import kotlinx.coroutines.TimeoutCancellationException
 import es.criosrango.shared.CatalogPage
 import es.criosrango.shared.CatalogPaginator
 import es.criosrango.shared.CatalogPagingState
+import es.criosrango.shared.checkoutDiagLog
+import es.criosrango.shared.sanitizeCheckoutDiag
+import es.criosrango.shared.api.StoreApiException
 
 internal suspend fun clearPendingAfterPaidCartCleanup(clearCart: suspend () -> Boolean, clearPending: () -> Boolean): Boolean {
     if (!clearCart()) return false
@@ -445,11 +448,25 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     fun loadCheckout(address: CustomerAddress) {
         val generation = ++checkoutGeneration; clearCheckoutForNewGeneration(); checkoutJob?.cancel(); checkoutJob = viewModelScope.launch {
             _checkoutLoading.value = true; _checkoutPhase.value = CheckoutPhase.QUOTING; _checkoutError.value = null
+            checkoutDiagLog("LOAD_CHECKOUT START")
             try {
-                val response = repository.updateCustomer(UpdateCustomerRequest(address)); if (generation != checkoutGeneration) return@launch
-                if (response.errors.isNotEmpty()) { response.errors.forEach { Log.d("CriosRangoStore", "WooCommerce code=${it.code} message=${it.message} endpoint=POST /cart/update-customer") }; throw CartException(response.errors.joinToString("\n") { it.message }) }
-                logShippingResponse(response); cartStore.replace(response); val checkoutResponse = repository.checkout(); if (generation != checkoutGeneration) return@launch
-                if (checkoutResponse.errors.isNotEmpty()) throw CartException(checkoutResponse.errors.joinToString("\n") { it.message })
+                val response = repository.updateCustomer(UpdateCustomerRequest(address))
+                logCheckoutCart("UPDATE_CUSTOMER OK", response)
+                if (generation != checkoutGeneration) return@launch
+                if (response.errors.isNotEmpty()) { response.errors.forEach { Log.d("CriosRangoStore", "WooCommerce code=${it.code} message=${it.message} endpoint=POST /cart/update-customer") }; throw CartException(response.errors.joinToString("\\n") { it.message }) }
+                logShippingResponse(response); cartStore.replace(response)
+                checkoutDiagLog("CHECKOUT_GET START")
+                val checkoutResponse = try {
+                    repository.checkout()
+                } catch (exception: CancellationException) {
+                    throw exception
+                } catch (exception: Exception) {
+                    logCheckoutGetException(exception)
+                    throw exception
+                }
+                logCheckoutResponse("CHECKOUT_GET OK", checkoutResponse)
+                if (generation != checkoutGeneration) return@launch
+                if (checkoutResponse.errors.isNotEmpty()) throw CartException(checkoutResponse.errors.joinToString("\\n") { it.message })
 
                 val visibleRates = response.visibleShippingRatesForDestination()
                 val hasSelectedRate = visibleRates.any { it.rates.any { rate -> rate.selected } }
@@ -457,11 +474,11 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 val finalCheckoutResponse = if (!hasSelectedRate && fallbackRate != null) {
                     val (packageRate, rate) = fallbackRate
                     val selectedCart = repository.selectShippingRate(SelectShippingRateRequest(packageRate.packageId, rate.rateId))
-                    if (selectedCart.errors.isNotEmpty()) throw CartException(selectedCart.errors.joinToString("\n") { it.message })
+                    if (selectedCart.errors.isNotEmpty()) throw CartException(selectedCart.errors.joinToString("\\n") { it.message })
                     if (generation != checkoutGeneration) return@launch
                     logShippingResponse(selectedCart); cartStore.replace(selectedCart)
                     val requotedCheckout = repository.checkout()
-                    if (requotedCheckout.errors.isNotEmpty()) throw CartException(requotedCheckout.errors.joinToString("\n") { it.message })
+                    if (requotedCheckout.errors.isNotEmpty()) throw CartException(requotedCheckout.errors.joinToString("\\n") { it.message })
                     requotedCheckout
                 } else checkoutResponse
 
@@ -469,6 +486,61 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
             } catch (exception: CancellationException) { throw exception } catch (exception: Exception) { _checkoutError.value = exception.message; _checkout.value = null; _checkoutPhase.value = CheckoutPhase.FAILED }
             finally { if (generation == checkoutGeneration) _checkoutLoading.value = false }
         }
+    }
+
+    private fun logCheckoutCart(label: String, cart: WooCart) {
+        checkoutDiagLog(
+            "$label coupons_count=${cart.coupons.size} coupon_codes=${cart.coupons.joinToString(",") { sanitizeCheckoutDiag(it.code, 80) }} " +
+                "total_items=${cart.totals.totalItems} total_items_tax=${cart.totals.totalItemsTax} " +
+                "total_discount=${cart.totals.totalDiscount} total_discount_tax=${cart.totals.totalDiscountTax} " +
+                "total_price=${cart.totals.totalPrice}"
+        )
+        cart.shippingRates.forEach { packageRate ->
+            packageRate.rates.forEach { rate ->
+                checkoutDiagLog(
+                    "$label SHIPPING package_id=${packageRate.packageId} rateId=${sanitizeCheckoutDiag(rate.rateId, 100)} " +
+                        "methodId=${sanitizeCheckoutDiag(rate.methodId, 100)} selected=${rate.selected} price=${rate.price}"
+                )
+            }
+        }
+        checkoutDiagLog(
+            "$label errors_count=${cart.errors.size} errors=${cart.errors.joinToString("|") { "${sanitizeCheckoutDiag(it.code, 100)}:${sanitizeCheckoutDiag(it.message, 300)}" }}"
+        )
+    }
+
+    private fun logCheckoutResponse(label: String, response: CheckoutResponse) {
+        val totals = response.totals
+        checkoutDiagLog(
+            "$label errors_count=${response.errors.size} errors=${response.errors.joinToString("|") { "${sanitizeCheckoutDiag(it.code, 100)}:${sanitizeCheckoutDiag(it.message, 300)}" }} " +
+                "total_items=${totals.totalItems} total_items_tax=${totals.totalItemsTax} " +
+                "total_discount=${totals.totalDiscount} total_discount_tax=${totals.totalDiscountTax} " +
+                "total_shipping=${totals.totalShipping} total_shipping_tax=${totals.totalShippingTax} total_price=${totals.totalPrice} " +
+                "experimental_cart=${response.experimentalCart != null} shipping_rates=not_exposed_by_checkout_model"
+        )
+        response.experimentalCart?.totals?.let { experimental ->
+            checkoutDiagLog(
+                "$label EXPERIMENTAL_CART total_items=${experimental.totalItems} total_items_tax=${experimental.totalItemsTax} " +
+                    "total_discount=${experimental.totalDiscount} total_discount_tax=${experimental.totalDiscountTax} " +
+                    "total_shipping=${experimental.totalShipping} total_shipping_tax=${experimental.totalShippingTax} total_price=${experimental.totalPrice}"
+            )
+        }
+    }
+
+    private fun logCheckoutGetException(exception: Exception) {
+        val detail = when (exception) {
+            is StoreApiException -> " status=${exception.statusCode} apiCode=${sanitizeCheckoutDiag(exception.apiCode.orEmpty(), 100)}"
+            else -> ""
+        }
+        val cause = exception.cause
+        val causeDetail = when (cause) {
+            is StoreApiException -> " causeType=${cause::class.qualifiedName} causeStatus=${cause.statusCode} causeApiCode=${sanitizeCheckoutDiag(cause.apiCode.orEmpty(), 100)} causeMessage=${sanitizeCheckoutDiag(cause.message.orEmpty(), 400)}"
+            null -> ""
+            else -> " causeType=${cause::class.qualifiedName} causeMessage=${sanitizeCheckoutDiag(cause.message.orEmpty(), 400)}"
+        }
+        checkoutDiagLog(
+            "CHECKOUT_GET EXCEPTION type=${exception::class.qualifiedName}$detail " +
+                "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 500)}$causeDetail"
+        )
     }
 
     fun selectShippingRate(packageId: Int, rateId: String) {

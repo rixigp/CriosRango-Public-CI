@@ -3,6 +3,8 @@ package es.criosrango.app
 import android.util.Log
 import es.criosrango.shared.api.StoreApiClient
 import es.criosrango.shared.api.StoreApiException
+import es.criosrango.shared.checkoutDiagLog
+import es.criosrango.shared.sanitizeCheckoutDiag
 import es.criosrango.shared.model.StoreCart
 import es.criosrango.shared.model.StoreCartRequest
 import es.criosrango.shared.model.StoreCartVariation
@@ -166,8 +168,35 @@ class SharedCatalogStoreApiAdapter(
 
     override suspend fun checkout(): CheckoutResponse = try {
         Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=GET")
-        sharedClient.checkout().toAndroid()
-    } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
+        val sharedResponse = sharedClient.checkout()
+        checkoutDiagLog(
+            "CHECKOUT_ADAPTER SHARED_MODEL_OK errors_count=${sharedResponse.errors.size} " +
+                "total_items=${sharedResponse.totals.totalItems} total_items_tax=${sharedResponse.totals.totalItemsTax} " +
+                "total_discount=${sharedResponse.totals.totalDiscount} total_discount_tax=${sharedResponse.totals.totalDiscountTax} " +
+                "total_shipping=${sharedResponse.totals.totalShipping} total_shipping_tax=${sharedResponse.totals.totalShippingTax} total_price=${sharedResponse.totals.totalPrice}"
+        )
+        checkoutDiagLog("CHECKOUT_ADAPTER MAP_START")
+        try {
+            sharedResponse.toAndroid().also {
+                checkoutDiagLog("CHECKOUT_ADAPTER MAP_OK errors_count=${it.errors.size}")
+            }
+        } catch (exception: Exception) {
+            checkoutDiagLog(
+                "CHECKOUT_ADAPTER MAP_ERROR type=${exception::class.qualifiedName} " +
+                    "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 500)}"
+            )
+            throw exception
+        }
+    } catch (exception: Exception) {
+        if (exception is StoreApiException) {
+            checkoutDiagLog(
+                "CHECKOUT_ADAPTER STORE_API_EXCEPTION type=${exception::class.qualifiedName} status=${exception.statusCode} " +
+                    "apiCode=${sanitizeCheckoutDiag(exception.apiCode.orEmpty(), 100)} " +
+                    "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 500)}"
+            )
+        }
+        throw exception.toAndroidCatalogException()
+    }
 
     override suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse = try {
         Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=POST")

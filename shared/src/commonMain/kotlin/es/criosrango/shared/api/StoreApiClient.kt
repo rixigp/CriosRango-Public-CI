@@ -30,6 +30,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.Json
 import es.criosrango.shared.checkoutDiagLog
+import es.criosrango.shared.sanitizeCheckoutDiag
 
 interface StoreSessionStore {
     var cartToken: String?
@@ -93,9 +94,28 @@ class StoreApiClient(
         path: String? = null,
         request: suspend () -> io.ktor.client.statement.HttpResponse
     ): T {
-        val response = request()
+        val isCheckoutGet = operation == "checkout" && method == "GET" && path == "checkout"
+        if (isCheckoutGet) checkoutDiagLog("HTTP_CHECKOUT START method=GET path=/checkout")
+        val response = try {
+            request()
+        } catch (exception: Exception) {
+            if (isCheckoutGet) {
+                checkoutDiagLog(
+                    "HTTP_CHECKOUT REQUEST_EXCEPTION type=${exception::class.qualifiedName} " +
+                        "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 500)}"
+                )
+            }
+            throw exception
+        }
         session.updateFromResponse(response.headers)
         val raw = response.bodyAsText()
+        if (isCheckoutGet) {
+            checkoutDiagLog(
+                "HTTP_CHECKOUT RESPONSE status=${response.status.value} " +
+                    "contentType=${sanitizeCheckoutDiag(response.headers[HttpHeaders.ContentType].orEmpty(), 120)} " +
+                    "body=${sanitizeCheckoutDiag(raw)}"
+            )
+        }
         if (operation != null && !response.status.isSuccess()) {
             val error = runCatching {
                 json.decodeFromString<es.criosrango.shared.model.StoreCartApiError>(raw)
@@ -117,16 +137,19 @@ class StoreApiClient(
                 error?.message?.takeIf { it.isNotBlank() } ?: raw.ifBlank { response.status.description }
             )
         }
-        return json.decodeFromString(raw)
-    }
-
-    private fun sanitizeCheckoutDiag(value: String): String {
-        var safe = value
-        safe = safe.replace(Regex("""(?i)("?(?:email|phone|first_name|last_name|name|address_1|address_2|address|postcode|postal_code|city|state|country|token|nonce|cookie|authorization|password|order_key|key)"?\s*:\s*)("[^"]*"|[^,}\]\s]+)"""), "$1\"[REDACTED]\"")
-        safe = safe.replace(Regex("(?i)bearer\\s+[a-z0-9._~+/-]+=*"), "Bearer [REDACTED]")
-        safe = safe.replace(Regex("[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", RegexOption.IGNORE_CASE), "[EMAIL]")
-        safe = safe.replace(Regex("(?<!\\w)(?:\\+?\\d[\\d .()/-]{7,}\\d)(?!\\w)"), "[PHONE]")
-        return safe.take(1800)
+        return try {
+            json.decodeFromString<T>(raw).also {
+                if (isCheckoutGet) checkoutDiagLog("HTTP_CHECKOUT PARSE_OK")
+            }
+        } catch (exception: Exception) {
+            if (isCheckoutGet) {
+                checkoutDiagLog(
+                    "HTTP_CHECKOUT PARSE_ERROR type=${exception::class.qualifiedName} " +
+                        "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 500)}"
+                )
+            }
+            throw exception
+        }
     }
 
     private fun io.ktor.client.request.HttpRequestBuilder.sessionHeaders() {
