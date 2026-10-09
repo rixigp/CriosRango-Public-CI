@@ -120,6 +120,14 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private val searchResultCache = mutableMapOf<String, List<StoreProduct>>()
     private var brandLoadJob: Job? = null
 
+    init {
+        viewModelScope.launch {
+            _checkoutError.collect { value ->
+                checkoutDiagLog("STATE checkoutError=${sanitizeCheckoutDiag(value.orEmpty(), 500)} isNull=${value == null}")
+            }
+        }
+    }
+
     private fun loadBrands() {
         brandLoadJob?.cancel()
         brandLoadJob = viewModelScope.launch {
@@ -448,13 +456,20 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     fun loadCheckout(address: CustomerAddress) {
         val generation = ++checkoutGeneration; clearCheckoutForNewGeneration(); checkoutJob?.cancel(); checkoutJob = viewModelScope.launch {
             _checkoutLoading.value = true; _checkoutPhase.value = CheckoutPhase.QUOTING; _checkoutError.value = null
-            checkoutDiagLog("LOAD_CHECKOUT START")
+            var checkoutDiagPoint = "LOAD_CHECKOUT_START"
+            checkoutDiagLog("LOAD_CHECKOUT START generation=$generation phase=${_checkoutPhase.value}")
             try {
+                checkoutDiagPoint = "UPDATE_CUSTOMER"
                 val response = repository.updateCustomer(UpdateCustomerRequest(address))
                 logCheckoutCart("UPDATE_CUSTOMER OK", response)
                 if (generation != checkoutGeneration) return@launch
                 if (response.errors.isNotEmpty()) { response.errors.forEach { Log.d("CriosRangoStore", "WooCommerce code=${it.code} message=${it.message} endpoint=POST /cart/update-customer") }; throw CartException(response.errors.joinToString("\\n") { it.message }) }
                 logShippingResponse(response); cartStore.replace(response)
+                checkoutDiagLog("POST_GET cartStore_shipping_rates_count=${cartStore.cart.value.shippingRates.sumOf { it.rates.size }}")
+                cartStore.cart.value.shippingRates.forEach { pack -> pack.rates.forEach { rate ->
+                    checkoutDiagLog("POST_GET rateId=${sanitizeCheckoutDiag(rate.rateId, 100)} selected=${rate.selected} packageId=${pack.packageId}")
+                } }
+                checkoutDiagPoint = "REPOSITORY_CHECKOUT"
                 checkoutDiagLog("CHECKOUT_GET START")
                 val checkoutResponse = try {
                     repository.checkout()
@@ -468,22 +483,38 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 if (generation != checkoutGeneration) return@launch
                 if (checkoutResponse.errors.isNotEmpty()) throw CartException(checkoutResponse.errors.joinToString("\\n") { it.message })
 
+                checkoutDiagPoint = "POST_GET_RATE_EVALUATION"
                 val visibleRates = response.visibleShippingRatesForDestination()
                 val hasSelectedRate = visibleRates.any { it.rates.any { rate -> rate.selected } }
                 val fallbackRate = visibleRates.firstOrNull { it.rates.isNotEmpty() }?.let { it to it.rates.first() }
+                checkoutDiagLog("POST_GET shipping_rates_count=${visibleRates.sumOf { it.rates.size }} hasSelectedRate=$hasSelectedRate fallbackRate=${fallbackRate?.let { "${it.first.packageId}:${sanitizeCheckoutDiag(it.second.rateId, 100)}" } ?: "null"}")
+                visibleRates.forEach { pack -> pack.rates.forEach { rate ->
+                    checkoutDiagLog("POST_GET rateId=${sanitizeCheckoutDiag(rate.rateId, 100)} selected=${rate.selected} packageId=${pack.packageId}")
+                } }
+                checkoutDiagLog("SELECT_RATE_BRANCH entered=${!hasSelectedRate && fallbackRate != null}")
                 val finalCheckoutResponse = if (!hasSelectedRate && fallbackRate != null) {
+                    checkoutDiagPoint = "SELECT_SHIPPING_RATE"
                     val (packageRate, rate) = fallbackRate
                     val selectedCart = repository.selectShippingRate(SelectShippingRateRequest(packageRate.packageId, rate.rateId))
                     if (selectedCart.errors.isNotEmpty()) throw CartException(selectedCart.errors.joinToString("\\n") { it.message })
                     if (generation != checkoutGeneration) return@launch
                     logShippingResponse(selectedCart); cartStore.replace(selectedCart)
+                    checkoutDiagPoint = "REQUOTE_CHECKOUT"
                     val requotedCheckout = repository.checkout()
                     if (requotedCheckout.errors.isNotEmpty()) throw CartException(requotedCheckout.errors.joinToString("\\n") { it.message })
                     requotedCheckout
                 } else checkoutResponse
 
+                checkoutDiagPoint = "BEFORE_FINAL_ASSIGN"
+                checkoutDiagLog("BEFORE_FINAL_ASSIGN phase=${_checkoutPhase.value} checkoutIsNull=${_checkout.value == null} checkoutError=${sanitizeCheckoutDiag(_checkoutError.value.orEmpty(), 500)} finalOrderId=${finalCheckoutResponse.orderId} experimentalCart=${finalCheckoutResponse.experimentalCart != null} totalShipping=${finalCheckoutResponse.totals.totalShipping}")
                 _checkout.value = finalCheckoutResponse; _checkoutError.value = null; _checkoutPhase.value = CheckoutPhase.READY
-            } catch (exception: CancellationException) { throw exception } catch (exception: Exception) { _checkoutError.value = exception.message; _checkout.value = null; _checkoutPhase.value = CheckoutPhase.FAILED }
+                checkoutDiagPoint = "AFTER_FINAL_ASSIGN"
+                checkoutDiagLog("AFTER_FINAL_ASSIGN phase=${_checkoutPhase.value} checkoutIsNull=${_checkout.value == null} checkoutError=${sanitizeCheckoutDiag(_checkoutError.value.orEmpty(), 500)} orderId=${_checkout.value?.orderId} experimentalCart=${_checkout.value?.experimentalCart != null} totalShipping=${_checkout.value?.totals?.totalShipping}")
+            } catch (exception: CancellationException) { throw exception } catch (exception: Exception) {
+                checkoutDiagLog("CATCH point=$checkoutDiagPoint type=${exception::class.qualifiedName} message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 500)}")
+                _checkoutError.value = exception.message; _checkout.value = null; _checkoutPhase.value = CheckoutPhase.FAILED
+                checkoutDiagLog("CATCH_STATE phase=${_checkoutPhase.value} checkoutIsNull=${_checkout.value == null} checkoutError=${sanitizeCheckoutDiag(_checkoutError.value.orEmpty(), 500)}")
+            }
             finally { if (generation == checkoutGeneration) _checkoutLoading.value = false }
         }
     }
