@@ -51,6 +51,10 @@ internal val categoryCatalogLoadStatus = MutableStateFlow(CategoryLoadStatus())
 
 data class CategoryProductsState(val products: List<StoreProduct> = emptyList(), val loading: Boolean = false, val loaded: Boolean = false, val error: StoreUiError? = null, val requestVersion: Int = 0)
 
+internal fun couponInvalidationDiag(message: String) {
+    Log.d("COUPON_INVALIDATION_DIAG", sanitizeCheckoutDiag(message, 1200))
+}
+
 class ShopViewModel(private val repository: StoreRepository, val cartStore: CartStore, val deliveryAddressStore: DeliveryAddressStore, private val pendingCardPaymentStore: PendingCardPaymentStore) : ViewModel() {
     private val _checkout = MutableStateFlow<CheckoutResponse?>(null)
     val checkout: StateFlow<CheckoutResponse?> = _checkout.asStateFlow()
@@ -461,7 +465,10 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private fun loadCheckoutInternal(address: CustomerAddress, successMessage: String?) {
         val generation = ++checkoutGeneration; clearCheckoutForNewGeneration(); checkoutJob?.cancel(); checkoutJob = viewModelScope.launch {
             _checkoutLoading.value = true; _checkoutPhase.value = CheckoutPhase.QUOTING; _checkoutError.value = null
+            var couponDiagLoadSuccess = false
             var checkoutDiagPoint = "LOAD_CHECKOUT_START"
+            if (successMessage != null) couponInvalidationDiag("LOAD CHECKOUT AUTOMÁTICO started=true generation=$generation")
+            couponInvalidationDiag("ERROR_SET source=${if (successMessage != null) "coupon_specific_start" else "load_checkout_start"} text=")
             checkoutDiagLog("LOAD_CHECKOUT START generation=$generation phase=${_checkoutPhase.value}")
             try {
                 checkoutDiagPoint = "UPDATE_CUSTOMER"
@@ -513,14 +520,27 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                 checkoutDiagPoint = "BEFORE_FINAL_ASSIGN"
                 checkoutDiagLog("BEFORE_FINAL_ASSIGN phase=${_checkoutPhase.value} checkoutIsNull=${_checkout.value == null} checkoutError=${sanitizeCheckoutDiag(_checkoutError.value.orEmpty(), 500)} finalOrderId=${finalCheckoutResponse.orderId} experimentalCart=${finalCheckoutResponse.experimentalCart != null} totalShipping=${finalCheckoutResponse.totals.totalShipping}")
                 _checkout.value = finalCheckoutResponse; _checkoutError.value = successMessage; _checkoutPhase.value = CheckoutPhase.READY
+                couponDiagLoadSuccess = true
+                couponInvalidationDiag("ERROR_SET source=${if (successMessage != null) "coupon_specific" else "load_checkout_success"} text=${successMessage.orEmpty()}")
+                if (successMessage != null) couponInvalidationDiag("LOAD CHECKOUT AUTOMÁTICO result success=true")
                 checkoutDiagPoint = "AFTER_FINAL_ASSIGN"
                 checkoutDiagLog("AFTER_FINAL_ASSIGN phase=${_checkoutPhase.value} checkoutIsNull=${_checkout.value == null} checkoutError=${sanitizeCheckoutDiag(_checkoutError.value.orEmpty(), 500)} orderId=${_checkout.value?.orderId} experimentalCart=${_checkout.value?.experimentalCart != null} totalShipping=${_checkout.value?.totals?.totalShipping}")
             } catch (exception: CancellationException) { throw exception } catch (exception: Exception) {
                 checkoutDiagLog("CATCH point=$checkoutDiagPoint type=${exception::class.qualifiedName} message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 500)}")
                 _checkoutError.value = checkoutErrorAfterRefreshFailure(exception.message, successMessage); _checkout.value = null; _checkoutPhase.value = CheckoutPhase.FAILED
+                couponInvalidationDiag("ERROR_SET source=${if (successMessage != null) "coupon_specific_refresh_failure" else "load_checkout"} text=${_checkoutError.value.orEmpty()}")
+                if (successMessage != null) couponInvalidationDiag("LOAD CHECKOUT AUTOMÁTICO result success=false exceptionType=${exception::class.qualifiedName} message=${exception.message.orEmpty()}")
                 checkoutDiagLog("CATCH_STATE phase=${_checkoutPhase.value} checkoutIsNull=${_checkout.value == null} checkoutError=${sanitizeCheckoutDiag(_checkoutError.value.orEmpty(), 500)}")
             }
-            finally { if (generation == checkoutGeneration) _checkoutLoading.value = false }
+            finally {
+                if (generation == checkoutGeneration) _checkoutLoading.value = false
+                if (successMessage != null) {
+                    val finalCart = cartStore.cart.value
+                    couponInvalidationDiag("FINAL_CART_COUPONS=${finalCart.coupons.joinToString(",") { it.code }}")
+                    couponInvalidationDiag("FINAL_DISCOUNT=${finalCart.totals.totalDiscount}")
+                    couponInvalidationDiag("FINAL_CHECKOUT_ERROR=${_checkoutError.value.orEmpty()}")
+                }
+            }
         }
     }
 
@@ -662,6 +682,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         _checkoutLoading.value = true
         _checkoutPhase.value = CheckoutPhase.CREATING_ORDER
         _checkoutError.value = null
+        couponInvalidationDiag("ERROR_SET source=create_order_start text=")
         val checkoutAtPaymentStart = _checkout.value
         checkoutDiagLog(
             "PAYMENT START paymentMethod=${sanitizeCheckoutDiag(paymentMethod, 80)} " +
@@ -675,6 +696,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
             try {
                 if (shippingRateId.isNullOrBlank() || paymentMethod.isNullOrBlank()) {
                     _checkoutError.value = "Selecciona una tarifa y un método de pago válidos."
+                    couponInvalidationDiag("ERROR_SET source=validation text=${_checkoutError.value.orEmpty()}")
                     _checkoutPhase.value = CheckoutPhase.FAILED
                     return@launch
                 }
@@ -743,30 +765,54 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                     )
                     _paymentRedirect.value = null
                     _bizumOrderId.value = null
+                    val cartBeforeInvalidation = cartStore.cart.value
+                    couponInvalidationDiag("CART BEFORE couponCodes=${cartBeforeInvalidation.coupons.joinToString(",") { it.code }} discount=${cartBeforeInvalidation.totals.totalDiscount}")
+                    val dataCart = exception.updatedCart
+                    if (dataCart == null) couponInvalidationDiag("DATA CART hasDataCart=false")
+                    else couponInvalidationDiag("DATA CART hasDataCart=true couponCodes=${dataCart.coupons.joinToString(",") { it.code }} discount=${dataCart.totals.totalDiscount}")
                     reconcileCouponInvalidation(
                         updatedCart = exception.updatedCart,
                         removedCouponCodes = exception.removedCouponCodes,
                         replaceCart = { updated ->
                             val reconciledCart = cartWithoutInvalidatedCoupons(updated, exception.removedCouponCodes)
+                            couponInvalidationDiag("REPLACE executed=true source=data_cart couponCodes=${reconciledCart.coupons.joinToString(",") { it.code }} discount=${reconciledCart.totals.totalDiscount}")
                             cartStore.replace(reconciledCart)
+                            val afterReplace = cartStore.cart.value
+                            couponInvalidationDiag("REPLACE AFTER source=data_cart couponCodes=${afterReplace.coupons.joinToString(",") { it.code }} discount=${afterReplace.totals.totalDiscount}")
                             checkoutDiagLog(
                                 "CREATE_ORDER COUPON_CART_REPLACED coupons=${reconciledCart.coupons.joinToString(",") { sanitizeCheckoutDiag(it.code, 80) }} " +
                                     "discount=${reconciledCart.totals.totalDiscount} total=${reconciledCart.totals.totalPrice}"
                             )
                         },
                         refreshCart = {
+                            couponInvalidationDiag("FALLBACK CART REFRESH started=true")
                             checkoutDiagLog("CREATE_ORDER COUPON_CART_REFRESH START")
-                            cartStore.refresh()
-                            checkoutDiagLog(
-                                "CREATE_ORDER COUPON_CART_REFRESH END coupons=${cartStore.cart.value.coupons.joinToString(",") { sanitizeCheckoutDiag(it.code, 80) }} " +
-                                    "discount=${cartStore.cart.value.totals.totalDiscount} total=${cartStore.cart.value.totals.totalPrice}"
-                            )
+                            try {
+                                cartStore.refresh()
+                                val refreshedCart = cartStore.cart.value
+                                val refreshSuccess = cartStore.state.value != CartLoadState.ERROR
+                                couponInvalidationDiag("FALLBACK CART REFRESH success=$refreshSuccess returnedCouponCodes=${refreshedCart.coupons.joinToString(",") { it.code }}")
+                                checkoutDiagLog(
+                                    "CREATE_ORDER COUPON_CART_REFRESH END coupons=${refreshedCart.coupons.joinToString(",") { sanitizeCheckoutDiag(it.code, 80) }} " +
+                                        "discount=${refreshedCart.totals.totalDiscount} total=${refreshedCart.totals.totalPrice}"
+                                )
+                            } catch (exception: Exception) {
+                                couponInvalidationDiag("FALLBACK CART REFRESH success=false exceptionType=${exception::class.qualifiedName} message=${exception.message.orEmpty()}")
+                                throw exception
+                            }
                         },
                         currentCartCouponCodes = { cartStore.cart.value.coupons.map { it.code } },
-                        sanitizeCurrentCart = { cartStore.replace(cartWithoutInvalidatedCoupons(cartStore.cart.value, exception.removedCouponCodes)) },
+                        sanitizeCurrentCart = {
+                            val fallbackCart = cartWithoutInvalidatedCoupons(cartStore.cart.value, exception.removedCouponCodes)
+                            couponInvalidationDiag("REPLACE executed=true source=fallback_sanitization couponCodes=${fallbackCart.coupons.joinToString(",") { it.code }} discount=${fallbackCart.totals.totalDiscount}")
+                            cartStore.replace(fallbackCart)
+                            val afterReplace = cartStore.cart.value
+                            couponInvalidationDiag("REPLACE AFTER source=fallback_sanitization couponCodes=${afterReplace.coupons.joinToString(",") { it.code }} discount=${afterReplace.totals.totalDiscount}")
+                        },
                         onCheckout = { _checkout.value = it },
                         onPhase = { _checkoutPhase.value = it },
                         refreshCheckoutOnce = {
+                            couponInvalidationDiag("LOAD CHECKOUT AUTOMÁTICO started=true")
                             checkoutDiagLog("CREATE_ORDER COUPON_AUTO_CHECKOUT_REFRESH START")
                             loadCheckoutAfterCouponInvalidation(address)
                         },
@@ -789,6 +835,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                     )
                     _checkout.value = null
                     _checkoutError.value = transformedError
+                    couponInvalidationDiag("ERROR_SET source=generic text=${_checkoutError.value.orEmpty()}")
                     _checkoutPhase.value = CheckoutPhase.FAILED
                 }
             } finally {

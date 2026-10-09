@@ -207,6 +207,15 @@ class SharedCatalogStoreApiAdapter(
         sharedClient.createCheckout(request.toShared()).toAndroid()
     } catch (exception: StoreApiException) {
         if (exception.apiCode == "woocommerce_rest_cart_coupon_errors") {
+            val removedCouponCodes = exception.removedCoupons.flatMap { (key, value) ->
+                val payloadCode = runCatching { value.jsonObject["code"]?.jsonPrimitive?.contentOrNull }.getOrNull()
+                listOfNotNull(key, payloadCode).map { it.trim() }.filter(String::isNotBlank)
+            }.distinct()
+            couponInvalidationDiag(
+                "EXCEPTION type=${exception::class.qualifiedName} httpStatus=${exception.statusCode} " +
+                    "backendCode=${sanitizeCheckoutDiag(exception.apiCode.orEmpty(), 120)} removedCoupons=${removedCouponCodes.joinToString(",")} " +
+                    "hasDataCart=${exception.updatedCart != null}"
+            )
             val friendlyNames = exception.removedCoupons.values.mapNotNull { it.friendlyCouponName() }.distinct()
             val updatedCart = runCatching { exception.updatedCart?.toAndroid() }
                 .onFailure { conversionError ->
