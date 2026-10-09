@@ -47,9 +47,25 @@ class CouponInvalidationCheckoutPathIntegrationTest {
     }
 
     @Test
-    fun couponInvalidation409RemainsTypedThroughTheRealAndroidCheckoutPath() {
+    fun singularCouponInvalidation409RemainsTypedThroughTheRealAndroidCheckoutPath() {
+        assertCouponInvalidation409RemainsTypedThroughTheRealAndroidCheckoutPath(
+            "woocommerce_rest_cart_coupon_error"
+        )
+    }
+
+    @Test
+    fun pluralCouponInvalidation409RemainsTypedThroughTheRealAndroidCheckoutPath() {
+        assertCouponInvalidation409RemainsTypedThroughTheRealAndroidCheckoutPath(
+            "woocommerce_rest_cart_coupon_errors"
+        )
+    }
+
+    private fun assertCouponInvalidation409RemainsTypedThroughTheRealAndroidCheckoutPath(
+        backendCode: String
+    ) {
         val removedCouponsJson = """{"bienvenida":{"code":"bienvenida","label":"Bienvenida","reason":"usage_limit_reached"}}"""
         val body = """{"code":"woocommerce_rest_cart_coupon_errors","message":"El cupón se ha eliminado del carrito.","data":{"removed_coupons":$removedCouponsJson,"cart":{"items":[],"coupons":[],"totals":{"total_price":"4613","total_discount":"0","total_shipping":"0"},"payment_methods":["cheque"],"shipping_rates":[],"items_count":0,"errors":[]}}}"""
+            .replace("woocommerce_rest_cart_coupon_errors", backendCode)
         apiClient = StoreApiClient(
             "https://example.test/wp-json/wc/store/v1/",
             HttpClient(MockEngine {
@@ -99,7 +115,7 @@ class CouponInvalidationCheckoutPathIntegrationTest {
         assertTrue("Expected CouponInvalidatedCheckoutException, got ${thrown?.javaClass?.name}: ${thrown?.message}", thrown is CouponInvalidatedCheckoutException)
         val exception = thrown as CouponInvalidatedCheckoutException
         assertEquals(409, exception.httpStatus)
-        assertEquals("woocommerce_rest_cart_coupon_errors", exception.backendCode)
+        assertEquals(backendCode, exception.backendCode)
         assertEquals(listOf("Bienvenida"), exception.removedCouponNames)
         assertEquals(setOf("bienvenida"), exception.removedCouponCodes)
         assertEquals(1, exception.removedCoupons.size)

@@ -98,6 +98,11 @@ private fun createWooBrandStoreApi(session: StoreSession): WooBrandStoreApi {
  *
  * Android catalog/cart/checkout/payment-status operations are routed through the shared KMP StoreApiClient.
  */
+private val COUPON_INVALIDATION_BACKEND_CODES = setOf(
+    "woocommerce_rest_cart_coupon_error",
+    "woocommerce_rest_cart_coupon_errors"
+)
+
 class SharedCatalogStoreApiAdapter(
     private val sharedClient: StoreApiClient,
     private val session: StoreSession
@@ -212,7 +217,7 @@ class SharedCatalogStoreApiAdapter(
             "CHECKOUT_ADAPTER STORE_API_EXCEPTION status=${exception.statusCode} " +
                 "backendCode=${sanitizeCheckoutDiag(exception.apiCode.orEmpty(), 160)}"
         )
-        if (exception.apiCode?.trim() == "woocommerce_rest_cart_coupon_errors") {
+        if (exception.apiCode?.trim()?.let { it in COUPON_INVALIDATION_BACKEND_CODES } == true) {
             val removedCouponCodes = exception.removedCoupons.flatMap { (key, value) ->
                 val payloadCode = runCatching { value.jsonObject["code"]?.jsonPrimitive?.contentOrNull }.getOrNull()
                 listOfNotNull(key, payloadCode).map { it.trim() }.filter(String::isNotBlank)
