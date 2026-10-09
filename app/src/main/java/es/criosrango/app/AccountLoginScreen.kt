@@ -914,10 +914,13 @@ Card(
     }
 }
 
-private fun promotionCardColor(promotion: Promotion, isBirthday: Boolean): Color = when (promotionVisualKind(promotion, isBirthday)) {
-    PromotionVisualKind.BIRTHDAY -> Color(0xFFFDECEF)
-    PromotionVisualKind.WELCOME -> Color(0xFFEAF4FC)
-    PromotionVisualKind.DISCOUNT -> Color(0xFFFFF6DF)
+private fun promotionCardColor(promotion: Promotion, isBirthday: Boolean): Color {
+    val key = listOfNotNull(promotion.code, promotion.title, promotion.description).joinToString(" ").lowercase()
+    return when {
+        isBirthday || key.contains("cumple") || key.contains("birthday") -> Color(0xFFFDECEF)
+        key.contains("bienvenida") || key.contains("welcome") -> Color(0xFFEAF4FC)
+        else -> Color(0xFFFFF6DF)
+    }
 }
 
 
