@@ -185,7 +185,9 @@ fun CriosRangoIOSRootScreen(
                     accountRepository = accountRepository,
                     padding = padding,
                     onBack = { checkoutOpen = false },
-                    onOpenPayment = onOpenPayment
+                    onOpenPayment = onOpenPayment,
+                    loyaltyRepository = loyaltyRepository,
+                    walletEnabled = accountRepository.hasSession
                 )
             } else when (section) {
                 IosRootSection.HOME -> IosHomeScreen(
