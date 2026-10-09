@@ -3,7 +3,7 @@ package es.criosrango.shared
 expect fun checkoutDiagLog(message: String)
 
 /** Redacts personal/session data before any checkout diagnostic reaches Logcat. */
-internal fun sanitizeCheckoutDiag(value: String, limit: Int = 1800): String {
+fun sanitizeCheckoutDiag(value: String, limit: Int = 1800): String {
     var safe = value
     safe = safe.replace(
         Regex("""(?i)("?(?:email|phone|first_name|last_name|name|address_1|address_2|address|postcode|postal_code|city|state|country|token|nonce|cookie|authorization|password|order_key|key)"?\s*:\s*)("[^"]*"|[^,}\]\s]+)"""),
