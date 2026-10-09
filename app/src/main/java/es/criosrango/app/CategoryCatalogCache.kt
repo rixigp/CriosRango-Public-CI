@@ -151,7 +151,7 @@ private interface GlobalCatalogApi {
     suspend fun productsPage(@RetrofitQuery("per_page") perPage: Int = CATALOG_PAGE_SIZE, @RetrofitQuery("page") page: Int = 1): Response<List<StoreProduct>>
 }
 
-class CategoryCatalogCache(private val database: CategoryProductCacheDatabase) {
+class CategoryCatalogCache(private val database: CategoryProductCacheDatabase, startInitialSync: Boolean = true) {
     private val gson = Gson()
     private val dao = database.catalogDao()
     private val memory = mutableMapOf<Int, List<StoreProduct>>()
@@ -176,7 +176,7 @@ class CategoryCatalogCache(private val database: CategoryProductCacheDatabase) {
     private val network: GlobalCatalogApi = Retrofit.Builder().baseUrl(STORE_API_BASE_URL).addConverterFactory(GsonConverterFactory.create()).client(okhttp3.OkHttpClient.Builder().connectTimeout(12, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).writeTimeout(20, TimeUnit.SECONDS).build()).build().create(GlobalCatalogApi::class.java)
 
     init {
-        scope.launch { syncIfNeeded() }
+        if (startInitialSync) scope.launch { syncIfNeeded() }
     }
 
     fun bindRepository(@Suppress("UNUSED_PARAMETER") repository: StoreRepository) = Unit

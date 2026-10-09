@@ -205,8 +205,14 @@ class SharedCatalogStoreApiAdapter(
     override suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse = try {
         Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=POST")
         sharedClient.createCheckout(request.toShared()).toAndroid()
+    } catch (exception: CouponInvalidatedCheckoutException) {
+        throw exception
     } catch (exception: StoreApiException) {
-        if (exception.apiCode == "woocommerce_rest_cart_coupon_errors") {
+        couponInvalidationDiag(
+            "CHECKOUT_ADAPTER STORE_API_EXCEPTION status=${exception.statusCode} " +
+                "backendCode=${sanitizeCheckoutDiag(exception.apiCode.orEmpty(), 160)}"
+        )
+        if (exception.apiCode?.trim() == "woocommerce_rest_cart_coupon_errors") {
             val removedCouponCodes = exception.removedCoupons.flatMap { (key, value) ->
                 val payloadCode = runCatching { value.jsonObject["code"]?.jsonPrimitive?.contentOrNull }.getOrNull()
                 listOfNotNull(key, payloadCode).map { it.trim() }.filter(String::isNotBlank)
@@ -501,6 +507,7 @@ private fun SharedAddToCart.toAndroid(): AddToCart = AddToCart(
 )
 
 private fun Exception.toAndroidCatalogException(): Exception = when (this) {
+    is CouponInvalidatedCheckoutException -> this
     is StoreApiException -> CartException(message)
     is HttpRequestTimeoutException -> SocketTimeoutException(message).also { it.initCause(this) }
     is retrofit2.HttpException -> StoreApiException(
