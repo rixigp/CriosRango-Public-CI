@@ -109,6 +109,19 @@ fun AccountLoginScreen(
     var accountSection by remember {
         mutableStateOf(if (openPromotionsOnStart) AccountSection.WALLET else AccountSection.HOME)
     }
+    LaunchedEffect(authState) {
+        if (shouldResetAccountUiForAuthState(authState)) {
+            showLogin = true
+            showRegister = false
+            showForgot = false
+            login = ""
+            password = ""
+            selectedOrderId = null
+            selectedInfoPage = null
+            accountSection = AccountSection.HOME
+            vm.clearAccountMessages()
+        }
+    }
     var selectedOrderId by remember { mutableStateOf<Int?>(initialOrderId) }
     val selectedOrder = orders.firstOrNull { it.id == selectedOrderId }
     val accountRootBackAvailable = selectedInfoPage == null && selectedOrder == null && !showLogin && accountSection == AccountSection.HOME
@@ -1240,3 +1253,7 @@ private fun formatWalletRemaining(value: Double): String {
     return whole.toString() + "," + fraction.toString().padStart(2, '0')
 }
 
+
+
+internal fun shouldResetAccountUiForAuthState(authState: AccountAuthState): Boolean =
+    authState == AccountAuthState.UNAUTHENTICATED

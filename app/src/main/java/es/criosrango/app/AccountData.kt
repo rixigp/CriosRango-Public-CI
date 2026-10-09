@@ -669,27 +669,37 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
 
     fun logout(beforeLogout: suspend () -> Unit = {}, onLogoutComplete: () -> Unit = {}) {
         Log.d("LOGOUT_CART_DIAG", "ACCOUNT_LOGOUT_START")
-        val generation = ++accountGeneration
+        ++accountGeneration
         restoreJob?.cancel()
         viewModelScope.launch {
             _loading.value = true
             try {
+                // Remote/cart cleanup is best effort: it must never prevent local logout.
                 runCatching { beforeLogout() }
-                repository.logout()
+                runCatching { repository.logout() }
             } finally {
-                if (generation == accountGeneration) {
-                    _user.value = null
-                    _address.value = null
-                    _orders.value = emptyList()
-                    _authState.value = AccountAuthState.UNAUTHENTICATED
-                    _error.value = null
-                    _accountError.value = null
-                    _notice.value = null
-                    _loading.value = false
-                    _savingAccountDetails.value = false
-                    _savingAddress.value = false
-                    onLogoutComplete()
-                }
+                // The user's local logout intent is definitive even after 401/403,
+                // network errors, or a restored token that is already invalid.
+                ++accountGeneration
+                restoreJob?.cancel()
+                repository.clearLocalSession()
+                _user.value = null
+                _address.value = null
+                _orders.value = emptyList()
+                _authState.value = AccountAuthState.UNAUTHENTICATED
+                _error.value = null
+                _accountError.value = null
+                _notice.value = null
+                _accountDataError.value = null
+                _accountDataNotice.value = null
+                _addressSaveError.value = null
+                _addressSaveNotice.value = null
+                _loading.value = false
+                _forgotPasswordLoading.value = false
+                _ordersRefreshing.value = false
+                _savingAccountDetails.value = false
+                _savingAddress.value = false
+                onLogoutComplete()
                 Log.d("LOGOUT_CART_DIAG", "ACCOUNT_LOGOUT_END")
             }
         }
