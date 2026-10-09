@@ -7,7 +7,7 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
 
 class StoreCartLogoutTest {
     @Test
-    fun logoutRemovesRemoteCouponAndItemsThenClearsLocalSessionAndCart() = runTest {
+    fun logoutRemovesRemoteCouponAndItemsThenClearsLocalSessionAndCart() = runBlocking {
         val requests = mutableListOf<Pair<String, String?>>()
         val withCoupon = """{"items":[{"key":"line-1","id":12,"name":"Jersey","quantity":1}],"coupons":[{"code":"cr-cumple","label":"Descuento aplicado"}]}"""
         val withItem = """{"items":[{"key":"line-1","id":12,"name":"Jersey","quantity":1}],"coupons":[]}"""
