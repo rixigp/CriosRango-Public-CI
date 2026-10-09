@@ -741,12 +741,6 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
                     reconcileCouponInvalidation(
                         updatedCart = exception.updatedCart,
                         replaceCart = cartStore::replace,
-                        reloadCheckout = {
-                            if (generation != checkoutGeneration) throw CancellationException("Checkout generation changed")
-                            repository.checkout().also { response ->
-                                if (response.errors.isNotEmpty()) throw CartException(response.errors.joinToString("\\n") { it.message })
-                            }
-                        },
                         onCheckout = { _checkout.value = it },
                         onError = { _checkoutError.value = it },
                         onPhase = { _checkoutPhase.value = it },

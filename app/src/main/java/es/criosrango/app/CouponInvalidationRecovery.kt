@@ -1,6 +1,5 @@
 package es.criosrango.app
 
-import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonElement
 
 internal class CouponInvalidatedCheckoutException(
@@ -15,7 +14,14 @@ internal class CouponInvalidatedCheckoutException(
 }
 
 internal fun couponInvalidationUserMessage(removedCouponNames: List<String>): String {
-    val friendlyName = removedCouponNames.firstOrNull { it.isNotBlank() }
+    val friendlyName = removedCouponNames.firstOrNull { candidate ->
+        val name = candidate.trim()
+        name.isNotEmpty() &&
+            !name.startsWith("cr-", ignoreCase = true) &&
+            !name.startsWith("cr_", ignoreCase = true) &&
+            !name.contains("woocommerce_", ignoreCase = true) &&
+            !name.matches(Regex("[a-z0-9_-]{3,}"))
+    }?.trim()
     return if (friendlyName != null) {
         "El cupón $friendlyName ya no está disponible y se ha eliminado del carrito. Revisa el nuevo total y vuelve a pagar."
     } else {
@@ -27,30 +33,18 @@ internal fun isCouponInvalidationMessage(message: String?): Boolean =
     message?.startsWith("El cupón ") == true &&
         message.contains("ya no está disponible y se ha eliminado del carrito. Revisa el nuevo total y vuelve a pagar.")
 
-internal suspend fun reconcileCouponInvalidation(
+internal fun reconcileCouponInvalidation(
     updatedCart: WooCart?,
     replaceCart: (WooCart) -> Unit,
-    reloadCheckout: suspend () -> CheckoutResponse,
     onCheckout: (CheckoutResponse?) -> Unit,
     onError: (String) -> Unit,
     onPhase: (CheckoutPhase) -> Unit,
     userMessage: String
 ) {
+    // Reconcile the authoritative cart before publishing the visible error.
     updatedCart?.let(replaceCart)
+    // Invalidate the previous quote/order state; the user must request delivery again.
     onCheckout(null)
+    onPhase(CheckoutPhase.FAILED)
     onError(userMessage)
-    if (updatedCart == null) {
-        onPhase(CheckoutPhase.FAILED)
-        return
-    }
-    try {
-        val refreshedCheckout = reloadCheckout()
-        onCheckout(refreshedCheckout)
-        onPhase(CheckoutPhase.READY)
-    } catch (exception: CancellationException) {
-        throw exception
-    } catch (_: Exception) {
-        onCheckout(null)
-        onPhase(CheckoutPhase.FAILED)
-    }
 }
