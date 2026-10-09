@@ -313,7 +313,7 @@ fun RedesignedCheckoutScreen(
                     CheckoutAmount("Subtotal", formatMinorUnits(cart.totals.consumerSubtotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
                     if (cart.coupons.isNotEmpty()) {
                         Text("Cupones aplicados", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        cart.coupons.forEach { coupon -> Text("• " + coupon.label.ifBlank { coupon.code }, style = MaterialTheme.typography.bodySmall, color = Color.Gray) }
+                        cart.coupons.forEach { coupon -> Text("• " + friendlyAppliedCouponName(coupon.label, coupon.code), style = MaterialTheme.typography.bodySmall, color = Color.Gray) }
                     }
                     val discount = cart.totals.consumerDiscount()
                     if (couponInvalidationNotice && !ready) {

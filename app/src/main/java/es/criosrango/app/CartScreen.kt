@@ -126,14 +126,15 @@ private fun cartPromotionDate(value: String): String? {
     } else null
 }
 
-private fun cartFriendlyCouponName(label: String, code: String): String {
+internal fun friendlyAppliedCouponName(label: String, code: String): String {
     val key = "$label $code".lowercase()
     return when {
-        cartIsWalletCoupon(code) -> "Monedero"
+        cartIsWalletCoupon(code) -> "Crédito"
         key.contains("blackcrios") || key.contains("black friday") -> "Black Friday 20%"
         key.contains("bienvenida") || key.contains("welcome") -> "Bienvenida 10%"
-        key.contains("cumple") || key.contains("birthday") -> "Cumpleaños 15%"
-        label.isNotBlank() && !label.equals(code, ignoreCase = true) -> label
+        key.contains("cr-cumple-") || key.contains("cumple") || key.contains("birthday") -> "Cumpleaños 15%"
+        label.isNotBlank() && !label.equals(code, ignoreCase = true) &&
+            !label.startsWith("cr-", ignoreCase = true) -> label
         else -> "Descuento aplicado"
     }
 }
@@ -491,7 +492,7 @@ internal fun CartScreen(
                             Column(Modifier.fillMaxWidth().padding(horizontal=10.dp, vertical=6.dp)) {
                                 cart.coupons.forEachIndexed { index, coupon ->
                                     val isCredit = loyaltyWallet?.pendingRewards?.any { it.code.equals(coupon.code, ignoreCase=true) } == true
-                                    val name = if (cartIsWalletCoupon(coupon.code)) "Monedero" else if (isCredit) "Crédito " + loyaltyDisplayMoney(loyaltyWallet!!.pendingRewards.first { it.code.equals(coupon.code, ignoreCase=true) }.amount) else cartFriendlyCouponName(coupon.label, coupon.code)
+                                    val name = if (isCredit) "Crédito " + loyaltyDisplayMoney(loyaltyWallet!!.pendingRewards.first { it.code.equals(coupon.code, ignoreCase=true) }.amount) else friendlyAppliedCouponName(coupon.label, coupon.code)
                                     val key = "${coupon.label} ${coupon.code}".lowercase()
                                     val iconKind = when { cartIsWalletCoupon(coupon.code) -> "wallet"; isCredit -> "credit"; key.contains("blackcrios") || key.contains("black friday") -> "discount"; key.contains("cumple") || key.contains("birthday") -> "cake"; else -> "tag" }
                                     Row(Modifier.fillMaxWidth().heightIn(min=36.dp).padding(vertical=2.dp), verticalAlignment=Alignment.CenterVertically) {
