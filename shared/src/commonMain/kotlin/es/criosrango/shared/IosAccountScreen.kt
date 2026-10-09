@@ -208,6 +208,7 @@ fun CriosRangoIOSAccountScreen(
                 IosAccountPage.ADDRESS -> IosAddressScreen(repository, ::invalidateExpiredSession) { page = addressReturnPage }
                 IosAccountPage.ORDERS -> IosOrdersScreen(repository, { selectedOrder = it; page = IosAccountPage.ORDER_DETAIL }, ::invalidateExpiredSession) { page = IosAccountPage.HOME }
                 IosAccountPage.WALLET -> IosWalletScreen(
+                    authenticated = user != null,
                     repository = loyaltyRepository,
                     promotionRepository = promotionRepository,
                     cartCouponCodes = cartCouponCodes,
@@ -401,6 +402,7 @@ private fun PromotionDateRow(text: String) {
 
 @Composable
 private fun IosWalletScreen(
+    authenticated: Boolean,
     repository: LoyaltyRepository,
     promotionRepository: PromotionRepository,
     cartCouponCodes: Set<String>,
@@ -604,7 +606,7 @@ Card(
                 }
             }
 
-        if (user != null && !wallet?.pendingRewards.isNullOrEmpty()) {
+        if (authenticated && !wallet?.pendingRewards.isNullOrEmpty()) {
             Text(
                 "Saldo listo para usar",
                 style = MaterialTheme.typography.titleSmall,
@@ -682,7 +684,7 @@ Card(
             ) { Text(if (pendingPoints != null) "Reintentar" else "Reintentar carga") }
         }
 
-        val visiblePromotions = if (user == null) promotions.filter { it.isVisibleToAnonymous() } else promotions
+        val visiblePromotions = if (authenticated) promotions else promotions.filter { it.isVisibleToAnonymous() }
         Text(
             "Promociones disponibles (${visiblePromotions.size})",
             style = MaterialTheme.typography.titleMedium,

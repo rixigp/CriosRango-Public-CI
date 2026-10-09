@@ -265,6 +265,7 @@ fun AccountLoginScreen(
                     AccountSection.ADDRESSES -> AccountAddressContent(vm, address) { accountSection = AccountSection.PROFILE }
                     AccountSection.HELP -> AccountHelpContent { accountSection = AccountSection.HOME }
                     AccountSection.WALLET -> AccountWalletContent(
+                        authenticated = currentUser != null,
                         wallet = loyaltyWallet,
                         loading = loyaltyLoading,
                         error = loyaltyError,
@@ -541,6 +542,7 @@ private fun PromotionDateRow(text: String) {
 
 @Composable
 fun AccountWalletContent(
+    authenticated: Boolean,
     wallet: es.criosrango.shared.loyalty.LoyaltyWallet?,
     loading: Boolean,
     error: String?,
@@ -687,7 +689,7 @@ Card(
             }
         }
 
-        if (currentUser != null && !loyaltyWallet?.pendingRewards.isNullOrEmpty()) {
+        if (authenticated && !wallet?.pendingRewards.isNullOrEmpty()) {
             Text(
                 "Saldo listo para usar",
                 style = MaterialTheme.typography.titleSmall,
@@ -769,7 +771,7 @@ Card(
             TextButton(onClick = onRefresh, enabled = !loading) { Text("Reintentar") }
         }
 
-        val visiblePromotions = if (currentUser == null) promotions.filter { it.isVisibleToAnonymous() } else promotions
+        val visiblePromotions = if (authenticated) promotions else promotions.filter { it.isVisibleToAnonymous() }
         Text(
             "Promociones disponibles (${visiblePromotions.size})",
             style = MaterialTheme.typography.titleMedium,
