@@ -482,9 +482,11 @@ internal fun CartScreen(
                                 cart.coupons.forEachIndexed { index, coupon ->
                                     val isCredit = loyaltyWallet?.pendingRewards?.any { it.code.equals(coupon.code, ignoreCase=true) } == true
                                     val appliedAmount = coupon.totals.consumerDiscount()
-                                    val walletAmount = appliedAmount.toLongOrNull()?.takeIf { it > 0L }
-                                        ?.let { formatMinorUnits(appliedAmount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol) }
-                                    val name = friendlyAppliedCouponName(coupon.label, coupon.code, walletAmount)
+                                    val walletDiscountMinor = appliedAmount.toLongOrNull()?.let { kotlin.math.abs(it) }?.takeIf { it > 0L }
+                                    val walletAmount = walletDiscountMinor?.let {
+                                        formatMinorUnits(it.toString(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol)
+                                    }
+                                    val name = friendlyAppliedCouponName(coupon.label, coupon.code.ifBlank { coupon.label }, walletAmount)
                                     val key = "${coupon.label} ${coupon.code}".lowercase()
                                     val iconKind = when { cartIsWalletCoupon(coupon.code) -> "wallet"; isCredit -> "credit"; key.contains("blackcrios") || key.contains("black friday") -> "discount"; key.contains("cumple") || key.contains("birthday") -> "cake"; else -> "tag" }
                                     Row(Modifier.fillMaxWidth().heightIn(min=36.dp).padding(vertical=2.dp), verticalAlignment=Alignment.CenterVertically) {

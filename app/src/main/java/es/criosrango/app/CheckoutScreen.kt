@@ -317,9 +317,11 @@ fun RedesignedCheckoutScreen(
                         Text("Cupones aplicados", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                         cart.coupons.forEach { coupon ->
                             val appliedAmount = coupon.totals.consumerDiscount()
-                            val walletAmount = appliedAmount.toLongOrNull()?.takeIf { it > 0L }
-                                ?.let { formatMinorUnits(appliedAmount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol) }
-                            Text("• " + friendlyAppliedCouponName(coupon.label, coupon.code, walletAmount), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                            val walletDiscountMinor = appliedAmount.toLongOrNull()?.let { kotlin.math.abs(it) }?.takeIf { it > 0L }
+                            val walletAmount = walletDiscountMinor?.let {
+                                formatMinorUnits(it.toString(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol)
+                            }
+                            Text("• " + friendlyAppliedCouponName(coupon.label, coupon.code.ifBlank { coupon.label }, walletAmount), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                         }
                     }
                     val discount = cart.totals.consumerDiscount()

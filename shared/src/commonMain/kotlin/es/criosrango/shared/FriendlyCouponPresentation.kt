@@ -6,7 +6,11 @@ package es.criosrango.shared
  */
 fun friendlyAppliedCouponName(label: String, code: String, walletAmount: String? = null): String {
     val key = "$label $code".lowercase()
-    val walletCoupon = code.trim().startsWith("cr-monedero-", ignoreCase = true)
+    // WooCommerce may expose the wallet prefix in either the coupon code or its label.
+    // Check both fields before reaching the generic fallback.
+    val walletCoupon = sequenceOf(code, label).any {
+        it.contains("cr-monedero-", ignoreCase = true)
+    }
     return when {
         walletCoupon -> walletAmount?.takeIf { it.isNotBlank() }?.let { "Saldo de monedero · $it" } ?: "Saldo de monedero"
         key.contains("blackcrios") || key.contains("black friday") -> "Black Friday 20%"
