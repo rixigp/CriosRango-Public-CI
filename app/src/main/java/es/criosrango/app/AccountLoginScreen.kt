@@ -260,7 +260,15 @@ fun AccountLoginScreen(
                         onHelp = { accountSection = AccountSection.HELP },
                         onInfoPage = { selectedInfoPage = it }
                     )
-                    AccountSection.PROFILE -> AccountProfileContent(loading, { accountSection = AccountSection.HOME }, { accountSection = AccountSection.DATA }, { accountSection = AccountSection.ADDRESSES }, { vm.clearAccountMessages(); showForgot = true }, { vm.logout(onBeforeLogout) })
+                    AccountSection.PROFILE -> AccountProfileContent(loading, { accountSection = AccountSection.HOME }, { accountSection = AccountSection.DATA }, { accountSection = AccountSection.ADDRESSES }, { vm.clearAccountMessages(); showForgot = true }, { vm.logout(onBeforeLogout) {
+                            showLogin = true
+                            showRegister = false
+                            showForgot = false
+                            selectedOrderId = null
+                            selectedInfoPage = null
+                            accountSection = AccountSection.HOME
+                            vm.clearAccountMessages()
+                        } })
                     AccountSection.DATA -> AccountPersonalDataContent(vm, currentUser) { accountSection = AccountSection.PROFILE }
                     AccountSection.ADDRESSES -> AccountAddressContent(vm, address) { accountSection = AccountSection.PROFILE }
                     AccountSection.HELP -> AccountHelpContent { accountSection = AccountSection.HOME }

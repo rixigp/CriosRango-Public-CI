@@ -168,8 +168,12 @@ class AccountRepository(context: Context) {
         sharedAccountRepository.claimPendingOrder()
 
     suspend fun logout() {
-        PushNotificationController.unregister(application)
-        sharedAccountRepository.logout()
+        try {
+            runCatching { PushNotificationController.unregister(application) }
+            sharedAccountRepository.logout()
+        } finally {
+            sharedAccountRepository.clearLocalSession()
+        }
     }
 
     fun clearLocalSession() {
@@ -660,7 +664,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun logout(beforeLogout: suspend () -> Unit = {}) {
+    fun logout(beforeLogout: suspend () -> Unit = {}, onLogoutComplete: () -> Unit = {}) {
         Log.d("LOGOUT_CART_DIAG", "ACCOUNT_LOGOUT_START")
         val generation = ++accountGeneration
         restoreJob?.cancel()
@@ -681,6 +685,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                     _loading.value = false
                     _savingAccountDetails.value = false
                     _savingAddress.value = false
+                    onLogoutComplete()
                 }
                 Log.d("LOGOUT_CART_DIAG", "ACCOUNT_LOGOUT_END")
             }
