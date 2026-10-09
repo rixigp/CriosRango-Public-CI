@@ -789,7 +789,7 @@ Card(
                                 imageVector = WalletLineIcon,
                                 contentDescription = "Crédito",
                                 tint = Color(0xFF0F5C4D),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
@@ -913,17 +913,21 @@ Card(
                         Spacer(Modifier.width(8.dp))
                         code?.let { couponCode ->
                             if (applied) {
-                                Button(
-                                    onClick = {},
-                                    enabled = false,
+                                Surface(
                                     modifier = Modifier.width(78.dp).height(36.dp),
-                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                                     shape = RoundedCornerShape(18.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        disabledContainerColor = Color(0xFF0F5C4D),
-                                        disabledContentColor = Color.White
-                                    )
-                                ) { Text("Aplicado", style = MaterialTheme.typography.labelMedium) }
+                                    color = Color(0xFFE8F5EF)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            "Aplicado",
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                                            color = Color(0xFF0F5C4D),
+                                            fontWeight = FontWeight.SemiBold,
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                }
                             } else {
                                 Button(
                                     onClick = { scope.launch { onApplyPromotion(couponCode) } },
