@@ -10,9 +10,20 @@ data class CouponPresentation(val title: String, val kind: CouponPresentationKin
 fun resolveCouponPresentation(
     coupon: StoreCartCoupon,
     pendingRewards: List<LoyaltyReward> = emptyList()
+): CouponPresentation = resolveCouponPresentation(coupon.code, coupon.label, pendingRewards)
+
+fun resolveCouponPresentation(
+    couponCode: String,
+    pendingRewards: List<LoyaltyReward> = emptyList()
+): CouponPresentation = resolveCouponPresentation(couponCode, couponCode, pendingRewards)
+
+private fun resolveCouponPresentation(
+    couponCode: String,
+    couponLabel: String,
+    pendingRewards: List<LoyaltyReward>
 ): CouponPresentation {
     val reward = pendingRewards.firstOrNull {
-        it.code.isNotBlank() && it.code.equals(coupon.code, ignoreCase = true)
+        it.code.isNotBlank() && it.code.equals(couponCode, ignoreCase = true)
     }
     if (reward != null) {
         val amount = reward.amount.trim().replace('.', ',')
@@ -21,13 +32,13 @@ fun resolveCouponPresentation(
             CouponPresentationKind.WALLET
         )
     }
-    val key = "${coupon.label} ${coupon.code}".lowercase()
+    val key = "$couponLabel $couponCode".lowercase()
     return when {
         key.contains("blackcrios") || key.contains("black friday") -> CouponPresentation("Black Friday 20%", CouponPresentationKind.DISCOUNT)
         key.contains("bienvenida") || key.contains("welcome") -> CouponPresentation("Bienvenida 10%", CouponPresentationKind.WELCOME)
         key.contains("cr-cumple") || key.contains("cumple") || key.contains("birthday") -> CouponPresentation("Cumpleaños 15%", CouponPresentationKind.BIRTHDAY)
-        coupon.label.isNotBlank() && !coupon.label.equals(coupon.code, ignoreCase = true) &&
-            !coupon.label.startsWith("cr-", ignoreCase = true) -> CouponPresentation(coupon.label, CouponPresentationKind.OTHER)
+        couponLabel.isNotBlank() && !couponLabel.equals(couponCode, ignoreCase = true) &&
+            !couponLabel.startsWith("cr-", ignoreCase = true) -> CouponPresentation(couponLabel, CouponPresentationKind.OTHER)
         else -> CouponPresentation("Cupón aplicado", CouponPresentationKind.OTHER)
     }
 }

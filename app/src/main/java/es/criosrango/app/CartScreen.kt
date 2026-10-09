@@ -480,7 +480,7 @@ internal fun CartScreen(
                         Surface(Modifier.fillMaxWidth(), shape=RoundedCornerShape(14.dp), color=Color(0xFFF9F9F7)) {
                             Column(Modifier.fillMaxWidth().padding(horizontal=10.dp, vertical=6.dp)) {
                                 cart.coupons.forEachIndexed { index, coupon ->
-                                    val presentation = resolveCouponPresentation(coupon, loyaltyWallet?.pendingRewards.orEmpty())
+                                    val presentation = resolveCouponPresentation(coupon.code, loyaltyWallet?.pendingRewards.orEmpty())
                                     val name = presentation.title
                                     val iconKind = when (presentation.kind) {
                                         CouponPresentationKind.WALLET -> "wallet"

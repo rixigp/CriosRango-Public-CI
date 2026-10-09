@@ -318,7 +318,7 @@ fun RedesignedCheckoutScreen(
                     if (cart.coupons.isNotEmpty()) {
                         Text("Cupones aplicados", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                         cart.coupons.forEach { coupon ->
-                            Text("• " + resolveCouponPresentation(coupon, loyaltyWallet?.pendingRewards.orEmpty()).title, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                            Text("• " + resolveCouponPresentation(coupon.code, loyaltyWallet?.pendingRewards.orEmpty()).title, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                         }
                     }
                     val discount = cart.totals.consumerDiscount()
