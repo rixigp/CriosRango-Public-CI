@@ -334,6 +334,14 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 if (generation != accountGeneration) return@launch
 
                 val storeError = exception.toStoreUiError(authenticated = true)
+                val chain = generateSequence<Throwable>(exception) { it.cause }
+                    .take(8)
+                    .joinToString(" -> ") { it::class.qualifiedName ?: it::class.simpleName ?: "UnknownException" }
+                Log.e(
+                    "AUTH_REVOKE_DIAG",
+                    "restoreSession failed; uiError=${storeError.type}; hasSession=${repository.hasSession}; exceptionChain=$chain"
+                )
+
                 if (storeError.type == StoreErrorType.SESSION_EXPIRED || !repository.hasSession) {
                     invalidateSession()
                     return@launch

@@ -52,22 +52,23 @@ data class StoreUiError(val type: StoreErrorType) {
     }
 }
 
-private fun Exception.httpStatusCodeOrNull(): Int? = when (this) {
-    is StoreApiException -> statusCode
-    is HttpException -> code()
-    is ResponseException -> response.status.value
-    else -> null
-}
+private fun Throwable.errorChain(): List<Throwable> =
+    generateSequence(this) { it.cause }
+        .take(8)
+        .toList()
 
-fun Exception.toStoreUiError(authenticated: Boolean = false): StoreUiError {
-    when (this) {
-        is SocketTimeoutException, is TimeoutCancellationException ->
-            return StoreUiError(StoreErrorType.TIMEOUT)
-
-        is UnknownHostException, is ConnectException, is NoRouteToHostException, is SocketException, is IOException ->
-            return StoreUiError(StoreErrorType.NO_INTERNET)
+private fun Exception.httpStatusCodeOrNull(): Int? =
+    errorChain().firstNotNullOfOrNull { throwable ->
+        when (throwable) {
+            is StoreApiException -> throwable.statusCode
+            is HttpException -> throwable.code()
+            is ResponseException -> throwable.response.status.value
+            else -> null
+        }
     }
 
+fun Exception.toStoreUiError(authenticated: Boolean = false): StoreUiError {
+    val chain = errorChain()
     val status = httpStatusCodeOrNull()
 
     return when {
@@ -76,6 +77,17 @@ fun Exception.toStoreUiError(authenticated: Boolean = false): StoreUiError {
 
         status != null && status in 500..599 ->
             StoreUiError(StoreErrorType.SERVER_UNAVAILABLE)
+
+        chain.any { it is SocketTimeoutException || it is TimeoutCancellationException } ->
+            StoreUiError(StoreErrorType.TIMEOUT)
+
+        chain.any {
+            it is UnknownHostException ||
+                it is ConnectException ||
+                it is NoRouteToHostException ||
+                it is SocketException ||
+                it is IOException
+        } -> StoreUiError(StoreErrorType.NO_INTERNET)
 
         else -> StoreUiError(StoreErrorType.UNEXPECTED)
     }
