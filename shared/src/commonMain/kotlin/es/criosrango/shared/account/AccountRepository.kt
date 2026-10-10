@@ -3,6 +3,7 @@ package es.criosrango.shared.account
 import es.criosrango.shared.PushDeviceRegistration
 
 import io.ktor.client.plugins.ResponseException
+import io.ktor.serialization.JsonConvertException
 import io.ktor.http.HttpStatusCode
 
 /** Authentication failures that invalidate the locally stored account session. */
@@ -74,6 +75,14 @@ class AccountRepository(
             if (isAccountSessionExpiredStatus(exception.response.status.value)) {
                 clearAuthenticationState()
             }
+            throw exception
+        } catch (exception: JsonConvertException) {
+            // With expectSuccess=false, an auth-error payload can reach body<AccountMeResponse>()
+            // and fail deserialization before an HTTP exception is surfaced. For /me, a response
+            // that cannot be decoded as the authenticated account payload cannot restore a valid
+            // local session, so fail closed and force a clean login instead of trapping the UI in
+            // CHECKING + UNEXPECTED.
+            clearAuthenticationState()
             throw exception
         }
     }
