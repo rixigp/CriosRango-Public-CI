@@ -767,8 +767,23 @@ internal fun HomeScreen(
             )
         }
 
-        item { HomeSectionTitle("Novedades", "Ver todo") { onEnterNovedades() } }
-            item { ProductCarousel(novedades, onProduct) }
+        item {
+                Column {
+                    HomeSectionTitle(
+                        "Novedades",
+                        "Ver todo"
+                    ) {
+                        onEnterNovedades()
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    ProductCarousel(
+                        novedades,
+                        onProduct
+                    )
+                }
+            }
             item {
     HomeOutletSection(
         categories = roots,
