@@ -119,7 +119,7 @@ jobs:
           "$BUILD_TOOLS/zipalign" -c -v 4 "$APK_PATH"
           VERSION_NAME=$(grep -E 'versionName[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
           VERSION_CODE=$(grep -E 'versionCode[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/')
-          VERSIONED_APK="CriosRango-v${VERSION_NAME}-code${VERSION_CODE}.apk"
+          VERSIONED_APK="CriosRango-v${VERSION_NAME}-build${VERSION_CODE}.apk"
           cp "$APK_PATH" "$VERSIONED_APK"
           cp "$APK_PATH" CriosRango-latest.apk
           echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
@@ -132,7 +132,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: CriosRango-v${{ steps.apk.outputs.version_name }}-code${{ steps.apk.outputs.version_code }}
+          name: CriosRango-v${{ steps.apk.outputs.version_name }}-build${{ steps.apk.outputs.version_code }}
           retention-days: 2
           path: |
             ${{ steps.apk.outputs.versioned_apk }}
@@ -146,7 +146,7 @@ jobs:
           VERSION_CODE: ${{ steps.apk.outputs.version_code }}
         run: |
           set -euo pipefail
-          RELEASE_NOTES="CriosRango v${VERSION_NAME} code ${VERSION_CODE} - automatic development build from commit ${GITHUB_SHA}"
+          RELEASE_NOTES="CriosRango v${VERSION_NAME} build ${VERSION_CODE} - automatic development build from commit ${GITHUB_SHA}"
           if ! gh release view dev-latest >/dev/null 2>&1; then
             gh release create dev-latest --title "Development latest" --notes "$RELEASE_NOTES" --prerelease --target "$GITHUB_SHA"
           else

@@ -97,20 +97,20 @@ jobs:
 
           VERSION_NAME=$(grep -E 'versionName[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')
           VERSION_CODE=$(grep -E 'versionCode[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/')
-          cp "$APK_PATH" "CriosRango-v${VERSION_NAME}-code${VERSION_CODE}.apk"
+          cp "$APK_PATH" "CriosRango-v${VERSION_NAME}-build${VERSION_CODE}.apk"
           cp "$APK_PATH" CriosRango-latest.apk
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
-          echo "versioned_apk=CriosRango-v${VERSION_NAME}-code${VERSION_CODE}.apk" >> "$GITHUB_OUTPUT"
+          echo "versioned_apk=CriosRango-v${VERSION_NAME}-build${VERSION_CODE}.apk" >> "$GITHUB_OUTPUT"
           echo "apk_sha256=$(sha256sum "$APK_PATH" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Upload verified APK artifact
         uses: actions/upload-artifact@v7
         with:
-          name: verified-criosrango-apk
+          name: CriosRango-v${{ steps.apk.outputs.version_name }}-build${{ steps.apk.outputs.version_code }}-verified-apk
           retention-days: 7
           path: |
-            CriosRango-v${{ steps.apk.outputs.version_name }}-code${{ steps.apk.outputs.version_code }}.apk
+            CriosRango-v${{ steps.apk.outputs.version_name }}-build${{ steps.apk.outputs.version_code }}.apk
             CriosRango-latest.apk
           if-no-files-found: error
 
