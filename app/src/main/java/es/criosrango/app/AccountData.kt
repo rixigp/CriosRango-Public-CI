@@ -14,6 +14,7 @@ import es.criosrango.shared.account.AccountOrderVariation
 import es.criosrango.shared.account.AccountRepository as SharedAccountRepository
 import es.criosrango.shared.account.AccountTokenStore
 import es.criosrango.shared.account.AccountUser
+import io.ktor.client.plugins.ResponseException
 import retrofit2.HttpException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -525,10 +526,22 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
                 claimPendingOrderIfAuthenticated()
+            } catch (e: ResponseException) {
+                _authState.value =
+                    if (repository.hasSession)
+                        AccountAuthState.CHECKING
+                    else
+                        AccountAuthState.UNAUTHENTICATED
+
+                _error.value = when (e.response.status.value) {
+                    401 -> "Correo electrónico o contraseña incorrectos."
+                    429 -> "Demasiados intentos. Espera unos minutos."
+                    else -> "No hemos podido iniciar sesión."
+                }
             } catch (e: HttpException) {
                 _authState.value = if (repository.hasSession) AccountAuthState.CHECKING else AccountAuthState.UNAUTHENTICATED
                 _error.value = when (e.code()) {
-                    401 -> "El correo o la contraseña no son correctos."
+                    401 -> "Correo electrónico o contraseña incorrectos."
                     429 -> "Demasiados intentos. Espera unos minutos."
                     else -> "No hemos podido iniciar sesión."
                 }
