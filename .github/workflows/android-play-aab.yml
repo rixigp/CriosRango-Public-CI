@@ -2,6 +2,11 @@ name: Android Play AAB
 
 on:
   workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Exact commit SHA to build"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -19,10 +24,21 @@ jobs:
     name: Build and verify signed Play AAB
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout dispatched SHA
+      - name: Checkout exact target SHA
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.target_sha }}
+
+      - name: Verify checked out SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          if [[ "$ACTUAL_SHA" != "${{ inputs.target_sha }}" ]]; then
+            echo "::error::Checked out SHA does not match target_sha"
+            exit 1
+          fi
+          echo "Checked out requested target SHA."
 
       - uses: actions/setup-java@v6
         with:
@@ -85,15 +101,46 @@ jobs:
           ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
         run: |
           set -euo pipefail
-          keytool -list -v \
+          if [[ "$ANDROID_UPLOAD_KEY_ALIAS" != "$EXPECTED_UPLOAD_ALIAS" ]]; then
+            echo "::error::Upload key alias does not match the expected release alias"
+            exit 1
+          fi
+
+          export LANG=C
+          export LC_ALL=C
+          if ! keytool -J-Duser.language=en -J-Duser.country=US -list \
             -keystore "$RUNNER_TEMP/criosrango-upload.jks" \
             -storepass "$ANDROID_UPLOAD_STORE_PASSWORD" \
-            -alias "$ANDROID_UPLOAD_KEY_ALIAS" > "$RUNNER_TEMP/upload-cert.txt"
-          grep -q "Alias name: $EXPECTED_UPLOAD_ALIAS" "$RUNNER_TEMP/upload-cert.txt"
-          grep -q "Entry type: PrivateKeyEntry" "$RUNNER_TEMP/upload-cert.txt"
-          grep -Eq "Public key.*RSA|Algorithm:.*RSA|Signature algorithm name:.*RSA" "$RUNNER_TEMP/upload-cert.txt"
-          grep -Eq "4096-bit|Key size: 4096" "$RUNNER_TEMP/upload-cert.txt"
-          echo "Upload certificate: alias/RSA-4096 validated."
+            > "$RUNNER_TEMP/upload-keystore-check.txt" 2>&1; then
+            echo "::error::Upload keystore cannot be opened with the configured store password (wrong password or invalid/corrupt keystore data)"
+            exit 1
+          fi
+
+          if ! keytool -J-Duser.language=en -J-Duser.country=US -list -v \
+            -keystore "$RUNNER_TEMP/criosrango-upload.jks" \
+            -storepass "$ANDROID_UPLOAD_STORE_PASSWORD" \
+            -alias "$ANDROID_UPLOAD_KEY_ALIAS" \
+            > "$RUNNER_TEMP/upload-cert.txt" 2>&1; then
+            echo "::error::Expected upload alias is not present in the configured upload keystore"
+            exit 1
+          fi
+
+          if ! grep -q '^Entry type: PrivateKeyEntry$' "$RUNNER_TEMP/upload-cert.txt"; then
+            echo "::error::Upload keystore alias is not a PrivateKeyEntry"
+            exit 1
+          fi
+
+          PUBKEY_LINE="$(grep -m1 '^Subject Public Key Algorithm:' "$RUNNER_TEMP/upload-cert.txt" || true)"
+          if [[ "$PUBKEY_LINE" != *RSA* ]]; then
+            echo "::error::Upload certificate public key algorithm is not RSA"
+            exit 1
+          fi
+          if [[ "$PUBKEY_LINE" != *4096-bit* ]]; then
+            echo "::error::Upload certificate RSA key size is not 4096 bits"
+            exit 1
+          fi
+
+          echo "Upload certificate: expected alias, PrivateKeyEntry, RSA-4096 validated."
 
       - name: Build signed release AAB
         env:
@@ -191,10 +238,12 @@ jobs:
             exit 1
           fi
           unzip -t "$AAB" >/dev/null
-          unzip -Z1 "$AAB" | grep -q '^base/manifest/AndroidManifest.xml$'
-          unzip -Z1 "$AAB" | grep -q '^base/dex/.*\.dex$'
-          unzip -Z1 "$AAB" | grep -q '^base/resources.pb$'
-          unzip -Z1 "$AAB" | grep -q '^BundleConfig.pb$'
+          AAB_CONTENTS="$RUNNER_TEMP/aab-contents.txt"
+          unzip -Z1 "$AAB" > "$AAB_CONTENTS"
+          grep -q '^base/manifest/AndroidManifest.xml$' "$AAB_CONTENTS"
+          grep -q '^base/dex/.*\.dex$' "$AAB_CONTENTS"
+          grep -q '^base/resources.pb$' "$AAB_CONTENTS"
+          grep -q '^BundleConfig.pb$' "$AAB_CONTENTS"
           echo "bundletool version: $BUNDLETOOL_VERSION"
           echo "bundletool validation: PASS"
           echo "Base manifest/resources/dex: PASS"
@@ -208,7 +257,9 @@ jobs:
           test -s app/build/outputs/mapping/release/resources.txt
           grep -q 'isMinifyEnabled = true' app/build.gradle.kts
           grep -q 'isShrinkResources = true' app/build.gradle.kts
-          ./gradlew :app:tasks --all | grep -q 'uploadCrashlyticsMappingFileRelease'
+          APP_TASKS="$RUNNER_TEMP/app-tasks.txt"
+          ./gradlew :app:tasks --all > "$APP_TASKS"
+          grep -q 'uploadCrashlyticsMappingFileRelease' "$APP_TASKS"
           echo "R8 mapping.txt: GENERATED"
           echo "Resource shrink diagnostic resources.txt: GENERATED"
           echo "Release minify: ENABLED"
@@ -275,10 +326,13 @@ jobs:
         run: |
           rm -f "$RUNNER_TEMP/criosrango-upload.jks"
           rm -f "$RUNNER_TEMP/upload-cert.txt"
+          rm -f "$RUNNER_TEMP/upload-keystore-check.txt"
           rm -f "$RUNNER_TEMP/keystore-cert.txt"
           rm -f "$RUNNER_TEMP/aab-cert.txt"
           rm -f "$RUNNER_TEMP/aab-cert.der"
           rm -f "$RUNNER_TEMP/jarsigner.txt"
           rm -f "$RUNNER_TEMP/bundletool.jar"
           rm -f "$RUNNER_TEMP/aab-manifest.xml"
+          rm -f "$RUNNER_TEMP/aab-contents.txt"
+          rm -f "$RUNNER_TEMP/app-tasks.txt"
           rm -f app/google-services.json

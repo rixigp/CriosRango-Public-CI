@@ -1,0 +1,398 @@
+name: iOS App Store Connect Upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_number:
+        description: "Validated iOS Distribution Archive run number to upload (for example 2)"
+        required: true
+        type: string
+      confirm_upload:
+        description: "Type UPLOAD_2.0.1_20002 to confirm transport upload only"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ios-appstore-upload-2.0.1-20002
+  cancel-in-progress: false
+
+env:
+  EXPECTED_SOURCE_WORKFLOW: "iOS Distribution Archive"
+  EXPECTED_SOURCE_WORKFLOW_FILE: "ios-distribution.yml"
+  EXPECTED_SOURCE_RUN_NUMBER: ${{ inputs.source_run_number }}
+  EXPECTED_BUNDLE_ID: "es.criosrango.app"
+  EXPECTED_TEAM_ID: "3793344J72"
+  EXPECTED_VERSION_NAME: "2.0.1"
+  EXPECTED_VERSION_CODE: "20002"
+  EXPECTED_IPA_ARTIFACT: "CriosRango-v2.0.1-build20002-ipa"
+  EXPECTED_REPORT_ARTIFACT: "CriosRango-v2.0.1-build20002-ios-release-report"
+
+jobs:
+  upload-app-store-connect:
+    name: Validate and upload existing signed IPA
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Resolve and validate exact source distribution run
+        id: source-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.confirm_upload }}" != "UPLOAD_2.0.1_20002" ]]; then
+            echo "::error::Upload confirmation text does not match the required value"
+            exit 1
+          fi
+          if ! [[ "$EXPECTED_SOURCE_RUN_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::source_run_number must be a positive integer"
+            exit 1
+          fi
+
+          RUNS_JSON="$RUNNER_TEMP/source-runs.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$EXPECTED_SOURCE_WORKFLOW_FILE/runs?per_page=100" > "$RUNS_JSON"
+
+          MATCH_COUNT="$(jq --argjson n "$EXPECTED_SOURCE_RUN_NUMBER" '[.workflow_runs[] | select(.run_number == $n)] | length' "$RUNS_JSON")"
+          if [[ "$MATCH_COUNT" != "1" ]]; then
+            echo "::error::Expected exactly one iOS Distribution Archive run #$EXPECTED_SOURCE_RUN_NUMBER, found $MATCH_COUNT"
+            exit 1
+          fi
+
+          RUN_JSON="$RUNNER_TEMP/source-run.json"
+          jq --argjson n "$EXPECTED_SOURCE_RUN_NUMBER" '.workflow_runs[] | select(.run_number == $n)' "$RUNS_JSON" > "$RUN_JSON"
+
+          SOURCE_RUN_ID="$(jq -r '.id' "$RUN_JSON")"
+          RUN_NAME="$(jq -r '.name' "$RUN_JSON")"
+          RUN_NUMBER="$(jq -r '.run_number' "$RUN_JSON")"
+          RUN_STATUS="$(jq -r '.status' "$RUN_JSON")"
+          RUN_CONCLUSION="$(jq -r '.conclusion' "$RUN_JSON")"
+          RUN_EVENT="$(jq -r '.event' "$RUN_JSON")"
+          RUN_BRANCH="$(jq -r '.head_branch' "$RUN_JSON")"
+          RUN_HEAD_SHA="$(jq -r '.head_sha' "$RUN_JSON")"
+          RUN_URL="$(jq -r '.html_url' "$RUN_JSON")"
+
+          echo "Source run: $RUN_URL"
+          echo "Source workflow/run: $RUN_NAME #$RUN_NUMBER"
+          echo "Source status/conclusion: $RUN_STATUS / $RUN_CONCLUSION"
+          echo "Source event/branch: $RUN_EVENT / $RUN_BRANCH"
+          echo "Source workflow-definition SHA: $RUN_HEAD_SHA"
+
+          test "$RUN_NAME" = "$EXPECTED_SOURCE_WORKFLOW"
+          test "$RUN_NUMBER" = "$EXPECTED_SOURCE_RUN_NUMBER"
+          test "$RUN_STATUS" = "completed"
+          test "$RUN_CONCLUSION" = "success"
+          test "$RUN_EVENT" = "workflow_dispatch"
+          test "$RUN_BRANCH" = "main"
+          if ! [[ "$RUN_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Source workflow-definition SHA is invalid"
+            exit 1
+          fi
+          if ! [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::Resolved source run ID is invalid"
+            exit 1
+          fi
+
+          CURRENT_MAIN_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          if ! [[ "$CURRENT_MAIN_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Current main SHA is invalid"
+            exit 1
+          fi
+          if [[ "$RUN_HEAD_SHA" != "$CURRENT_MAIN_SHA" ]]; then
+            echo "::error::Source distribution run was not executed from the current main SHA"
+            echo "Source run SHA: $RUN_HEAD_SHA"
+            echo "Current main SHA: $CURRENT_MAIN_SHA"
+            exit 1
+          fi
+
+          echo "Current main SHA: $CURRENT_MAIN_SHA"
+          echo "run_id=$SOURCE_RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$RUN_HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Download signed IPA from exact source run
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.EXPECTED_IPA_ARTIFACT }}
+          path: ${{ runner.temp }}/source-ipa
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.source-run.outputs.run_id }}
+
+      - name: Download release report from exact source run
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.EXPECTED_REPORT_ARTIFACT }}
+          path: ${{ runner.temp }}/source-report
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.source-run.outputs.run_id }}
+
+      - name: Verify downloaded artifact identity and release report
+        id: source
+        env:
+          SOURCE_RUN_HEAD_SHA: ${{ steps.source-run.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          IPA_COUNT="$(find "$RUNNER_TEMP/source-ipa" -type f -name '*.ipa' | wc -l | tr -d ' ')"
+          REPORT_COUNT="$(find "$RUNNER_TEMP/source-report" -type f -name '*ios-release-report.txt' | wc -l | tr -d ' ')"
+          test "$IPA_COUNT" -eq 1
+          test "$REPORT_COUNT" -eq 1
+
+          IPA_PATH="$(find "$RUNNER_TEMP/source-ipa" -type f -name '*.ipa' -print -quit)"
+          REPORT_PATH="$(find "$RUNNER_TEMP/source-report" -type f -name '*ios-release-report.txt' -print -quit)"
+          test -s "$IPA_PATH"
+          test -s "$REPORT_PATH"
+
+          REPORT_TARGET_SHA="$(sed -n 's/^target_sha=//p' "$REPORT_PATH")"
+          REPORT_VERSION="$(sed -n 's/^version=//p' "$REPORT_PATH")"
+          REPORT_BUILD="$(sed -n 's/^build=//p' "$REPORT_PATH")"
+          REPORT_BUNDLE_ID="$(sed -n 's/^bundle_id=//p' "$REPORT_PATH")"
+          REPORT_TEAM_ID="$(sed -n 's/^team_id=//p' "$REPORT_PATH")"
+          REPORT_PACKAGE_TYPE="$(sed -n 's/^bundle_package_type=//p' "$REPORT_PATH")"
+          REPORT_APS="$(sed -n 's/^aps_environment=//p' "$REPORT_PATH")"
+          REPORT_ARCHIVE_SIG="$(sed -n 's/^archive_signature=//p' "$REPORT_PATH")"
+          REPORT_IPA_SIG="$(sed -n 's/^ipa_signature=//p' "$REPORT_PATH")"
+          REPORT_IPA_NAME="$(sed -n 's/^ipa_name=//p' "$REPORT_PATH")"
+          REPORT_IPA_SHA256="$(sed -n 's/^ipa_sha256=//p' "$REPORT_PATH")"
+          REPORT_VALIDATION="$(sed -n 's/^app_store_validation=//p' "$REPORT_PATH")"
+          REPORT_UPLOAD="$(sed -n 's/^app_store_upload=//p' "$REPORT_PATH")"
+
+          if ! [[ "$REPORT_TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Release report target SHA is invalid"
+            exit 1
+          fi
+          test "$REPORT_TARGET_SHA" = "$SOURCE_RUN_HEAD_SHA"
+          test "$REPORT_VERSION" = "$EXPECTED_VERSION_NAME"
+          test "$REPORT_BUILD" = "$EXPECTED_VERSION_CODE"
+          test "$REPORT_BUNDLE_ID" = "$EXPECTED_BUNDLE_ID"
+          test "$REPORT_TEAM_ID" = "$EXPECTED_TEAM_ID"
+          test "$REPORT_PACKAGE_TYPE" = "APPL"
+          test "$REPORT_APS" = "production"
+          test "$REPORT_ARCHIVE_SIG" = "PASS"
+          test "$REPORT_IPA_SIG" = "PASS"
+          test "$REPORT_VALIDATION" = "PASS"
+          test "$REPORT_UPLOAD" = "NOT_PERFORMED"
+          test "$REPORT_IPA_NAME" = "$(basename "$IPA_PATH")"
+
+          ACTUAL_IPA_SHA256="$(shasum -a 256 "$IPA_PATH" | awk '{print $1}')"
+          if [[ "$ACTUAL_IPA_SHA256" != "$REPORT_IPA_SHA256" ]]; then
+            echo "::error::Downloaded IPA SHA-256 does not match the signed release report"
+            exit 1
+          fi
+
+          echo "Source RC SHA: $REPORT_TARGET_SHA"
+          echo "Source IPA: $(basename "$IPA_PATH")"
+          echo "Source IPA SHA-256: $ACTUAL_IPA_SHA256"
+          echo "ipa_path=$IPA_PATH" >> "$GITHUB_OUTPUT"
+          echo "ipa_sha256=$ACTUAL_IPA_SHA256" >> "$GITHUB_OUTPUT"
+          echo "target_sha=$REPORT_TARGET_SHA" >> "$GITHUB_OUTPUT"
+          echo "source_report=$REPORT_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Re-verify IPA package, signature, version and production APNs
+        env:
+          IPA_PATH: ${{ steps.source.outputs.ipa_path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -t "$IPA_PATH" >/dev/null
+
+          VERIFY_DIR="$RUNNER_TEMP/ipa-preupload-verify"
+          rm -rf "$VERIFY_DIR"
+          mkdir -p "$VERIFY_DIR"
+          unzip -q "$IPA_PATH" -d "$VERIFY_DIR"
+
+          IPA_APP_COUNT="$(find "$VERIFY_DIR/Payload" -mindepth 1 -maxdepth 1 -type d -name '*.app' | wc -l | tr -d ' ')"
+          test "$IPA_APP_COUNT" -eq 1
+          IPA_APP="$(find "$VERIFY_DIR/Payload" -mindepth 1 -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -f "$IPA_APP/Info.plist"
+          test -f "$IPA_APP/embedded.mobileprovision"
+
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$IPA_APP/Info.plist")"
+          SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$IPA_APP/Info.plist")"
+          BUILD_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$IPA_APP/Info.plist")"
+          PACKAGE_TYPE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$IPA_APP/Info.plist")"
+          test "$BUNDLE_ID" = "$EXPECTED_BUNDLE_ID"
+          test "$SHORT_VERSION" = "$EXPECTED_VERSION_NAME"
+          test "$BUILD_VERSION" = "$EXPECTED_VERSION_CODE"
+          test "$PACKAGE_TYPE" = "APPL"
+
+          codesign --verify --deep --strict --verbose=2 "$IPA_APP"
+          ENTITLEMENTS="$RUNNER_TEMP/preupload-entitlements.plist"
+          codesign -d --entitlements :- "$IPA_APP" > "$ENTITLEMENTS" 2>/dev/null
+          plutil -lint "$ENTITLEMENTS"
+          APS_ENV="$(/usr/libexec/PlistBuddy -c 'Print :aps-environment' "$ENTITLEMENTS")"
+          APP_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :application-identifier' "$ENTITLEMENTS")"
+          TEAM_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.team-identifier' "$ENTITLEMENTS")"
+          GET_TASK_ALLOW="$(/usr/libexec/PlistBuddy -c 'Print :get-task-allow' "$ENTITLEMENTS" 2>/dev/null || true)"
+
+          test "$APS_ENV" = "production"
+          test "$APP_IDENTIFIER" = "$EXPECTED_TEAM_ID.$EXPECTED_BUNDLE_ID"
+          test "$TEAM_IDENTIFIER" = "$EXPECTED_TEAM_ID"
+          if [[ "$GET_TASK_ALLOW" == "true" || "$GET_TASK_ALLOW" == "YES" ]]; then
+            echo "::error::Distribution IPA unexpectedly enables get-task-allow"
+            exit 1
+          fi
+
+          PROFILE_PLIST="$RUNNER_TEMP/preupload-profile.plist"
+          security cms -D -i "$IPA_APP/embedded.mobileprovision" > "$PROFILE_PLIST"
+          PROFILE_APP_ID="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$PROFILE_PLIST")"
+          PROFILE_APS="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:aps-environment' "$PROFILE_PLIST")"
+          PROFILE_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$PROFILE_PLIST")"
+          test "$PROFILE_APP_ID" = "$EXPECTED_TEAM_ID.$EXPECTED_BUNDLE_ID"
+          test "$PROFILE_APS" = "production"
+          test "$PROFILE_TEAM" = "$EXPECTED_TEAM_ID"
+
+          echo "Pre-upload IPA verification: PASS"
+          echo "Bundle ID: $BUNDLE_ID"
+          echo "Version/build: $SHORT_VERSION / $BUILD_VERSION"
+          echo "CFBundlePackageType: $PACKAGE_TYPE"
+          echo "APNs environment: $APS_ENV"
+
+      - name: Check App Store Connect API secrets
+        env:
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$APP_STORE_CONNECT_ISSUER_ID"
+          test -n "$APP_STORE_CONNECT_KEY_ID"
+          test -n "$APP_STORE_CONNECT_API_KEY_BASE64"
+          if ! [[ "$APP_STORE_CONNECT_ISSUER_ID" =~ ^[0-9A-Fa-f-]{36}$ ]]; then
+            echo "::error::App Store Connect Issuer ID format is invalid"
+            exit 1
+          fi
+          if ! [[ "$APP_STORE_CONNECT_KEY_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo "::error::App Store Connect Key ID format is invalid"
+            exit 1
+          fi
+          echo "App Store Connect API credential metadata is present."
+
+      - name: Reconstruct App Store Connect private API key
+        id: api-key
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY_DIR="$HOME/.appstoreconnect/private_keys"
+          KEY_PATH="$KEY_DIR/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+          mkdir -p "$KEY_DIR"
+          chmod 700 "$HOME/.appstoreconnect" "$KEY_DIR"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_BASE64" | base64 --decode > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          test -s "$KEY_PATH"
+
+          FIRST_LINE="$(head -n 1 "$KEY_PATH")"
+          LAST_LINE="$(tail -n 1 "$KEY_PATH")"
+          test "$FIRST_LINE" = "-----BEGIN PRIVATE KEY-----"
+          test "$LAST_LINE" = "-----END PRIVATE KEY-----"
+          echo "App Store Connect private key reconstructed securely."
+          echo "key_path=$KEY_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Select and validate Xcode upload toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEVELOPER_DIR="/Applications/Xcode_26.6.app/Contents/Developer"
+          test -d "$DEVELOPER_DIR"
+          sudo xcode-select -s "$DEVELOPER_DIR"
+          xcodebuild -version
+          xcrun altool --help >/dev/null
+          test "$(xcode-select -p)" = "$DEVELOPER_DIR"
+
+      - name: Validate IPA with App Store Connect
+        env:
+          IPA_PATH: ${{ steps.source.outputs.ipa_path }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VALIDATE_LOG="$RUNNER_TEMP/app-store-validate.log"
+          xcrun altool \
+            --validate-app \
+            -f "$IPA_PATH" \
+            -t ios \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --output-format json \
+            2>&1 | tee "$VALIDATE_LOG"
+          echo "App Store Connect validation: PASS"
+
+      - name: Upload exact validated IPA to App Store Connect
+        id: upload
+        env:
+          IPA_PATH: ${{ steps.source.outputs.ipa_path }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          UPLOAD_LOG="$RUNNER_TEMP/app-store-upload.log"
+          xcrun altool \
+            --upload-app \
+            -f "$IPA_PATH" \
+            -t ios \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --output-format json \
+            2>&1 | tee "$UPLOAD_LOG"
+          echo "App Store Connect transport upload: ACCEPTED"
+          echo "upload_log=$UPLOAD_LOG" >> "$GITHUB_OUTPUT"
+
+      - name: Write non-sensitive upload receipt
+        id: receipt
+        env:
+          IPA_PATH: ${{ steps.source.outputs.ipa_path }}
+          IPA_SHA256: ${{ steps.source.outputs.ipa_sha256 }}
+          TARGET_SHA: ${{ steps.source.outputs.target_sha }}
+          SOURCE_RUN_ID: ${{ steps.source-run.outputs.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          IPA_NAME="${IPA_PATH##*/}"
+          RECEIPT="$GITHUB_WORKSPACE/CriosRango-v${EXPECTED_VERSION_NAME}-build${EXPECTED_VERSION_CODE}-app-store-upload-receipt.txt"
+          {
+            printf '%s\n' "IOS APP STORE CONNECT UPLOAD RECEIPT"
+            printf '%s\n' "source_distribution_run_id=${SOURCE_RUN_ID}"
+            printf '%s\n' "target_sha=${TARGET_SHA}"
+            printf '%s\n' "version=${EXPECTED_VERSION_NAME}"
+            printf '%s\n' "build=${EXPECTED_VERSION_CODE}"
+            printf '%s\n' "bundle_id=${EXPECTED_BUNDLE_ID}"
+            printf '%s\n' "team_id=${EXPECTED_TEAM_ID}"
+            printf '%s\n' "ipa_name=${IPA_NAME}"
+            printf '%s\n' "ipa_sha256=${IPA_SHA256}"
+            printf '%s\n' "preupload_signature=PASS"
+            printf '%s\n' "preupload_aps_environment=production"
+            printf '%s\n' "app_store_validation=PASS"
+            printf '%s\n' "app_store_transport_upload=ACCEPTED"
+            printf '%s\n' "app_review_submission=NOT_PERFORMED"
+            printf '%s\n' "public_release=NOT_PERFORMED"
+          } > "$RECEIPT"
+          test -s "$RECEIPT"
+          cat "$RECEIPT"
+          printf 'receipt_path=%s\n' "$RECEIPT" >> "$GITHUB_OUTPUT"
+
+      - name: Upload non-sensitive App Store Connect receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: CriosRango-v${{ env.EXPECTED_VERSION_NAME }}-build${{ env.EXPECTED_VERSION_CODE }}-app-store-upload-receipt
+          retention-days: 14
+          path: ${{ steps.receipt.outputs.receipt_path }}
+          if-no-files-found: error
+
+      - name: Cleanup App Store Connect private key
+        if: always()
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+        shell: bash
+        run: |
+          rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"

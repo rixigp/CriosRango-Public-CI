@@ -1,0 +1,664 @@
+name: iOS Distribution Archive
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Exact commit SHA to build"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_BUNDLE_ID: "es.criosrango.app"
+  EXPECTED_TEAM_ID: "3793344J72"
+  EXPECTED_VERSION_NAME: "2.0.1"
+  EXPECTED_VERSION_CODE: "20002"
+  EXPECTED_PROFILE_NAME: "CriosRango AppStore 2.0.1"
+
+jobs:
+  ios-distribution:
+    name: Build and verify signed iOS distribution
+    runs-on: macos-26
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout exact target SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.target_sha }}
+
+      - name: Verify checked out SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          if [[ "$ACTUAL_SHA" != "${{ inputs.target_sha }}" ]]; then
+            echo "::error::Checked out SHA does not match target_sha"
+            exit 1
+          fi
+          echo "Checked out requested target SHA: $ACTUAL_SHA"
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Select and validate Xcode 26.6
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEVELOPER_DIR="/Applications/Xcode_26.6.app/Contents/Developer"
+          test -d "$DEVELOPER_DIR"
+          sudo xcode-select -s "$DEVELOPER_DIR"
+          XCODE_INFO="$(xcodebuild -version)"
+          SDK_VERSION="$(xcrun --sdk iphoneos --show-sdk-version)"
+          printf '%s\n' "$XCODE_INFO"
+          echo "iPhoneOS SDK: $SDK_VERSION"
+          test "$(xcode-select -p)" = "$DEVELOPER_DIR"
+          XCODE_VERSION="$(printf '%s\n' "$XCODE_INFO" | awk '/^Xcode / {print $2; exit}')"
+          test "$XCODE_VERSION" = "26.6"
+
+      - name: Read and validate release version
+        id: app-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION_NAME="$(grep -E 'versionName[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')"
+          VERSION_CODE="$(grep -E 'versionCode[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/')"
+          test -n "$VERSION_NAME"
+          test -n "$VERSION_CODE"
+          if [[ "$VERSION_NAME" != "$EXPECTED_VERSION_NAME" ]]; then
+            echo "::error::Unexpected versionName: $VERSION_NAME"
+            exit 1
+          fi
+          if [[ "$VERSION_CODE" != "$EXPECTED_VERSION_CODE" ]]; then
+            echo "::error::Unexpected versionCode: $VERSION_CODE"
+            exit 1
+          fi
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "Release version: $VERSION_NAME / $VERSION_CODE"
+
+      - name: Validate exact iOS AppIcon source set
+        shell: bash
+        run: |
+          set -euo pipefail
+          ICON_DIR="iosApp/Assets.xcassets/AppIcon.appiconset"
+          CONTENTS="$ICON_DIR/Contents.json"
+          test -f "$CONTENTS"
+
+          EXPECTED_FILES=(
+            "AppIcon-20@2x.png:40:40"
+            "AppIcon-20@3x.png:60:60"
+            "AppIcon-29@2x.png:58:58"
+            "AppIcon-29@3x.png:87:87"
+            "AppIcon-40@2x.png:80:80"
+            "AppIcon-40@3x.png:120:120"
+            "AppIcon-60@2x.png:120:120"
+            "AppIcon-60@3x.png:180:180"
+            "AppIcon-1024.png:1024:1024"
+          )
+
+          for spec in "${EXPECTED_FILES[@]}"; do
+            IFS=: read -r file expected_w expected_h <<< "$spec"
+            path="$ICON_DIR/$file"
+            test -s "$path"
+            grep -Fq "\"filename":"$file"" "$CONTENTS"
+            actual_w="$(sips -g pixelWidth "$path" | awk '/pixelWidth:/ {print $2}')"
+            actual_h="$(sips -g pixelHeight "$path" | awk '/pixelHeight:/ {print $2}')"
+            has_alpha="$(sips -g hasAlpha "$path" | awk '/hasAlpha:/ {print $2}')"
+            test "$actual_w" = "$expected_w"
+            test "$actual_h" = "$expected_h"
+            test "$has_alpha" = "no"
+          done
+
+          EXPECTED_1024_SHA256="d0ab750d3826a15acde3c187e84891744eb2db5abd1f3e3362ace735283ad05b"
+          ACTUAL_1024_SHA256="$(shasum -a 256 "$ICON_DIR/AppIcon-1024.png" | awk '{print $1}')"
+          test "$ACTUAL_1024_SHA256" = "$EXPECTED_1024_SHA256"
+          grep -Fq 'ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;' iosApp/iosApp.xcodeproj/project.pbxproj
+          echo "iOS AppIcon source set: PASS"
+          echo "AppIcon-1024 SHA-256: $ACTUAL_1024_SHA256"
+
+      - name: Prepare App Store bundle metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          INFO_PLIST="iosApp/Info.plist"
+          test -f "$INFO_PLIST"
+          if /usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$INFO_PLIST" >/dev/null 2>&1; then
+            /usr/libexec/PlistBuddy -c 'Set :CFBundlePackageType APPL' "$INFO_PLIST"
+          else
+            /usr/libexec/PlistBuddy -c 'Add :CFBundlePackageType string APPL' "$INFO_PLIST"
+          fi
+          plutil -lint "$INFO_PLIST"
+          PACKAGE_TYPE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$INFO_PLIST")"
+          test "$PACKAGE_TYPE" = "APPL"
+          echo "Prepared ephemeral App Store bundle metadata: CFBundlePackageType=APPL."
+
+      - name: Check required iOS signing and App Store secrets
+        env:
+          IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$IOS_DISTRIBUTION_P12_BASE64"
+          test -n "$IOS_DISTRIBUTION_P12_PASSWORD"
+          test -n "$IOS_PROVISIONING_PROFILE_BASE64"
+          test -n "$APP_STORE_CONNECT_ISSUER_ID"
+          test -n "$APP_STORE_CONNECT_KEY_ID"
+          test -n "$APP_STORE_CONNECT_API_KEY_BASE64"
+          if ! [[ "$APP_STORE_CONNECT_ISSUER_ID" =~ ^[0-9A-Fa-f-]{36}$ ]]; then
+            echo "::error::App Store Connect Issuer ID format is invalid"
+            exit 1
+          fi
+          if ! [[ "$APP_STORE_CONNECT_KEY_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo "::error::App Store Connect Key ID format is invalid"
+            exit 1
+          fi
+          echo "Required iOS distribution and App Store Connect secrets are present."
+
+      - name: Reconstruct and validate provisioning profile
+        id: profile
+        env:
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROFILE_PATH="$RUNNER_TEMP/CriosRango.mobileprovision"
+          PROFILE_PLIST="$RUNNER_TEMP/CriosRango-profile.plist"
+          printf '%s' "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+          chmod 600 "$PROFILE_PATH"
+          test -s "$PROFILE_PATH"
+          security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
+          plutil -lint "$PROFILE_PLIST"
+
+          PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$PROFILE_PLIST")"
+          PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$PROFILE_PLIST")"
+          PROFILE_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$PROFILE_PLIST")"
+          PROFILE_APP_ID="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$PROFILE_PLIST")"
+          PROFILE_APS="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:aps-environment' "$PROFILE_PLIST")"
+          PROFILE_EXPIRATION="$(/usr/libexec/PlistBuddy -c 'Print :ExpirationDate' "$PROFILE_PLIST")"
+          PROFILE_GET_TASK_ALLOW="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:get-task-allow' "$PROFILE_PLIST" 2>/dev/null || true)"
+
+          echo "Provisioning profile name: $PROFILE_NAME"
+          echo "Provisioning profile UUID: $PROFILE_UUID"
+          echo "Provisioning profile team: $PROFILE_TEAM"
+          echo "Provisioning application identifier: $PROFILE_APP_ID"
+          echo "Provisioning APNs environment: $PROFILE_APS"
+          echo "Provisioning expiration: $PROFILE_EXPIRATION"
+
+          test "$PROFILE_NAME" = "$EXPECTED_PROFILE_NAME"
+          test "$PROFILE_TEAM" = "$EXPECTED_TEAM_ID"
+          test "$PROFILE_APP_ID" = "$EXPECTED_TEAM_ID.$EXPECTED_BUNDLE_ID"
+          test "$PROFILE_APS" = "production"
+          if [[ "$PROFILE_GET_TASK_ALLOW" == "true" || "$PROFILE_GET_TASK_ALLOW" == "YES" ]]; then
+            echo "::error::Distribution profile unexpectedly enables get-task-allow"
+            exit 1
+          fi
+
+          echo "profile_path=$PROFILE_PATH" >> "$GITHUB_OUTPUT"
+          echo "profile_plist=$PROFILE_PLIST" >> "$GITHUB_OUTPUT"
+          echo "profile_uuid=$PROFILE_UUID" >> "$GITHUB_OUTPUT"
+          echo "profile_name=$PROFILE_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare production distribution entitlements
+        id: entitlements
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_ENTITLEMENTS="iosApp/iosApp.entitlements"
+          RELEASE_ENTITLEMENTS="$RUNNER_TEMP/CriosRango-release.entitlements"
+          test -f "$SOURCE_ENTITLEMENTS"
+          cp "$SOURCE_ENTITLEMENTS" "$RELEASE_ENTITLEMENTS"
+          /usr/libexec/PlistBuddy -c 'Set :aps-environment production' "$RELEASE_ENTITLEMENTS"
+          plutil -lint "$RELEASE_ENTITLEMENTS"
+          APS_ENV="$(/usr/libexec/PlistBuddy -c 'Print :aps-environment' "$RELEASE_ENTITLEMENTS")"
+          test "$APS_ENV" = "production"
+          echo "Prepared ephemeral distribution entitlements with aps-environment=production."
+          echo "release_entitlements=$RELEASE_ENTITLEMENTS" >> "$GITHUB_OUTPUT"
+
+      - name: Install Apple Distribution certificate and profile
+        id: signing
+        env:
+          IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+          PROFILE_PATH: ${{ steps.profile.outputs.profile_path }}
+          PROFILE_PLIST: ${{ steps.profile.outputs.profile_plist }}
+          PROFILE_UUID: ${{ steps.profile.outputs.profile_uuid }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          P12_PATH="$RUNNER_TEMP/apple-distribution.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/criosrango-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)$(uuidgen)"
+
+          printf '%s' "$IOS_DISTRIBUTION_P12_BASE64" | base64 --decode > "$P12_PATH"
+          chmod 600 "$P12_PATH"
+          test -s "$P12_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$P12_PATH" -P "$IOS_DISTRIBUTION_P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+
+          SIGNING_SHA1="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk '/Apple Distribution:/ {print $2; exit}')"
+          if ! [[ "$SIGNING_SHA1" =~ ^[0-9A-Fa-f]{40}$ ]]; then
+            echo "::error::Valid Apple Distribution code-signing identity was not found in imported P12"
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true
+            exit 1
+          fi
+
+          PROFILE_CERT_MATCH="$(python3 - "$PROFILE_PLIST" "$SIGNING_SHA1" <<'PY'
+          import hashlib
+          import plistlib
+          import sys
+          with open(sys.argv[1], 'rb') as f:
+              profile = plistlib.load(f)
+          wanted = sys.argv[2].replace(':', '').upper()
+          matches = [hashlib.sha1(bytes(cert)).hexdigest().upper() for cert in profile.get('DeveloperCertificates', [])]
+          print('yes' if wanted in matches else 'no')
+          PY
+          )"
+          if [[ "$PROFILE_CERT_MATCH" != "yes" ]]; then
+            echo "::error::Provisioning profile does not contain the imported Apple Distribution certificate"
+            exit 1
+          fi
+
+          MODERN_PROFILE_DIR="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          LEGACY_PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$MODERN_PROFILE_DIR" "$LEGACY_PROFILE_DIR"
+          cp "$PROFILE_PATH" "$MODERN_PROFILE_DIR/$PROFILE_UUID.mobileprovision"
+          cp "$PROFILE_PATH" "$LEGACY_PROFILE_DIR/$PROFILE_UUID.mobileprovision"
+
+          echo "Imported Apple Distribution identity: $SIGNING_SHA1"
+          echo "Provisioning profile certificate match: PASS"
+          echo "signing_sha1=$SIGNING_SHA1" >> "$GITHUB_OUTPUT"
+          echo "keychain_path=$KEYCHAIN_PATH" >> "$GITHUB_OUTPUT"
+          echo "p12_path=$P12_PATH" >> "$GITHUB_OUTPUT"
+          echo "modern_profile_path=$MODERN_PROFILE_DIR/$PROFILE_UUID.mobileprovision" >> "$GITHUB_OUTPUT"
+          echo "legacy_profile_path=$LEGACY_PROFILE_DIR/$PROFILE_UUID.mobileprovision" >> "$GITHUB_OUTPUT"
+
+      - name: Preflight effective Release signing settings
+        env:
+          VERSION_NAME: ${{ steps.app-version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.app-version.outputs.version_code }}
+          PROFILE_UUID: ${{ steps.profile.outputs.profile_uuid }}
+          SIGNING_SHA1: ${{ steps.signing.outputs.signing_sha1 }}
+          RELEASE_ENTITLEMENTS: ${{ steps.entitlements.outputs.release_entitlements }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SETTINGS_FILE="$RUNNER_TEMP/ios-distribution-build-settings.txt"
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme CriosRangoKMPSpike \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$EXPECTED_TEAM_ID" \
+            CODE_SIGN_IDENTITY="$SIGNING_SHA1" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
+            CODE_SIGN_ENTITLEMENTS="$RELEASE_ENTITLEMENTS" \
+            MARKETING_VERSION="$VERSION_NAME" \
+            CURRENT_PROJECT_VERSION="$VERSION_CODE" \
+            -showBuildSettings > "$SETTINGS_FILE"
+
+          for KEY in CONFIGURATION PRODUCT_BUNDLE_IDENTIFIER PRODUCT_NAME CODE_SIGN_STYLE DEVELOPMENT_TEAM CODE_SIGN_IDENTITY PROVISIONING_PROFILE_SPECIFIER CODE_SIGN_ENTITLEMENTS MARKETING_VERSION CURRENT_PROJECT_VERSION SWIFT_OPTIMIZATION_LEVEL FRAMEWORK_SEARCH_PATHS; do
+            grep -E "^[[:space:]]*$KEY[[:space:]]*=" "$SETTINGS_FILE" || true
+          done
+
+          EFFECTIVE_CONFIGURATION="$(awk -F ' = ' '/^[[:space:]]*CONFIGURATION = / {print $2; exit}' "$SETTINGS_FILE")"
+          EFFECTIVE_BUNDLE_ID="$(awk -F ' = ' '/^[[:space:]]*PRODUCT_BUNDLE_IDENTIFIER = / {print $2; exit}' "$SETTINGS_FILE")"
+          EFFECTIVE_TEAM="$(awk -F ' = ' '/^[[:space:]]*DEVELOPMENT_TEAM = / {print $2; exit}' "$SETTINGS_FILE")"
+          EFFECTIVE_PROFILE="$(awk -F ' = ' '/^[[:space:]]*PROVISIONING_PROFILE_SPECIFIER = / {print $2; exit}' "$SETTINGS_FILE")"
+          EFFECTIVE_ENTITLEMENTS="$(awk -F ' = ' '/^[[:space:]]*CODE_SIGN_ENTITLEMENTS = / {print $2; exit}' "$SETTINGS_FILE")"
+          EFFECTIVE_VERSION="$(awk -F ' = ' '/^[[:space:]]*MARKETING_VERSION = / {print $2; exit}' "$SETTINGS_FILE")"
+          EFFECTIVE_BUILD="$(awk -F ' = ' '/^[[:space:]]*CURRENT_PROJECT_VERSION = / {print $2; exit}' "$SETTINGS_FILE")"
+
+          test "$EFFECTIVE_CONFIGURATION" = "Release"
+          test "$EFFECTIVE_BUNDLE_ID" = "$EXPECTED_BUNDLE_ID"
+          test "$EFFECTIVE_TEAM" = "$EXPECTED_TEAM_ID"
+          test "$EFFECTIVE_PROFILE" = "$PROFILE_UUID"
+          test "$EFFECTIVE_ENTITLEMENTS" = "$RELEASE_ENTITLEMENTS"
+          test "$EFFECTIVE_VERSION" = "$EXPECTED_VERSION_NAME"
+          test "$EFFECTIVE_BUILD" = "$EXPECTED_VERSION_CODE"
+          test -f "$RELEASE_ENTITLEMENTS"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :aps-environment' "$RELEASE_ENTITLEMENTS")" = "production"
+
+      - name: Archive signed iOS Release
+        id: archive
+        env:
+          VERSION_NAME: ${{ steps.app-version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.app-version.outputs.version_code }}
+          PROFILE_UUID: ${{ steps.profile.outputs.profile_uuid }}
+          SIGNING_SHA1: ${{ steps.signing.outputs.signing_sha1 }}
+          RELEASE_ENTITLEMENTS: ${{ steps.entitlements.outputs.release_entitlements }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE_PATH="$RUNNER_TEMP/CriosRango.xcarchive"
+          ARCHIVE_LOG="$RUNNER_TEMP/CriosRango-signed-archive.log"
+          rm -rf "$ARCHIVE_PATH"
+          rm -rf "$GITHUB_WORKSPACE/shared/build/xcode-frameworks/Release" "$GITHUB_WORKSPACE/shared/build/xcode-frameworks/Debug"
+
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme CriosRangoKMPSpike \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$EXPECTED_TEAM_ID" \
+            CODE_SIGN_IDENTITY="$SIGNING_SHA1" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
+            CODE_SIGN_ENTITLEMENTS="$RELEASE_ENTITLEMENTS" \
+            MARKETING_VERSION="$VERSION_NAME" \
+            CURRENT_PROJECT_VERSION="$VERSION_CODE" \
+            archive 2>&1 | tee "$ARCHIVE_LOG"
+
+          test -d "$ARCHIVE_PATH"
+          if grep -q 'Debug-iphoneos' "$ARCHIVE_LOG"; then
+            echo "::error::Signed archive used Debug-iphoneos"
+            exit 1
+          fi
+          if ! grep -q 'Release-iphoneos' "$ARCHIVE_LOG"; then
+            echo "::error::Signed archive log does not contain Release-iphoneos evidence"
+            exit 1
+          fi
+          if ! grep -q 'shared/build/xcode-frameworks/Release/' "$ARCHIVE_LOG"; then
+            echo "::error::Signed archive log does not contain Release KMP framework evidence"
+            exit 1
+          fi
+
+          APP_PATH="$ARCHIVE_PATH/Products/Applications/CriosRango.app"
+          test -d "$APP_PATH"
+          test -f "$APP_PATH/Info.plist"
+          test -f "$APP_PATH/embedded.mobileprovision"
+
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")"
+          SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")"
+          BUILD_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")"
+          PACKAGE_TYPE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$APP_PATH/Info.plist")"
+          test "$BUNDLE_ID" = "$EXPECTED_BUNDLE_ID"
+          test "$SHORT_VERSION" = "$EXPECTED_VERSION_NAME"
+          test "$BUILD_VERSION" = "$EXPECTED_VERSION_CODE"
+          if [[ "$PACKAGE_TYPE" != "APPL" ]]; then
+            echo "::error::Signed archive CFBundlePackageType is '$PACKAGE_TYPE'; expected APPL"
+            exit 1
+          fi
+
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          SIGNED_ENTITLEMENTS="$RUNNER_TEMP/archive-signed-entitlements.plist"
+          codesign -d --entitlements :- "$APP_PATH" > "$SIGNED_ENTITLEMENTS" 2>/dev/null
+          plutil -lint "$SIGNED_ENTITLEMENTS"
+          APS_ENV="$(/usr/libexec/PlistBuddy -c 'Print :aps-environment' "$SIGNED_ENTITLEMENTS")"
+          APP_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :application-identifier' "$SIGNED_ENTITLEMENTS")"
+          TEAM_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.team-identifier' "$SIGNED_ENTITLEMENTS")"
+          GET_TASK_ALLOW="$(/usr/libexec/PlistBuddy -c 'Print :get-task-allow' "$SIGNED_ENTITLEMENTS" 2>/dev/null || true)"
+          test "$APS_ENV" = "production"
+          test "$APP_IDENTIFIER" = "$EXPECTED_TEAM_ID.$EXPECTED_BUNDLE_ID"
+          test "$TEAM_IDENTIFIER" = "$EXPECTED_TEAM_ID"
+          if [[ "$GET_TASK_ALLOW" == "true" || "$GET_TASK_ALLOW" == "YES" ]]; then
+            echo "::error::Signed distribution app unexpectedly enables get-task-allow"
+            exit 1
+          fi
+
+          EMBEDDED_PLIST="$RUNNER_TEMP/embedded-profile.plist"
+          security cms -D -i "$APP_PATH/embedded.mobileprovision" > "$EMBEDDED_PLIST"
+          EMBEDDED_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$EMBEDDED_PLIST")"
+          test "$EMBEDDED_UUID" = "$PROFILE_UUID"
+
+          echo "Signed archive bundle: $BUNDLE_ID"
+          echo "Signed archive version: $SHORT_VERSION / $BUILD_VERSION"
+          echo "Signed archive CFBundlePackageType: $PACKAGE_TYPE"
+          echo "Signed archive aps-environment: $APS_ENV"
+          echo "Signed archive application-identifier: $APP_IDENTIFIER"
+          echo "Signed archive provisioning UUID: $EMBEDDED_UUID"
+          echo "archive_path=$ARCHIVE_PATH" >> "$GITHUB_OUTPUT"
+          echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Export App Store Connect IPA without upload
+        id: ipa
+        env:
+          PROFILE_NAME: ${{ steps.profile.outputs.profile_name }}
+          ARCHIVE_PATH: ${{ steps.archive.outputs.archive_path }}
+          VERSION_NAME: ${{ steps.app-version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.app-version.outputs.version_code }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPORT_OPTIONS="$RUNNER_TEMP/ExportOptions.plist"
+          EXPORT_PATH="$RUNNER_TEMP/CriosRango-export"
+          rm -rf "$EXPORT_PATH"
+          mkdir -p "$EXPORT_PATH"
+
+          cat > "$EXPORT_OPTIONS" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store-connect</string>
+              <key>destination</key>
+              <string>export</string>
+              <key>teamID</key>
+              <string>$EXPECTED_TEAM_ID</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>signingCertificate</key>
+              <string>Apple Distribution</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>$EXPECTED_BUNDLE_ID</key>
+                  <string>$PROFILE_NAME</string>
+              </dict>
+              <key>manageAppVersionAndBuildNumber</key>
+              <false/>
+              <key>stripSwiftSymbols</key>
+              <true/>
+          </dict>
+          </plist>
+          PLIST
+          plutil -lint "$EXPORT_OPTIONS"
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_PATH" \
+            -exportOptionsPlist "$EXPORT_OPTIONS"
+
+          IPA_COUNT="$(find "$EXPORT_PATH" -maxdepth 1 -type f -name '*.ipa' | wc -l | tr -d ' ')"
+          test "$IPA_COUNT" -eq 1
+          SOURCE_IPA="$(find "$EXPORT_PATH" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
+          test -s "$SOURCE_IPA"
+          FINAL_IPA="$GITHUB_WORKSPACE/CriosRango-v${VERSION_NAME}-build${VERSION_CODE}.ipa"
+          cp "$SOURCE_IPA" "$FINAL_IPA"
+          unzip -t "$FINAL_IPA" >/dev/null
+
+          VERIFY_DIR="$RUNNER_TEMP/ipa-verify"
+          rm -rf "$VERIFY_DIR"
+          mkdir -p "$VERIFY_DIR"
+          unzip -q "$FINAL_IPA" -d "$VERIFY_DIR"
+          IPA_APP="$(find "$VERIFY_DIR/Payload" -mindepth 1 -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -d "$IPA_APP"
+          IPA_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$IPA_APP/Info.plist")"
+          IPA_SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$IPA_APP/Info.plist")"
+          IPA_BUILD_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$IPA_APP/Info.plist")"
+          IPA_PACKAGE_TYPE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$IPA_APP/Info.plist")"
+          test "$IPA_BUNDLE_ID" = "$EXPECTED_BUNDLE_ID"
+          test "$IPA_SHORT_VERSION" = "$EXPECTED_VERSION_NAME"
+          test "$IPA_BUILD_VERSION" = "$EXPECTED_VERSION_CODE"
+          if [[ "$IPA_PACKAGE_TYPE" != "APPL" ]]; then
+            echo "::error::Exported IPA CFBundlePackageType is '$IPA_PACKAGE_TYPE'; expected APPL"
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$IPA_APP"
+
+          IPA_ENTITLEMENTS="$RUNNER_TEMP/ipa-signed-entitlements.plist"
+          codesign -d --entitlements :- "$IPA_APP" > "$IPA_ENTITLEMENTS" 2>/dev/null
+          IPA_APS="$(/usr/libexec/PlistBuddy -c 'Print :aps-environment' "$IPA_ENTITLEMENTS")"
+          test "$IPA_APS" = "production"
+
+          IPA_SHA256="$(shasum -a 256 "$FINAL_IPA" | awk '{print $1}')"
+          IPA_SIZE="$(stat -f '%z' "$FINAL_IPA")"
+          echo "IPA: $(basename "$FINAL_IPA")"
+          echo "IPA size: $IPA_SIZE bytes"
+          echo "IPA SHA-256: $IPA_SHA256"
+          echo "IPA CFBundlePackageType: $IPA_PACKAGE_TYPE"
+          echo "IPA aps-environment: $IPA_APS"
+          echo "ipa_path=$FINAL_IPA" >> "$GITHUB_OUTPUT"
+          echo "ipa_sha256=$IPA_SHA256" >> "$GITHUB_OUTPUT"
+          echo "ipa_size=$IPA_SIZE" >> "$GITHUB_OUTPUT"
+          echo "export_path=$EXPORT_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Reconstruct App Store Connect private API key
+        id: api-key
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY_DIR="$HOME/.appstoreconnect/private_keys"
+          KEY_PATH="$KEY_DIR/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+          mkdir -p "$KEY_DIR"
+          chmod 700 "$HOME/.appstoreconnect" "$KEY_DIR"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_BASE64" | base64 --decode > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          test -s "$KEY_PATH"
+          test "$(head -n 1 "$KEY_PATH")" = "-----BEGIN PRIVATE KEY-----"
+          test "$(tail -n 1 "$KEY_PATH")" = "-----END PRIVATE KEY-----"
+          echo "App Store Connect private key reconstructed securely."
+          echo "key_path=$KEY_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Validate final IPA with App Store Connect
+        env:
+          IPA_PATH: ${{ steps.ipa.outputs.ipa_path }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun altool --help >/dev/null
+          VALIDATE_LOG="$RUNNER_TEMP/app-store-validate.log"
+          xcrun altool \
+            --validate-app \
+            -f "$IPA_PATH" \
+            -t ios \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --output-format json \
+            2>&1 | tee "$VALIDATE_LOG"
+          echo "App Store Connect validation: PASS"
+
+      - name: Validate dSYM and write non-sensitive release report
+        id: report
+        env:
+          ARCHIVE_PATH: ${{ steps.archive.outputs.archive_path }}
+          IPA_PATH: ${{ steps.ipa.outputs.ipa_path }}
+          IPA_SHA256: ${{ steps.ipa.outputs.ipa_sha256 }}
+          IPA_SIZE: ${{ steps.ipa.outputs.ipa_size }}
+          PROFILE_UUID: ${{ steps.profile.outputs.profile_uuid }}
+          PROFILE_NAME: ${{ steps.profile.outputs.profile_name }}
+          SIGNING_SHA1: ${{ steps.signing.outputs.signing_sha1 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          DSYM_DIR="$ARCHIVE_PATH/dSYMs"
+          test -d "$DSYM_DIR"
+          DSYM_COUNT="$(find "$DSYM_DIR" -mindepth 1 -maxdepth 1 -type d -name '*.dSYM' | wc -l | tr -d ' ')"
+          if [[ "$DSYM_COUNT" -lt 1 ]]; then
+            echo "::error::No dSYM bundle found in signed archive"
+            exit 1
+          fi
+          echo "dSYM bundle count: $DSYM_COUNT"
+          find "$DSYM_DIR" -mindepth 1 -maxdepth 1 -type d -name '*.dSYM' -print
+
+          REPORT="$GITHUB_WORKSPACE/CriosRango-v${EXPECTED_VERSION_NAME}-build${EXPECTED_VERSION_CODE}-ios-release-report.txt"
+          {
+            echo "IOS DISTRIBUTION RELEASE REPORT"
+            echo "target_sha=${{ inputs.target_sha }}"
+            echo "version=${EXPECTED_VERSION_NAME}"
+            echo "build=${EXPECTED_VERSION_CODE}"
+            echo "bundle_id=${EXPECTED_BUNDLE_ID}"
+            echo "bundle_package_type=APPL"
+            echo "team_id=${EXPECTED_TEAM_ID}"
+            echo "profile_name=${PROFILE_NAME}"
+            echo "profile_uuid=${PROFILE_UUID}"
+            echo "signing_identity_sha1=${SIGNING_SHA1}"
+            echo "aps_environment=production"
+            echo "archive_signature=PASS"
+            echo "ipa_signature=PASS"
+            echo "ipa_name=$(basename "$IPA_PATH")"
+            echo "ipa_size_bytes=${IPA_SIZE}"
+            echo "ipa_sha256=${IPA_SHA256}"
+            echo "app_store_validation=PASS"
+            echo "app_store_upload=NOT_PERFORMED"
+          } > "$REPORT"
+          cat "$REPORT"
+          echo "report_path=$REPORT" >> "$GITHUB_OUTPUT"
+          echo "dsym_dir=$DSYM_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Upload signed IPA
+        uses: actions/upload-artifact@v7
+        with:
+          name: CriosRango-v${{ steps.app-version.outputs.version_name }}-build${{ steps.app-version.outputs.version_code }}-ipa
+          retention-days: 14
+          path: ${{ steps.ipa.outputs.ipa_path }}
+          if-no-files-found: error
+
+      - name: Upload signed xcarchive
+        uses: actions/upload-artifact@v7
+        with:
+          name: CriosRango-v${{ steps.app-version.outputs.version_name }}-build${{ steps.app-version.outputs.version_code }}-xcarchive
+          retention-days: 14
+          path: ${{ steps.archive.outputs.archive_path }}
+          if-no-files-found: error
+
+      - name: Upload dSYM
+        uses: actions/upload-artifact@v7
+        with:
+          name: CriosRango-v${{ steps.app-version.outputs.version_name }}-build${{ steps.app-version.outputs.version_code }}-dsym
+          retention-days: 14
+          path: ${{ steps.report.outputs.dsym_dir }}
+          if-no-files-found: error
+
+      - name: Upload non-sensitive iOS release report
+        uses: actions/upload-artifact@v7
+        with:
+          name: CriosRango-v${{ steps.app-version.outputs.version_name }}-build${{ steps.app-version.outputs.version_code }}-ios-release-report
+          retention-days: 14
+          path: ${{ steps.report.outputs.report_path }}
+          if-no-files-found: error
+
+      - name: Cleanup temporary signing material
+        if: always()
+        env:
+          KEYCHAIN_PATH: ${{ steps.signing.outputs.keychain_path }}
+          P12_PATH: ${{ steps.signing.outputs.p12_path }}
+          MODERN_PROFILE_PATH: ${{ steps.signing.outputs.modern_profile_path }}
+          LEGACY_PROFILE_PATH: ${{ steps.signing.outputs.legacy_profile_path }}
+          PROFILE_PATH: ${{ steps.profile.outputs.profile_path }}
+          PROFILE_PLIST: ${{ steps.profile.outputs.profile_plist }}
+          RELEASE_ENTITLEMENTS: ${{ steps.entitlements.outputs.release_entitlements }}
+          API_KEY_PATH: ${{ steps.api-key.outputs.key_path }}
+        shell: bash
+        run: |
+          set +e
+          if [[ -n "${KEYCHAIN_PATH:-}" && -f "$KEYCHAIN_PATH" ]]; then
+            security delete-keychain "$KEYCHAIN_PATH"
+          fi
+          rm -f "${P12_PATH:-}" "${MODERN_PROFILE_PATH:-}" "${LEGACY_PROFILE_PATH:-}" "${PROFILE_PATH:-}" "${PROFILE_PLIST:-}" "${RELEASE_ENTITLEMENTS:-}" "${API_KEY_PATH:-}"
+          rm -f "$RUNNER_TEMP/ExportOptions.plist" "$RUNNER_TEMP/archive-signed-entitlements.plist" "$RUNNER_TEMP/ipa-signed-entitlements.plist" "$RUNNER_TEMP/embedded-profile.plist"
