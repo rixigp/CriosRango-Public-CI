@@ -27,7 +27,6 @@ import androidx.compose.material.icons.outlined.*
 import android.os.Bundle
 import android.content.Intent
 import android.net.Uri
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -285,7 +284,7 @@ internal fun productSizeSortKey(value: String): Int {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cartItems: List<CartItem>, cartStoreInstance: Int, loadVariation: (Int) -> Unit, onBack: () -> Unit, onCart: () -> Unit, onSearch: () -> Unit, onAdd: (CartItem) -> Unit) {
+internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cartItems: List<CartItem>, loadVariation: (Int) -> Unit, onBack: () -> Unit, onCart: () -> Unit, onSearch: () -> Unit, onAdd: (CartItem) -> Unit) {
     val context = LocalContext.current
     val selected = remember(product.id) { mutableStateMapOf<String, String>() }
     var fullscreenGalleryPage by remember(product.id) {
@@ -382,7 +381,6 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
             Column {
                 StoreTopBar(
                     cartQuantity = cartItems.sumOf { it.quantity },
-                    cartStoreInstance = cartStoreInstance,
                     onSearch = onSearch,
                     onCart = onCart
                 )

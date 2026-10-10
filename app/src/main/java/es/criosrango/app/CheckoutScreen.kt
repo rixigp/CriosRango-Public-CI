@@ -52,7 +52,6 @@ fun RedesignedCheckoutScreen(
     checkoutPhase: CheckoutPhase,
     onBack: () -> Unit,
     cartQuantity: Int,
-    cartStoreInstance: Int,
     onSearch: () -> Unit,
     onCart: () -> Unit,
     loadCheckout: (CustomerAddress) -> Unit,
@@ -168,7 +167,6 @@ fun RedesignedCheckoutScreen(
         Column {
             StoreTopBar(
                 cartQuantity = cartQuantity,
-                cartStoreInstance = cartStoreInstance,
                 onSearch = onSearch,
                 onCart = onCart
             )
