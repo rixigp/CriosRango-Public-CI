@@ -17,7 +17,7 @@ fun PushNotificationPreferences() {
     Column(Modifier.fillMaxWidth()) {
         Text("Notificaciones", style = MaterialTheme.typography.titleMedium)
         Row(
-            Modifier.fillMaxWidth().padding(top = 10.dp),
+            Modifier.fillMaxWidth().padding(top = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(Modifier.weight(1f)) {
@@ -35,7 +35,7 @@ fun PushNotificationPreferences() {
             )
         }
         Row(
-            Modifier.fillMaxWidth().padding(top = 10.dp),
+            Modifier.fillMaxWidth().padding(top = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(Modifier.weight(1f)) {
