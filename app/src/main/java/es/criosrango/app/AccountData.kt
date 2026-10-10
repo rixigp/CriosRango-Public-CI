@@ -656,7 +656,6 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 if (generation == accountGeneration) _orders.value = loaded
             } catch (exception: Exception) {
                 if (generation == accountGeneration) {
-                    logOrdersException(exception)
                     handleAuthenticatedHttpError(exception, "No hemos podido actualizar tus pedidos.")
                 }
             } finally {

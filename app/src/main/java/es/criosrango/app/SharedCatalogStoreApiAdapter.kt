@@ -3,8 +3,6 @@ package es.criosrango.app
 import android.util.Log
 import es.criosrango.shared.api.StoreApiClient
 import es.criosrango.shared.api.StoreApiException
-import es.criosrango.shared.checkoutDiagLog
-import es.criosrango.shared.sanitizeCheckoutDiag
 import es.criosrango.shared.model.StoreCart
 import es.criosrango.shared.model.StoreCartRequest
 import es.criosrango.shared.model.StoreCartVariation
@@ -149,22 +147,6 @@ class SharedCatalogStoreApiAdapter(
         Log.d("CriosRangoSharedCart", "CART source=shared operation=APPLY_COUPON")
         sharedClient.applyCoupon(code).toAndroid()
     } catch (exception: Exception) {
-        if (BuildConfig.DEBUG && exception is StoreApiException) {
-            val customer = sharedClient.diagnosticCustomer()
-            val updateCustomerBeforeApply = sharedClient.diagnosticCustomerUpdatedBeforeCoupon()
-            val debugMessage = buildString {
-                append("DBG status=")
-                append(exception.statusCode)
-                append(" code=")
-                append(exception.apiCode ?: "")
-                append(" message=")
-                append(exception.message)
-                customer?.billingEmail?.let { append(" billing=").append(it) }
-                customer?.shippingEmail?.let { append(" shipping=").append(it) }
-                append(" updateCustomer=").append(updateCustomerBeforeApply)
-            }
-            throw CartException(debugMessage)
-        }
         throw exception.toAndroidCatalogException()
     }
 
@@ -177,33 +159,8 @@ class SharedCatalogStoreApiAdapter(
 
     override suspend fun checkout(): CheckoutResponse = try {
         Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=GET")
-        val sharedResponse = sharedClient.checkout()
-        checkoutDiagLog(
-            "CHECKOUT_ADAPTER SHARED_MODEL_OK errors_count=${sharedResponse.errors.size} " +
-                "total_items=${sharedResponse.totals.totalItems} total_items_tax=${sharedResponse.totals.totalItemsTax} " +
-                "total_discount=${sharedResponse.totals.totalDiscount} total_discount_tax=${sharedResponse.totals.totalDiscountTax} " +
-                "total_shipping=${sharedResponse.totals.totalShipping} total_shipping_tax=${sharedResponse.totals.totalShippingTax} total_price=${sharedResponse.totals.totalPrice}"
-        )
-        checkoutDiagLog("CHECKOUT_ADAPTER MAP_START")
-        try {
-            sharedResponse.toAndroid().also {
-                checkoutDiagLog("CHECKOUT_ADAPTER MAP_OK errors_count=${it.errors.size}")
-            }
-        } catch (exception: Exception) {
-            checkoutDiagLog(
-                "CHECKOUT_ADAPTER MAP_ERROR type=${exception::class.qualifiedName} " +
-                    "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 500)}"
-            )
-            throw exception
-        }
+        sharedClient.checkout().toAndroid()
     } catch (exception: Exception) {
-        if (exception is StoreApiException) {
-            checkoutDiagLog(
-                "CHECKOUT_ADAPTER STORE_API_EXCEPTION type=${exception::class.qualifiedName} status=${exception.statusCode} " +
-                    "apiCode=${sanitizeCheckoutDiag(exception.apiCode.orEmpty(), 100)} " +
-                    "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 500)}"
-            )
-        }
         throw exception.toAndroidCatalogException()
     }
 
@@ -213,35 +170,9 @@ class SharedCatalogStoreApiAdapter(
     } catch (exception: CouponInvalidatedCheckoutException) {
         throw exception
     } catch (exception: StoreApiException) {
-        couponInvalidationDiag(
-            "CHECKOUT_ADAPTER STORE_API_EXCEPTION status=${exception.statusCode} " +
-                "backendCode=${sanitizeCheckoutDiag(exception.apiCode.orEmpty(), 160)}"
-        )
         if (exception.apiCode?.trim()?.let { it in COUPON_INVALIDATION_BACKEND_CODES } == true) {
-            val removedCouponCodes = exception.removedCoupons.flatMap { (key, value) ->
-                val payloadCode = runCatching { value.jsonObject["code"]?.jsonPrimitive?.contentOrNull }.getOrNull()
-                listOfNotNull(key, payloadCode).map { it.trim() }.filter(String::isNotBlank)
-            }.distinct()
-            couponInvalidationDiag(
-                "EXCEPTION type=${exception::class.qualifiedName} httpStatus=${exception.statusCode} " +
-                    "backendCode=${sanitizeCheckoutDiag(exception.apiCode.orEmpty(), 120)} removedCoupons=${removedCouponCodes.joinToString(",")} " +
-                    "hasDataCart=${exception.updatedCart != null}"
-            )
             val friendlyNames = exception.removedCoupons.values.mapNotNull { it.friendlyCouponName() }.distinct()
-            val updatedCart = runCatching { exception.updatedCart?.toAndroid() }
-                .onFailure { conversionError ->
-                    checkoutDiagLog(
-                        "CHECKOUT_ADAPTER COUPON_CART_CONVERSION_ERROR type=${conversionError::class.qualifiedName} " +
-                            "message=${sanitizeCheckoutDiag(conversionError.message.orEmpty(), 300)}"
-                    )
-                }
-                .getOrNull()
-            checkoutDiagLog(
-                "CHECKOUT_ADAPTER COUPON_INVALIDATION status=${exception.statusCode} " +
-                    "code=${sanitizeCheckoutDiag(exception.apiCode.orEmpty(), 100)} " +
-                    "cartPayloadPresent=${exception.updatedCart != null} cartConverted=${updatedCart != null} " +
-                    "removedCouponCount=${exception.removedCoupons.size}"
-            )
+            val updatedCart = runCatching { exception.updatedCart?.toAndroid() }.getOrNull()
             throw CouponInvalidatedCheckoutException(
                 httpStatus = exception.statusCode,
                 backendCode = exception.apiCode.orEmpty(),
