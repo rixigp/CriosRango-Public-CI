@@ -34,8 +34,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
-import es.criosrango.shared.checkoutDiagLog
-import es.criosrango.shared.sanitizeCheckoutDiag
 
 interface StoreSessionStore {
     var cartToken: String?
@@ -82,13 +80,6 @@ class StoreApiException(
     val updatedCart: StoreCart? = null
 ) : Exception(message)
 
-data class StoreCustomerDiagnostic(
-    val billingEmail: String?,
-    val billingFirstName: String?,
-    val billingLastName: String?,
-    val shippingEmail: String?
-)
-
 class StoreApiClient(
     private val baseUrl: String = "https://criosrango.es/wp-json/wc/store/v1/",
     private val client: HttpClient = createStoreHttpClient(),
@@ -96,56 +87,12 @@ class StoreApiClient(
     private val accountTokenStore: AccountTokenStore? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
-    private var lastCustomerDiagnostic: StoreCustomerDiagnostic? = null
-    private var customerUpdatedBeforeCoupon = false
-
-    fun diagnosticCustomer(): StoreCustomerDiagnostic? = lastCustomerDiagnostic
-    fun diagnosticCustomerUpdatedBeforeCoupon(): Boolean = customerUpdatedBeforeCoupon
     private suspend inline fun <reified T> executeCart(
-        operation: String? = null,
-        method: String? = null,
-        path: String? = null,
         request: suspend () -> io.ktor.client.statement.HttpResponse
     ): T {
-        val isCartGet = method == "GET" && path == "cart"
-        val isCheckoutGet = operation == "checkout" && method == "GET" && path == "checkout"
-        val isCheckoutPost = operation == "checkout-post" && method == "POST" && path == "checkout"
-        if (isCartGet) checkoutDiagLog("LOGOUT_CART_DIAG GET_CART_START cartTokenPresent=${session.cartToken?.isNotBlank() == true} noncePresent=${session.nonce?.isNotBlank() == true} cookiePresent=${session.cookieHeader?.isNotBlank() == true}")
-        if (isCheckoutGet) checkoutDiagLog("HTTP_CHECKOUT START method=GET path=/checkout")
-        val response = try {
-            request()
-        } catch (exception: Exception) {
-            if (isCheckoutGet) {
-                checkoutDiagLog(
-                    "HTTP_CHECKOUT REQUEST_EXCEPTION type=${exception::class.qualifiedName} " +
-                        "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 500)}"
-                )
-            }
-            if (isCheckoutPost) {
-                checkoutDiagLog(
-                    "HTTP_CHECKOUT_POST REQUEST_EXCEPTION type=${exception::class.qualifiedName} " +
-                        "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 600)}"
-                )
-            }
-            throw exception
-        }
+        val response = request()
         session.updateFromResponse(response.headers)
         val raw = response.bodyAsText()
-        if (isCartGet) checkoutDiagLog("LOGOUT_CART_DIAG GET_CART_RESPONSE status=${response.status.value} items=${runCatching { json.decodeFromString<es.criosrango.shared.model.StoreCart>(raw).items.size }.getOrDefault(-1)} coupons=${runCatching { json.decodeFromString<es.criosrango.shared.model.StoreCart>(raw).coupons.size }.getOrDefault(-1)}")
-        if (isCheckoutGet) {
-            checkoutDiagLog(
-                "HTTP_CHECKOUT RESPONSE status=${response.status.value} " +
-                    "contentType=${sanitizeCheckoutDiag(response.headers[HttpHeaders.ContentType].orEmpty(), 120)} " +
-                    "body=${sanitizeCheckoutDiag(raw)}"
-            )
-        }
-        if (isCheckoutPost) {
-            checkoutDiagLog(
-                "HTTP_CHECKOUT_POST RESPONSE status=${response.status.value} " +
-                    "contentType=${sanitizeCheckoutDiag(response.headers[HttpHeaders.ContentType].orEmpty(), 120)} " +
-                    "body=${sanitizeCheckoutDiag(raw)}"
-            )
-        }
         // Parse the top-level error independently from its optional cart payload.
         // A malformed/variant data.cart must never erase the coupon error code itself.
         val errorEnvelope = if (!response.status.isSuccess()) {
@@ -162,22 +109,7 @@ class StoreApiClient(
             .orEmpty()
         val updatedCart = errorData?.get("cart")?.let { element ->
             runCatching { json.decodeFromJsonElement<es.criosrango.shared.model.StoreCart>(element) }
-                .onFailure { exception ->
-                    checkoutDiagLog(
-                        "HTTP ERROR CART_PARSE_ERROR operation=$operation status=${response.status.value} " +
-                            "type=${exception::class.qualifiedName} message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 300)}"
-                    )
-                }
                 .getOrNull()
-        }
-        if (operation != null && !response.status.isSuccess()) {
-            checkoutDiagLog(
-                "HTTP ERROR operation=$operation method=$method path=$path status=${response.status.value} " +
-                    "backendCode=${errorCode?.let { sanitizeCheckoutDiag(it) } ?: "null"} " +
-                    "backendMessage=${sanitizeCheckoutDiag(errorMessage.orEmpty())} " +
-                    "cartPresent=${updatedCart != null} removedCouponCount=${removedCoupons.size} " +
-                    "body=${sanitizeCheckoutDiag(raw)}"
-            )
         }
         if (!response.status.isSuccess()) {
             throw StoreApiException(
@@ -188,26 +120,7 @@ class StoreApiClient(
                 updatedCart = updatedCart
             )
         }
-        return try {
-            json.decodeFromString<T>(raw).also {
-                if (isCheckoutGet) checkoutDiagLog("HTTP_CHECKOUT PARSE_OK")
-                if (isCheckoutPost) checkoutDiagLog("HTTP_CHECKOUT_POST PARSE_OK")
-            }
-        } catch (exception: Exception) {
-            if (isCheckoutGet) {
-                checkoutDiagLog(
-                    "HTTP_CHECKOUT PARSE_ERROR type=${exception::class.qualifiedName} " +
-                        "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 500)}"
-                )
-            }
-            if (isCheckoutPost) {
-                checkoutDiagLog(
-                    "HTTP_CHECKOUT_POST PARSE_ERROR type=${exception::class.qualifiedName} " +
-                        "message=${sanitizeCheckoutDiag(exception.message.orEmpty(), 600)}"
-                )
-            }
-            throw exception
-        }
+        return json.decodeFromString<T>(raw)
     }
 
     /** Drops local Store API credentials after best-effort remote cleanup. */
@@ -223,7 +136,7 @@ class StoreApiClient(
     }
 
     suspend fun cart(): es.criosrango.shared.model.StoreCart =
-        executeCart(method = "GET", path = "cart") { client.get(baseUrl + "cart") { sessionHeaders() } }
+        executeCart { client.get(baseUrl + "cart") { sessionHeaders() } }
 
     suspend fun addCartItem(request: es.criosrango.shared.model.StoreCartRequest): es.criosrango.shared.model.StoreCart =
         executeCart {
@@ -251,7 +164,6 @@ class StoreApiClient(
         }
 
     suspend fun applyCoupon(code: String): StoreCart {
-        customerUpdatedBeforeCoupon = lastCustomerDiagnostic != null
         val normalizedCode = code.trim()
         require(normalizedCode.isNotEmpty()) { "El código del cupón no puede estar vacío." }
         return executeCart {
@@ -275,19 +187,12 @@ class StoreApiClient(
 
 
     suspend fun checkout(): CheckoutResponse =
-        executeCart(operation = "checkout", method = "GET", path = "checkout") {
+        executeCart {
             client.get(baseUrl + "checkout") { sessionHeaders() }
         }
 
     suspend fun updateCustomer(request: UpdateCustomerRequest): StoreCart =
-        executeCart(operation = "update-customer", method = "POST", path = "cart/update-customer") {
-            lastCustomerDiagnostic = StoreCustomerDiagnostic(
-                billingEmail = request.billingAddress.email,
-                billingFirstName = request.billingAddress.firstName,
-                billingLastName = request.billingAddress.lastName,
-                shippingEmail = request.shippingAddress.email
-            )
-            customerUpdatedBeforeCoupon = false
+        executeCart {
             client.post(baseUrl + "cart/update-customer") {
                 sessionHeaders()
                 contentType(ContentType.Application.Json)
@@ -296,7 +201,7 @@ class StoreApiClient(
         }
 
     suspend fun selectShippingRate(request: SelectShippingRateRequest): StoreCart =
-        executeCart(operation = "select-shipping-rate", method = "POST", path = "cart/select-shipping-rate") {
+        executeCart {
             client.post(baseUrl + "cart/select-shipping-rate") {
                 sessionHeaders()
                 contentType(ContentType.Application.Json)
@@ -304,11 +209,8 @@ class StoreApiClient(
             }
         }
 
-    suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse {
-        checkoutDiagLog(
-            "HTTP_CHECKOUT_POST START path=/checkout payment_method=${sanitizeCheckoutDiag(request.paymentMethod, 80)}"
-        )
-        return executeCart(operation = "checkout-post", method = "POST", path = "checkout") {
+    suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse =
+        executeCart {
             client.post(baseUrl + "checkout") {
                 sessionHeaders()
                 header("X-CriosRango-App", "1")
@@ -316,7 +218,6 @@ class StoreApiClient(
                 setBody(request)
             }
         }
-    }
 
     suspend fun paymentStatus(orderId: Int, orderKey: String): es.criosrango.shared.model.PaymentStatusResponse =
         executeCart {

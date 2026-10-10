@@ -97,23 +97,13 @@ fun Exception.toStoreUiError(authenticated: Boolean = false): StoreUiError {
 fun Exception.toStoreUiErrorForCatalog(): StoreUiError = toStoreUiError(authenticated = false)
 
 @Composable
-fun StoreErrorState(error: StoreUiError, padding: PaddingValues, onRetry: (() -> Unit)? = null, onLogin: (() -> Unit)? = null, diagnostic: String? = null) {
+fun StoreErrorState(error: StoreUiError, padding: PaddingValues, onRetry: (() -> Unit)? = null, onLogin: (() -> Unit)? = null) {
     Column(Modifier.fillMaxSize().padding(padding).padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(error.icon, contentDescription = null, modifier = Modifier.size(30.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(14.dp))
         Text(error.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Text(error.message, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp))
-        if (diagnostic != null) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                diagnostic,
-                modifier = Modifier.fillMaxWidth(),
-                fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
         Spacer(Modifier.height(18.dp))
         if (error.type == StoreErrorType.SESSION_EXPIRED && onLogin != null) OutlinedButton(onClick = onLogin) { Text("Iniciar sesión") }
         else if (onRetry != null) OutlinedButton(onClick = onRetry) { Text("Reintentar") }

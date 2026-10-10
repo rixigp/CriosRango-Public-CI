@@ -1,7 +1,5 @@
 package es.criosrango.app
 
-import android.util.Log
-
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
@@ -215,9 +213,6 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     private val _accountError = MutableStateFlow<StoreUiError?>(null)
     val accountError = _accountError.asStateFlow()
 
-    private val _accountSessionDiag = MutableStateFlow<String?>(null)
-    val accountSessionDiag = _accountSessionDiag.asStateFlow()
-
     private val _notice = MutableStateFlow<String?>(null)
     val notice = _notice.asStateFlow()
 
@@ -256,7 +251,6 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         _authState.value = AccountAuthState.UNAUTHENTICATED
         _error.value = null
         _accountError.value = null
-        _accountSessionDiag.value = null
         _notice.value = null
         _accountDataError.value = null
         _accountDataNotice.value = null
@@ -265,16 +259,6 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         _loading.value = false
         _savingAccountDetails.value = false
         _savingAddress.value = false
-    }
-
-    private fun logOrdersException(exception: Exception) {
-        val chain = generateSequence<Throwable>(exception) { it.cause }
-            .take(4)
-            .joinToString(" -> ") { it::class.simpleName ?: "UnknownException" }
-        android.util.Log.e(
-            "CriosRangoAccount",
-            "orders-detailed failed; endpoint=/wp-json/criosrango/v1/orders-detailed; exceptionChain=$chain"
-        )
     }
 
     private fun handleAuthenticatedHttpError(exception: Exception, fallback: String): Boolean {
@@ -331,7 +315,6 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                             if (generation == accountGeneration) _orders.value = loadedOrders
                         } catch (exception: Exception) {
                             if (generation != accountGeneration) return@launch
-                            logOrdersException(exception)
                             if (handleAuthenticatedHttpError(exception, "No hemos podido cargar tus pedidos.")) return@launch
                         }
                     } finally {
@@ -343,29 +326,6 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 if (generation != accountGeneration) return@launch
 
                 val storeError = exception.toStoreUiError(authenticated = true)
-                if (BuildConfig.DEBUG) {
-                    val chain = generateSequence<Throwable>(exception) { it.cause }.take(4).toList()
-                    _accountSessionDiag.value = buildString {
-                        appendLine("AUTH_REVOKE_DIAG")
-                        appendLine("authState=${_authState.value}")
-                        appendLine("error=${storeError.type}")
-                        appendLine("hasSession=${repository.hasSession}")
-                        appendLine("exception=${chain.firstOrNull()?.let { it::class.qualifiedName ?: it::class.simpleName } ?: "UnknownException"}")
-                        appendLine("causes=${chain.drop(1).joinToString(" -> ") { it::class.qualifiedName ?: it::class.simpleName ?: "UnknownException" }.ifBlank { "none" }}")
-                        append("httpStatus=${exception.httpStatusCodeOrNull()?.toString() ?: "none"}")
-                    }
-                } else {
-                    _accountSessionDiag.value = null
-                }
-
-                val loggedChain = generateSequence<Throwable>(exception) { it.cause }
-                    .take(8)
-                    .joinToString(" -> ") { it::class.qualifiedName ?: it::class.simpleName ?: "UnknownException" }
-                Log.e(
-                    "AUTH_REVOKE_DIAG",
-                    "restoreSession failed; uiError=${storeError.type}; hasSession=${repository.hasSession}; exceptionChain=$loggedChain"
-                )
-
                 if (storeError.type == StoreErrorType.SESSION_EXPIRED || !repository.hasSession) {
                     invalidateSession()
                     return@launch
@@ -707,7 +667,6 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun logout(beforeLogout: suspend () -> Unit = {}, onLogoutComplete: () -> Unit = {}) {
-        Log.d("LOGOUT_CART_DIAG", "ACCOUNT_LOGOUT_START")
         ++accountGeneration
         restoreJob?.cancel()
         viewModelScope.launch {
@@ -739,7 +698,6 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 _savingAccountDetails.value = false
                 _savingAddress.value = false
                 onLogoutComplete()
-                Log.d("LOGOUT_CART_DIAG", "ACCOUNT_LOGOUT_END")
             }
         }
     }

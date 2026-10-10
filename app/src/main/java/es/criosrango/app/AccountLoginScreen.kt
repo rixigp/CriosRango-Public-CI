@@ -85,7 +85,6 @@ fun AccountLoginScreen(
     val ordersRefreshing by vm.ordersRefreshing.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val accountError by vm.accountError.collectAsStateWithLifecycle()
-    val accountSessionDiag by vm.accountSessionDiag.collectAsStateWithLifecycle()
     val notificationContext = LocalContext.current
     val notice by vm.notice.collectAsStateWithLifecycle()
     val address by vm.address.collectAsStateWithLifecycle()
@@ -199,7 +198,6 @@ fun AccountLoginScreen(
             accountError!!,
             padding,
             vm::retrySession,
-            diagnostic = if (BuildConfig.DEBUG && accountError?.type == StoreErrorType.UNEXPECTED) accountSessionDiag else null
         )
         return
     }
