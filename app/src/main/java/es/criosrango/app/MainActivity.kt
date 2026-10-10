@@ -376,6 +376,7 @@ private fun CriosRangoApp(
                                 val itemColor = if (selected) Color(0xFF28252A) else Color(0xFF777277)
                                 Column(Modifier.weight(1f).fillMaxHeight().clickable {
                                     selectedBrand = null; showAllBrands = false
+                                    if (item == AppTab.HOME) homeShowAll = false
                                     if (item == AppTab.CATEGORIES) categoryPath.clear()
                                     if (item == AppTab.OUTLET) { outletSeasonFilter = null; categoryPath.clear(); categoryPath += 445 }
                                     if (item == AppTab.CART || item == AppTab.ACCOUNT) openUtilityTab(item) else tab = item

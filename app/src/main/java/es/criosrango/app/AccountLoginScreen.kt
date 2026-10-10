@@ -302,7 +302,7 @@ fun AccountLoginScreen(
                     )
                     AccountSection.ORDERS -> Unit
                 }
-                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection == AccountSection.PROFILE) 4.dp else 24.dp))
+                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection == AccountSection.PROFILE) 12.dp else 24.dp))
             }
         }
         if (showForgot) AccountForgotPasswordDialog(login, forgotPasswordLoading, error, notice, { showForgot = false; vm.clearAccountMessages() }, vm::forgotPassword)
@@ -1143,13 +1143,13 @@ private fun AccountProfileContent(loading: Boolean, onBack: () -> Unit, onPerson
     val context = LocalContext.current
 
     AccountSectionHeader("Perfil", onBack)
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(12.dp))
     ProfileMenuRow("Datos personales", Icons.Outlined.Person, onPersonalData)
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(12.dp))
     ProfileMenuRow("Dirección de entrega", Icons.Outlined.LocationOn, onAddress)
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(12.dp))
     ProfileMenuRow("Cambiar contraseña", Icons.Outlined.Lock, onPassword)
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(12.dp))
     ProfileMenuRow(
         AccountDeletion.TITLE,
         Icons.Outlined.Delete,
@@ -1157,10 +1157,10 @@ private fun AccountProfileContent(loading: Boolean, onBack: () -> Unit, onPerson
         containerColor = AccountDeletion.background,
         contentColor = AccountDeletion.accent
     )
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(22.dp))
     PushNotificationPreferences()
-    Spacer(Modifier.height(12.dp))
-    Card(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onLogout), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFECEF))) { Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.AutoMirrored.Outlined.Logout, null, tint = Color(0xFFC73B4C)); Spacer(Modifier.width(14.dp)); Text("Cerrar sesión", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = Color(0xFFC73B4C)) } }
+    Spacer(Modifier.height(22.dp))
+    Card(Modifier.fillMaxWidth().clickable(onClick = onLogout), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFECEF))) { Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.AutoMirrored.Outlined.Logout, null, tint = Color(0xFFC73B4C)); Spacer(Modifier.width(14.dp)); Text("Cerrar sesión", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = Color(0xFFC73B4C)) } }
 
     if (showDeleteConfirmation) {
         AlertDialog(
@@ -1204,7 +1204,7 @@ private fun ProfileMenuRow(
         colors = CardDefaults.cardColors(containerColor = containerColor)
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(icon, null, tint = contentColor, modifier = Modifier.size(28.dp))
