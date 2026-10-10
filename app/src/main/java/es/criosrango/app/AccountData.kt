@@ -215,6 +215,9 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     private val _accountError = MutableStateFlow<StoreUiError?>(null)
     val accountError = _accountError.asStateFlow()
 
+    private val _accountSessionDiag = MutableStateFlow<String?>(null)
+    val accountSessionDiag = _accountSessionDiag.asStateFlow()
+
     private val _notice = MutableStateFlow<String?>(null)
     val notice = _notice.asStateFlow()
 
@@ -253,6 +256,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         _authState.value = AccountAuthState.UNAUTHENTICATED
         _error.value = null
         _accountError.value = null
+        _accountSessionDiag.value = null
         _notice.value = null
         _accountDataError.value = null
         _accountDataNotice.value = null
@@ -334,12 +338,27 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 if (generation != accountGeneration) return@launch
 
                 val storeError = exception.toStoreUiError(authenticated = true)
-                val chain = generateSequence<Throwable>(exception) { it.cause }
+                if (BuildConfig.DEBUG) {
+                    val chain = generateSequence<Throwable>(exception) { it.cause }.take(4).toList()
+                    _accountSessionDiag.value = buildString {
+                        appendLine("AUTH_REVOKE_DIAG")
+                        appendLine("authState=${_authState.value}")
+                        appendLine("error=${storeError.type}")
+                        appendLine("hasSession=${repository.hasSession}")
+                        appendLine("exception=${chain.firstOrNull()?.let { it::class.qualifiedName ?: it::class.simpleName } ?: "UnknownException"}")
+                        appendLine("causes=${chain.drop(1).joinToString(" -> ") { it::class.qualifiedName ?: it::class.simpleName ?: "UnknownException" }.ifBlank { "none" }}")
+                        append("httpStatus=${exception.httpStatusCodeOrNull()?.toString() ?: "none"}")
+                    }
+                } else {
+                    _accountSessionDiag.value = null
+                }
+
+                val loggedChain = generateSequence<Throwable>(exception) { it.cause }
                     .take(8)
                     .joinToString(" -> ") { it::class.qualifiedName ?: it::class.simpleName ?: "UnknownException" }
                 Log.e(
                     "AUTH_REVOKE_DIAG",
-                    "restoreSession failed; uiError=${storeError.type}; hasSession=${repository.hasSession}; exceptionChain=$chain"
+                    "restoreSession failed; uiError=${storeError.type}; hasSession=${repository.hasSession}; exceptionChain=$loggedChain"
                 )
 
                 if (storeError.type == StoreErrorType.SESSION_EXPIRED || !repository.hasSession) {

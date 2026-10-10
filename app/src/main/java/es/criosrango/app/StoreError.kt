@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 
 enum class StoreErrorType { NO_INTERNET, SERVER_UNAVAILABLE, TIMEOUT, SESSION_EXPIRED, UNEXPECTED }
@@ -57,7 +58,7 @@ private fun Throwable.errorChain(): List<Throwable> =
         .take(8)
         .toList()
 
-private fun Exception.httpStatusCodeOrNull(): Int? =
+internal fun Exception.httpStatusCodeOrNull(): Int? =
     errorChain().firstNotNullOfOrNull { throwable ->
         when (throwable) {
             is StoreApiException -> throwable.statusCode
@@ -96,13 +97,23 @@ fun Exception.toStoreUiError(authenticated: Boolean = false): StoreUiError {
 fun Exception.toStoreUiErrorForCatalog(): StoreUiError = toStoreUiError(authenticated = false)
 
 @Composable
-fun StoreErrorState(error: StoreUiError, padding: PaddingValues, onRetry: (() -> Unit)? = null, onLogin: (() -> Unit)? = null) {
+fun StoreErrorState(error: StoreUiError, padding: PaddingValues, onRetry: (() -> Unit)? = null, onLogin: (() -> Unit)? = null, diagnostic: String? = null) {
     Column(Modifier.fillMaxSize().padding(padding).padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(error.icon, contentDescription = null, modifier = Modifier.size(30.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(14.dp))
         Text(error.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Text(error.message, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 8.dp))
+        if (diagnostic != null) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                diagnostic,
+                modifier = Modifier.fillMaxWidth(),
+                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         Spacer(Modifier.height(18.dp))
         if (error.type == StoreErrorType.SESSION_EXPIRED && onLogin != null) OutlinedButton(onClick = onLogin) { Text("Iniciar sesión") }
         else if (onRetry != null) OutlinedButton(onClick = onRetry) { Text("Reintentar") }
