@@ -587,19 +587,32 @@ internal fun CartScreen(
     if (showWalletInfoDialog) {
         AlertDialog(
             onDismissRequest = { showWalletInfoDialog = false },
-            title = { Text("¿Cómo funciona tu monedero?") },
+            title = {
+                Text(
+                    "¿Cómo funciona tu monedero?",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            },
             text = {
                 Text(
-                    "1 € gastado = 1 punto.\n\n" +
-                        "Cuando acumules 100 puntos, podrás convertirlos en 5 € de saldo para tus compras.\n\n" +
-                        "La barra te indica cuánto te falta para desbloquear el saldo.\n\n" +
-                        "Cuando tengas saldo disponible, pulsa ‘Usar’ para elegir cuánto quieres aplicar a tu compra."
+                    "1 € gastado = 1 punto.\\n\\n" +
+                        "Cuando acumules 100 puntos, podrás convertirlos en 5 € de saldo para tus compras.\\n\\n" +
+                        "La barra te indica cuánto te falta para desbloquear el saldo.\\n\\n" +
+                        "Cuando tengas saldo disponible, pulsa “Usar” para elegir cuánto quieres aplicar a tu compra."
                 )
             },
             confirmButton = {
-                TextButton(onClick = { showWalletInfoDialog = false }) {
-                    Text("Entendido")
-                }
+                Button(
+                    onClick = { showWalletInfoDialog = false },
+                    modifier = Modifier.height(36.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF0F5C4D),
+                        contentColor = Color.White
+                    )
+                ) { Text("Entendido", style = MaterialTheme.typography.labelMedium) }
             }
         )
     }
