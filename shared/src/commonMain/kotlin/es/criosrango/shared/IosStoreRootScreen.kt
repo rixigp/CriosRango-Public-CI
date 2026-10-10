@@ -146,6 +146,8 @@ fun CriosRangoIOSRootScreen(
         onPushNavigationConsumed()
     }
 
+    val observedCart by cartStore.cart.collectAsState()
+    val cartQuantity = cartUnitCount(observedCart.items.map { it.quantity })
     val createdOrder by checkoutStore.createdOrder.collectAsState()
     LaunchedEffect(createdOrder?.orderId, createdOrder?.orderKey) {
         val order = createdOrder ?: return@LaunchedEffect
@@ -164,7 +166,7 @@ fun CriosRangoIOSRootScreen(
             bottomBar = {
                 IosMainTabBar(
                     selected = section,
-                    cartCount = cartStore.cart.collectAsState().value.itemsCount,
+                    cartCount = cartQuantity,
                     onSelected = {
                         section = it
                         if (it == IosRootSection.CATEGORIES) resetCatalog()
@@ -175,7 +177,7 @@ fun CriosRangoIOSRootScreen(
         ) { padding ->
             Column(Modifier.fillMaxSize()) {
                 IosStoreTopBar(
-                    cartQuantity = cartStore.cart.collectAsState().value.itemsCount,
+                    cartQuantity = cartQuantity,
                     onSearch = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Search) },
                     onCart = { section = IosRootSection.CART }
                 )
@@ -272,7 +274,7 @@ private fun IosStoreTopBar(
         Box(Modifier.width(56.dp).fillMaxHeight()) {
         BadgedBox(
             modifier = Modifier.size(48.dp).align(Alignment.CenterStart),
-            badge = { if (cartQuantity > 0) Badge { Text(cartQuantity.toString(), maxLines = 1) } }
+            badge = { if (cartQuantity > 0) Badge { Text(cartBadgeText(cartQuantity), maxLines = 1) } }
         ) {
             IconButton(onClick = onCart) { Text("🛍", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { contentDescription = "Carrito" }) }
         }
@@ -311,7 +313,7 @@ private fun IosMainTabBar(
                             color = if (active) Color(0xFF183B35) else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         if (item == IosRootSection.CART && cartCount > 0) {
-                            Text(" $cartCount", fontWeight = FontWeight.Bold)
+                            Badge { Text(cartBadgeText(cartCount), maxLines = 1) }
                         }
                     }
                 }

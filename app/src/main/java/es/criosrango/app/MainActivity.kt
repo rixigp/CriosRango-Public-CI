@@ -32,6 +32,8 @@ import android.net.Uri
 import android.util.Log
 import es.criosrango.shared.PushNotificationContract
 import es.criosrango.shared.PushNotificationType
+import es.criosrango.shared.cartBadgeText
+import es.criosrango.shared.cartUnitCount
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
@@ -203,6 +205,7 @@ private fun CriosRangoApp(
     val selectedProduct by viewModel.selectedProduct.collectAsStateWithLifecycle()
     val selectedVariation by viewModel.selectedVariation.collectAsStateWithLifecycle()
     val remoteCart by viewModel.cartStore.cart.collectAsStateWithLifecycle()
+    val cartQuantity = cartUnitCount(remoteCart.items.map { it.quantity })
     val cartState by viewModel.cartStore.state.collectAsStateWithLifecycle()
     val cartError by viewModel.cartStore.error.collectAsStateWithLifecycle()
     val couponLoading by viewModel.cartStore.couponLoading.collectAsStateWithLifecycle()
@@ -340,7 +343,7 @@ private fun CriosRangoApp(
                     checkoutError,
                     checkoutPhase,
                     { checkoutOpen = false; viewModel.abandonCheckout() },
-                    remoteCart.itemsCount,
+                    cartQuantity,
                     System.identityHashCode(viewModel.cartStore),
                     { checkoutOpen = false; viewModel.abandonCheckout(); tab = AppTab.SEARCH },
                     { checkoutOpen = false; viewModel.abandonCheckout(); tab = AppTab.CART },
@@ -364,7 +367,7 @@ private fun CriosRangoApp(
                 )
             } else Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
-                topBar = { StoreTopBar(remoteCart.itemsCount, System.identityHashCode(viewModel.cartStore), { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH }, { openUtilityTab(AppTab.CART) }) },
+                topBar = { StoreTopBar(cartQuantity, System.identityHashCode(viewModel.cartStore), { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH }, { openUtilityTab(AppTab.CART) }) },
                 bottomBar = {
                     Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
                         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -377,7 +380,14 @@ private fun CriosRangoApp(
                                     if (item == AppTab.OUTLET) { outletSeasonFilter = null; categoryPath.clear(); categoryPath += 445 }
                                     if (item == AppTab.CART || item == AppTab.ACCOUNT) openUtilityTab(item) else tab = item
                                 }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                    Icon(imageVector = if (selected) when (item) { AppTab.HOME -> Icons.Default.Home; AppTab.CATEGORIES -> Icons.Default.Category; AppTab.OUTLET -> Icons.Default.LocalOffer; AppTab.SEARCH -> Icons.Default.Search; AppTab.CART -> Icons.Default.ShoppingBag; AppTab.ACCOUNT -> Icons.Default.Person } else when (item) { AppTab.HOME -> Icons.Outlined.Home; AppTab.CATEGORIES -> Icons.Outlined.Category; AppTab.OUTLET -> Icons.Outlined.LocalOffer; AppTab.SEARCH -> Icons.Outlined.Search; AppTab.CART -> Icons.Outlined.ShoppingBag; AppTab.ACCOUNT -> Icons.Outlined.Person }, contentDescription = item.label, modifier = Modifier.size(24.dp), tint = if (selected) Color.Black else Color(0xFF777277))
+                                    Box {
+                                        Icon(imageVector = if (selected) when (item) { AppTab.HOME -> Icons.Default.Home; AppTab.CATEGORIES -> Icons.Default.Category; AppTab.OUTLET -> Icons.Default.LocalOffer; AppTab.SEARCH -> Icons.Default.Search; AppTab.CART -> Icons.Default.ShoppingBag; AppTab.ACCOUNT -> Icons.Default.Person } else when (item) { AppTab.HOME -> Icons.Outlined.Home; AppTab.CATEGORIES -> Icons.Outlined.Category; AppTab.OUTLET -> Icons.Outlined.LocalOffer; AppTab.SEARCH -> Icons.Outlined.Search; AppTab.CART -> Icons.Outlined.ShoppingBag; AppTab.ACCOUNT -> Icons.Outlined.Person }, contentDescription = item.label, modifier = Modifier.size(24.dp), tint = if (selected) Color.Black else Color(0xFF777277))
+                                        if (item == AppTab.CART && cartQuantity > 0) {
+                                            Badge(modifier = Modifier.align(Alignment.TopEnd).offset(x = 5.dp, y = (-4).dp)) {
+                                                Text(cartBadgeText(cartQuantity), maxLines = 1)
+                                            }
+                                        }
+                                    }
                                     Spacer(Modifier.height(2.dp))
                                     Text(text = item.label, style = MaterialTheme.typography.labelSmall, color = if (selected) Color.Black else Color(0xFF777277), fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
                                 }
@@ -537,7 +547,7 @@ internal fun StoreTopBar(cartQuantity: Int, cartStoreInstance: Int, onSearch: ()
                 modifier = Modifier
                     .size(48.dp)
                     .align(Alignment.CenterStart),
-                badge = { if (cartQuantity > 0) { Log.d("LOGOUT_CART_DIAG", "BADGE_CARTSTORE instance=$cartStoreInstance"); Badge { Text(cartQuantity.toString(), maxLines = 1) } } }
+                badge = { if (cartQuantity > 0) { Log.d("LOGOUT_CART_DIAG", "BADGE_CARTSTORE instance=$cartStoreInstance"); Badge { Text(cartBadgeText(cartQuantity), maxLines = 1) } } }
             ) {
                 IconButton(onCart) { Icon(Icons.Outlined.ShoppingBag, "Carrito") }
             }
