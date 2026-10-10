@@ -2,8 +2,6 @@ package es.criosrango.app
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -27,7 +25,6 @@ import androidx.compose.material.icons.outlined.*
 import android.os.Bundle
 import android.content.Intent
 import android.net.Uri
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -65,7 +62,6 @@ import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -80,7 +76,6 @@ import compose.icons.tablericons.Bed
 import compose.icons.tablericons.Hanger
 import compose.icons.tablericons.Shirt
 import compose.icons.tablericons.Tag
-import kotlinx.coroutines.launch
 import es.criosrango.shared.model.countFor
 
 // OUTLET_CATEGORY_BUBBLES_START
@@ -266,7 +261,6 @@ internal fun OutletAwareCatalogGrid(
     pagingKey: Any? = null,
     headerTitle: String? = null,
     headerOnBack: (() -> Unit)? = null,
-    headerOnTitleLongPress: (() -> Unit)? = null,
     headerContent: (@Composable ColumnScope.() -> Unit)? = null,
     compactHeaderSpacing: Boolean = false
 ) {
@@ -282,7 +276,6 @@ internal fun OutletAwareCatalogGrid(
             pagingKey = pagingKey,
             headerTitle = headerTitle,
             headerOnBack = headerOnBack,
-            headerOnTitleLongPress = headerOnTitleLongPress,
             headerContent = headerContent
         )
         return
@@ -423,7 +416,6 @@ internal fun OutletAwareCatalogGrid(
                 ),
                 headerTitle = headerTitle,
                 headerOnBack = headerOnBack,
-                headerOnTitleLongPress = headerOnTitleLongPress,
                 headerContent = if (bubbles.isNotEmpty()) {
                     {
                         Row(
@@ -463,235 +455,6 @@ internal fun OutletAwareCatalogGrid(
 }
 
 // OUTLET_CATEGORY_BUBBLES_END
-
-@Composable
-private fun BackendDiagnosticResultDialog(
-    result: String,
-    running: Boolean,
-    onDismiss: () -> Unit
-) {
-    val context = LocalContext.current
-
-    AlertDialog(
-        onDismissRequest = if (running) ({}) else onDismiss,
-        title = { Text("Diagnóstico backend") },
-        text = {
-            androidx.compose.foundation.text.selection.SelectionContainer {
-                Text(if (running) "Ejecutando prueba backend..." else result)
-            }
-        },
-        confirmButton = {
-            if (!running) {
-                TextButton(onClick = {
-                    val clipboard =
-                        context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
-                            as android.content.ClipboardManager
-                    clipboard.setPrimaryClip(
-                        android.content.ClipData.newPlainText(
-                            "Diagnóstico backend",
-                            result
-                        )
-                    )
-                }) {
-                    Text("COPIAR RESULTADO")
-                }
-            }
-        },
-        dismissButton = {
-            if (!running) {
-                TextButton(onClick = onDismiss) {
-                    Text("Cerrar")
-                }
-            }
-        }
-    )
-}
-
-@Composable
-private fun CategoryTelemetryDialog(
-    categoryId: Int,
-    categoryName: String,
-    onDismiss: () -> Unit
-) {
-    val snapshot = CategoryLoadTelemetry.snapshot(categoryId)
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var backendDialogOpen by remember { mutableStateOf(false) }
-    var backendRunning by remember { mutableStateOf(false) }
-    var backendResult by remember { mutableStateOf<String?>(null) }
-    var catalogCountDialogOpen by remember { mutableStateOf(false) }
-    var catalogCountRunning by remember { mutableStateOf(false) }
-    var catalogCountResult by remember { mutableStateOf<String?>(null) }
-
-    fun value(v: Long?) = v?.let { it.toString() + " ms" } ?: "N/A"
-    fun delta(from: Long?, to: Long?) =
-        if (from != null && to != null) (to - from).toString() + " ms" else "N/A"
-
-    val text = buildString {
-        appendLine("DIAGNÓSTICO CATEGORÍA")
-        appendLine("categoryId: " + categoryId)
-        appendLine("categoryName: " + categoryName)
-        appendLine()
-        appendLine("SOURCE = " + (snapshot?.source?.uppercase() ?: "N/A"))
-        appendLine("CATEGORY_TAP: " + value(snapshot?.tapMs))
-        appendLine("CATEGORY_CACHE_START: " + value(snapshot?.cacheStartMs))
-        appendLine("CATEGORY_CACHE_END: " + value(snapshot?.cacheEndMs))
-        appendLine("CACHE_HIT / CACHE_MISS: " + (snapshot?.cacheHit?.uppercase() ?: "N/A"))
-        appendLine("CATEGORY_NETWORK_START: " + value(snapshot?.networkStartMs))
-        appendLine("CATEGORY_NETWORK_END: " + value(snapshot?.networkEndMs))
-        appendLine("CATEGORY_PARSE_END: " + value(snapshot?.parseEndMs))
-        appendLine("CATEGORY_ROOM_WRITE_END: " + value(snapshot?.roomWriteEndMs))
-        appendLine("CATEGORY_UI_PRODUCTS: " + value(snapshot?.uiProductsMs))
-        appendLine(
-            "CATEGORY_FIRST_IMAGE: " +
-                (snapshot?.firstImageMs?.let {
-                    it.toString() + " ms (productId=" + snapshot.firstImageProductId + ")"
-                } ?: "N/A")
-        )
-        appendLine()
-        appendLine("TAP -> NETWORK_START: " + delta(snapshot?.tapMs, snapshot?.networkStartMs))
-        appendLine("NETWORK_START -> NETWORK_END: " + delta(snapshot?.networkStartMs, snapshot?.networkEndMs))
-        appendLine("NETWORK_END -> UI_PRODUCTS: " + delta(snapshot?.networkEndMs, snapshot?.uiProductsMs))
-        appendLine("UI_PRODUCTS -> FIRST_IMAGE: " + delta(snapshot?.uiProductsMs, snapshot?.firstImageMs))
-        appendLine("TAP -> UI_PRODUCTS: " + delta(snapshot?.tapMs, snapshot?.uiProductsMs))
-        appendLine()
-        appendLine("endpoint: GET products")
-        appendLine("per_page: 12")
-        appendLine("productos recibidos: " + (snapshot?.products ?: "N/A"))
-        appendLine("páginas solicitadas antes de pintar: 1")
-        appendLine("globalSync wait: NO")
-        appendLine("networkGate wait: N/A")
-        appendLine("priority mutex wait: N/A")
-        appendLine(
-            "UI_PRODUCTS antes de ROOM_WRITE_END: " +
-                if (snapshot?.uiProductsMs != null && snapshot.roomWriteEndMs != null)
-                    snapshot.uiProductsMs < snapshot.roomWriteEndMs
-                else "N/A"
-        )
-        appendLine("DNS: " + (snapshot?.network?.dnsMs?.let { it.toString() + " ms" } ?: "N/A"))
-        appendLine("CONNECT: " + (snapshot?.network?.connectMs?.let { it.toString() + " ms" } ?: "N/A"))
-        appendLine("TLS: " + (snapshot?.network?.tlsMs?.let { it.toString() + " ms" } ?: "N/A"))
-        appendLine(
-            "REQUEST HEADERS: " +
-                (snapshot?.network?.requestHeadersMs?.let { it.toString() + " ms" } ?: "N/A")
-        )
-        appendLine(
-            "REQUEST BODY: " +
-                (snapshot?.network?.requestBodyMs?.let { it.toString() + " ms" } ?: "N/A")
-        )
-        appendLine(
-            "REQUEST BODY BYTES: " +
-                (snapshot?.network?.requestBodyBytes?.toString() ?: "N/A")
-        )
-        appendLine(
-            "TTFB / SERVER WAIT: " +
-                (snapshot?.network?.ttfbMs?.let { it.toString() + " ms" } ?: "N/A")
-        )
-        appendLine(
-            "RESPONSE HEADERS: " +
-                (snapshot?.network?.responseHeadersMs?.let { it.toString() + " ms" } ?: "N/A")
-        )
-        appendLine(
-            "RESPONSE BODY / DOWNLOAD: " +
-                (snapshot?.network?.bodyDownloadMs?.let { it.toString() + " ms" } ?: "N/A")
-        )
-        appendLine(
-            "RESPONSE BODY BYTES: " +
-                (snapshot?.network?.responseBodyBytes?.toString() ?: "N/A")
-        )
-        appendLine(
-            "TOTAL NETWORK (OkHttp): " +
-                (snapshot?.network?.totalNetworkMs?.let { it.toString() + " ms" } ?: "N/A")
-        )
-        appendLine(
-            "CONEXIÓN REUTILIZADA: " +
-                (snapshot?.network?.connectionReused?.let { if (it) "SI" else "NO" } ?: "N/A")
-        )
-        appendLine("HTTP: " + (snapshot?.network?.protocol ?: "N/A"))
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Diagnóstico categoría") },
-        text = {
-            androidx.compose.foundation.text.selection.SelectionContainer {
-                Text(text)
-            }
-        },
-        confirmButton = {
-            Column(horizontalAlignment = Alignment.End) {
-                TextButton(
-                    enabled = !backendRunning,
-                    onClick = {
-                        if (!backendRunning) {
-                            backendRunning = true
-                        backendResult = null
-                        backendDialogOpen = true
-                        scope.launch {
-                            backendResult = BackendDiagnosticRunner(StoreSession(context.getSharedPreferences("criosrango", android.content.Context.MODE_PRIVATE))).run(categoryId)
-                            backendRunning = false
-                        }
-                        }
-                    }
-                ) {
-                    Text("PRUEBA BACKEND")
-                }
-
-                TextButton(
-                    enabled = !catalogCountRunning,
-                    onClick = {
-                        catalogCountRunning = true
-                        catalogCountResult = null
-                        catalogCountDialogOpen = true
-                        scope.launch {
-                            catalogCountResult = CatalogCountDiagnosticRunner(
-                                StoreSession(context.getSharedPreferences("criosrango", android.content.Context.MODE_PRIVATE))
-                            ).run()
-                            catalogCountRunning = false
-                        }
-                    }
-                ) {
-                    Text("CONTEO CATEGORÍAS")
-                }
-
-                TextButton(onClick = {
-                    val clipboard =
-                        context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
-                            as android.content.ClipboardManager
-                    clipboard.setPrimaryClip(
-                        android.content.ClipData.newPlainText(
-                            "Diagnóstico categoría",
-                            text
-                        )
-                    )
-                }) {
-                    Text("COPIAR DIAGNÓSTICO")
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cerrar")
-            }
-        }
-    )
-
-    if (backendDialogOpen) {
-        BackendDiagnosticResultDialog(
-            result = backendResult ?: "",
-            running = backendRunning,
-            onDismiss = { backendDialogOpen = false }
-        )
-    }
-
-    if (catalogCountDialogOpen) {
-        BackendDiagnosticResultDialog(
-            result = catalogCountResult ?: "",
-            running = catalogCountRunning,
-            onDismiss = { catalogCountDialogOpen = false }
-        )
-    }
-}
 
 @Composable
 internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<StoreProduct>, path: MutableList<Int>, padding: PaddingValues, loading: Boolean, categoryPagingState: es.criosrango.shared.CatalogPagingState<StoreProduct>, loadNextCategoryPage: () -> Unit, loadCategory: (Int) -> Unit, loadCategoryTree: (Int) -> Unit, onProduct: (StoreProduct) -> Unit, availabilityStore: OutletAvailabilityStore, onRootBack: (() -> Unit)? = null, onOpen: (ProductCategory) -> Unit,
@@ -764,14 +527,6 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
         )
     } else {
         Column(Modifier.fillMaxSize().padding(padding)) {
-            var telemetryDialogOpen by remember(currentId) { mutableStateOf(false) }
-            if (telemetryDialogOpen && currentId != null) {
-                CategoryTelemetryDialog(
-                    categoryId = currentId,
-                    categoryName = current?.name ?: "Productos",
-                    onDismiss = { telemetryDialogOpen = false }
-                )
-            }
             OutletAwareCatalogGrid(
                 current = current,
                 products = products,
@@ -783,12 +538,7 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
                 onLoadNextPage = loadNextCategoryPage,
                 pagingKey = currentId,
                 headerTitle = current?.name ?: "Productos",
-                headerOnBack = onCategoriesBack,
-                headerOnTitleLongPress = if (currentId != null) {
-                    { telemetryDialogOpen = true }
-                } else {
-                    null
-                }
+                headerOnBack = onCategoriesBack
             )
         }
     }
@@ -1261,7 +1011,6 @@ internal fun CatalogFilteredProductGrid(
     allowBrandFilter: Boolean = true,
     headerTitle: String? = null,
     headerOnBack: (() -> Unit)? = null,
-    headerOnTitleLongPress: (() -> Unit)? = null,
     headerContent: (@Composable ColumnScope.() -> Unit)? = null,
     compactHeaderSpacing: Boolean = false
 ) {
@@ -1337,7 +1086,7 @@ internal fun CatalogFilteredProductGrid(
 
     Column(modifier) {
         if (headerTitle != null && headerOnBack != null) {
-            CatalogProductListHeader(title = headerTitle, onBack = headerOnBack, onTitleLongPress = headerOnTitleLongPress, activeFilters = active, onOpenFilters = { filtersOpen = true }, bottomPadding = if (compactHeaderSpacing) 0.dp else CatalogHeaderGeometry.bottomPadding)
+            CatalogProductListHeader(title = headerTitle, onBack = headerOnBack, activeFilters = active, onOpenFilters = { filtersOpen = true }, bottomPadding = if (compactHeaderSpacing) 0.dp else CatalogHeaderGeometry.bottomPadding)
         }
         headerContent?.invoke(this)
 

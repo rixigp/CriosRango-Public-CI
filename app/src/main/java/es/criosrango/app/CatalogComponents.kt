@@ -2,8 +2,6 @@ package es.criosrango.app
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -103,7 +101,6 @@ internal fun CatalogScreenHeader(
     title: String,
     onBack: () -> Unit,
     trailing: @Composable RowScope.() -> Unit = {},
-    onTitleLongPress: (() -> Unit)? = null,
     bottomPadding: androidx.compose.ui.unit.Dp = CatalogHeaderGeometry.bottomPadding
 ) {
     Row(
@@ -122,14 +119,7 @@ internal fun CatalogScreenHeader(
         Text(
             text = title,
             modifier = Modifier
-                .weight(1f)
-                .then(
-                    if (onTitleLongPress != null) {
-                        Modifier.pointerInput(Unit) {
-                            detectTapGestures(onLongPress = { onTitleLongPress() })
-                        }
-                    } else Modifier
-                ),
+                .weight(1f),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Normal,
             color = Color(0xFF183B35),
@@ -171,13 +161,11 @@ internal fun CatalogProductListHeader(
     onBack: () -> Unit,
     activeFilters: Int,
     onOpenFilters: () -> Unit,
-    onTitleLongPress: (() -> Unit)? = null,
     bottomPadding: androidx.compose.ui.unit.Dp = CatalogHeaderGeometry.bottomPadding
 ) {
     CatalogScreenHeader(
         title = title,
         onBack = onBack,
-        onTitleLongPress = onTitleLongPress,
         bottomPadding = bottomPadding,
         trailing = {
             OutlinedButton(onClick = onOpenFilters, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
