@@ -596,9 +596,9 @@ internal fun CartScreen(
             },
             text = {
                 Text(
-                    "1 € gastado = 1 punto.\\n\\n" +
-                        "Cuando acumules 100 puntos, podrás convertirlos en 5 € de saldo para tus compras.\\n\\n" +
-                        "La barra te indica cuánto te falta para desbloquear el saldo.\\n\\n" +
+                    "1 € gastado = 1 punto.\n\n" +
+                        "Cuando acumules 100 puntos, podrás convertirlos en 5 € de saldo para tus compras.\n\n" +
+                        "La barra te indica cuánto te falta para desbloquear el saldo.\n\n" +
                         "Cuando tengas saldo disponible, pulsa “Usar” para elegir cuánto quieres aplicar a tu compra."
                 )
             },
