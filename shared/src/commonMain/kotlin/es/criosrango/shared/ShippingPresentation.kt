@@ -11,13 +11,15 @@ fun resolveShippingPresentationName(methodId: String, rateId: String, backendLab
         .replace('ó', 'o').replace('ú', 'u').replace('ü', 'u')
     val effectiveMethod = methodId.trim().ifBlank { rateId.substringBefore(':').trim() }
 
-    if (normalized.contains("recogida") || normalized.contains("local pickup") ||
-        normalized.contains("pickup") || effectiveMethod == "local_pickup"
-    ) return "Recogida en tienda"
-
+    // A rate's actual label is more specific than its shared method ID. Some WooCommerce
+    // installations expose a Tarancón delivery rate under local_pickup, so check it first.
     if (normalized.contains("tarancon") &&
         (normalized.contains("envio") || normalized.contains("entrega") || normalized.contains("delivery"))
     ) return "Envío a Tarancón"
+
+    if (normalized.contains("recogida") || normalized.contains("local pickup") ||
+        normalized.contains("pickup") || effectiveMethod == "local_pickup"
+    ) return "Recogida en tienda"
 
     if (normalized.contains("correos express")) return "Correos Express"
 

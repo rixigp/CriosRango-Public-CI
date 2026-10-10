@@ -8,6 +8,18 @@ import es.criosrango.shared.model.StoreShippingOption
 
 class ShippingPresentationTest {
     @Test
+    fun specificTarancónDeliveryLabelWinsOverSharedLocalPickupMethod() {
+        assertEquals(
+            "Envío a Tarancón",
+            resolveShippingPresentationName("local_pickup", "local_pickup:2", "Envío a Tarancón gratuito")
+        )
+        assertEquals(
+            "Recogida en tienda",
+            resolveShippingPresentationName("local_pickup", "local_pickup:6", "Recogida en tienda gratuita")
+        )
+    }
+
+    @Test
     fun usesMethodAndLabelSemanticsWithoutChangingBackendIds() {
         assertEquals("Envío a domicilio", resolveShippingPresentationName("free_shipping", "free_shipping:3", "Envío gratuito"))
         assertEquals("Envío a Tarancón", resolveShippingPresentationName("flat_rate", "flat_rate:4", "Envío a Tarancón gratuito"))
