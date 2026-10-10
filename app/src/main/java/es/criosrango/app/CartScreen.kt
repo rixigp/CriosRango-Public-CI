@@ -174,6 +174,7 @@ internal fun CartScreen(
     val loyaltyLoading by loyaltyViewModel.loading.collectAsStateWithLifecycle()
     val loyaltyError by loyaltyViewModel.error.collectAsStateWithLifecycle()
     var showWalletDialog by remember { mutableStateOf(false) }
+    var showWalletInfoDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val promotionRepository = remember {
         PromotionRepository(
@@ -302,10 +303,11 @@ internal fun CartScreen(
                         shape = RoundedCornerShape(14.dp),
                         color = Color(0xFFE8F5EF)
                     ) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Box(Modifier.fillMaxWidth()) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(start = 14.dp, top = 11.dp, bottom = 11.dp, end = 42.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                             Icon(CartWalletLineIcon, null, tint=Color(0xFF0F5C4D), modifier=Modifier.size(28.dp))
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
@@ -317,6 +319,13 @@ internal fun CartScreen(
                                 )
                             }
                             if (walletOptions.isNotEmpty()) CartApplyButton({ showWalletDialog = true }, enabled=!loyaltyLoading)
+                            }
+                            IconButton(
+                                onClick = { showWalletInfoDialog = true },
+                                modifier = Modifier.align(Alignment.TopEnd).size(36.dp)
+                            ) {
+                                Icon(Icons.Outlined.Info, contentDescription = "Información del monedero", tint = Color(0xFF0F5C4D))
+                            }
                         }
                     }
 
@@ -573,6 +582,26 @@ internal fun CartScreen(
                 Text("Continuar compra")
             }
         }
+    }
+
+    if (showWalletInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showWalletInfoDialog = false },
+            title = { Text("¿Cómo funciona tu monedero?") },
+            text = {
+                Text(
+                    "1 € gastado = 1 punto.\n\n" +
+                        "Cuando acumules 100 puntos, podrás convertirlos en 5 € de saldo para tus compras.\n\n" +
+                        "La barra te indica cuánto te falta para desbloquear el saldo.\n\n" +
+                        "Cuando tengas saldo disponible, pulsa ‘Usar’ para elegir cuánto quieres aplicar a tu compra."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showWalletInfoDialog = false }) {
+                    Text("Entendido")
+                }
+            }
+        )
     }
 
     if (showWalletDialog && loyaltyWallet != null) {
