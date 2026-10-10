@@ -21,6 +21,8 @@ final class CriosRangoIOSApp: UIResponder, UIApplicationDelegate, UNUserNotifica
         MainViewControllerKt.handleIosPushNotification(type: type, orderId: orderId)
     }
 
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) { PushNotificationBridge.shared.didRegister(deviceToken: deviceToken) }
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) { print("APNS_REGISTRATION_FAILED=\(error.localizedDescription)") }
     func application(
         _ application: UIApplication,
         configurationForConnecting connectingSceneSession: UISceneSession,
@@ -65,9 +67,6 @@ final class CriosRangoSceneDelegate: UIResponder, UIWindowSceneDelegate {
         PushNotificationBridge.shared.refreshRegistration()
         MainViewControllerKt.handleIosPaymentForeground()
     }
-
-    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) { PushNotificationBridge.shared.didRegister(deviceToken: deviceToken) }
-    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) { print("APNS_REGISTRATION_FAILED=\(error.localizedDescription)") }
 
     private func handlePaymentURL(_ url: URL) {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
