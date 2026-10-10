@@ -7,7 +7,10 @@ import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import es.criosrango.shared.api.StoreApiException
+import es.criosrango.shared.account.isAccountSessionExpiredStatus
+import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.TimeoutCancellationException
+import retrofit2.HttpException
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
@@ -49,15 +52,33 @@ data class StoreUiError(val type: StoreErrorType) {
     }
 }
 
-fun Exception.toStoreUiError(authenticated: Boolean = false): StoreUiError = when (this) {
-    is SocketTimeoutException, is TimeoutCancellationException -> StoreUiError(StoreErrorType.TIMEOUT)
-    is UnknownHostException, is ConnectException, is NoRouteToHostException, is SocketException, is IOException -> StoreUiError(StoreErrorType.NO_INTERNET)
-    is StoreApiException -> when {
-        statusCode in 500..599 -> StoreUiError(StoreErrorType.SERVER_UNAVAILABLE)
-        authenticated && statusCode in 401..403 -> StoreUiError(StoreErrorType.SESSION_EXPIRED)
+private fun Exception.httpStatusCodeOrNull(): Int? = when (this) {
+    is StoreApiException -> statusCode
+    is HttpException -> code()
+    is ResponseException -> response.status.value
+    else -> null
+}
+
+fun Exception.toStoreUiError(authenticated: Boolean = false): StoreUiError {
+    when (this) {
+        is SocketTimeoutException, is TimeoutCancellationException ->
+            return StoreUiError(StoreErrorType.TIMEOUT)
+
+        is UnknownHostException, is ConnectException, is NoRouteToHostException, is SocketException, is IOException ->
+            return StoreUiError(StoreErrorType.NO_INTERNET)
+    }
+
+    val status = httpStatusCodeOrNull()
+
+    return when {
+        authenticated && status != null && isAccountSessionExpiredStatus(status) ->
+            StoreUiError(StoreErrorType.SESSION_EXPIRED)
+
+        status != null && status in 500..599 ->
+            StoreUiError(StoreErrorType.SERVER_UNAVAILABLE)
+
         else -> StoreUiError(StoreErrorType.UNEXPECTED)
     }
-    else -> StoreUiError(StoreErrorType.UNEXPECTED)
 }
 
 fun Exception.toStoreUiErrorForCatalog(): StoreUiError = toStoreUiError(authenticated = false)

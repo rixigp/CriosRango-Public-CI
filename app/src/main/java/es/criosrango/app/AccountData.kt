@@ -16,7 +16,6 @@ import es.criosrango.shared.account.AccountOrderVariation
 import es.criosrango.shared.account.AccountRepository as SharedAccountRepository
 import es.criosrango.shared.account.AccountTokenStore
 import es.criosrango.shared.account.AccountUser
-import es.criosrango.shared.account.isAccountSessionExpiredStatus
 import retrofit2.HttpException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -275,11 +274,12 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun handleAuthenticatedHttpError(exception: Exception, fallback: String): Boolean {
-        if (exception is HttpException && isAccountSessionExpiredStatus(exception.code())) {
+        val storeError = exception.toStoreUiError(authenticated = true)
+        if (storeError.type == StoreErrorType.SESSION_EXPIRED || !repository.hasSession) {
             invalidateSession()
             return true
         }
-        _accountError.value = exception.toStoreUiError(authenticated = true)
+        _accountError.value = storeError
         _error.value = fallback
         return false
     }
@@ -332,15 +332,18 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 if (generation == accountGeneration) claimPendingOrderIfAuthenticated()
             } catch (exception: Exception) {
                 if (generation != accountGeneration) return@launch
-                if ((exception is HttpException && exception.code() == 401) || !repository.hasSession) {
+
+                val storeError = exception.toStoreUiError(authenticated = true)
+                if (storeError.type == StoreErrorType.SESSION_EXPIRED || !repository.hasSession) {
                     invalidateSession()
-                } else {
-                    // Keep the stored token and remain in CHECKING: the UI offers a retry
-                    // instead of asking for credentials that may still be valid.
-                    _accountError.value = exception.toStoreUiError()
-                    _error.value = null
-                    _loading.value = false
+                    return@launch
                 }
+
+                // Keep the stored token and remain in CHECKING: the UI offers a retry
+                // instead of asking for credentials that may still be valid.
+                _accountError.value = storeError
+                _error.value = null
+                _loading.value = false
             } finally {
                 if (generation == accountGeneration && _authState.value == AccountAuthState.CHECKING) {
                     _loading.value = false
