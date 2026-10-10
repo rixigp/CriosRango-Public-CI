@@ -304,7 +304,12 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
 
         restoreJob = viewModelScope.launch {
             try {
-                val restoredUser = repository.me()
+                val restoredUser = try {
+                    repository.me()
+                } catch (exception: io.ktor.serialization.JsonConvertException) {
+                    invalidateSession()
+                    return@launch
+                }
                 if (generation != accountGeneration) return@launch
                 _user.value = restoredUser
                 _authState.value = AccountAuthState.AUTHENTICATED
