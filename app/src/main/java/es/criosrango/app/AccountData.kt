@@ -515,7 +515,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
 
     fun forgotPassword(login: String) {
         if (login.isBlank()) {
-            _error.value = "Introduce tu correo o usuario."
+            _error.value = "Introduce tu correo electrónico."
             return
         }
         if (!authActionGate.tryAcquire()) return

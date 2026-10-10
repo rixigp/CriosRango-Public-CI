@@ -342,7 +342,7 @@ fun AccountLoginScreen(
             )
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                 Spacer(Modifier.height(4.dp))
-                OutlinedTextField(login, { login = it }, label = { Text("Correo o usuario") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(login, { login = it }, label = { Text("Correo electrónico") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(password, { password = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
                 error?.let { Spacer(Modifier.height(12.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
@@ -1249,7 +1249,7 @@ private fun AccountRegisterDialog(initialEmail: String, loading: Boolean, error:
 @Composable
 private fun AccountForgotPasswordDialog(initialLogin: String, loading: Boolean, error: String?, notice: String?, onDismiss: () -> Unit, onSend: (String) -> Unit) {
     var login by remember(initialLogin) { mutableStateOf(initialLogin) }
-    AlertDialog(onDismissRequest = { if (!loading) onDismiss() }, title = { Text("Recuperar contraseña") }, text = { Column { Text("Introduce tu correo o nombre de usuario."); Spacer(Modifier.height(12.dp)); OutlinedTextField(login, { login = it }, label = { Text("Correo o usuario") }, singleLine = true); error?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error) }; notice?.let { Spacer(Modifier.height(8.dp)); Text(it) } } }, confirmButton = { if (notice == null) TextButton({ onSend(login.trim()) }, enabled = !loading && login.isNotBlank()) { if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Enviar correo") } else TextButton(onDismiss) { Text("Cerrar") } }, dismissButton = { if (notice == null) TextButton(onDismiss, enabled = !loading) { Text("Cancelar") } })
+    AlertDialog(onDismissRequest = { if (!loading) onDismiss() }, title = { Text("Recuperar contraseña") }, text = { Column { Text("Introduce tu correo electrónico."); Spacer(Modifier.height(12.dp)); OutlinedTextField(login, { login = it }, label = { Text("Correo electrónico") }, singleLine = true); error?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error) }; notice?.let { Spacer(Modifier.height(8.dp)); Text(it) } } }, confirmButton = { if (notice == null) TextButton({ onSend(login.trim()) }, enabled = !loading && login.isNotBlank()) { if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Enviar correo") } else TextButton(onDismiss) { Text("Cerrar") } }, dismissButton = { if (notice == null) TextButton(onDismiss, enabled = !loading) { Text("Cancelar") } })
 }
 private fun formatWalletRemaining(value: Double): String {
     val cents = kotlin.math.round(value * 100.0).toLong()
