@@ -253,8 +253,12 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         _orders.value = emptyList()
         _authState.value = AccountAuthState.UNAUTHENTICATED
         _error.value = null
-        _accountError.value = StoreUiError(StoreErrorType.SESSION_EXPIRED)
+        _accountError.value = null
         _notice.value = null
+        _accountDataError.value = null
+        _accountDataNotice.value = null
+        _addressSaveError.value = null
+        _addressSaveNotice.value = null
         _loading.value = false
         _savingAccountDetails.value = false
         _savingAddress.value = false
