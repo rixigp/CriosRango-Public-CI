@@ -45,7 +45,6 @@ fun IosCheckoutScreen(
     val createdOrder by checkoutStore.createdOrder.collectAsState()
     val paymentState by paymentStore.state.collectAsState()
     val paymentError by paymentStore.error.collectAsState()
-    val paymentOrderId by paymentStore.orderId.collectAsState()
     var pendingRewards by remember { mutableStateOf<List<LoyaltyReward>>(emptyList()) }
     LaunchedEffect(walletEnabled) {
         pendingRewards = if (walletEnabled) runCatching { loyaltyRepository.getWallet().pendingRewards }.getOrDefault(emptyList()) else emptyList()
@@ -270,17 +269,6 @@ fun IosCheckoutScreen(
             }
         }
 
-        if (paymentState == StoreCardPaymentState.PAID) item {
-            Text("Pago confirmado para el pedido #" + (paymentOrderId ?: ""), color = MaterialTheme.colorScheme.primary)
-            Button(
-                onClick = {
-                    checkoutStore.clearForNewProcess()
-                    paymentStore.clearForNewProcess()
-                    onBack()
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Seguir comprando") }
-        }
         if (paymentState == StoreCardPaymentState.NOT_PAID) item {
             Text("El pago no se ha completado.", color = MaterialTheme.colorScheme.error)
             Button(
@@ -308,19 +296,14 @@ fun IosCheckoutScreen(
             }
         }
 
-        if (createdOrder != null) {
-            val order = createdOrder!!
-            val isBizum = order.paymentMethod.equals("bizum", ignoreCase = true) || order.paymentMethod.equals("cheque", ignoreCase = true)
-            if (isBizum) item {
-                Text("Pedido recibido", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-                Text("Pedido #" + (order.orderNumber ?: order.orderId) + " creado correctamente.")
-                Text("Realiza el pago por Bizum al 679 97 28 88 y utiliza el número de pedido como referencia de pago.")
-                Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Seguir comprando") }
-            } else if (paymentState == StoreCardPaymentState.OPENING || paymentState == StoreCardPaymentState.WAITING_RETURN || paymentState == StoreCardPaymentState.RECONCILING) {
-                item {
-                    Text("Pasarela de pago", style = MaterialTheme.typography.titleLarge)
-                    Text(if (paymentState == StoreCardPaymentState.RECONCILING) "Comprobando el pago…" else "Abriendo Cecabank…")
-                }
+        if (createdOrder != null &&
+            (paymentState == StoreCardPaymentState.OPENING ||
+                paymentState == StoreCardPaymentState.WAITING_RETURN ||
+                paymentState == StoreCardPaymentState.RECONCILING)
+        ) {
+            item {
+                Text("Pasarela de pago", style = MaterialTheme.typography.titleLarge)
+                Text(if (paymentState == StoreCardPaymentState.RECONCILING) "Comprobando el pago…" else "Abriendo Cecabank…")
             }
         }
 
