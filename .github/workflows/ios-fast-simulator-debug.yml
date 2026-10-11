@@ -220,6 +220,7 @@ jobs:
           # does not present the system permission sheet over the Home screen.
           if ! command -v applesimutils >/dev/null 2>&1; then
             brew tap wix/brew
+            brew trust --formula wix/brew/applesimutils
             brew install applesimutils
           fi
           applesimutils --byId "$SIM_UDID" --bundle "es.criosrango.app" --setPermissions "notifications=YES" 2>&1 | tee -a "$LOG_FILE"
