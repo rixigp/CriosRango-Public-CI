@@ -920,50 +920,20 @@ internal fun ApprovedCategoryCell(
     imageScale: Float = CatalogCategoryVisualTokens.imageScale,
     imageResOverride: Int? = null
 ) {
-    val imageRes = imageResOverride ?: categoryImageRes(category)
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f),
-            contentAlignment = Alignment.Center
-        ) {
-            if (imageRes != null) {
-                Image(
-                    painter = painterResource(imageRes),
-                    contentDescription = approvedCategoryName(category),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(CatalogCategoryVisualTokens.imagePadding)
-                        .scale(imageScale),
-                    contentScale = ContentScale.Fit
-                )
-            } else {
-                CategoryVisual(
-                    category,
-                    Modifier
-                        .fillMaxSize()
-                        .padding(6.dp)
-                )
-            }
-        }
-
-        Spacer(Modifier.height(CatalogCategoryVisualTokens.imageToLabelSpacing))
-
-        Text(
-            text = approvedCategoryName(category),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onBackground,
-            textAlign = TextAlign.Center,
-            maxLines = 2
-        )
-    }
+    // Android host model adapter only; rendering is owned by shared commonMain.
+    es.criosrango.shared.StoreCategoryCard(
+        category = es.criosrango.shared.model.StoreCategory(
+            id = category.id,
+            parent = category.parent,
+            name = category.name,
+            slug = category.slug,
+            count = category.count
+        ),
+        onClick = onClick,
+        imagePadding = CatalogCategoryVisualTokens.imagePadding,
+        imageToLabelSpacing = CatalogCategoryVisualTokens.imageToLabelSpacing,
+        imageScale = imageScale
+    )
 }
 
 // APPROVED_CATEGORY_CELL_END

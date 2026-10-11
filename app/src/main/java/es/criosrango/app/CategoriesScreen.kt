@@ -579,41 +579,31 @@ internal fun CategoryList(
             title = "Categorías",
             onBack = onBack
         )
-        LazyColumn(
+        es.criosrango.shared.StoreCategoriesGrid(
+            categories = visibleCategories.map { category ->
+                es.criosrango.shared.model.StoreCategory(
+                    id = category.id,
+                    parent = category.parent,
+                    name = category.name,
+                    slug = category.slug,
+                    count = category.count
+                )
+            },
+            onCategory = { selected ->
+                visibleCategories.firstOrNull { it.id == selected.id }?.let(onOpen)
+            },
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = CatalogCategoryVisualTokens.horizontalPadding,
                 top = CatalogCategoryVisualTokens.rowSpacing,
                 end = CatalogCategoryVisualTokens.horizontalPadding,
                 bottom = 0.dp
-            )
-        ) {
-            items(rows.size) { rowIndex ->
-            val row = rows[rowIndex]
-
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = if (rowIndex == 0) 0.dp else CatalogCategoryVisualTokens.rowSpacing),
-                horizontalArrangement = Arrangement.spacedBy(CatalogCategoryVisualTokens.columnSpacing)
-            ) {
-                repeat(3) { index ->
-                    Box(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        if (index < row.size) {
-                            val category = row[index]
-
-                            ApprovedCategoryCell(
-                                category = category,
-                                onClick = {
-                                    onOpen(category)
-                                }
-                            )
-                    }
-                    }
-                }
-            }
-        }
-    }
+            ),
+            columnSpacing = CatalogCategoryVisualTokens.columnSpacing,
+            rowSpacing = CatalogCategoryVisualTokens.rowSpacing,
+            imagePadding = CatalogCategoryVisualTokens.imagePadding,
+            imageToLabelSpacing = CatalogCategoryVisualTokens.imageToLabelSpacing
+        )
 }
 
 

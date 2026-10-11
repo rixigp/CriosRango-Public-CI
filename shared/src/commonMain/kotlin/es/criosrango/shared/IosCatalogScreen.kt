@@ -90,17 +90,14 @@ internal fun IosCategoryRoot(
             loading -> IosStoreLoading()
             error != null -> IosStoreError(error!!) { loading = true; error = null }
             categories.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No hay categorías.") }
-            else -> LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
+            else -> StoreCategoriesGrid(
+                categories = categories,
+                onCategory = onOpenCategory,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 0.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(categories.filter { it.parent == 0 && !it.name.equals("Outlet", true) }.distinctBy { it.id }, key = { it.id }) {
-                    Button(onClick = { onOpenCategory(it) }) { Text(it.name) }
-                }
-            }
+                contentPadding = PaddingValues(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 0.dp),
+                columnSpacing = 12.dp,
+                rowSpacing = 16.dp
+            )
         }
     }
 }
