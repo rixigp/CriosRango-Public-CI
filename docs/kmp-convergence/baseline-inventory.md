@@ -90,13 +90,17 @@ Counts extracted from actual `categoryImageRes()` in `HomeScreen.kt` and all `su
 
 **Dimensions caveat:** GitHub's binary-content endpoint returned an empty body for `subcat_bebe_nino_ropa_bano.png`; path/existence are verified, dimensions are not guessed. The required mapping/file gate is satisfied. Outlet/splash dimensions were not individually decoded.
 
+## Other static app assets
+
+The manifest also records the Android legacy `brand_*.png` set, Android adaptive-launcher images/XML, notification and brand vector drawables, and iOS `AppIcon.appiconset` PNGs. The 20 bundled `brand_*.png` files are classified as legacy local assets with callers to audit; they are **not** the primary brand-image source and must not override WordPress/WooCommerce imagery. They remain untouched until Batch 8 and only retire after proving no references remain.
+
 ## Asset policy
 - Canonical local target: `shared/src/commonMain/composeResources/drawable/`, loaded with Compose Resources.
 - Keep existing Android assets intact through Batch 1 and until Batch 8 retirement gates.
 - Reuse existing `shared/src/commonMain/composeResources/drawable/home_logo.png`; do not create a duplicate home logo.
 - Brand primary imagery stays remote from WordPress/WooCommerce; do not package brand logos.
 - Remote product image pipeline is a later evidence-based batch. No Kamel, Coil Multiplatform or new image library in Foundation/Components.
-- `asset-manifest.csv` contains local and remote asset logical entries; uncertain iOS callers are explicitly marked for verification.
+- `asset-manifest.csv` contains category/subcategory/outlet/logo/brand-legacy/platform-icon and remote asset entries; uncertain callers are explicitly marked for verification.
 - `screen-parity-matrix.csv` records 30 areas with entry points, current/target owner, migration/retirement candidates, navigation, loading/success/empty/error, adapters and acceptance criteria.
 
 ## Workflow trigger caveat
