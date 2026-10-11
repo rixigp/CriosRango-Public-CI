@@ -177,7 +177,13 @@ class StoreCartStore(
 
     fun clearAfterConfirmedPayment() {
         scope.launch {
-            clearAfterConfirmedPaymentAwait()
+            try {
+                clearAfterConfirmedPaymentAwait()
+            } catch (_: Throwable) {
+                // The order is already confirmed. Remote cart cleanup is best-effort;
+                // never let its failure reach the global coroutine exception handler.
+                resetLocalCartAfterConfirmedPaymentFailure()
+            }
         }
     }
 
@@ -189,6 +195,14 @@ class StoreCartStore(
                 accept(current)
             }
         }
+    }
+
+    private fun resetLocalCartAfterConfirmedPaymentFailure() {
+        _cart.value = StoreCart()
+        _state.value = StoreCartLoadState.SUCCESS_EMPTY
+        _error.value = null
+        _couponError.value = null
+        _couponLoading.value = false
     }
 
     suspend fun refreshAwait() {
