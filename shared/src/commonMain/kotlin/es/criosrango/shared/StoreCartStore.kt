@@ -5,6 +5,7 @@ import es.criosrango.shared.model.StoreCart
 import es.criosrango.shared.model.StoreCartLine
 import es.criosrango.shared.model.StoreCartRequest
 import es.criosrango.shared.model.StoreCartVariation
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -179,9 +180,10 @@ class StoreCartStore(
         scope.launch {
             try {
                 clearAfterConfirmedPaymentAwait()
-            } catch (_: Throwable) {
-                // The order is already confirmed. Remote cart cleanup is best-effort;
-                // never let its failure reach the global coroutine exception handler.
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+
+                // La orden ya está creada: la limpieza remota es best-effort.
                 resetLocalCartAfterConfirmedPaymentFailure()
             }
         }
