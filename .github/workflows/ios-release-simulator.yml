@@ -48,8 +48,12 @@ jobs:
           version=$VERSION_NAME
           build=$BUILD_NUMBER
           bundle_id=es.criosrango.app
-          gate_b_compileKotlinIosSimulatorArm64=NOT_RUN
-          xcodebuild_release_simulator=NOT_RUN
+          XCODEBUILD_START=NOT_RUN
+          KMP_SCRIPT_START=NOT_REACHED
+          XCODEBUILD_END=NOT_RUN
+          xcodebuild_duration_seconds=NOT_RUN
+          Shared.framework=NOT_CHECKED
+          CriosRango.app=NOT_CHECKED
           simulator_install=NOT_RUN
           app_launch=NOT_RUN
           simulator_status=NOT_RUN
@@ -122,32 +126,74 @@ jobs:
           xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
           xcrun simctl bootstatus "$SIM_UDID" -b
 
-      - name: Gate B - compile Kotlin/Native for iOS Simulator
-        id: gate_b
-        timeout-minutes: 8
-        shell: bash
-        run: |
-          set -euo pipefail
-          ./gradlew --no-daemon --stacktrace :shared:compileKotlinIosSimulatorArm64 2>&1 | tee ios-release-artifacts/gate-b-kotlin-compile.log
-          echo "gate_b=GREEN" >> "$GITHUB_OUTPUT"
-
       - name: Build Release app for Simulator
         id: ios_build
-        timeout-minutes: 15
+        timeout-minutes: 20
         shell: bash
+        env:
+          TARGET_SHA: ${{ steps.metadata.outputs.target_sha }}
+          SIM_UDID: ${{ steps.simulator.outputs.udid }}
+          SIM_NAME: ${{ steps.simulator.outputs.name }}
         run: |
           set -euo pipefail
+          REPORT=ios-release-artifacts/ios-release-simulator-report.txt
+          XCODE_LOG=ios-release-artifacts/ios-release-xcodebuild.log
+          DESTINATION="platform=iOS Simulator,id=$SIM_UDID"
+          APP_PATH="$RUNNER_TEMP/CriosRangoDerivedData/Build/Products/Release-iphonesimulator/CriosRango.app"
+          SDK_VERSION="$(xcrun --sdk iphonesimulator --show-sdk-version)"
+          SHARED_FRAMEWORK="$GITHUB_WORKSPACE/shared/build/xcode-frameworks/Release/iphonesimulator$SDK_VERSION/Shared.framework"
+          XCODE_VERSION="$(xcodebuild -version | tr '\n' ';')"
+          XCODEBUILD_START="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          {
+            echo "XCODEBUILD_START=$XCODEBUILD_START"
+            echo "target_sha=$TARGET_SHA"
+            echo "xcode_version=$XCODE_VERSION"
+            echo "simulator_destination=$DESTINATION"
+            echo "simulator_name=$SIM_NAME"
+            echo "shared_framework_path=$SHARED_FRAMEWORK"
+            echo "app_path=$APP_PATH"
+          } | tee -a "$REPORT"
+          echo "xcodebuild_start=$XCODEBUILD_START" >> "$GITHUB_OUTPUT"
+          set +e
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
             -scheme CriosRangoKMPSpike \
             -configuration Release \
             -sdk iphonesimulator \
-            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -destination "$DESTINATION" \
             -derivedDataPath "$RUNNER_TEMP/CriosRangoDerivedData" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            build 2>&1 | tee ios-release-artifacts/ios-release-xcodebuild.log
-          APP_PATH="$RUNNER_TEMP/CriosRangoDerivedData/Build/Products/Release-iphonesimulator/CriosRango.app"
-          test -d "$APP_PATH"
+            build 2>&1 | tee "$XCODE_LOG"
+          BUILD_STATUS=${PIPESTATUS[0]}
+          set -e
+          XCODEBUILD_END="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          START_EPOCH="$(date -j -f '%Y-%m-%dT%H:%M:%SZ' "$XCODEBUILD_START" '+%s')"
+          END_EPOCH="$(date -j -f '%Y-%m-%dT%H:%M:%SZ' "$XCODEBUILD_END" '+%s')"
+          DURATION_SECONDS=$((END_EPOCH - START_EPOCH))
+          KMP_SCRIPT_START="$(grep -m1 'PhaseScriptExecution Run\\ Script' "$XCODE_LOG" | sed -E 's/^([0-9T:.+-]+Z).*/\1/' || true)"
+          [[ -n "$KMP_SCRIPT_START" ]] || KMP_SCRIPT_START=NOT_REACHED
+          {
+            echo "KMP_SCRIPT_START=$KMP_SCRIPT_START"
+            echo "XCODEBUILD_END=$XCODEBUILD_END"
+            echo "xcodebuild_duration_seconds=$DURATION_SECONDS"
+          } | tee -a "$REPORT"
+          echo "kmp_script_start=$KMP_SCRIPT_START" >> "$GITHUB_OUTPUT"
+          echo "xcodebuild_end=$XCODEBUILD_END" >> "$GITHUB_OUTPUT"
+          echo "xcodebuild_duration_seconds=$DURATION_SECONDS" >> "$GITHUB_OUTPUT"
+          if [[ -d "$SHARED_FRAMEWORK" ]]; then FRAMEWORK_STATUS=FOUND; else FRAMEWORK_STATUS=NOT_FOUND; fi
+          if [[ -d "$APP_PATH" ]]; then APP_STATUS=FOUND; else APP_STATUS=NOT_FOUND; fi
+          {
+            echo "Shared.framework=$FRAMEWORK_STATUS"
+            echo "Shared.framework_path=$SHARED_FRAMEWORK"
+            echo "CriosRango.app=$APP_STATUS"
+            echo "CriosRango.app_path=$APP_PATH"
+          } | tee -a "$REPORT"
+          echo "shared_framework=$FRAMEWORK_STATUS" >> "$GITHUB_OUTPUT"
+          echo "app_bundle=$APP_STATUS" >> "$GITHUB_OUTPUT"
+          if [[ "$BUILD_STATUS" -ne 0 || "$FRAMEWORK_STATUS" != FOUND || "$APP_STATUS" != FOUND ]]; then
+            echo "::error::Release build failed or required framework/app output is missing"
+            exit 1
+          fi
           BUILT_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")"
           BUILT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")"
           BUILT_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")"
@@ -157,7 +203,7 @@ jobs:
 
       - name: Install, launch, capture logs and Home screenshot
         id: runtime
-        if: steps.gate_b.outcome == 'success' && steps.ios_build.outcome == 'success'
+        if: steps.ios_build.outcome == 'success'
         timeout-minutes: 3
         env:
           SIM_UDID: ${{ steps.simulator.outputs.udid }}
@@ -210,8 +256,15 @@ jobs:
         if: always()
         shell: bash
         env:
-          GATE_B: ${{ steps.gate_b.outcome }}
           IOS_BUILD: ${{ steps.ios_build.outcome }}
+          INSTALL_RESULT: ${{ steps.runtime.outputs.simulator_install }}
+          LAUNCH_RESULT: ${{ steps.runtime.outputs.app_launch }}
+          SHARED_FRAMEWORK: ${{ steps.ios_build.outputs.shared_framework }}
+          APP_BUNDLE: ${{ steps.ios_build.outputs.app_bundle }}
+          XCODEBUILD_START: ${{ steps.ios_build.outputs.xcodebuild_start }}
+          KMP_SCRIPT_START: ${{ steps.ios_build.outputs.kmp_script_start }}
+          XCODEBUILD_END: ${{ steps.ios_build.outputs.xcodebuild_end }}
+          XCODEBUILD_DURATION: ${{ steps.ios_build.outputs.xcodebuild_duration_seconds }}
           RUNTIME: ${{ steps.runtime.outcome }}
           TARGET_SHA: ${{ steps.metadata.outputs.target_sha }}
         run: |
@@ -220,10 +273,18 @@ jobs:
           LOG=ios-release-artifacts/ios-release-simulator.log
           [[ -f "$REPORT" ]] || { mkdir -p ios-release-artifacts; echo "IOS RELEASE SIMULATOR VALIDATION REPORT" > "$REPORT"; }
           [[ -f "$LOG" ]] || : > "$LOG"
-          GATE_STATUS=RED; [[ "$GATE_B" == success ]] && GATE_STATUS=GREEN
           BUILD_STATUS=RED; [[ "$IOS_BUILD" == success ]] && BUILD_STATUS=GREEN
           INSTALL_STATUS=RED; LAUNCH_STATUS=RED; SIM_STATUS=ERROR; HOME_STATE=ERROR
-          [[ "$RUNTIME" == success ]] && { INSTALL_STATUS=GREEN; LAUNCH_STATUS=GREEN; }
+          [[ "${INSTALL_RESULT:-}" == GREEN ]] && INSTALL_STATUS=GREEN
+          [[ "${LAUNCH_RESULT:-}" == GREEN ]] && LAUNCH_STATUS=GREEN
+          [[ -n "${XCODEBUILD_START:-}" ]] || XCODEBUILD_START=NOT_REACHED
+          [[ -n "${KMP_SCRIPT_START:-}" ]] || KMP_SCRIPT_START=NOT_REACHED
+          [[ -n "${XCODEBUILD_END:-}" ]] || XCODEBUILD_END=NOT_REACHED
+          [[ -n "${XCODEBUILD_DURATION:-}" ]] || XCODEBUILD_DURATION=NOT_RECORDED
+          [[ -n "${SHARED_FRAMEWORK:-}" ]] || SHARED_FRAMEWORK=NOT_CHECKED
+          [[ -n "${APP_BUNDLE:-}" ]] || APP_BUNDLE=NOT_CHECKED
+          SCREENSHOT_STATUS=NOT_FOUND
+          [[ -s ios-release-artifacts/ios-release-home.png ]] && SCREENSHOT_STATUS=FOUND
           PRODUCTS="$(grep -E 'KMP_RUNTIME_PRODUCTS_RESULT=' "$LOG" | tail -1 || true)"
           CATEGORIES="$(grep -E 'KMP_RUNTIME_CATEGORIES_RESULT=' "$LOG" | tail -1 || true)"
           HOME_LINE="$(grep -E 'KMP_RUNTIME_HOME_READY' "$LOG" | tail -1 || true)"
@@ -235,7 +296,12 @@ jobs:
           if [[ "$RUNTIME" == success && "$HOME_LINE" != NOT_FOUND ]]; then SIM_STATUS=PASS; HOME_STATE=OK; fi
           {
             echo "target_sha=$TARGET_SHA"
-            echo "gate_b_compileKotlinIosSimulatorArm64=$GATE_STATUS"
+            echo "XCODEBUILD_START=$XCODEBUILD_START"
+            echo "KMP_SCRIPT_START=$KMP_SCRIPT_START"
+            echo "XCODEBUILD_END=$XCODEBUILD_END"
+            echo "xcodebuild_duration_seconds=$XCODEBUILD_DURATION"
+            echo "Shared.framework=$SHARED_FRAMEWORK"
+            echo "CriosRango.app=$APP_BUNDLE"
             echo "xcodebuild_release_simulator=$BUILD_STATUS"
             echo "simulator_install=$INSTALL_STATUS"
             echo "app_launch=$LAUNCH_STATUS"
@@ -244,6 +310,7 @@ jobs:
             echo "categories_result=$CATEGORIES"
             echo "home_marker=$HOME_LINE"
             echo "root_screen_marker=$ROOT_LINE"
+            echo "screenshot=$SCREENSHOT_STATUS"
             echo "home_state=$HOME_STATE"
           } > "$RUNNER_TEMP/ios-report-results.txt"
           cat "$RUNNER_TEMP/ios-report-results.txt" >> "$REPORT"
