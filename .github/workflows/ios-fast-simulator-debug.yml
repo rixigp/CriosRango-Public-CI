@@ -295,7 +295,13 @@ jobs:
           [[ -n "$HOME_LINE" ]] || HOME_LINE=NOT_FOUND
           [[ -n "$ROOT_LINE" ]] || ROOT_LINE=NOT_FOUND
           HOME_STATE=ERROR
-          [[ "$RUNTIME_OUTCOME" == success && "$HOME_LINE" != NOT_FOUND && "$ROOT_LINE" != NOT_FOUND ]] && HOME_STATE=OK
+          [[ "$RUNTIME_OUTCOME" == success && "$HOME_LINE" != NOT_FOUND && "$ROOT_LINE" != NOT_FOUND && "$SCREENSHOT_STATUS" == FOUND ]] && HOME_STATE=OK
+          ROOT_STATUS=NOT_FOUND
+          [[ "$ROOT_LINE" != NOT_FOUND ]] && ROOT_STATUS=FOUND
+          PRODUCTS_COUNT="$(printf '%s' "$HOME_LINE" | sed -nE 's/.*products=([0-9]+).*/\1/p')"
+          CATEGORIES_COUNT="$(printf '%s' "$HOME_LINE" | sed -nE 's/.*categories=([0-9]+).*/\1/p')"
+          [[ -n "$PRODUCTS_COUNT" ]] || PRODUCTS_COUNT=NOT_FOUND
+          [[ -n "$CATEGORIES_COUNT" ]] || CATEGORIES_COUNT=NOT_FOUND
           START_EPOCH="${RUN_START_EPOCH:-$(date +%s)}"
           TOTAL_DURATION=$(( $(date +%s) - START_EPOCH ))
           {
@@ -307,6 +313,9 @@ jobs:
             echo "simulator_install=$INSTALL_STATUS"
             echo "app_launch=$LAUNCH_STATUS"
             echo "screenshot=$SCREENSHOT_STATUS"
+            echo "root_screen=$ROOT_STATUS"
+            echo "products_count=$PRODUCTS_COUNT"
+            echo "categories_count=$CATEGORIES_COUNT"
             echo "products_result=$PRODUCTS"
             echo "categories_result=$CATEGORIES"
             echo "root_screen_marker=$ROOT_LINE"
