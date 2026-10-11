@@ -231,20 +231,23 @@ jobs:
           VERSION: ${{ steps.metadata.outputs.version }}
           BUILD_NUMBER: ${{ steps.metadata.outputs.build_number }}
           RUN_START_EPOCH: ${{ steps.metadata.outputs.start_epoch }}
+          ARCHIVE_STATUS: ${{ steps.archive.outputs.archive }}
+          IPA_STATUS: ${{ steps.ipa.outputs.ipa }}
+          SIGNATURE_STATUS: ${{ steps.ipa.outputs.signature }}
         run: |
           set -u
           REPORT=release-artifacts/ios-physical-testflight-report.txt
           mkdir -p release-artifacts
           [[ -f "$REPORT" ]] || printf 'IOS PHYSICAL TESTFLIGHT REPORT\n' > "$REPORT"
-          if [[ -d "$RUNNER_TEMP/CriosRango.xcarchive" ]]; then sed -i '' 's/^ARCHIVE=NOT_FOUND$/ARCHIVE=FOUND/' "$REPORT"; fi
-          IPA_FOUND="$(find release-artifacts -maxdepth 1 -name '*.ipa' -type f -size +0c -print -quit)"
-          [[ -n "$IPA_FOUND" ]] && sed -i '' 's/^IPA=NOT_FOUND$/IPA=FOUND/' "$REPORT" || true
-          if grep -q 'SIGNATURE=GREEN' "$REPORT"; then :; else echo "SIGNATURE=RED" >> "$REPORT"; fi
-          echo "APP_STORE_VALIDATION=RED" >> "$REPORT"
-          echo "UPLOAD=RED" >> "$REPORT"
-          echo "TESTFLIGHT_UPLOAD=FAILURE" >> "$REPORT"
+          [[ "$ARCHIVE_STATUS" == FOUND ]] && sed -i '' 's/^ARCHIVE=.*/ARCHIVE=FOUND/' "$REPORT" || sed -i '' 's/^ARCHIVE=.*/ARCHIVE=NOT_FOUND/' "$REPORT"
+          [[ "$IPA_STATUS" == FOUND ]] && sed -i '' 's/^IPA=.*/IPA=FOUND/' "$REPORT" || sed -i '' 's/^IPA=.*/IPA=NOT_FOUND/' "$REPORT"
+          [[ "$SIGNATURE_STATUS" == GREEN ]] && sed -i '' 's/^SIGNATURE=.*/SIGNATURE=GREEN/' "$REPORT" || sed -i '' 's/^SIGNATURE=.*/SIGNATURE=RED/' "$REPORT"
+          sed -i '' 's/^APP_STORE_VALIDATION=.*/APP_STORE_VALIDATION=RED/' "$REPORT"
+          sed -i '' 's/^UPLOAD=.*/UPLOAD=RED/' "$REPORT"
+          sed -i '' 's/^TESTFLIGHT_UPLOAD=.*/TESTFLIGHT_UPLOAD=FAILURE/' "$REPORT"
+          [[ -n "${RUN_START_EPOCH:-}" ]] || RUN_START_EPOCH="$(date +%s)"
           DURATION=$(( $(date +%s) - RUN_START_EPOCH ))
-          echo "TOTAL_DURATION_SECONDS=$DURATION" >> "$REPORT"
+          sed -i '' "s/^TOTAL_DURATION_SECONDS=.*/TOTAL_DURATION_SECONDS=$DURATION/" "$REPORT"
           cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload IPA, archive report, dSYM and build logs
