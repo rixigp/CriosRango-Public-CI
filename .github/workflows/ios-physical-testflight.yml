@@ -273,7 +273,7 @@ jobs:
           sed -i '' 's/^TESTFLIGHT_UPLOAD=.*/TESTFLIGHT_UPLOAD=FAILURE/' "$REPORT"
           [[ -n "${RUN_START_EPOCH:-}" ]] || RUN_START_EPOCH="$(date +%s)"
           DURATION=$(( $(date +%s) - RUN_START_EPOCH ))
-          sed -i '' "s/^TOTAL_DURATION_SECONDS=.*/TOTAL_DURATION_SECONDS=$DURATION/" "$REPORT"
+          echo "TOTAL_DURATION=$DURATION seconds" >> "$REPORT"
           cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload IPA, archive report, dSYM and build logs
@@ -340,7 +340,7 @@ jobs:
           PY
           chmod 600 "$RUNNER_TEMP/asc-api-key.json"
 
-      - name: Validate IPA with App Store Connect Transporter
+      - name: Validate IPA with App Store Connect altool
         if: steps.freshness.outputs.current == 'true'
         id: validate
         shell: bash
@@ -383,7 +383,7 @@ jobs:
             2>&1 | tee release-artifacts/app-store-upload.log
           echo "upload=GREEN" >> "$GITHUB_OUTPUT"
 
-      - name: Associate processed build with internal group Familia
+      - name: Wait for Apple processing and associate internal group Familia
         if: steps.upload.outputs.upload == 'GREEN'
         id: familia
         timeout-minutes: 120
@@ -391,19 +391,112 @@ jobs:
         env:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          IPA_NAME: ${{ needs.build-release-ipa.outputs.ipa_name }}
           VERSION: ${{ needs.build-release-ipa.outputs.version }}
           BUILD_NUMBER: ${{ needs.build-release-ipa.outputs.build_number }}
         run: |
           set -euo pipefail
-          sudo gem install fastlane --no-document
-          fastlane pilot distribute \
-            --api_key_path "$RUNNER_TEMP/asc-api-key.json" \
-            --app_identifier es.criosrango.app \
-            --app_version "$VERSION" \
-            --build_number "$BUILD_NUMBER" \
-            --groups "Familia" \
-            --distribute_external false 2>&1 | tee release-artifacts/testflight-familia.log
+          ruby - <<'RUBY' 2>&1 | tee release-artifacts/testflight-familia.log
+          require 'json'
+          require 'net/http'
+          require 'openssl'
+          require 'uri'
+          require 'jwt'
+
+          key_id = ENV.fetch('ASC_KEY_ID')
+          issuer_id = ENV.fetch('ASC_ISSUER_ID')
+          version = ENV.fetch('VERSION')
+          build_number = ENV.fetch('BUILD_NUMBER')
+          key_path = File.join(Dir.home, ".appstoreconnect/private_keys/AuthKey_#{key_id}.p8")
+          private_key = OpenSSL::PKey.read(File.read(key_path))
+          now = Time.now.to_i
+          token = JWT.encode(
+            { iss: issuer_id, iat: now, exp: now + 900, aud: 'appstoreconnect-v1' },
+            private_key,
+            'ES256',
+            { kid: key_id, typ: 'JWT' }
+          )
+
+          def request_asc(token, method, path, body = nil)
+            uri = URI("https://api.appstoreconnect.apple.com#{path}")
+            request = case method
+                      when :get then Net::HTTP::Get.new(uri)
+                      when :post then Net::HTTP::Post.new(uri)
+                      else raise "Unsupported method #{method}"
+                      end
+            request['Authorization'] = "Bearer #{token}"
+            request['Content-Type'] = 'application/json'
+            request.body = JSON.generate(body) if body
+            response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(request) }
+            unless response.is_a?(Net::HTTPSuccess)
+              raise "App Store Connect API #{method.to_s.upcase} #{uri.path} returned HTTP #{response.code}: #{response.body}"
+            end
+            response.body.nil? || response.body.empty? ? {} : JSON.parse(response.body)
+          end
+
+          def asc_query(path, pairs)
+            "#{path}?#{URI.encode_www_form(pairs)}"
+          end
+
+          app_response = request_asc(
+            token, :get,
+            asc_query('/v1/apps', [['filter[bundleId]', 'es.criosrango.app'], ['limit', '200']])
+          )
+          app = (app_response['data'] || []).find { |item| item.dig('attributes', 'bundleId') == 'es.criosrango.app' }
+          raise 'App Store Connect app es.criosrango.app was not found for this API key' unless app
+          app_id = app.fetch('id')
+          puts "App Store Connect app resolved: es.criosrango.app"
+
+          group_response = request_asc(
+            token, :get,
+            asc_query('/v1/betaGroups', [['filter[app]', app_id], ['filter[name]', 'Familia'], ['limit', '200']])
+          )
+          groups = group_response['data'] || []
+          group = groups.find { |item| item.dig('attributes', 'name') == 'Familia' && item.dig('attributes', 'isInternalGroup') == true }
+          raise 'Internal TestFlight group Familia was not found for es.criosrango.app' unless group
+          group_id = group.fetch('id')
+          puts "Internal TestFlight group Familia resolved."
+
+          deadline = Time.now + 7200
+          build = nil
+          loop do
+            builds_response = request_asc(
+              token, :get,
+              asc_query('/v1/builds', [['filter[app]', app_id], ['filter[version]', build_number], ['limit', '200']])
+            )
+            builds = builds_response['data'] || []
+            build = builds.find { |item| item.dig('attributes', 'version').to_s == build_number.to_s }
+            if build
+              state = build.dig('attributes', 'processingState')
+              puts "Apple processing state for version #{version}, build #{build_number}: #{state}"
+              case state
+              when 'VALID'
+                break
+              when 'INVALID'
+                raise "Apple marked build #{build_number} INVALID during processing"
+              end
+            else
+              puts "Build #{build_number} is not visible in App Store Connect yet; waiting."
+            end
+            raise "Timed out waiting for Apple to process build #{build_number}" if Time.now >= deadline
+            sleep 30
+          end
+
+          build_id = build.fetch('id')
+          existing = request_asc(
+            token, :get,
+            asc_query("/v1/betaGroups/#{group_id}/relationships/builds", [['limit', '200']])
+          )
+          already_associated = (existing['data'] || []).any? { |item| item['id'] == build_id }
+          unless already_associated
+            request_asc(
+              token, :post,
+              "/v1/betaGroups/#{group_id}/relationships/builds",
+              { data: [{ type: 'builds', id: build_id }] }
+            )
+          end
+          puts "Build #{build_number} is processed and associated with internal group Familia."
+          puts "External distribution: NOT_REQUESTED; App Review: NOT_SUBMITTED."
+          RUBY
           echo "familia=GREEN" >> "$GITHUB_OUTPUT"
 
       - name: Final report and upload evidence
@@ -436,9 +529,9 @@ jobs:
             sed -i '' "s/^TESTFLIGHT_UPLOAD=.*/TESTFLIGHT_UPLOAD=$TF_STATUS/" "$REPORT"
             sed -i '' "s/^FAMILIA_GROUP=.*/FAMILIA_GROUP=$GROUP_STATUS/" "$REPORT"
           fi
-          echo "VERSION=$VERSION" >> "$REPORT"
-          echo "BUILD=$BUILD_NUMBER" >> "$REPORT"
-          echo "TOTAL_DURATION_SECONDS=$(( $(date +%s) - RUN_START_EPOCH ))" >> "$REPORT"
+          sed -i '' "s/^VERSION=.*/VERSION=$VERSION/" "$REPORT"
+          sed -i '' "s/^BUILD=.*/BUILD=$BUILD_NUMBER/" "$REPORT"
+          sed -i '' "s/^TOTAL_DURATION=.*/TOTAL_DURATION=$(( $(date +%s) - RUN_START_EPOCH )) seconds/" "$REPORT"
           cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload final report, IPA and App Store logs
