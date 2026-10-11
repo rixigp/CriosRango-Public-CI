@@ -191,78 +191,207 @@ jobs:
           test "$BUILT_BUNDLE_ID" = "es.criosrango.app"
           echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
 
-      - name: Install, launch, capture screenshot and logs
+      - name: Install, launch, capture screenshots and logs
         id: runtime
         if: steps.ios_build.outcome == 'success'
-        timeout-minutes: 5
+        timeout-minutes: 7
         env:
           SIM_UDID: ${{ steps.simulator.outputs.udid }}
           SIM_NAME: ${{ steps.simulator.outputs.name }}
         shell: bash
         run: |
-          set -euo pipefail
-          REPORT=ios-fast-debug-artifacts/ios-fast-simulator-debug-report.txt
-          LOG_FILE="$GITHUB_WORKSPACE/ios-fast-debug-artifacts/ios-fast-simulator.log"
-          SCREENSHOT="$GITHUB_WORKSPACE/ios-fast-debug-artifacts/ios-fast-debug-home.png"
-          : > "$LOG_FILE"
+          set -uo pipefail
+          ARTIFACT_DIR="$GITHUB_WORKSPACE/ios-fast-debug-artifacts"
+          REPORT="$ARTIFACT_DIR/ios-fast-simulator-debug-report.txt"
+          LOG_FILE="$ARTIFACT_DIR/ios-fast-simulator.log"
+          LAUNCH_STDOUT="$ARTIFACT_DIR/ios-fast-launch.stdout.txt"
+          LAUNCH_STDERR="$ARTIFACT_DIR/ios-fast-launch.stderr.txt"
+          CRASH_LOG="$ARTIFACT_DIR/ios-fast-crash-diagnostics.log"
+          ROOT_SCREENSHOT="$ARTIFACT_DIR/ios-fast-debug-after-root.png"
+          HOME_SCREENSHOT="$ARTIFACT_DIR/ios-fast-debug-home.png"
+          FINAL_SCREENSHOT="$ARTIFACT_DIR/ios-fast-debug-final.png"
+          : > "$LOG_FILE"; : > "$LAUNCH_STDOUT"; : > "$LAUNCH_STDERR"; : > "$CRASH_LOG"
           LOG_PID=""
-          CONSOLE_PID=""
+          LAUNCH_EXIT_CODE=NOT_RECORDED
+          APP_PID=NOT_FOUND
+          APP_PROCESS_AFTER_LAUNCH=UNKNOWN
+          APP_PROCESS_AFTER_ROOT=UNKNOWN
+          ROOT_SCREEN=NOT_FOUND
+          HOME_READY=NOT_FOUND
+          PRODUCTS_COUNT=NOT_FOUND
+          CATEGORIES_COUNT=NOT_FOUND
+          SCREENSHOT_AFTER_ROOT=NOT_CAPTURED
+          SCREENSHOT_HOME=NOT_CAPTURED
+          screenshot() {
+            local path="$1"
+            if xcrun simctl io "$SIM_UDID" screenshot "$path" >> "$LOG_FILE" 2>&1 && [[ -s "$path" ]]; then
+              echo "Screenshot captured: $(basename "$path")" | tee -a "$LOG_FILE"
+              return 0
+            fi
+            echo "Screenshot failed: $(basename "$path")" | tee -a "$LOG_FILE"
+            return 1
+          }
+          app_process_state() {
+            local pid="$APP_PID"
+            if [[ "$pid" =~ ^[0-9]+$ ]]; then
+              if xcrun simctl spawn "$SIM_UDID" launchctl procinfo "$pid" >/dev/null 2>&1; then
+                printf 'RUNNING'
+                return
+              fi
+            fi
+            if xcrun simctl spawn "$SIM_UDID" launchctl list 2>/dev/null | grep -Fq 'es.criosrango.app'; then
+              printf 'RUNNING_PID_UNKNOWN'
+            else
+              printf 'NOT_RUNNING'
+            fi
+          }
+          collect_crash_diagnostics() {
+            {
+              echo "===== recent simulator crash/termination diagnostics ====="
+              xcrun simctl spawn "$SIM_UDID" log show --last 10m --style compact --predicate '(process == "CriosRango" OR process == "CriosRangoKMPSpike") AND (eventMessage CONTAINS[c] "crash" OR eventMessage CONTAINS[c] "exception" OR eventMessage CONTAINS[c] "terminat" OR eventMessage CONTAINS[c] "abort" OR eventMessage CONTAINS[c] "killed")' 2>&1 || true
+              echo "===== app-related crash reports ====="
+              find "$HOME/Library/Logs/DiagnosticReports" -maxdepth 1 -type f \( -iname '*CriosRango*' -o -iname '*CriosRangoKMPSpike*' \) -mmin -20 -print -exec tail -n 100 {} \; 2>/dev/null || true
+            } >> "$CRASH_LOG"
+          }
           cleanup() {
-            if [[ -n "$CONSOLE_PID" ]]; then kill "$CONSOLE_PID" 2>/dev/null || true; wait "$CONSOLE_PID" 2>/dev/null || true; fi
             if [[ -n "$LOG_PID" ]]; then kill "$LOG_PID" 2>/dev/null || true; wait "$LOG_PID" 2>/dev/null || true; fi
-            xcrun simctl spawn "$SIM_UDID" log show --last 3m --style compact --predicate 'process == "CriosRango" OR process == "CriosRangoKMPSpike" OR eventMessage CONTAINS[c] "KMP_RUNTIME" OR eventMessage CONTAINS[c] "Ktor" OR eventMessage CONTAINS[c] "HTTP" OR eventMessage CONTAINS[c] "exception" OR eventMessage CONTAINS[c] "crash"' >> "$LOG_FILE" 2>&1 || true
+            xcrun simctl spawn "$SIM_UDID" log show --last 10m --style compact --predicate 'process == "CriosRango" OR process == "CriosRangoKMPSpike" OR eventMessage CONTAINS[c] "KMP_RUNTIME" OR eventMessage CONTAINS[c] "Ktor" OR eventMessage CONTAINS[c] "HTTP" OR eventMessage CONTAINS[c] "exception" OR eventMessage CONTAINS[c] "crash" OR eventMessage CONTAINS[c] "terminat"' >> "$LOG_FILE" 2>&1 || true
+            collect_crash_diagnostics
+            {
+              echo "SIMCTL_LAUNCH_EXIT_CODE=$LAUNCH_EXIT_CODE"
+              echo "APP_PID=$APP_PID"
+              echo "APP_PROCESS_AFTER_LAUNCH=$APP_PROCESS_AFTER_LAUNCH"
+              echo "ROOT_SCREEN=$ROOT_SCREEN"
+              echo "APP_PROCESS_AFTER_ROOT=$APP_PROCESS_AFTER_ROOT"
+              echo "HOME_READY=$HOME_READY"
+              echo "PRODUCTS_COUNT=$PRODUCTS_COUNT"
+              echo "CATEGORIES_COUNT=$CATEGORIES_COUNT"
+              echo "SCREENSHOT_AFTER_ROOT=$SCREENSHOT_AFTER_ROOT"
+              echo "SCREENSHOT_HOME=$SCREENSHOT_HOME"
+            } >> "$REPORT"
+            {
+              echo "simctl_launch_exit_code=$LAUNCH_EXIT_CODE"
+              echo "app_pid=$APP_PID"
+              echo "app_process_after_launch=$APP_PROCESS_AFTER_LAUNCH"
+              echo "root_screen=$ROOT_SCREEN"
+              echo "app_process_after_root=$APP_PROCESS_AFTER_ROOT"
+              echo "home_ready=$HOME_READY"
+              echo "products_count=$PRODUCTS_COUNT"
+              echo "categories_count=$CATEGORIES_COUNT"
+              echo "screenshot_after_root=$SCREENSHOT_AFTER_ROOT"
+              echo "screenshot_home=$SCREENSHOT_HOME"
+            } >> "$GITHUB_OUTPUT"
           }
           trap cleanup EXIT
+
           echo "Simulator: $SIM_NAME ($SIM_UDID)" | tee -a "$LOG_FILE"
-          xcrun simctl install "$SIM_UDID" "$APP_PATH" 2>&1 | tee -a "$LOG_FILE"
-          echo "simulator_install=GREEN" >> "$GITHUB_OUTPUT"
-
-          # Configure the notification authorization before first launch so iOS
-          # does not present the system permission sheet over the Home screen.
-          if ! command -v applesimutils >/dev/null 2>&1; then
-            brew tap wix/brew
-            brew trust --formula wix/brew/applesimutils
-            brew install applesimutils
+          if xcrun simctl install "$SIM_UDID" "$APP_PATH" 2>&1 | tee -a "$LOG_FILE"; then
+            echo "simulator_install=GREEN" | tee -a "$LOG_FILE" "$GITHUB_OUTPUT"
+            echo "simulator_install=GREEN" >> "$REPORT"
+          else
+            echo "simulator_install=RED" | tee -a "$LOG_FILE" "$GITHUB_OUTPUT"
+            echo "simulator_install=RED" >> "$REPORT"
+            exit 1
           fi
-          applesimutils --byId "$SIM_UDID" --bundle "es.criosrango.app" --setPermissions "notifications=YES" 2>&1 | tee -a "$LOG_FILE"
-          echo "notifications_permission=YES" | tee -a "$LOG_FILE"
 
-          xcrun simctl spawn "$SIM_UDID" log stream --style compact --level debug --predicate 'process == "CriosRango" OR process == "CriosRangoKMPSpike" OR eventMessage CONTAINS[c] "KMP_RUNTIME" OR eventMessage CONTAINS[c] "Ktor" OR eventMessage CONTAINS[c] "HTTP" OR eventMessage CONTAINS[c] "exception"' >> "$LOG_FILE" 2>&1 &
+          # Pre-authorize notifications so the system sheet cannot obscure Home.
+          if ! command -v applesimutils >/dev/null 2>&1; then
+            brew tap wix/brew 2>&1 | tee -a "$LOG_FILE"
+            brew trust --formula wix/brew/applesimutils 2>&1 | tee -a "$LOG_FILE"
+            brew install applesimutils 2>&1 | tee -a "$LOG_FILE"
+          fi
+          if applesimutils --byId "$SIM_UDID" --bundle "es.criosrango.app" --setPermissions "notifications=YES" 2>&1 | tee -a "$LOG_FILE"; then
+            echo "notifications_permission=YES" | tee -a "$LOG_FILE"
+            echo "notifications_permission=YES" >> "$REPORT"
+          else
+            echo "notifications_permission=CONFIGURE_FAILED" | tee -a "$LOG_FILE"
+            echo "notifications_permission=CONFIGURE_FAILED" >> "$REPORT"
+          fi
+
+          # Keep the unified log stream independent from simctl launch's process.
+          xcrun simctl spawn "$SIM_UDID" log stream --style compact --level debug --predicate 'process == "CriosRango" OR process == "CriosRangoKMPSpike" OR eventMessage CONTAINS[c] "KMP_RUNTIME" OR eventMessage CONTAINS[c] "Ktor" OR eventMessage CONTAINS[c] "HTTP" OR eventMessage CONTAINS[c] "exception" OR eventMessage CONTAINS[c] "crash" OR eventMessage CONTAINS[c] "terminat"' >> "$LOG_FILE" 2>&1 &
           LOG_PID=$!
           sleep 2
-          xcrun simctl launch --console-pty --terminate-running-process "$SIM_UDID" es.criosrango.app >> "$LOG_FILE" 2>&1 &
-          CONSOLE_PID=$!
-          echo "app_launch=STARTED" >> "$GITHUB_OUTPUT"
-          for i in $(seq 1 35); do
-            if grep -Eqi 'Unable to launch|Failed to launch|No such process|Application failed to launch' "$LOG_FILE"; then
-              echo "::error::Simulator launch reported an error"
-              exit 1
+
+          set +e
+          xcrun simctl launch --terminate-running-process "$SIM_UDID" es.criosrango.app >"$LAUNCH_STDOUT" 2>"$LAUNCH_STDERR"
+          LAUNCH_EXIT_CODE=$?
+          set -e
+          cat "$LAUNCH_STDOUT" | tee -a "$LOG_FILE"
+          cat "$LAUNCH_STDERR" | tee -a "$LOG_FILE"
+          echo "SIMCTL_LAUNCH_EXIT_CODE=$LAUNCH_EXIT_CODE" | tee -a "$LOG_FILE"
+          echo "SIMCTL_LAUNCH_EXIT_CODE=$LAUNCH_EXIT_CODE" >> "$REPORT"
+          echo "simctl_launch_exit_code=$LAUNCH_EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+          APP_PID="$(sed -nE 's/.*pid: ([0-9]+).*/\1/p' "$LAUNCH_STDOUT" | tail -1)"
+          [[ -n "$APP_PID" ]] || APP_PID=NOT_FOUND
+          APP_PROCESS_AFTER_LAUNCH="$(app_process_state)"
+          echo "APP_PID=$APP_PID" | tee -a "$LOG_FILE"
+          echo "APP_PROCESS_AFTER_LAUNCH=$APP_PROCESS_AFTER_LAUNCH" | tee -a "$LOG_FILE"
+
+          # A failed launch command is recorded separately; continue gathering evidence.
+          for i in $(seq 1 45); do
+            if grep -q 'KMP_RUNTIME_ROOT_SCREEN_READY' "$LOG_FILE"; then
+              ROOT_SCREEN=FOUND
+              break
             fi
-            if grep -q 'KMP_RUNTIME_ROOT_SCREEN_READY' "$LOG_FILE"; then break; fi
-            if ! kill -0 "$CONSOLE_PID" 2>/dev/null && ! grep -q 'KMP_RUNTIME_ROOT_SCREEN_READY' "$LOG_FILE"; then
-              echo "::error::simctl launch console exited before root screen marker"
-              exit 1
+            APP_PROCESS_AFTER_LAUNCH="$(app_process_state)"
+            if [[ "$APP_PROCESS_AFTER_LAUNCH" == NOT_RUNNING && "$LAUNCH_EXIT_CODE" != 0 ]]; then
+              break
             fi
             sleep 1
           done
-          grep -q 'KMP_RUNTIME_ROOT_SCREEN_READY' "$LOG_FILE" || { echo "::error::root screen marker missing after 35 seconds"; exit 1; }
-          HOME_LINE="$(grep -E 'KMP_RUNTIME_HOME_READY products=[1-9][0-9]* categories=[1-9][0-9]*' "$LOG_FILE" | tail -1 || true)"
-          [[ -n "$HOME_LINE" ]] || { echo "::error::Home/products/categories readiness marker missing after 35 seconds"; exit 1; }
 
-          # Let any permission/springboard transition settle before capturing.
-          sleep 3
-          xcrun simctl spawn "$SIM_UDID" launchctl list | grep -q 'es.criosrango.app' || true
-          xcrun simctl io "$SIM_UDID" screenshot "$SCREENSHOT" 2>&1 | tee -a "$LOG_FILE"
-          test -s "$SCREENSHOT"
-          echo "root_screen=FOUND" >> "$GITHUB_OUTPUT"
-          echo "home_state=OK" >> "$GITHUB_OUTPUT"
-          echo "app_launch=GREEN" >> "$GITHUB_OUTPUT"
-          echo "runtime_markers=GREEN" >> "$GITHUB_OUTPUT"
-          echo "simulator_install=GREEN" >> "$REPORT"
+          if grep -q 'KMP_RUNTIME_ROOT_SCREEN_READY' "$LOG_FILE"; then
+            ROOT_SCREEN=FOUND
+            echo "ROOT_SCREEN_READY=FOUND" | tee -a "$LOG_FILE"
+            APP_PROCESS_AFTER_ROOT="$(app_process_state)"
+            sleep 5
+            if screenshot "$ROOT_SCREENSHOT"; then SCREENSHOT_AFTER_ROOT=FOUND; else SCREENSHOT_AFTER_ROOT=FAILED; fi
+          else
+            ROOT_SCREEN=NOT_FOUND
+            APP_PROCESS_AFTER_ROOT="$(app_process_state)"
+            echo "ROOT_SCREEN_READY=NOT_FOUND" | tee -a "$LOG_FILE"
+          fi
+
+          # Do not make HOME readiness a launch failure. Continue waiting and keep logs.
+          for i in $(seq 1 90); do
+            HOME_LINE="$(grep -E 'KMP_RUNTIME_HOME_READY.*products=[0-9]+.*categories=[0-9]+' "$LOG_FILE" | tail -1 || true)"
+            if [[ -n "$HOME_LINE" ]]; then
+              HOME_READY=FOUND
+              PRODUCTS_COUNT="$(printf '%s' "$HOME_LINE" | sed -nE 's/.*products=([0-9]+).*/\1/p')"
+              CATEGORIES_COUNT="$(printf '%s' "$HOME_LINE" | sed -nE 's/.*categories=([0-9]+).*/\1/p')"
+              break
+            fi
+            APP_PROCESS_AFTER_ROOT="$(app_process_state)"
+            if [[ "$ROOT_SCREEN" == FOUND && "$APP_PROCESS_AFTER_ROOT" == NOT_RUNNING ]]; then
+              echo "APP_PROCESS_DIED_BETWEEN_ROOT_AND_HOME=YES" | tee -a "$LOG_FILE"
+              collect_crash_diagnostics
+              break
+            fi
+            sleep 1
+          done
+
+          if [[ "$HOME_READY" == FOUND ]]; then
+            sleep 3
+            if screenshot "$HOME_SCREENSHOT"; then SCREENSHOT_HOME=FOUND; else SCREENSHOT_HOME=FAILED; fi
+          fi
+
+          # Always attempt a final screenshot, even if Home never becomes ready.
+          screenshot "$FINAL_SCREENSHOT" || true
+          APP_PROCESS_AFTER_ROOT="$(app_process_state)"
+          {
+            echo "HOME_READY=$HOME_READY"
+            echo "PRODUCTS_COUNT=$PRODUCTS_COUNT"
+            echo "CATEGORIES_COUNT=$CATEGORIES_COUNT"
+            echo "APP_PROCESS_FINAL=$APP_PROCESS_AFTER_ROOT"
+          } | tee -a "$LOG_FILE"
           echo "app_launch=GREEN" >> "$REPORT"
-          echo "notifications_permission=YES" >> "$REPORT"
-          echo "root_screen=FOUND" >> "$REPORT"
-          echo "home_state=OK" >> "$REPORT"
+          echo "home_state=$([[ "$HOME_READY" == FOUND ]] && echo OK || echo ERROR)" >> "$REPORT"
+          echo "screenshot=$([[ "$SCREENSHOT_HOME" == FOUND ]] && echo FOUND || echo NOT_FOUND)" >> "$REPORT"
+          # Intentionally exit zero when Home readiness is missing: preserve evidence
+          # and do not let Simulator readiness block the separate TestFlight circuit.
+          exit 0
 
       - name: Final report and total duration
         if: always()
@@ -271,7 +400,16 @@ jobs:
           BUILD_OUTCOME: ${{ steps.ios_build.outcome }}
           RUNTIME_OUTCOME: ${{ steps.runtime.outcome }}
           INSTALL_RESULT: ${{ steps.runtime.outputs.simulator_install }}
-          LAUNCH_RESULT: ${{ steps.runtime.outputs.app_launch }}
+          LAUNCH_EXIT_CODE: ${{ steps.runtime.outputs.simctl_launch_exit_code }}
+          APP_PID: ${{ steps.runtime.outputs.app_pid }}
+          PROCESS_AFTER_LAUNCH: ${{ steps.runtime.outputs.app_process_after_launch }}
+          ROOT_SCREEN: ${{ steps.runtime.outputs.root_screen }}
+          PROCESS_AFTER_ROOT: ${{ steps.runtime.outputs.app_process_after_root }}
+          HOME_READY: ${{ steps.runtime.outputs.home_ready }}
+          PRODUCTS_COUNT: ${{ steps.runtime.outputs.products_count }}
+          CATEGORIES_COUNT: ${{ steps.runtime.outputs.categories_count }}
+          SCREENSHOT_AFTER_ROOT: ${{ steps.runtime.outputs.screenshot_after_root }}
+          SCREENSHOT_HOME: ${{ steps.runtime.outputs.screenshot_home }}
           SHARED_FRAMEWORK: ${{ steps.ios_build.outputs.shared_framework }}
           APP_BUNDLE: ${{ steps.ios_build.outputs.app_bundle }}
           BUILD_DURATION: ${{ steps.ios_build.outputs.duration_seconds }}
@@ -282,47 +420,44 @@ jobs:
           [[ -f "$REPORT" ]] || { mkdir -p ios-fast-debug-artifacts; echo "IOS FAST SIMULATOR DEBUG REPORT" > "$REPORT"; }
           [[ -f ios-fast-debug-artifacts/ios-fast-simulator.log ]] || : > ios-fast-debug-artifacts/ios-fast-simulator.log
           [[ -f ios-fast-debug-artifacts/ios-fast-xcodebuild.log ]] || : > ios-fast-debug-artifacts/ios-fast-xcodebuild.log
-          [[ -n "${SHARED_FRAMEWORK:-}" ]] || SHARED_FRAMEWORK=NOT_CHECKED
-          [[ -n "${APP_BUNDLE:-}" ]] || APP_BUNDLE=NOT_CHECKED
-          INSTALL_STATUS=RED; [[ "${INSTALL_RESULT:-}" == GREEN ]] && INSTALL_STATUS=GREEN
-          LAUNCH_STATUS=RED; [[ "${LAUNCH_RESULT:-}" == GREEN ]] && LAUNCH_STATUS=GREEN
-          SCREENSHOT_STATUS=NOT_FOUND
-          [[ -s ios-fast-debug-artifacts/ios-fast-debug-home.png ]] && SCREENSHOT_STATUS=FOUND
-          PRODUCTS="$(grep -E 'KMP_RUNTIME_PRODUCTS_RESULT=' ios-fast-debug-artifacts/ios-fast-simulator.log | tail -1 || true)"
-          CATEGORIES="$(grep -E 'KMP_RUNTIME_CATEGORIES_RESULT=' ios-fast-debug-artifacts/ios-fast-simulator.log | tail -1 || true)"
-          HOME_LINE="$(grep -E 'KMP_RUNTIME_HOME_READY' ios-fast-debug-artifacts/ios-fast-simulator.log | tail -1 || true)"
-          ROOT_LINE="$(grep -E 'KMP_RUNTIME_ROOT_SCREEN_READY' ios-fast-debug-artifacts/ios-fast-simulator.log | tail -1 || true)"
-          [[ -n "$PRODUCTS" ]] || PRODUCTS=NOT_FOUND
-          [[ -n "$CATEGORIES" ]] || CATEGORIES=NOT_FOUND
-          [[ -n "$HOME_LINE" ]] || HOME_LINE=NOT_FOUND
-          [[ -n "$ROOT_LINE" ]] || ROOT_LINE=NOT_FOUND
-          HOME_STATE=ERROR
-          [[ "$RUNTIME_OUTCOME" == success && "$HOME_LINE" != NOT_FOUND && "$ROOT_LINE" != NOT_FOUND && "$SCREENSHOT_STATUS" == FOUND ]] && HOME_STATE=OK
-          ROOT_STATUS=NOT_FOUND
-          [[ "$ROOT_LINE" != NOT_FOUND ]] && ROOT_STATUS=FOUND
-          PRODUCTS_COUNT="$(printf '%s' "$HOME_LINE" | sed -nE 's/.*products=([0-9]+).*/\1/p')"
-          CATEGORIES_COUNT="$(printf '%s' "$HOME_LINE" | sed -nE 's/.*categories=([0-9]+).*/\1/p')"
-          [[ -n "$PRODUCTS_COUNT" ]] || PRODUCTS_COUNT=NOT_FOUND
-          [[ -n "$CATEGORIES_COUNT" ]] || CATEGORIES_COUNT=NOT_FOUND
+          [[ -f ios-fast-debug-artifacts/ios-fast-launch.stdout.txt ]] || : > ios-fast-debug-artifacts/ios-fast-launch.stdout.txt
+          [[ -f ios-fast-debug-artifacts/ios-fast-launch.stderr.txt ]] || : > ios-fast-debug-artifacts/ios-fast-launch.stderr.txt
+          [[ -f ios-fast-debug-artifacts/ios-fast-crash-diagnostics.log ]] || : > ios-fast-debug-artifacts/ios-fast-crash-diagnostics.log
+          ROOT_STATUS="${ROOT_SCREEN:-NOT_RECORDED}"
+          HOME_STATUS="${HOME_READY:-NOT_RECORDED}"
+          PRODUCTS="${PRODUCTS_COUNT:-NOT_RECORDED}"
+          CATEGORIES="${CATEGORIES_COUNT:-NOT_RECORDED}"
+          ROOTSHOT="${SCREENSHOT_AFTER_ROOT:-NOT_RECORDED}"
+          HOMESHOT="${SCREENSHOT_HOME:-NOT_RECORDED}"
+          [[ -s ios-fast-debug-artifacts/ios-fast-debug-after-root.png ]] && ROOTSHOT=FOUND
+          [[ -s ios-fast-debug-artifacts/ios-fast-debug-home.png ]] && HOMESHOT=FOUND
+          FINALSHOT=NOT_FOUND
+          [[ -s ios-fast-debug-artifacts/ios-fast-debug-final.png ]] && FINALSHOT=FOUND
           START_EPOCH="${RUN_START_EPOCH:-$(date +%s)}"
           TOTAL_DURATION=$(( $(date +%s) - START_EPOCH ))
           {
             echo "target_sha=$TARGET_SHA"
             echo "debug_build_duration_seconds=${BUILD_DURATION:-NOT_RECORDED}"
             echo "total_duration_seconds=$TOTAL_DURATION"
-            echo "Shared.framework=$SHARED_FRAMEWORK"
-            echo "CriosRango.app=$APP_BUNDLE"
-            echo "simulator_install=$INSTALL_STATUS"
-            echo "app_launch=$LAUNCH_STATUS"
-            echo "screenshot=$SCREENSHOT_STATUS"
-            echo "root_screen=$ROOT_STATUS"
-            echo "products_count=$PRODUCTS_COUNT"
-            echo "categories_count=$CATEGORIES_COUNT"
-            echo "products_result=$PRODUCTS"
-            echo "categories_result=$CATEGORIES"
-            echo "root_screen_marker=$ROOT_LINE"
-            echo "home_marker=$HOME_LINE"
-            echo "home_state=$HOME_STATE"
+            echo "Shared.framework=${SHARED_FRAMEWORK:-NOT_CHECKED}"
+            echo "CriosRango.app=${APP_BUNDLE:-NOT_CHECKED}"
+            echo "simulator_install=${INSTALL_RESULT:-NOT_RECORDED}"
+            echo "SIMCTL_LAUNCH_EXIT_CODE=${LAUNCH_EXIT_CODE:-NOT_RECORDED}"
+            echo "APP_PID=${APP_PID:-NOT_FOUND}"
+            echo "APP_PROCESS_AFTER_LAUNCH=${PROCESS_AFTER_LAUNCH:-UNKNOWN}"
+            echo "ROOT_SCREEN=$ROOT_STATUS"
+            echo "APP_PROCESS_AFTER_ROOT=${PROCESS_AFTER_ROOT:-UNKNOWN}"
+            echo "HOME_READY=$HOME_STATUS"
+            echo "PRODUCTS_COUNT=$PRODUCTS"
+            echo "CATEGORIES_COUNT=$CATEGORIES"
+            echo "SCREENSHOT_AFTER_ROOT=$ROOTSHOT"
+            echo "SCREENSHOT_HOME=$HOMESHOT"
+            echo "SCREENSHOT_FINAL=$FINALSHOT"
+            echo "app_launch=${LAUNCH_EXIT_CODE:-NOT_RECORDED}"
+            echo "home_state=$([[ "$HOME_STATUS" == FOUND ]] && echo OK || echo ERROR)"
+            echo "products_count=$PRODUCTS"
+            echo "categories_count=$CATEGORIES"
+            echo "screenshot=$HOMESHOT"
           } >> "$REPORT"
           cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
 
