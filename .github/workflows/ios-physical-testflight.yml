@@ -62,10 +62,10 @@ jobs:
           echo "ipa_name=CriosRango-${VERSION}-${BUILD_NUMBER}.ipa" >> "$GITHUB_OUTPUT"
           {
             echo "### iOS Physical TestFlight"
-            echo "- SHA: `$ACTUAL_SHA`"
-            echo "- Branch: `$BRANCH_NAME`"
-            echo "- Version: `$VERSION`"
-            echo "- Generated build: `$BUILD_NUMBER`"
+            echo "- SHA: $ACTUAL_SHA"
+            echo "- Branch: $BRANCH_NAME"
+            echo "- Version: $VERSION"
+            echo "- Generated build: $BUILD_NUMBER"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Check existing signing and App Store Connect secrets
