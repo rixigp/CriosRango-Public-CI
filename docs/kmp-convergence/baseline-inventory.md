@@ -3,7 +3,7 @@
 Repository `rixigp/CriosRango-Public-CI`; baseline `main` at `610aa645633a2895d7a992bc8848bcb9022afca0`. Documentation-only inventory.
 
 ## Gate report
-- TOTAL_AREAS=31
+- TOTAL_AREAS=30
 - UNCLASSIFIED_AREAS=0 (each row has explicit current/target ownership; source inventory, not runtime parity proof)
 - CATEGORY_MAPPING_COUNT=11
 - CATEGORY_UNIQUE_ASSET_COUNT=11
