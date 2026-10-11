@@ -242,6 +242,14 @@ class StoreCheckoutStore(
 
     fun clearCreatedOrder() { _createdOrder.value = null }
 
+    fun clearForNewProcess() {
+        _createdOrder.value = null
+        _checkout.value = null
+        _cart.value = StoreCart()
+        _phase.value = StoreCheckoutPhase.IDLE
+        _error.value = null
+    }
+
     private fun fail(t: Throwable) {
         _error.value = t.message ?: "No se ha podido cargar el checkout."
         _phase.value = StoreCheckoutPhase.ERROR

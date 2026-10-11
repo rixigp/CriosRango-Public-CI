@@ -272,7 +272,14 @@ fun IosCheckoutScreen(
 
         if (paymentState == StoreCardPaymentState.PAID) item {
             Text("Pago confirmado para el pedido #" + (paymentOrderId ?: ""), color = MaterialTheme.colorScheme.primary)
-            Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Seguir comprando") }
+            Button(
+                onClick = {
+                    checkoutStore.clearForNewProcess()
+                    paymentStore.clearForNewProcess()
+                    onBack()
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Seguir comprando") }
         }
         if (paymentState == StoreCardPaymentState.NOT_PAID) item {
             Text("El pago no se ha completado.", color = MaterialTheme.colorScheme.error)
