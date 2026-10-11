@@ -209,13 +209,22 @@ jobs:
           cleanup() {
             if [[ -n "$CONSOLE_PID" ]]; then kill "$CONSOLE_PID" 2>/dev/null || true; wait "$CONSOLE_PID" 2>/dev/null || true; fi
             if [[ -n "$LOG_PID" ]]; then kill "$LOG_PID" 2>/dev/null || true; wait "$LOG_PID" 2>/dev/null || true; fi
-            xcrun simctl io "$SIM_UDID" screenshot "$SCREENSHOT" >> "$LOG_FILE" 2>&1 || true
             xcrun simctl spawn "$SIM_UDID" log show --last 3m --style compact --predicate 'process == "CriosRango" OR process == "CriosRangoKMPSpike" OR eventMessage CONTAINS[c] "KMP_RUNTIME" OR eventMessage CONTAINS[c] "Ktor" OR eventMessage CONTAINS[c] "HTTP" OR eventMessage CONTAINS[c] "exception" OR eventMessage CONTAINS[c] "crash"' >> "$LOG_FILE" 2>&1 || true
           }
           trap cleanup EXIT
           echo "Simulator: $SIM_NAME ($SIM_UDID)" | tee -a "$LOG_FILE"
           xcrun simctl install "$SIM_UDID" "$APP_PATH" 2>&1 | tee -a "$LOG_FILE"
           echo "simulator_install=GREEN" >> "$GITHUB_OUTPUT"
+
+          # Configure the notification authorization before first launch so iOS
+          # does not present the system permission sheet over the Home screen.
+          if ! command -v applesimutils >/dev/null 2>&1; then
+            brew tap wix/brew
+            brew install applesimutils
+          fi
+          applesimutils --byId "$SIM_UDID" --bundle "es.criosrango.app" --setPermissions "notifications=YES" 2>&1 | tee -a "$LOG_FILE"
+          echo "notifications_permission=YES" | tee -a "$LOG_FILE"
+
           xcrun simctl spawn "$SIM_UDID" log stream --style compact --level debug --predicate 'process == "CriosRango" OR process == "CriosRangoKMPSpike" OR eventMessage CONTAINS[c] "KMP_RUNTIME" OR eventMessage CONTAINS[c] "Ktor" OR eventMessage CONTAINS[c] "HTTP" OR eventMessage CONTAINS[c] "exception"' >> "$LOG_FILE" 2>&1 &
           LOG_PID=$!
           sleep 2
@@ -234,13 +243,24 @@ jobs:
             fi
             sleep 1
           done
-          xcrun simctl io "$SIM_UDID" screenshot "$SCREENSHOT" 2>&1 | tee -a "$LOG_FILE"
           grep -q 'KMP_RUNTIME_ROOT_SCREEN_READY' "$LOG_FILE" || { echo "::error::root screen marker missing after 35 seconds"; exit 1; }
-          grep -Eq 'KMP_RUNTIME_HOME_READY products=[1-9][0-9]* categories=[1-9][0-9]*' "$LOG_FILE" || { echo "::error::Home/products/categories readiness marker missing after 35 seconds"; exit 1; }
+          HOME_LINE="$(grep -E 'KMP_RUNTIME_HOME_READY products=[1-9][0-9]* categories=[1-9][0-9]*' "$LOG_FILE" | tail -1 || true)"
+          [[ -n "$HOME_LINE" ]] || { echo "::error::Home/products/categories readiness marker missing after 35 seconds"; exit 1; }
+
+          # Let any permission/springboard transition settle before capturing.
+          sleep 3
+          xcrun simctl spawn "$SIM_UDID" launchctl list | grep -q 'es.criosrango.app' || true
+          xcrun simctl io "$SIM_UDID" screenshot "$SCREENSHOT" 2>&1 | tee -a "$LOG_FILE"
+          test -s "$SCREENSHOT"
+          echo "root_screen=FOUND" >> "$GITHUB_OUTPUT"
+          echo "home_state=OK" >> "$GITHUB_OUTPUT"
           echo "app_launch=GREEN" >> "$GITHUB_OUTPUT"
           echo "runtime_markers=GREEN" >> "$GITHUB_OUTPUT"
           echo "simulator_install=GREEN" >> "$REPORT"
           echo "app_launch=GREEN" >> "$REPORT"
+          echo "notifications_permission=YES" >> "$REPORT"
+          echo "root_screen=FOUND" >> "$REPORT"
+          echo "home_state=OK" >> "$REPORT"
 
       - name: Final report and total duration
         if: always()
