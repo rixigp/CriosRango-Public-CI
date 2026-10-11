@@ -28,6 +28,10 @@ kotlin {
         iosMain.dependencies { implementation("io.ktor:ktor-client-darwin:2.3.12") }
     }
 }
+compose.resources {
+    packageOfResClass = "es.criosrango.shared.generated.resources"
+}
+
 android {
     namespace = "es.criosrango.shared"
     compileSdk = 35

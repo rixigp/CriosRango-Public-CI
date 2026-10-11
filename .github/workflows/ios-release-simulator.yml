@@ -1,0 +1,263 @@
+name: iOS Release Simulator Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Exact 40-character commit SHA to build and run"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  ios-release-simulator:
+    name: Build, launch and inspect iOS Release on Simulator
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout exact target SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.target_sha }}
+
+      - name: Verify exact SHA and prepare report
+        id: metadata
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! [[ "$TARGET_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::target_sha must be a full 40-character commit SHA"
+            exit 1
+          fi
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          if [[ "$ACTUAL_SHA" != "$TARGET_SHA" ]]; then
+            echo "::error::Checked out SHA does not match target_sha"
+            exit 1
+          fi
+          VERSION_NAME="$(grep -m1 'MARKETING_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
+          BUILD_NUMBER="$(grep -m1 'CURRENT_PROJECT_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*CURRENT_PROJECT_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
+          test -n "$VERSION_NAME"
+          test -n "$BUILD_NUMBER"
+          mkdir -p ios-release-artifacts
+          {
+            echo "IOS RELEASE SIMULATOR VALIDATION REPORT"
+            echo "target_sha=$ACTUAL_SHA"
+            echo "version=$VERSION_NAME"
+            echo "build=$BUILD_NUMBER"
+            echo "bundle_id=es.criosrango.app"
+            echo "distribution_archive=NOT_USED"
+            echo "app_store_connect=NOT_USED"
+            echo "testflight=NOT_USED"
+            echo "distribution_provisioning=NOT_USED"
+            echo "upload=NOT_PERFORMED"
+            echo "simulator_status=NOT_RUN"
+            echo "products_result=NOT_RUN"
+            echo "categories_result=NOT_RUN"
+            echo "home_state=NOT_RUN"
+          } > ios-release-artifacts/ios-release-simulator-report.txt
+          echo "version=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Checked out $ACTUAL_SHA; version $VERSION_NAME build $BUILD_NUMBER"
+
+      - name: Select and validate Xcode 26.6
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEVELOPER_DIR="/Applications/Xcode_26.6.app/Contents/Developer"
+          test -d "$DEVELOPER_DIR"
+          sudo xcode-select -s "$DEVELOPER_DIR"
+          XCODE_INFO="$(xcodebuild -version)"
+          printf '%s\n' "$XCODE_INFO"
+          test "$(printf '%s\n' "$XCODE_INFO" | awk '/^Xcode / {print $2; exit}')" = "26.6"
+          test "$(xcode-select -p)" = "$DEVELOPER_DIR"
+          xcrun --sdk iphonesimulator --show-sdk-version
+
+      - name: Install Java for Kotlin Multiplatform
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Select a compatible iPhone Simulator
+        id: simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEVICE_JSON="$(xcrun simctl list devices available -j)"
+          DEVICE_INFO="$(printf '%s' "$DEVICE_JSON" | python3 -c '
+          import json, sys
+          data=json.load(sys.stdin)
+          devices=[]
+          for runtime, entries in data.get("devices", {}).items():
+              if "iOS" not in runtime:
+                  continue
+              for device in entries:
+                  if device.get("isAvailable") and device.get("name", "").startswith("iPhone"):
+                      devices.append((runtime, device))
+          preferred=("iPhone 17 Pro", "iPhone 17", "iPhone 16 Pro", "iPhone 16", "iPhone 15 Pro", "iPhone 15")
+          for name in preferred:
+              matches=[(runtime,d) for runtime,d in devices if d["name"] == name]
+              if matches:
+                  runtime,d=sorted(matches, key=lambda pair: pair[0])[-1]
+                  print(runtime+"|"+d["name"]+"|"+d["udid"])
+                  raise SystemExit(0)
+          if devices:
+              runtime,d=sorted(devices, key=lambda pair: (pair[0],pair[1]["name"]))[-1]
+              print(runtime+"|"+d["name"]+"|"+d["udid"])
+              raise SystemExit(0)
+          raise SystemExit("No available iPhone Simulator runtime is installed")
+          ')"
+          IFS='|' read -r SIM_RUNTIME SIM_NAME SIM_UDID <<< "$DEVICE_INFO"
+          test -n "$SIM_UDID"
+          echo "runtime=$SIM_RUNTIME" >> "$GITHUB_OUTPUT"
+          echo "name=$SIM_NAME" >> "$GITHUB_OUTPUT"
+          echo "udid=$SIM_UDID" >> "$GITHUB_OUTPUT"
+          echo "Selected simulator: $SIM_NAME ($SIM_RUNTIME, $SIM_UDID)"
+          xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
+          xcrun simctl bootstatus "$SIM_UDID" -b
+
+      - name: Build Shared and iOS app in Release for Simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme CriosRangoKMPSpike \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath "$RUNNER_TEMP/CriosRangoDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee "$RUNNER_TEMP/ios-release-xcodebuild.log"
+          APP_PATH="$RUNNER_TEMP/CriosRangoDerivedData/Build/Products/Release-iphonesimulator/CriosRango.app"
+          test -d "$APP_PATH"
+          BUILT_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")"
+          BUILT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")"
+          BUILT_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")"
+          test "$BUILT_BUNDLE_ID" = "es.criosrango.app"
+          echo "Release Simulator app built: $BUILT_BUNDLE_ID $BUILT_VERSION ($BUILT_BUILD)"
+          echo "app_path=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Install, launch, capture runtime logs and Home screenshot
+        id: runtime
+        shell: bash
+        env:
+          SIM_UDID: ${{ steps.simulator.outputs.udid }}
+        run: |
+          set -euo pipefail
+          LOG_FILE="$GITHUB_WORKSPACE/ios-release-artifacts/ios-release-simulator.log"
+          SCREENSHOT="$GITHUB_WORKSPACE/ios-release-artifacts/ios-release-home.png"
+          : > "$LOG_FILE"
+          echo "Simulator: ${{ steps.simulator.outputs.name }} ($SIM_UDID)" | tee -a "$LOG_FILE"
+          xcrun simctl install "$SIM_UDID" "$APP_PATH"
+          xcrun simctl spawn "$SIM_UDID" log stream --style compact --level debug --predicate 'process == "CriosRango" OR process == "CriosRangoKMPSpike" OR eventMessage CONTAINS[c] "KMP_RUNTIME" OR eventMessage CONTAINS[c] "Ktor" OR eventMessage CONTAINS[c] "Darwin" OR eventMessage CONTAINS[c] "HTTP" OR eventMessage CONTAINS[c] "RemoteStoreImage" OR eventMessage CONTAINS[c] "StoreImageDecoder" OR eventMessage CONTAINS[c] "JsonDecodingException" OR eventMessage CONTAINS[c] "SerializationException"' >> "$LOG_FILE" 2>&1 &
+          LOG_PID=$!
+          sleep 3
+          # --console-pty captures Kotlin/Native stdout (println markers) as well as app launch output.
+          xcrun simctl launch --console-pty --terminate-running-process "$SIM_UDID" es.criosrango.app >> "$LOG_FILE" 2>&1 &
+          CONSOLE_PID=$!
+          sleep 5
+          if kill -0 "$CONSOLE_PID" 2>/dev/null; then
+            LAUNCH_STATUS=0
+          else
+            set +e
+            wait "$CONSOLE_PID"
+            LAUNCH_STATUS=$?
+            set -e
+          fi
+          echo "Launch/console status: $LAUNCH_STATUS" | tee -a "$LOG_FILE"
+          # Allow initial Store API requests and remote image loads to finish.
+          sleep 95
+          xcrun simctl io "$SIM_UDID" screenshot "$SCREENSHOT" 2>&1 | tee -a "$LOG_FILE"
+          kill "$CONSOLE_PID" 2>/dev/null || true
+          wait "$CONSOLE_PID" 2>/dev/null || true
+          kill "$LOG_PID" 2>/dev/null || true
+          wait "$LOG_PID" 2>/dev/null || true
+          xcrun simctl spawn "$SIM_UDID" log show --last 3m --style compact --predicate 'process == "CriosRango" OR process == "CriosRangoKMPSpike" OR eventMessage CONTAINS[c] "KMP_RUNTIME" OR eventMessage CONTAINS[c] "Ktor" OR eventMessage CONTAINS[c] "Darwin" OR eventMessage CONTAINS[c] "HTTP" OR eventMessage CONTAINS[c] "RemoteStoreImage" OR eventMessage CONTAINS[c] "StoreImageDecoder" OR eventMessage CONTAINS[c] "JsonDecodingException" OR eventMessage CONTAINS[c] "SerializationException"' >> "$LOG_FILE" 2>&1 || true
+          {
+            echo ""
+            echo "===== REQUIRED RUNTIME MARKERS / ERROR SEARCH ====="
+            grep -nEi 'KMP_RUNTIME_ROOT_SCREEN_READY|KMP_RUNTIME_HOME_READY|KMP_RUNTIME_PRODUCTS_RESULT|KMP_RUNTIME_CATEGORIES_RESULT|KMP_RUNTIME_HOME_LOAD_ERROR|Ktor|Darwin|HTTP[ /:=_-]*[0-9]{3}|status[=: ]+[0-9]{3}|JsonDecodingException|SerializationException|JSON.*(exception|error)|RemoteStoreImage|StoreImageDecoder|exception|fatal error|crash' "$LOG_FILE" || true
+          } >> "$LOG_FILE"
+          echo "launch_status=$LAUNCH_STATUS" >> "$GITHUB_OUTPUT"
+          test -s "$SCREENSHOT"
+          test "$LAUNCH_STATUS" -eq 0
+
+      - name: Classify Home and API results
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORT="ios-release-artifacts/ios-release-simulator-report.txt"
+          LOG="ios-release-artifacts/ios-release-simulator.log"
+          SIM_STATE="ERROR"
+          HOME_STATE="ERROR"
+          PRODUCTS="NOT_CAPTURED"
+          CATEGORIES="NOT_CAPTURED"
+          HOME_LINE="NOT_FOUND"
+          ROOT_LINE="NOT_FOUND"
+          if [[ -f "$LOG" ]]; then
+            PRODUCTS="$(grep -E 'KMP_RUNTIME_PRODUCTS_RESULT=' "$LOG" | tail -1 || true)"
+            CATEGORIES="$(grep -E 'KMP_RUNTIME_CATEGORIES_RESULT=' "$LOG" | tail -1 || true)"
+            HOME_LINE="$(grep -E 'KMP_RUNTIME_HOME_READY' "$LOG" | tail -1 || true)"
+            ROOT_LINE="$(grep -E 'KMP_RUNTIME_ROOT_SCREEN_READY' "$LOG" | tail -1 || true)"
+            [[ -n "$PRODUCTS" ]] || PRODUCTS="NOT_FOUND"
+            [[ -n "$CATEGORIES" ]] || CATEGORIES="NOT_FOUND"
+            [[ -n "$HOME_LINE" ]] || HOME_LINE="NOT_FOUND"
+            [[ -n "$ROOT_LINE" ]] || ROOT_LINE="NOT_FOUND"
+            if [[ "$HOME_LINE" != "NOT_FOUND" ]] && grep -Eq 'KMP_RUNTIME_HOME_READY products=[1-9][0-9]* categories=[1-9][0-9]*' "$LOG"; then
+              HOME_STATE="OK"
+              SIM_STATE="PASS"
+            fi
+          fi
+          export SIM_STATE HOME_STATE PRODUCTS CATEGORIES HOME_LINE ROOT_LINE
+          python3 - "$REPORT" <<'PY'
+          import os, sys
+          path = sys.argv[1]
+          updates = {
+              "simulator_status": os.environ["SIM_STATE"],
+              "products_result": os.environ["PRODUCTS"],
+              "categories_result": os.environ["CATEGORIES"],
+              "home_marker": os.environ["HOME_LINE"],
+              "root_screen_marker": os.environ["ROOT_LINE"],
+              "home_state": os.environ["HOME_STATE"],
+          }
+          with open(path, encoding="utf-8") as f:
+              lines = f.read().splitlines()
+          seen = set()
+          output = []
+          for line in lines:
+              key = line.split("=", 1)[0] if "=" in line else ""
+              if key in updates:
+                  if key not in seen:
+                      output.append(key + "=" + updates[key])
+                      seen.add(key)
+              else:
+                  output.append(line)
+          for key, value in updates.items():
+              if key not in seen:
+                  output.append(key + "=" + value)
+          with open(path, "w", encoding="utf-8") as f:
+              f.write("\n".join(output) + "\n")
+          PY
+          cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Simulator logs, screenshot and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-release-simulator-${{ inputs.target_sha }}
+          path: |
+            ios-release-artifacts/ios-release-simulator.log
+            ios-release-artifacts/ios-release-home.png
+            ios-release-artifacts/ios-release-simulator-report.txt
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,5 +1,13 @@
 package es.criosrango.shared
 
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.vector.ImageVector
+import org.jetbrains.compose.resources.painterResource
+import es.criosrango.shared.generated.resources.Res
+import es.criosrango.shared.generated.resources.home_logo
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.text.BasicTextField
@@ -268,16 +276,39 @@ private fun IosStoreTopBar(
     onSearch: () -> Unit,
     onCart: () -> Unit
 ) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).statusBarsPadding(), verticalAlignment = Alignment.CenterVertically) {
-        Text("Críos&Rango", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-        IconButton(onClick = onSearch) { Text("⌕", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { contentDescription = "Buscar" }) }
-        Box(Modifier.width(56.dp).fillMaxHeight()) {
-        BadgedBox(
-            modifier = Modifier.size(48.dp).align(Alignment.CenterStart),
-            badge = { if (cartQuantity > 0) Badge { Text(cartBadgeText(cartQuantity), maxLines = 1) } }
-        ) {
-            IconButton(onClick = onCart) { Text("🛍", style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { contentDescription = "Carrito" }) }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp).statusBarsPadding().height(56.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Image(
+            painter = painterResource(Res.drawable.home_logo),
+            contentDescription = "Críos & Rango",
+            modifier = Modifier.size(36.dp),
+            contentScale = ContentScale.Fit
+        )
+        Spacer(Modifier.weight(1f))
+        IconButton(onClick = onSearch) {
+            androidx.compose.material3.Icon(
+                IosSearchLineIcon,
+                contentDescription = "Buscar",
+                tint = Color(0xFF183B35),
+                modifier = Modifier.size(24.dp)
+            )
         }
+        Box(Modifier.width(48.dp).height(48.dp)) {
+            BadgedBox(
+                modifier = Modifier.size(48.dp).align(Alignment.Center),
+                badge = { if (cartQuantity > 0) Badge { Text(cartBadgeText(cartQuantity), maxLines = 1) } }
+            ) {
+                IconButton(onClick = onCart) {
+                    androidx.compose.material3.Icon(
+                        IosShoppingBagLineIcon,
+                        contentDescription = "Carrito",
+                        tint = Color(0xFF183B35),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -301,25 +332,102 @@ private fun IosMainTabBar(
                 IosRootSection.ACCOUNT to "Cuenta"
             ).forEach { (item, label) ->
                 val active = item == selected
+                val tint = if (active) Color(0xFF183B35) else Color(0xFF777277)
                 Column(
-                    modifier = Modifier.weight(1f).fillMaxSize().clickable { onSelected(item) },
+                    modifier = Modifier.weight(1f).fillMaxSize().clickable { onSelected(item) }
+                        .semantics { role = Role.Tab; contentDescription = label },
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = label,
-                            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                            color = if (active) Color(0xFF183B35) else MaterialTheme.colorScheme.onSurfaceVariant
+                    BadgedBox(
+                        badge = { if (item == IosRootSection.CART && cartCount > 0) Badge { Text(cartBadgeText(cartCount), maxLines = 1) } }
+                    ) {
+                        androidx.compose.material3.Icon(
+                            imageVector = iosNavigationIcon(item),
+                            contentDescription = null,
+                            tint = tint,
+                            modifier = Modifier.size(22.dp)
                         )
-                        if (item == IosRootSection.CART && cartCount > 0) {
-                            Badge { Text(cartBadgeText(cartCount), maxLines = 1) }
-                        }
                     }
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                        color = tint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
     }
+}
+
+private fun iosNavigationIcon(section: IosRootSection): ImageVector = when (section) {
+    IosRootSection.HOME -> IosHomeLineIcon
+    IosRootSection.CATEGORIES -> IosCategoriesLineIcon
+    IosRootSection.OUTLET -> IosOutletLineIcon
+    IosRootSection.CART -> IosShoppingBagLineIcon
+    IosRootSection.ACCOUNT -> IosAccountLineIcon
+}
+
+private fun iosBuildNavigationIcon(
+    name: String,
+    content: androidx.compose.ui.graphics.vector.PathBuilder.() -> Unit
+): ImageVector = ImageVector.Builder(
+    name = name,
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f
+).apply {
+    path(
+        fill = null,
+        stroke = SolidColor(Color.Black),
+        strokeLineWidth = 1.8f,
+        strokeLineCap = StrokeCap.Round,
+        strokeLineJoin = StrokeJoin.Round,
+        pathBuilder = content
+    )
+}.build()
+
+private val IosSearchLineIcon = iosBuildNavigationIcon("IosSearchLineIcon") {
+    moveTo(10.8f, 3.5f); curveTo(14.8f, 3.5f, 18f, 6.7f, 18f, 10.7f)
+    curveTo(18f, 14.7f, 14.8f, 17.9f, 10.8f, 17.9f)
+    curveTo(6.8f, 17.9f, 3.6f, 14.7f, 3.6f, 10.7f)
+    curveTo(3.6f, 6.7f, 6.8f, 3.5f, 10.8f, 3.5f)
+    close(); moveTo(16f, 16f); lineTo(21f, 21f)
+}
+private val IosShoppingBagLineIcon = iosBuildNavigationIcon("IosShoppingBagLineIcon") {
+    moveTo(5f, 8.5f); lineTo(19f, 8.5f); lineTo(20f, 21f); lineTo(4f, 21f); close()
+    moveTo(8.5f, 8.5f); lineTo(8.5f, 6.5f)
+    curveTo(8.5f, 2.5f, 15.5f, 2.5f, 15.5f, 6.5f)
+    lineTo(15.5f, 8.5f)
+}
+private val IosHomeLineIcon = iosBuildNavigationIcon("IosHomeLineIcon") {
+    moveTo(3f, 10.5f); lineTo(12f, 3f); lineTo(21f, 10.5f)
+    moveTo(5.5f, 9f); lineTo(5.5f, 20.5f); lineTo(18.5f, 20.5f); lineTo(18.5f, 9f)
+    moveTo(9.5f, 20.5f); lineTo(9.5f, 14.5f); lineTo(14.5f, 14.5f); lineTo(14.5f, 20.5f)
+}
+private val IosCategoriesLineIcon = iosBuildNavigationIcon("IosCategoriesLineIcon") {
+    moveTo(4f, 4f); lineTo(10f, 4f); lineTo(10f, 10f); lineTo(4f, 10f); close()
+    moveTo(14f, 4f); lineTo(20f, 4f); lineTo(20f, 10f); lineTo(14f, 10f); close()
+    moveTo(4f, 14f); lineTo(10f, 14f); lineTo(10f, 20f); lineTo(4f, 20f); close()
+    moveTo(14f, 14f); lineTo(20f, 14f); lineTo(20f, 20f); lineTo(14f, 20f); close()
+}
+private val IosOutletLineIcon = iosBuildNavigationIcon("IosOutletLineIcon") {
+    moveTo(3f, 11f); lineTo(11f, 3f); lineTo(21f, 13f); lineTo(13f, 21f); close()
+    moveTo(8.5f, 8.5f); lineTo(8.5f, 8.5f)
+    moveTo(12f, 7f); lineTo(10f, 11f); lineTo(14f, 11f); lineTo(12f, 15f)
+}
+private val IosAccountLineIcon = iosBuildNavigationIcon("IosAccountLineIcon") {
+    moveTo(12f, 12f); curveTo(14.2f, 12f, 16f, 10.2f, 16f, 8f)
+    curveTo(16f, 5.8f, 14.2f, 4f, 12f, 4f)
+    curveTo(9.8f, 4f, 8f, 5.8f, 8f, 8f)
+    curveTo(8f, 10.2f, 9.8f, 12f, 12f, 12f)
+    moveTo(4f, 20f); curveTo(4f, 16.7f, 7.6f, 14.5f, 12f, 14.5f)
+    curveTo(16.4f, 14.5f, 20f, 16.7f, 20f, 20f)
 }
 
 @Composable
@@ -348,9 +456,27 @@ private fun IosHomeScreen(
         if (!loading) return@LaunchedEffect
         runCatching {
             val result = kotlinx.coroutines.coroutineScope {
-                val productsDeferred = async { storeApi.products(perPage = 24, page = 1, orderBy = "date", order = "desc") }
-                val categoriesDeferred = async { storeApi.categories(perPage = 100) }
-                productsDeferred.await() to categoriesDeferred.await()
+                val productsDeferred = async {
+                    runCatching { storeApi.products(perPage = 24, page = 1, orderBy = "date", order = "desc") }
+                }
+                val categoriesDeferred = async {
+                    runCatching { storeApi.categories(perPage = 100) }
+                }
+                val productResult = productsDeferred.await()
+                val categoryResult = categoriesDeferred.await()
+                productResult.onSuccess {
+                    println("KMP_RUNTIME_PRODUCTS_RESULT=OK count=${it.size}")
+                }.onFailure {
+                    println("KMP_RUNTIME_PRODUCTS_RESULT=ERROR exception=${it}")
+                    it.printStackTrace()
+                }
+                categoryResult.onSuccess {
+                    println("KMP_RUNTIME_CATEGORIES_RESULT=OK count=${it.size}")
+                }.onFailure {
+                    println("KMP_RUNTIME_CATEGORIES_RESULT=ERROR exception=${it}")
+                    it.printStackTrace()
+                }
+                productResult.getOrThrow() to categoryResult.getOrThrow()
             }
             products = result.first
             categories = result.second
@@ -360,6 +486,8 @@ private fun IosHomeScreen(
         }.onFailure {
             error = it.message ?: "No se ha podido cargar la tienda."
             loading = false
+            println("KMP_RUNTIME_HOME_LOAD_ERROR exception=${it}")
+            it.printStackTrace()
         }
     }
 
