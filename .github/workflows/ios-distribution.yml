@@ -106,7 +106,7 @@ jobs:
             IFS=: read -r file expected_w expected_h <<< "$spec"
             path="$ICON_DIR/$file"
             test -s "$path"
-            grep -Fq "\"filename":"$file"" "$CONTENTS"
+            grep -Fq "\"filename\":\"$file\"" "$CONTENTS"
             actual_w="$(sips -g pixelWidth "$path" | awk '/pixelWidth:/ {print $2}')"
             actual_h="$(sips -g pixelHeight "$path" | awk '/pixelHeight:/ {print $2}')"
             has_alpha="$(sips -g hasAlpha "$path" | awk '/hasAlpha:/ {print $2}')"
