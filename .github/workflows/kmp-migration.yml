@@ -5,6 +5,8 @@ on:
     branches:
       - main
       - kmp-migration
+    paths-ignore:
+      - ".github/workflows/**"
   workflow_dispatch:
 
 permissions:

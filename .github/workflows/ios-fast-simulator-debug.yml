@@ -6,13 +6,7 @@ on:
     paths:
       - "shared/**"
       - "iosApp/**"
-      - "gradle/**"
-      - "gradlew"
-      - "settings.gradle.kts"
-      - "build.gradle.kts"
-      - "gradle.properties"
       - ".github/workflows/ios-fast-simulator-debug.yml"
-      - ".github/workflows/ios-physical-testflight.yml"
   workflow_dispatch:
     inputs:
       target_sha:
@@ -258,6 +252,7 @@ jobs:
             xcrun simctl spawn "$SIM_UDID" log show --last 10m --style compact --predicate 'process == "CriosRango" OR process == "CriosRangoKMPSpike" OR eventMessage CONTAINS[c] "KMP_RUNTIME" OR eventMessage CONTAINS[c] "Ktor" OR eventMessage CONTAINS[c] "HTTP" OR eventMessage CONTAINS[c] "exception" OR eventMessage CONTAINS[c] "crash" OR eventMessage CONTAINS[c] "terminat"' >> "$LOG_FILE" 2>&1 || true
             collect_crash_diagnostics
             {
+              echo "SIMCTL_LAUNCH_STDOUT=$(tr '\n' ' ' < "$LAUNCH_STDOUT" | sed -E 's/[[:space:]]+$//')"
               echo "SIMCTL_LAUNCH_EXIT_CODE=$LAUNCH_EXIT_CODE"
               echo "APP_PID=$APP_PID"
               echo "APP_PROCESS_AFTER_LAUNCH=$APP_PROCESS_AFTER_LAUNCH"
@@ -266,6 +261,12 @@ jobs:
               echo "HOME_READY=$HOME_READY"
               echo "PRODUCTS_COUNT=$PRODUCTS_COUNT"
               echo "CATEGORIES_COUNT=$CATEGORIES_COUNT"
+              if [[ "$LAUNCH_EXIT_CODE" == "0" && "$HOME_READY" != "FOUND" ]]; then
+                echo "MARKER_CLASSIFICATION=OBSERVABILITY_REVIEW_REQUIRED"
+                echo "Marker absence is not a functional failure by itself; inspect final screenshot."
+              else
+                echo "MARKER_CLASSIFICATION=MARKERS_CAPTURED_OR_LAUNCH_FAILED"
+              fi
               echo "SCREENSHOT_AFTER_ROOT=$SCREENSHOT_AFTER_ROOT"
               echo "SCREENSHOT_HOME=$SCREENSHOT_HOME"
             } >> "$REPORT"
@@ -320,11 +321,16 @@ jobs:
           cat "$LAUNCH_STDOUT" | tee -a "$LOG_FILE"
           cat "$LAUNCH_STDERR" | tee -a "$LOG_FILE"
           echo "SIMCTL_LAUNCH_EXIT_CODE=$LAUNCH_EXIT_CODE" | tee -a "$LOG_FILE"
+          LAUNCH_STDOUT_VALUE="$(tr '\n' ' ' < "$LAUNCH_STDOUT" | sed -E 's/[[:space:]]+$//')"
+          echo "SIMCTL_LAUNCH_STDOUT=$LAUNCH_STDOUT_VALUE" | tee -a "$LOG_FILE"
+          echo "SIMCTL_LAUNCH_STDOUT=$LAUNCH_STDOUT_VALUE" >> "$REPORT"
           echo "SIMCTL_LAUNCH_EXIT_CODE=$LAUNCH_EXIT_CODE" >> "$REPORT"
           echo "simctl_launch_exit_code=$LAUNCH_EXIT_CODE" >> "$GITHUB_OUTPUT"
 
-          APP_PID="$(sed -nE 's/.*pid: ([0-9]+).*/\1/p' "$LAUNCH_STDOUT" | tail -1)"
-          [[ -n "$APP_PID" ]] || APP_PID=NOT_FOUND
+          # simctl may print "es.criosrango.app: 50386" rather than "pid: 50386".
+          # Extract the final integer token and reject anything non-numeric.
+          APP_PID="$(grep -Eo '[0-9]+' "$LAUNCH_STDOUT" | tail -1 || true)"
+          [[ "$APP_PID" =~ ^[0-9]+$ ]] || APP_PID=NOT_FOUND
           APP_PROCESS_AFTER_LAUNCH="$(app_process_state)"
           echo "APP_PID=$APP_PID" | tee -a "$LOG_FILE"
           echo "APP_PROCESS_AFTER_LAUNCH=$APP_PROCESS_AFTER_LAUNCH" | tee -a "$LOG_FILE"
