@@ -1,10 +1,17 @@
 name: iOS Release Simulator Validation
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "shared/**"
+      - "iosApp/**"
+      - ".github/workflows/ios-release-simulator.yml"
   workflow_dispatch:
     inputs:
       target_sha:
-        description: "Exact 40-character commit SHA to build and run"
+        description: "Exact 40-character commit SHA to build and run (used for manual runs; push uses its own SHA)"
         required: true
         type: string
 
@@ -18,15 +25,15 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout exact target SHA
+      - name: Checkout exact target SHA (manual input or triggering push)
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.target_sha }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}
 
       - name: Verify exact SHA and prepare report
         id: metadata
         env:
-          TARGET_SHA: ${{ inputs.target_sha }}
+          TARGET_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}
         shell: bash
         run: |
           set -euo pipefail

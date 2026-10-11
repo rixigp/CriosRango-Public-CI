@@ -14,6 +14,7 @@ kotlin {
     }
     sourceSets {
         commonMain.dependencies {
+            implementation(compose.components.resources)
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)
