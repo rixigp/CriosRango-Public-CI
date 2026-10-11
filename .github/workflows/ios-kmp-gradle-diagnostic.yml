@@ -68,13 +68,10 @@ jobs:
           REPORT="$GITHUB_WORKSPACE/ios-kmp-diagnostic/diagnostic-report.txt"
           SETTINGS="$RUNNER_TEMP/xcode-build-settings.txt"
           : > "$LOG"
-          START="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-          START_EPOCH="$(date '+%s')"
-          echo "TASK_START=$START" | tee "$REPORT"
-          echo "TARGET_SHA=$(git rev-parse HEAD)" | tee -a "$REPORT"
-          echo "XCODE_SETTINGS_START=$START" | tee -a "$REPORT"
+          echo "TARGET_SHA=$(git rev-parse HEAD)" | tee "$REPORT"
+          XCODE_SETTINGS_START="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          echo "XCODE_SETTINGS_START=$XCODE_SETTINGS_START" | tee -a "$REPORT"
 
-          # Query Xcode's effective Release/iOS Simulator settings without building.
           xcodebuild -project iosApp/iosApp.xcodeproj \
             -scheme CriosRangoKMPSpike \
             -configuration Release \
@@ -110,11 +107,20 @@ jobs:
           required=["CONFIGURATION","SDK_NAME","ARCHS","TARGET_BUILD_DIR","FRAMEWORKS_FOLDER_PATH","CODE_SIGNING_ALLOWED"]
           missing=[k for k in required if not vals.get(k)]
           if missing: raise SystemExit("Missing required Xcode settings: "+", ".join(missing))
-          # Preserve every uppercase Xcode build setting for the Gradle task.
+          # Explicit whitelist: do not source shell-special/read-only variables.
+          allowed=[
+              "CONFIGURATION","SDK_NAME","SDKROOT","PLATFORM_NAME",
+              "EFFECTIVE_PLATFORM_NAME","ARCHS","TARGET_BUILD_DIR",
+              "FRAMEWORKS_FOLDER_PATH","SRCROOT","PROJECT_DIR","PROJECT_NAME",
+              "TARGET_NAME","BUILT_PRODUCTS_DIR","CONFIGURATION_BUILD_DIR",
+              "CODE_SIGNING_ALLOWED","CODE_SIGNING_REQUIRED","CODE_SIGN_IDENTITY",
+              "ACTION","XCODE_VERSION_ACTUAL","XCODE_VERSION_MAJOR","XCODE_VERSION_MINOR"
+          ]
           with open(dest,"w") as f:
-              for k,v in vals.items():
-                  if "\n" not in v and "\r" not in v and "'" not in v:
-                      f.write("export "+k+"='"+v+"'\n")
+              for k in allowed:
+                  v=vals.get(k)
+                  if v is not None and "\\n" not in v and "\\r" not in v and "'" not in v:
+                      f.write("export "+k+"='"+v+"'\\n")
           for k in required: print(k+"="+vals[k])
           PY
           SETTINGS_PARSE_STATUS=$?
@@ -142,22 +148,37 @@ jobs:
           export XCODE_VERSION_ACTUAL="$(xcodebuild -version | awk '/Xcode/{gsub(/\./,"",$2); print $2; exit}')"
           export XCODE_VERSION_MAJOR="${XCODE_VERSION_ACTUAL:0:2}"
           export XCODE_VERSION_MINOR="${XCODE_VERSION_ACTUAL:2}"
+          export PROJECT_NAME="${PROJECT_NAME:-iosApp}"
           export JAVA_HOME="$(/usr/libexec/java_home -v 17)"
           export GRADLE_OPTS="${GRADLE_OPTS:-} -Dorg.gradle.daemon=false"
 
+          START="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          START_EPOCH="$(date '+%s')"
+          LAST_CHANGE_EPOCH="$START_EPOCH"
           {
+            echo "TASK_START=$START"
             echo "CONFIGURATION=$CONFIGURATION"
             echo "SDK_NAME=$SDK_NAME"
             echo "ARCHS=$ARCHS"
             echo "TARGET_BUILD_DIR=${TARGET_BUILD_DIR:-UNSET}"
             echo "FRAMEWORKS_FOLDER_PATH=${FRAMEWORKS_FOLDER_PATH:-UNSET}"
             echo "CODE_SIGNING_ALLOWED=$CODE_SIGNING_ALLOWED"
+            echo "CODE_SIGNING_REQUIRED=$CODE_SIGNING_REQUIRED"
+            echo "CODE_SIGN_IDENTITY=${CODE_SIGN_IDENTITY:-}"
             echo "SDKROOT=$SDKROOT"
+            echo "PLATFORM_NAME=$PLATFORM_NAME"
+            echo "EFFECTIVE_PLATFORM_NAME=$EFFECTIVE_PLATFORM_NAME"
+            echo "SRCROOT=$SRCROOT"
+            echo "PROJECT_DIR=$PROJECT_DIR"
+            echo "PROJECT_NAME=$PROJECT_NAME"
+            echo "TARGET_NAME=$TARGET_NAME"
+            echo "BUILT_PRODUCTS_DIR=${BUILT_PRODUCTS_DIR:-UNSET}"
+            echo "CONFIGURATION_BUILD_DIR=${CONFIGURATION_BUILD_DIR:-UNSET}"
             echo "JAVA_HOME=$JAVA_HOME"
             echo "XCODE_ENV_CAPTURED=YES"
           } | tee -a "$REPORT"
 
-          echo "Gradle invocation start: $(date -u '+%Y-%m-%dT%H:%M:%SZ')" | tee -a "$LOG"
+          echo "Gradle invocation start: $START" | tee -a "$LOG"
           (
             cd "$GITHUB_WORKSPACE"
             exec ./gradlew --no-daemon --console=plain --stacktrace --info :shared:embedAndSignAppleFrameworkForXcode
@@ -168,6 +189,7 @@ jobs:
           LAST_CHANGE_EPOCH="$START_EPOCH"
           DUMPED=0
           RESULT=TIMEOUT
+          STATUS=124
           while kill -0 "$GRADLE_PID" 2>/dev/null; do
             sleep 15
             NOW="$(date '+%s')"
@@ -230,15 +252,16 @@ jobs:
           END_EPOCH="$(date '+%s')"
           DURATION=$((END_EPOCH - START_EPOCH))
           LAST_LINE="$(tail -n 1 "$LOG" | tr '\n' ' ')"
-          LAST_TASK="$(grep -E '^> Task |^\* What went wrong:|^BUILD (SUCCESSFUL|FAILED)' "$LOG" | tail -n 1 || true)"
+          LAST_TASK="$(grep -E '^> Task |^\\* What went wrong:|^BUILD (SUCCESSFUL|FAILED)' "$LOG" | tail -n 1 || true)"
+          echo "GRADLE_EXIT_CODE=$STATUS" | tee -a "$REPORT"
           FRAMEWORK="$(find shared/build/xcode-frameworks -type d -name Shared.framework -print -quit 2>/dev/null || true)"
           [[ -n "$FRAMEWORK" ]] && FRAMEWORK_STATUS=FOUND || FRAMEWORK_STATUS=NOT_FOUND
           {
             echo "TASK_END=$END"
+            echo "TASK_DURATION=$DURATION seconds"
             echo "TASK_DURATION_SECONDS=$DURATION"
+            echo "TASK_RESULT=$RESULT"
             echo "LAST_GRADLE_TASK=${LAST_TASK:-NOT_REPORTED}"
-            echo "LAST_OUTPUT=${LAST_LINE:-NO_OUTPUT}"
-            echo "SILENCE_DURATION=$((END_EPOCH - LAST_CHANGE_EPOCH)) seconds"
             echo "THREAD_DUMP_CAPTURED=$([[ -s ios-kmp-diagnostic/thread-dump-jcmd.txt || -s ios-kmp-diagnostic/thread-dump-jstack.txt || -s ios-kmp-diagnostic/thread-dump-at-timeout.txt ]] && echo YES || echo NO)"
             echo "TASK_RESULT=$RESULT"
             echo "Shared.framework=$FRAMEWORK_STATUS"
