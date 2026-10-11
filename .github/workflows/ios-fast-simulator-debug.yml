@@ -12,6 +12,7 @@ on:
       - "build.gradle.kts"
       - "gradle.properties"
       - ".github/workflows/ios-fast-simulator-debug.yml"
+      - ".github/workflows/ios-physical-testflight.yml"
   workflow_dispatch:
     inputs:
       target_sha:
