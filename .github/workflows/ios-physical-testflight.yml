@@ -72,21 +72,21 @@ jobs:
         id: credentials
         shell: bash
         env:
-          DIST_P12: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64 }}
-          DIST_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          DIST_P12: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          DIST_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
           PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
-          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}
+          ASC_PRIVATE_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
         run: |
           set -euo pipefail
           missing=()
-          [[ -n "$DIST_P12" ]] || missing+=("IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64")
-          [[ -n "$DIST_P12_PASSWORD" ]] || missing+=("IOS_DISTRIBUTION_CERTIFICATE_PASSWORD")
+          [[ -n "$DIST_P12" ]] || missing+=("IOS_DISTRIBUTION_P12_BASE64")
+          [[ -n "$DIST_P12_PASSWORD" ]] || missing+=("IOS_DISTRIBUTION_P12_PASSWORD")
           [[ -n "$PROFILE" ]] || missing+=("IOS_PROVISIONING_PROFILE_BASE64")
-          [[ -n "$ASC_KEY_ID" ]] || missing+=("APP_STORE_CONNECT_API_KEY_ID")
+          [[ -n "$ASC_KEY_ID" ]] || missing+=("APP_STORE_CONNECT_KEY_ID")
           [[ -n "$ASC_ISSUER_ID" ]] || missing+=("APP_STORE_CONNECT_ISSUER_ID")
-          [[ -n "$ASC_PRIVATE_KEY" ]] || missing+=("APP_STORE_CONNECT_API_PRIVATE_KEY")
+          [[ -n "$ASC_PRIVATE_KEY" ]] || missing+=("APP_STORE_CONNECT_API_KEY_BASE64")
           if (( ${#missing[@]} )); then
             printf 'Missing required existing GitHub Actions secrets: %s\n' "${missing[*]}" | tee -a release-artifacts/ios-physical-testflight-report.txt
             echo "ready=false" >> "$GITHUB_OUTPUT"
@@ -99,19 +99,19 @@ jobs:
         id: signing
         shell: bash
         env:
-          DIST_P12: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64 }}
-          DIST_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          DIST_P12: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          DIST_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
           PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
           KEYCHAIN_PATH="$RUNNER_TEMP/criosrango-distribution.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
-          echo "$DIST_P12" | base64 --decode > "$RUNNER_TEMP/distribution.p12"
+          printf '%s' "$DIST_P12" | base64 --decode > "$RUNNER_TEMP/distribution.p12"
           echo "$PROFILE" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$RUNNER_TEMP/distribution.p12" -k "$KEYCHAIN_PATH" -P "$DIST_P12_PASSWORD" -T /usr/bin/codesign
+          security import "$RUNNER_TEMP/distribution.p12" -P "$DIST_P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH"
           security default-keychain -s "$KEYCHAIN_PATH"
@@ -120,9 +120,16 @@ jobs:
           PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")
           TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$RUNNER_TEMP/profile.plist")
           APP_IDENTIFIER=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/profile.plist")
-          [[ "$APP_IDENTIFIER" == "$TEAM_ID.es.criosrango.app" ]] || { echo "::error::Provisioning profile does not match es.criosrango.app"; exit 1; }
-          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F '"' '/Apple Distribution:/ {print $2; exit}')"
-          [[ -n "$IDENTITY" ]] || { echo "::error::No Apple Distribution identity found in supplied certificate"; exit 1; }
+          PROFILE_APS=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:aps-environment' "$RUNNER_TEMP/profile.plist")
+          PROFILE_GET_TASK_ALLOW=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:get-task-allow' "$RUNNER_TEMP/profile.plist" 2>/dev/null || true)
+          [[ "$PROFILE_NAME" == "CriosRango AppStore 2.0.1" && "$TEAM_ID" == "3793344J72" && "$APP_IDENTIFIER" == "$TEAM_ID.es.criosrango.app" && "$PROFILE_APS" == "production" ]] || { echo "::error::Provisioning profile does not match the known 2.0.1 App Store profile"; exit 1; }
+          [[ "$PROFILE_GET_TASK_ALLOW" != "true" && "$PROFILE_GET_TASK_ALLOW" != "YES" ]] || { echo "::error::Distribution profile unexpectedly enables get-task-allow"; exit 1; }
+          RELEASE_ENTITLEMENTS="$RUNNER_TEMP/CriosRango-release.entitlements"
+          cp iosApp/iosApp.entitlements "$RELEASE_ENTITLEMENTS"
+          /usr/libexec/PlistBuddy -c 'Set :aps-environment production' "$RELEASE_ENTITLEMENTS"
+          plutil -lint "$RELEASE_ENTITLEMENTS"
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk '/Apple Distribution:/ {print $2; exit}')"
+          [[ "$IDENTITY" =~ ^[0-9A-Fa-f]{40}$ ]] || { echo "::error::No valid Apple Distribution identity found in supplied certificate"; security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true; exit 1; }
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
           {
@@ -149,6 +156,12 @@ jobs:
           set -euo pipefail
           ARCHIVE="$RUNNER_TEMP/CriosRango.xcarchive"
           DERIVED="$RUNNER_TEMP/CriosRangoDerivedData"
+          if /usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' iosApp/Info.plist >/dev/null 2>&1; then
+            /usr/libexec/PlistBuddy -c 'Set :CFBundlePackageType APPL' iosApp/Info.plist
+          else
+            /usr/libexec/PlistBuddy -c 'Add :CFBundlePackageType string APPL' iosApp/Info.plist
+          fi
+          plutil -lint iosApp/Info.plist
           set +e
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
@@ -160,7 +173,8 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="$TEAM_ID" \
             CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
-            PROVISIONING_PROFILE="$PROFILE_UUID" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
+            CODE_SIGN_ENTITLEMENTS="$RELEASE_ENTITLEMENTS" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             MARKETING_VERSION=2.0.1 \
             archive 2>&1 | tee release-artifacts/xcodebuild-archive.log
@@ -298,14 +312,14 @@ jobs:
         if: steps.freshness.outputs.current == 'true'
         shell: bash
         env:
-          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}
+          ASC_PRIVATE_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
         run: |
           set -euo pipefail
           [[ -n "$ASC_KEY_ID" && -n "$ASC_ISSUER_ID" && -n "$ASC_PRIVATE_KEY" ]]
           mkdir -p "$HOME/.appstoreconnect/private_keys"
-          printf '%s\n' "$ASC_PRIVATE_KEY" > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s' "$ASC_PRIVATE_KEY_BASE64" | base64 --decode > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
           python3 - "$ASC_KEY_ID" "$ASC_ISSUER_ID" "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8" "$RUNNER_TEMP/asc-api-key.json" <<'PY'
           import json,sys
           kid,issuer,keyfile,out=sys.argv[1:]
@@ -319,7 +333,7 @@ jobs:
         id: validate
         shell: bash
         env:
-          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           IPA_NAME: ${{ needs.build-release-ipa.outputs.ipa_name }}
         run: |
@@ -334,7 +348,7 @@ jobs:
         id: upload
         shell: bash
         env:
-          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           IPA_NAME: ${{ needs.build-release-ipa.outputs.ipa_name }}
         run: |
@@ -349,7 +363,7 @@ jobs:
         timeout-minutes: 120
         shell: bash
         env:
-          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           IPA_NAME: ${{ needs.build-release-ipa.outputs.ipa_name }}
           VERSION: ${{ needs.build-release-ipa.outputs.version }}
