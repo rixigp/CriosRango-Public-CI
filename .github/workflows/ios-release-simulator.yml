@@ -73,7 +73,7 @@ jobs:
           test -d "$DEVELOPER_DIR"
           sudo xcode-select -s "$DEVELOPER_DIR"
           xcodebuild -version | tee ios-release-artifacts/xcode-version.txt
-          grep -q '^Xcode 26\.6
+          grep -q '^Xcode 26\.6$' ios-release-artifacts/xcode-version.txt
           xcrun --sdk iphonesimulator --show-sdk-version
 
       - name: Install Java for Kotlin Multiplatform
