@@ -210,7 +210,7 @@ jobs:
             if [[ -n "$CONSOLE_PID" ]]; then kill "$CONSOLE_PID" 2>/dev/null || true; wait "$CONSOLE_PID" 2>/dev/null || true; fi
             if [[ -n "$LOG_PID" ]]; then kill "$LOG_PID" 2>/dev/null || true; wait "$LOG_PID" 2>/dev/null || true; fi
             xcrun simctl io "$SIM_UDID" screenshot "$SCREENSHOT" >> "$LOG_FILE" 2>&1 || true
-            xcrun simctl spawn "$SIM_UDID" log show --last 3m --style compact --predicate 'process == "CriosRango" OR process == "CriosRangoKMPSpike" OR eventMessage CONTAINS[c] "KMP_RUNTIME" OR eventMessage CONTAINS[c] "Ktor" OR eventMessage CONTAINS[c] "HTTP" OR eventMessage CONTAINS[c] "exception" OR eventMessage CONTAINS[c] "crash' >> "$LOG_FILE" 2>&1 || true
+            xcrun simctl spawn "$SIM_UDID" log show --last 3m --style compact --predicate 'process == "CriosRango" OR process == "CriosRangoKMPSpike" OR eventMessage CONTAINS[c] "KMP_RUNTIME" OR eventMessage CONTAINS[c] "Ktor" OR eventMessage CONTAINS[c] "HTTP" OR eventMessage CONTAINS[c] "exception" OR eventMessage CONTAINS[c] "crash"' >> "$LOG_FILE" 2>&1 || true
           }
           trap cleanup EXIT
           echo "Simulator: $SIM_NAME ($SIM_UDID)" | tee -a "$LOG_FILE"
