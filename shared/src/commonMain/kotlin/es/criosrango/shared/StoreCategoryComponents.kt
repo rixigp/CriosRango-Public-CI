@@ -47,18 +47,22 @@ private fun normalizedRootCategoryName(value: String): String =
         .replace('ó', 'o').replace('ú', 'u').replace('ü', 'u')
         .replace('ñ', 'n')
 
-private fun rootCategoryResource(category: StoreCategory) = when (normalizedRootCategoryName(category.name)) {
-    "bautizo" -> Res.drawable.category_bautizo
-    "bebe nina" -> Res.drawable.category_bebe_nina
-    "bebe nino" -> Res.drawable.category_bebe_nino
-    "calzado" -> Res.drawable.category_calzado
-    "comunion nina" -> Res.drawable.category_comunion_nina
-    "comunion nino" -> Res.drawable.category_comunion_nino
-    "hombre" -> Res.drawable.category_hombre
-    "mujer" -> Res.drawable.category_mujer
-    "nina" -> Res.drawable.category_nina
-    "nino" -> Res.drawable.category_nino
-    "recien nacido" -> Res.drawable.category_recien_nacido
+private fun rootCategoryResource(category: StoreCategory) = when {
+    normalizedRootCategoryName(category.name).contains("bautizo") -> Res.drawable.category_bautizo
+    normalizedRootCategoryName(category.name).contains("bebe") &&
+        normalizedRootCategoryName(category.name).contains("nina") -> Res.drawable.category_bebe_nina
+    normalizedRootCategoryName(category.name).contains("bebe") &&
+        normalizedRootCategoryName(category.name).contains("nino") -> Res.drawable.category_bebe_nino
+    normalizedRootCategoryName(category.name).contains("calzado") -> Res.drawable.category_calzado
+    normalizedRootCategoryName(category.name).contains("comunion") &&
+        normalizedRootCategoryName(category.name).contains("nina") -> Res.drawable.category_comunion_nina
+    normalizedRootCategoryName(category.name).contains("comunion") &&
+        normalizedRootCategoryName(category.name).contains("nino") -> Res.drawable.category_comunion_nino
+    normalizedRootCategoryName(category.name).contains("recien") -> Res.drawable.category_recien_nacido
+    normalizedRootCategoryName(category.name) == "hombre" -> Res.drawable.category_hombre
+    normalizedRootCategoryName(category.name) == "mujer" -> Res.drawable.category_mujer
+    normalizedRootCategoryName(category.name) == "nina" -> Res.drawable.category_nina
+    normalizedRootCategoryName(category.name) == "nino" -> Res.drawable.category_nino
     else -> null
 }
 
