@@ -94,6 +94,8 @@ import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
 internal enum class IosRootSection { HOME, CATEGORIES, OUTLET, CART, ACCOUNT }
+internal enum class PostOrderSuccessType { CARD, BIZUM }
+internal data class PostOrderSuccessSnapshot(val type: PostOrderSuccessType, val orderId: Int)
 internal enum class IosCatalogSortModeState { RECENT, PRICE_ASC, PRICE_DESC, NAME_ASC }
 
 internal data class IosCatalogRestorationState(
@@ -133,6 +135,7 @@ fun CriosRangoIOSRootScreen(
     var section by remember { mutableStateOf(IosRootSection.HOME) }
     var openPromotionsOnStart by remember { mutableStateOf(false) }
     var checkoutOpen by remember { mutableStateOf(false) }
+    var postOrderSuccess by remember { mutableStateOf<PostOrderSuccessSnapshot?>(null) }
     var catalogPage by remember { mutableStateOf<IosCatalogPage>(IosCatalogPage.Root) }
     var catalogOriginHome by remember { mutableStateOf(false) }
     val catalogHistory = remember { mutableStateListOf<IosCatalogPage>() }
@@ -157,6 +160,8 @@ fun CriosRangoIOSRootScreen(
     val observedCart by cartStore.cart.collectAsState()
     val cartQuantity = cartUnitCount(observedCart.items.map { it.quantity })
     val createdOrder by checkoutStore.createdOrder.collectAsState()
+    val paymentState by paymentStore.state.collectAsState()
+    val paymentOrderId by paymentStore.orderId.collectAsState()
     LaunchedEffect(createdOrder?.orderId, createdOrder?.orderKey) {
         val order = createdOrder ?: return@LaunchedEffect
         val orderId = order.orderId ?: return@LaunchedEffect
@@ -165,6 +170,22 @@ fun CriosRangoIOSRootScreen(
         if (accountRepository.hasSession) {
             runCatching { accountRepository.claimPendingOrder() }
                 .onFailure { println("KMP_ACCOUNT_CLAIM_FAILED=${it.message}") }
+        }
+    }
+
+    LaunchedEffect(createdOrder?.orderId, createdOrder?.paymentMethod, paymentState, paymentOrderId) {
+        if (postOrderSuccess != null) return@LaunchedEffect
+        val order = createdOrder
+        val orderId = order?.orderId
+        val method = order?.paymentMethod.orEmpty()
+        if (orderId != null &&
+            (method.equals("bizum", ignoreCase = true) || method.equals("cheque", ignoreCase = true))
+        ) {
+            postOrderSuccess = PostOrderSuccessSnapshot(PostOrderSuccessType.BIZUM, orderId)
+            return@LaunchedEffect
+        }
+        if (paymentState == StoreCardPaymentState.PAID && paymentOrderId != null) {
+            postOrderSuccess = PostOrderSuccessSnapshot(PostOrderSuccessType.CARD, paymentOrderId!!)
         }
     }
 
@@ -189,7 +210,7 @@ fun CriosRangoIOSRootScreen(
                     onSearch = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Search) },
                     onCart = { section = IosRootSection.CART }
                 )
-            if (checkoutOpen) {
+            if (checkoutOpen && postOrderSuccess == null) {
                 IosCheckoutScreen(
                     checkoutStore = checkoutStore,
                     paymentStore = paymentStore,
@@ -200,7 +221,7 @@ fun CriosRangoIOSRootScreen(
                     loyaltyRepository = loyaltyRepository,
                     walletEnabled = accountRepository.hasSession
                 )
-            } else when (section) {
+            } else if (!checkoutOpen) when (section) {
                 IosRootSection.HOME -> IosHomeScreen(
                     storeApi = storeApi,
                     cartStore = cartStore,
@@ -266,6 +287,34 @@ fun CriosRangoIOSRootScreen(
                 )
             }
             }
+        }
+        postOrderSuccess?.let { success ->
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text("Pedido recibido") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        when (success.type) {
+                            PostOrderSuccessType.CARD -> Text("Tu pedido #${success.orderId} se ha pagado correctamente.")
+                            PostOrderSuccessType.BIZUM -> {
+                                Text("Pedido #${success.orderId} creado correctamente.")
+                                Text("Realiza el pago por Bizum al 679 97 28 88.")
+                                Text("Utiliza el número de pedido #${success.orderId} como referencia de pago.")
+                                Text("El pedido no se procesará hasta que recibamos el importe.")
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        postOrderSuccess = null
+                        checkoutStore.clearForNewProcess()
+                        paymentStore.clearForNewProcess()
+                        checkoutOpen = false
+                        section = IosRootSection.HOME
+                    }) { Text("Seguir comprando") }
+                }
+            )
         }
     }
 }
