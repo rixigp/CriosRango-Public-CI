@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - kmp-migration
+      - compose-multiplatform-convergence
 
 permissions:
   contents: read

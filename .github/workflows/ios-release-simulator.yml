@@ -2,7 +2,7 @@ name: iOS Release Simulator Validation
 
 on:
   push:
-    branches: [main]
+    branches: [main, compose-multiplatform-convergence]
     paths:
       - "shared/**"
       - "iosApp/**"
