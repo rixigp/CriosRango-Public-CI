@@ -138,6 +138,7 @@ jobs:
             echo "PROFILE_NAME=$PROFILE_NAME"
             echo "TEAM_ID=$TEAM_ID"
             echo "SIGNING_IDENTITY=$IDENTITY"
+            echo "RELEASE_ENTITLEMENTS=$RELEASE_ENTITLEMENTS"
           } >> "$GITHUB_ENV"
           echo "profile_uuid=$PROFILE_UUID" >> "$GITHUB_OUTPUT"
           echo "profile_name=$PROFILE_NAME" >> "$GITHUB_OUTPUT"
@@ -206,10 +207,13 @@ jobs:
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0"><dict>
           <key>method</key><string>app-store-connect</string>
+          <key>destination</key><string>export</string>
           <key>teamID</key><string>$TEAM_ID</string>
           <key>signingStyle</key><string>manual</string>
+          <key>signingCertificate</key><string>Apple Distribution</string>
           <key>provisioningProfiles</key><dict><key>es.criosrango.app</key><string>$PROFILE_NAME</string></dict>
           <key>manageAppVersionAndBuildNumber</key><false/>
+          <key>stripSwiftSymbols</key><true/>
           <key>uploadSymbols</key><true/>
           </dict></plist>
           EOF
@@ -228,6 +232,14 @@ jobs:
           ACTUAL_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")
           [[ "$BUNDLE" == "es.criosrango.app" && "$ACTUAL_VERSION" == "$VERSION" && "$ACTUAL_BUILD" == "$BUILD_NUMBER" ]] || { echo "::error::IPA metadata mismatch: $BUNDLE $ACTUAL_VERSION ($ACTUAL_BUILD)"; exit 1; }
           codesign --verify --deep --strict --verbose=2 "$APP" 2>&1 | tee release-artifacts/signature-verification.log
+          IPA_ENTITLEMENTS="$RUNNER_TEMP/ipa-entitlements.plist"
+          codesign -d --entitlements :- "$APP" > "$IPA_ENTITLEMENTS" 2>/dev/null
+          plutil -lint "$IPA_ENTITLEMENTS"
+          IPA_APS=$(/usr/libexec/PlistBuddy -c 'Print :aps-environment' "$IPA_ENTITLEMENTS")
+          IPA_APP_ID=$(/usr/libexec/PlistBuddy -c 'Print :application-identifier' "$IPA_ENTITLEMENTS")
+          IPA_TEAM=$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.team-identifier' "$IPA_ENTITLEMENTS")
+          IPA_GET_TASK_ALLOW=$(/usr/libexec/PlistBuddy -c 'Print :get-task-allow' "$IPA_ENTITLEMENTS" 2>/dev/null || true)
+          [[ "$IPA_APS" == production && "$IPA_APP_ID" == "$TEAM_ID.es.criosrango.app" && "$IPA_TEAM" == "$TEAM_ID" && "$IPA_GET_TASK_ALLOW" != true && "$IPA_GET_TASK_ALLOW" != YES ]] || { echo "::error::IPA distribution entitlements are invalid"; exit 1; }
           security cms -D -i "$APP/embedded.mobileprovision" > "$RUNNER_TEMP/embedded-profile.plist"
           EMBEDDED_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/embedded-profile.plist")
           [[ "$EMBEDDED_UUID" == "$PROFILE_UUID" ]] || { echo "::error::Exported IPA embedded a different provisioning profile"; exit 1; }
