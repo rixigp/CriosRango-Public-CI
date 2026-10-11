@@ -25,6 +25,7 @@ jobs:
       build_number: ${{ steps.metadata.outputs.build_number }}
       ipa_name: ${{ steps.metadata.outputs.ipa_name }}
       signing_ready: ${{ steps.credentials.outputs.ready }}
+      start_epoch: ${{ steps.metadata.outputs.start_epoch }}
     steps:
       - name: Checkout exact push SHA
         uses: actions/checkout@v7
@@ -50,6 +51,9 @@ jobs:
           [[ "$BASE_BUILD" == "20002" ]] || { echo "::error::Expected frozen project build baseline 20002, found $BASE_BUILD"; exit 1; }
           BUILD_NUMBER=$((20002 + RUN_NUMBER))
           [[ "$BUILD_NUMBER" -gt 20002 ]] || exit 1
+          START_EPOCH="$(date +%s)"
+          echo "start_epoch=$START_EPOCH" >> "$GITHUB_OUTPUT"
+          echo "RUN_START_EPOCH=$START_EPOCH" >> "$GITHUB_ENV"
           mkdir -p release-artifacts
           printf 'IOS PHYSICAL TESTFLIGHT REPORT\nSHA=%s\nBRANCH=%s\nVERSION=%s\nBUILD=%s\nBUNDLE_ID=es.criosrango.app\nARCHIVE=NOT_FOUND\nIPA=NOT_FOUND\nSIGNATURE=RED\nAPP_STORE_VALIDATION=RED\nUPLOAD=RED\nTESTFLIGHT_UPLOAD=FAILURE\nFAMILIA_GROUP=NOT_CONFIRMED\n' "$ACTUAL_SHA" "$BRANCH_NAME" "$VERSION" "$BUILD_NUMBER" > release-artifacts/ios-physical-testflight-report.txt
           echo "sha=$ACTUAL_SHA" >> "$GITHUB_OUTPUT"
@@ -226,19 +230,20 @@ jobs:
         env:
           VERSION: ${{ steps.metadata.outputs.version }}
           BUILD_NUMBER: ${{ steps.metadata.outputs.build_number }}
-          STARTED_AT: ${{ github.run_started_at }}
+          RUN_START_EPOCH: ${{ steps.metadata.outputs.start_epoch }}
         run: |
           set -u
           REPORT=release-artifacts/ios-physical-testflight-report.txt
           mkdir -p release-artifacts
           [[ -f "$REPORT" ]] || printf 'IOS PHYSICAL TESTFLIGHT REPORT\n' > "$REPORT"
           if [[ -d "$RUNNER_TEMP/CriosRango.xcarchive" ]]; then sed -i '' 's/^ARCHIVE=NOT_FOUND$/ARCHIVE=FOUND/' "$REPORT"; fi
-          [[ -s release-artifacts/*.ipa ]] 2>/dev/null && sed -i '' 's/^IPA=NOT_FOUND$/IPA=FOUND/' "$REPORT" || true
+          IPA_FOUND="$(find release-artifacts -maxdepth 1 -name '*.ipa' -type f -size +0c -print -quit)"
+          [[ -n "$IPA_FOUND" ]] && sed -i '' 's/^IPA=NOT_FOUND$/IPA=FOUND/' "$REPORT" || true
           if grep -q 'SIGNATURE=GREEN' "$REPORT"; then :; else echo "SIGNATURE=RED" >> "$REPORT"; fi
           echo "APP_STORE_VALIDATION=RED" >> "$REPORT"
           echo "UPLOAD=RED" >> "$REPORT"
           echo "TESTFLIGHT_UPLOAD=FAILURE" >> "$REPORT"
-          DURATION=$(( $(date +%s) - $(date -j -f '%Y-%m-%dT%H:%M:%SZ' "$STARTED_AT" '+%s' 2>/dev/null || date +%s) ))
+          DURATION=$(( $(date +%s) - RUN_START_EPOCH ))
           echo "TOTAL_DURATION_SECONDS=$DURATION" >> "$REPORT"
           cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
 
@@ -366,6 +371,7 @@ jobs:
           VALIDATION: ${{ steps.validate.outputs.validation }}
           UPLOAD: ${{ steps.upload.outputs.upload }}
           FAMILIA: ${{ steps.familia.outputs.familia }}
+          RUN_START_EPOCH: ${{ needs.build-release-ipa.outputs.start_epoch }}
           VERSION: ${{ needs.build-release-ipa.outputs.version }}
           BUILD_NUMBER: ${{ needs.build-release-ipa.outputs.build_number }}
         run: |
@@ -373,19 +379,23 @@ jobs:
           REPORT=release-artifacts/ios-physical-testflight-report.txt
           [[ -f "$REPORT" ]] || printf 'IOS PHYSICAL TESTFLIGHT REPORT\n' > "$REPORT"
           if [[ "$FRESH" != true ]]; then
-            sed -i '' 's/^APP_STORE_VALIDATION=RED$/APP_STORE_VALIDATION=RED/' "$REPORT" 2>/dev/null || true
-            echo "UPLOAD=SKIPPED_STALE_SHA" >> "$REPORT"
-            echo "TESTFLIGHT_UPLOAD=NOT_STARTED" >> "$REPORT"
-            echo "FAMILIA_GROUP=NOT_ATTEMPTED" >> "$REPORT"
+            sed -i '' 's/^APP_STORE_VALIDATION=.*/APP_STORE_VALIDATION=RED/' "$REPORT" 2>/dev/null || true
+            sed -i '' 's/^UPLOAD=.*/UPLOAD=SKIPPED_STALE_SHA/' "$REPORT" 2>/dev/null || echo "UPLOAD=SKIPPED_STALE_SHA" >> "$REPORT"
+            sed -i '' 's/^TESTFLIGHT_UPLOAD=.*/TESTFLIGHT_UPLOAD=NOT_STARTED/' "$REPORT" 2>/dev/null || echo "TESTFLIGHT_UPLOAD=NOT_STARTED" >> "$REPORT"
+            sed -i '' 's/^FAMILIA_GROUP=.*/FAMILIA_GROUP=NOT_ATTEMPTED/' "$REPORT" 2>/dev/null || echo "FAMILIA_GROUP=NOT_ATTEMPTED" >> "$REPORT"
           else
-            [[ "$VALIDATION" == GREEN ]] && echo "APP_STORE_VALIDATION=GREEN" >> "$REPORT" || echo "APP_STORE_VALIDATION=RED" >> "$REPORT"
-            [[ "$UPLOAD" == GREEN ]] && echo "UPLOAD=GREEN" >> "$REPORT" || echo "UPLOAD=RED" >> "$REPORT"
-            [[ "$UPLOAD" == GREEN ]] && echo "TESTFLIGHT_UPLOAD=SUCCESS" >> "$REPORT" || echo "TESTFLIGHT_UPLOAD=FAILURE" >> "$REPORT"
-            [[ "$FAMILIA" == GREEN ]] && echo "FAMILIA_GROUP=ASSOCIATED" >> "$REPORT" || echo "FAMILIA_GROUP=PENDING_OR_FAILED" >> "$REPORT"
+            [[ "$VALIDATION" == GREEN ]] && VALIDATION_STATUS=GREEN || VALIDATION_STATUS=RED
+            [[ "$UPLOAD" == GREEN ]] && UPLOAD_STATUS=GREEN || UPLOAD_STATUS=RED
+            [[ "$UPLOAD" == GREEN ]] && TF_STATUS=SUCCESS || TF_STATUS=FAILURE
+            [[ "$FAMILIA" == GREEN ]] && GROUP_STATUS=ASSOCIATED || GROUP_STATUS=PENDING_OR_FAILED
+            sed -i '' "s/^APP_STORE_VALIDATION=.*/APP_STORE_VALIDATION=$VALIDATION_STATUS/" "$REPORT"
+            sed -i '' "s/^UPLOAD=.*/UPLOAD=$UPLOAD_STATUS/" "$REPORT"
+            sed -i '' "s/^TESTFLIGHT_UPLOAD=.*/TESTFLIGHT_UPLOAD=$TF_STATUS/" "$REPORT"
+            sed -i '' "s/^FAMILIA_GROUP=.*/FAMILIA_GROUP=$GROUP_STATUS/" "$REPORT"
           fi
           echo "VERSION=$VERSION" >> "$REPORT"
           echo "BUILD=$BUILD_NUMBER" >> "$REPORT"
-          echo "TOTAL_DURATION_SECONDS=$(( $(date +%s) - $(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$GITHUB_RUN_STARTED_AT" '+%s' 2>/dev/null || date +%s) ))" >> "$REPORT"
+          echo "TOTAL_DURATION_SECONDS=$(( $(date +%s) - RUN_START_EPOCH ))" >> "$REPORT"
           cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload final report, IPA and App Store logs
