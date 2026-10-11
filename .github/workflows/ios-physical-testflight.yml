@@ -1,0 +1,398 @@
+name: iOS Physical TestFlight
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "shared/**"
+      - "iosApp/**"
+      - ".github/workflows/ios-physical-testflight.yml"
+      - ".github/workflows/ios-fast-simulator-debug.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-release-ipa:
+    name: Archive, sign and validate iPhone IPA
+    runs-on: macos-26
+    timeout-minutes: 90
+    concurrency:
+      group: ios-testflight-build-main
+      cancel-in-progress: true
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      build_number: ${{ steps.metadata.outputs.build_number }}
+      ipa_name: ${{ steps.metadata.outputs.ipa_name }}
+      signing_ready: ${{ steps.credentials.outputs.ready }}
+    steps:
+      - name: Checkout exact push SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Verify SHA, branch, version and unique build
+        id: metadata
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          BRANCH_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || { echo "::error::Checkout SHA mismatch"; exit 1; }
+          [[ "$BRANCH_NAME" == "main" ]] || { echo "::error::Only main is authorized"; exit 1; }
+          VERSION="$(grep -m1 'MARKETING_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
+          BASE_BUILD="$(grep -m1 'CURRENT_PROJECT_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*CURRENT_PROJECT_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
+          [[ "$VERSION" == "2.0.1" ]] || { echo "::error::Expected marketing version 2.0.1, found $VERSION"; exit 1; }
+          [[ "$BASE_BUILD" == "20002" ]] || { echo "::error::Expected frozen project build baseline 20002, found $BASE_BUILD"; exit 1; }
+          BUILD_NUMBER=$((20002 + RUN_NUMBER))
+          [[ "$BUILD_NUMBER" -gt 20002 ]] || exit 1
+          mkdir -p release-artifacts
+          printf 'IOS PHYSICAL TESTFLIGHT REPORT\nSHA=%s\nBRANCH=%s\nVERSION=%s\nBUILD=%s\nBUNDLE_ID=es.criosrango.app\nARCHIVE=NOT_FOUND\nIPA=NOT_FOUND\nSIGNATURE=RED\nAPP_STORE_VALIDATION=RED\nUPLOAD=RED\nTESTFLIGHT_UPLOAD=FAILURE\nFAMILIA_GROUP=NOT_CONFIRMED\n' "$ACTUAL_SHA" "$BRANCH_NAME" "$VERSION" "$BUILD_NUMBER" > release-artifacts/ios-physical-testflight-report.txt
+          echo "sha=$ACTUAL_SHA" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "ipa_name=CriosRango-${VERSION}-${BUILD_NUMBER}.ipa" >> "$GITHUB_OUTPUT"
+          {
+            echo "### iOS Physical TestFlight"
+            echo "- SHA: `$ACTUAL_SHA`"
+            echo "- Branch: `$BRANCH_NAME`"
+            echo "- Version: `$VERSION`"
+            echo "- Generated build: `$BUILD_NUMBER`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check existing signing and App Store Connect secrets
+        id: credentials
+        shell: bash
+        env:
+          DIST_P12: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64 }}
+          DIST_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "$DIST_P12" ]] || missing+=("IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64")
+          [[ -n "$DIST_P12_PASSWORD" ]] || missing+=("IOS_DISTRIBUTION_CERTIFICATE_PASSWORD")
+          [[ -n "$PROFILE" ]] || missing+=("IOS_PROVISIONING_PROFILE_BASE64")
+          [[ -n "$ASC_KEY_ID" ]] || missing+=("APP_STORE_CONNECT_API_KEY_ID")
+          [[ -n "$ASC_ISSUER_ID" ]] || missing+=("APP_STORE_CONNECT_ISSUER_ID")
+          [[ -n "$ASC_PRIVATE_KEY" ]] || missing+=("APP_STORE_CONNECT_API_PRIVATE_KEY")
+          if (( ${#missing[@]} )); then
+            printf 'Missing required existing GitHub Actions secrets: %s\n' "${missing[*]}" | tee -a release-artifacts/ios-physical-testflight-report.txt
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Install the existing Apple Distribution certificate and provisioning profile
+        if: steps.credentials.outputs.ready == 'true'
+        id: signing
+        shell: bash
+        env:
+          DIST_P12: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64 }}
+          DIST_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/criosrango-distribution.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          echo "$DIST_P12" | base64 --decode > "$RUNNER_TEMP/distribution.p12"
+          echo "$PROFILE" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/distribution.p12" -k "$KEYCHAIN_PATH" -P "$DIST_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/profile.plist")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")
+          TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$RUNNER_TEMP/profile.plist")
+          APP_IDENTIFIER=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/profile.plist")
+          [[ "$APP_IDENTIFIER" == "$TEAM_ID.es.criosrango.app" ]] || { echo "::error::Provisioning profile does not match es.criosrango.app"; exit 1; }
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F '"' '/Apple Distribution:/ {print $2; exit}')"
+          [[ -n "$IDENTITY" ]] || { echo "::error::No Apple Distribution identity found in supplied certificate"; exit 1; }
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          {
+            echo "KEYCHAIN_PATH=$KEYCHAIN_PATH"
+            echo "PROFILE_UUID=$PROFILE_UUID"
+            echo "PROFILE_NAME=$PROFILE_NAME"
+            echo "TEAM_ID=$TEAM_ID"
+            echo "SIGNING_IDENTITY=$IDENTITY"
+          } >> "$GITHUB_ENV"
+          echo "profile_uuid=$PROFILE_UUID" >> "$GITHUB_OUTPUT"
+          echo "profile_name=$PROFILE_NAME" >> "$GITHUB_OUTPUT"
+          echo "team_id=$TEAM_ID" >> "$GITHUB_OUTPUT"
+          echo "signature=GREEN" >> "$GITHUB_OUTPUT"
+          echo "Existing Apple Distribution identity and exact bundle-ID provisioning profile installed." >> release-artifacts/signing.log
+
+      - name: Archive Release for physical iPhone
+        if: steps.signing.outcome == 'success'
+        id: archive
+        timeout-minutes: 65
+        shell: bash
+        env:
+          BUILD_NUMBER: ${{ steps.metadata.outputs.build_number }}
+        run: |
+          set -euo pipefail
+          ARCHIVE="$RUNNER_TEMP/CriosRango.xcarchive"
+          DERIVED="$RUNNER_TEMP/CriosRangoDerivedData"
+          set +e
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme CriosRangoKMPSpike \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE" \
+            -derivedDataPath "$DERIVED" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
+            PROVISIONING_PROFILE="$PROFILE_UUID" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            MARKETING_VERSION=2.0.1 \
+            archive 2>&1 | tee release-artifacts/xcodebuild-archive.log
+          BUILD_STATUS=${PIPESTATUS[0]}
+          set -e
+          if [[ "$BUILD_STATUS" -ne 0 || ! -d "$ARCHIVE/Products/Applications/CriosRango.app" ]]; then
+            echo "ARCHIVE=NOT_FOUND" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "ARCHIVE_PATH=$ARCHIVE" >> "$GITHUB_ENV"
+          echo "ARCHIVE=FOUND" >> "$GITHUB_OUTPUT"
+          ditto "$ARCHIVE/dSYMs" release-artifacts/dSYMs 2>/dev/null || true
+
+      - name: Export signed App Store IPA and validate bundle
+        if: steps.archive.outcome == 'success'
+        id: ipa
+        shell: bash
+        env:
+          BUILD_NUMBER: ${{ steps.metadata.outputs.build_number }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+          IPA_NAME: ${{ steps.metadata.outputs.ipa_name }}
+        run: |
+          set -euo pipefail
+          EXPORT_DIR="$RUNNER_TEMP/ipa-export"
+          mkdir -p "$EXPORT_DIR"
+          /usr/libexec/PlistBuddy -c 'Add :method string app-store-connect' "$RUNNER_TEMP/export-options.plist" 2>/dev/null || true
+          cat > "$RUNNER_TEMP/export-options.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>method</key><string>app-store-connect</string>
+          <key>teamID</key><string>$TEAM_ID</string>
+          <key>signingStyle</key><string>manual</string>
+          <key>provisioningProfiles</key><dict><key>es.criosrango.app</key><string>$PROFILE_NAME</string></dict>
+          <key>manageAppVersionAndBuildNumber</key><false/>
+          <key>uploadSymbols</key><true/>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$ARCHIVE_PATH" -exportPath "$EXPORT_DIR" -exportOptionsPlist "$RUNNER_TEMP/export-options.plist" 2>&1 | tee release-artifacts/xcodebuild-export.log
+          SOURCE_IPA="$(find "$EXPORT_DIR" -maxdepth 1 -name '*.ipa' -type f -print -quit)"
+          [[ -n "$SOURCE_IPA" && -s "$SOURCE_IPA" ]]
+          cp "$SOURCE_IPA" "release-artifacts/$IPA_NAME"
+          unzip -t "release-artifacts/$IPA_NAME" > release-artifacts/ipa-structure.log
+          rm -rf "$RUNNER_TEMP/ipa-unpacked"
+          mkdir -p "$RUNNER_TEMP/ipa-unpacked"
+          unzip -q "release-artifacts/$IPA_NAME" -d "$RUNNER_TEMP/ipa-unpacked"
+          APP="$RUNNER_TEMP/ipa-unpacked/Payload/CriosRango.app"
+          [[ -d "$APP" ]]
+          BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
+          ACTUAL_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")
+          ACTUAL_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")
+          [[ "$BUNDLE" == "es.criosrango.app" && "$ACTUAL_VERSION" == "$VERSION" && "$ACTUAL_BUILD" == "$BUILD_NUMBER" ]] || { echo "::error::IPA metadata mismatch: $BUNDLE $ACTUAL_VERSION ($ACTUAL_BUILD)"; exit 1; }
+          codesign --verify --deep --strict --verbose=2 "$APP" 2>&1 | tee release-artifacts/signature-verification.log
+          security cms -D -i "$APP/embedded.mobileprovision" > "$RUNNER_TEMP/embedded-profile.plist"
+          EMBEDDED_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/embedded-profile.plist")
+          [[ "$EMBEDDED_UUID" == "$PROFILE_UUID" ]] || { echo "::error::Exported IPA embedded a different provisioning profile"; exit 1; }
+          echo "IPA_PATH=release-artifacts/$IPA_NAME" >> "$GITHUB_ENV"
+          echo "ipa=FOUND" >> "$GITHUB_OUTPUT"
+          echo "signature=GREEN" >> "$GITHUB_OUTPUT"
+          echo "IPA=FOUND" >> release-artifacts/ios-physical-testflight-report.txt
+          echo "SIGNATURE=GREEN" >> release-artifacts/ios-physical-testflight-report.txt
+          echo "App Store IPA structure, bundle metadata, code signature and provisioning profile validated." >> release-artifacts/signing.log
+
+      - name: Record archive, IPA and duration
+        if: always()
+        shell: bash
+        env:
+          VERSION: ${{ steps.metadata.outputs.version }}
+          BUILD_NUMBER: ${{ steps.metadata.outputs.build_number }}
+          STARTED_AT: ${{ github.run_started_at }}
+        run: |
+          set -u
+          REPORT=release-artifacts/ios-physical-testflight-report.txt
+          mkdir -p release-artifacts
+          [[ -f "$REPORT" ]] || printf 'IOS PHYSICAL TESTFLIGHT REPORT\n' > "$REPORT"
+          if [[ -d "$RUNNER_TEMP/CriosRango.xcarchive" ]]; then sed -i '' 's/^ARCHIVE=NOT_FOUND$/ARCHIVE=FOUND/' "$REPORT"; fi
+          [[ -s release-artifacts/*.ipa ]] 2>/dev/null && sed -i '' 's/^IPA=NOT_FOUND$/IPA=FOUND/' "$REPORT" || true
+          if grep -q 'SIGNATURE=GREEN' "$REPORT"; then :; else echo "SIGNATURE=RED" >> "$REPORT"; fi
+          echo "APP_STORE_VALIDATION=RED" >> "$REPORT"
+          echo "UPLOAD=RED" >> "$REPORT"
+          echo "TESTFLIGHT_UPLOAD=FAILURE" >> "$REPORT"
+          DURATION=$(( $(date +%s) - $(date -j -f '%Y-%m-%dT%H:%M:%SZ' "$STARTED_AT" '+%s' 2>/dev/null || date +%s) ))
+          echo "TOTAL_DURATION_SECONDS=$DURATION" >> "$REPORT"
+          cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload IPA, archive report, dSYM and build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-physical-testflight-build-${{ github.run_id }}
+          path: release-artifacts/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  upload-testflight:
+    name: Validate and upload to internal TestFlight
+    needs: build-release-ipa
+    if: needs.build-release-ipa.result == 'success'
+    runs-on: macos-26
+    timeout-minutes: 150
+    concurrency:
+      group: ios-testflight-upload-main
+      cancel-in-progress: false
+    steps:
+      - name: Checkout exact source SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Download signed IPA and evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-physical-testflight-build-${{ github.run_id }}
+          path: release-artifacts
+
+      - name: Skip stale SHA before starting any Apple upload
+        id: freshness
+        shell: bash
+        run: |
+          set -euo pipefail
+          LATEST_SHA="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+          if [[ "$LATEST_SHA" != "$GITHUB_SHA" ]]; then
+            echo "Current main is $LATEST_SHA; this build is stale ($GITHUB_SHA). No Apple upload started." | tee -a release-artifacts/ios-physical-testflight-report.txt
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "current=true" >> "$GITHUB_OUTPUT"
+
+      - name: Install App Store Connect API key
+        if: steps.freshness.outputs.current == 'true'
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          [[ -n "$ASC_KEY_ID" && -n "$ASC_ISSUER_ID" && -n "$ASC_PRIVATE_KEY" ]]
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          printf '%s\n' "$ASC_PRIVATE_KEY" > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
+          python3 - "$ASC_KEY_ID" "$ASC_ISSUER_ID" "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8" "$RUNNER_TEMP/asc-api-key.json" <<'PY'
+          import json,sys
+          kid,issuer,keyfile,out=sys.argv[1:]
+          with open(keyfile,encoding="utf-8") as f: key=f.read()
+          with open(out,"w",encoding="utf-8") as f: json.dump({"key_id":kid,"issuer_id":issuer,"key":key,"duration":1200,"in_house":False},f)
+          PY
+          chmod 600 "$RUNNER_TEMP/asc-api-key.json"
+
+      - name: Validate IPA with App Store Connect Transporter
+        if: steps.freshness.outputs.current == 'true'
+        id: validate
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          IPA_NAME: ${{ needs.build-release-ipa.outputs.ipa_name }}
+        run: |
+          set -euo pipefail
+          IPA="release-artifacts/$IPA_NAME"
+          [[ -s "$IPA" ]]
+          xcrun iTMSTransporter -m validate -assetFile "$IPA" -apiKey "$ASC_KEY_ID" -apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee release-artifacts/app-store-validation.log
+          echo "validation=GREEN" >> "$GITHUB_OUTPUT"
+
+      - name: Upload signed IPA to App Store Connect
+        if: steps.validate.outputs.validation == 'GREEN' && steps.freshness.outputs.current == 'true'
+        id: upload
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          IPA_NAME: ${{ needs.build-release-ipa.outputs.ipa_name }}
+        run: |
+          set -euo pipefail
+          IPA="release-artifacts/$IPA_NAME"
+          xcrun iTMSTransporter -m upload -assetFile "$IPA" -apiKey "$ASC_KEY_ID" -apiIssuer "$ASC_ISSUER_ID" 2>&1 | tee release-artifacts/app-store-upload.log
+          echo "upload=GREEN" >> "$GITHUB_OUTPUT"
+
+      - name: Associate processed build with internal group Familia
+        if: steps.upload.outputs.upload == 'GREEN'
+        id: familia
+        timeout-minutes: 120
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          IPA_NAME: ${{ needs.build-release-ipa.outputs.ipa_name }}
+          VERSION: ${{ needs.build-release-ipa.outputs.version }}
+          BUILD_NUMBER: ${{ needs.build-release-ipa.outputs.build_number }}
+        run: |
+          set -euo pipefail
+          sudo gem install fastlane --no-document
+          fastlane pilot distribute \
+            --api_key_path "$RUNNER_TEMP/asc-api-key.json" \
+            --app_identifier es.criosrango.app \
+            --app_version "$VERSION" \
+            --build_number "$BUILD_NUMBER" \
+            --groups "Familia" \
+            --distribute_external false 2>&1 | tee release-artifacts/testflight-familia.log
+          echo "familia=GREEN" >> "$GITHUB_OUTPUT"
+
+      - name: Final report and upload evidence
+        if: always()
+        shell: bash
+        env:
+          FRESH: ${{ steps.freshness.outputs.current }}
+          VALIDATION: ${{ steps.validate.outputs.validation }}
+          UPLOAD: ${{ steps.upload.outputs.upload }}
+          FAMILIA: ${{ steps.familia.outputs.familia }}
+          VERSION: ${{ needs.build-release-ipa.outputs.version }}
+          BUILD_NUMBER: ${{ needs.build-release-ipa.outputs.build_number }}
+        run: |
+          set -u
+          REPORT=release-artifacts/ios-physical-testflight-report.txt
+          [[ -f "$REPORT" ]] || printf 'IOS PHYSICAL TESTFLIGHT REPORT\n' > "$REPORT"
+          if [[ "$FRESH" != true ]]; then
+            sed -i '' 's/^APP_STORE_VALIDATION=RED$/APP_STORE_VALIDATION=RED/' "$REPORT" 2>/dev/null || true
+            echo "UPLOAD=SKIPPED_STALE_SHA" >> "$REPORT"
+            echo "TESTFLIGHT_UPLOAD=NOT_STARTED" >> "$REPORT"
+            echo "FAMILIA_GROUP=NOT_ATTEMPTED" >> "$REPORT"
+          else
+            [[ "$VALIDATION" == GREEN ]] && echo "APP_STORE_VALIDATION=GREEN" >> "$REPORT" || echo "APP_STORE_VALIDATION=RED" >> "$REPORT"
+            [[ "$UPLOAD" == GREEN ]] && echo "UPLOAD=GREEN" >> "$REPORT" || echo "UPLOAD=RED" >> "$REPORT"
+            [[ "$UPLOAD" == GREEN ]] && echo "TESTFLIGHT_UPLOAD=SUCCESS" >> "$REPORT" || echo "TESTFLIGHT_UPLOAD=FAILURE" >> "$REPORT"
+            [[ "$FAMILIA" == GREEN ]] && echo "FAMILIA_GROUP=ASSOCIATED" >> "$REPORT" || echo "FAMILIA_GROUP=PENDING_OR_FAILED" >> "$REPORT"
+          fi
+          echo "VERSION=$VERSION" >> "$REPORT"
+          echo "BUILD=$BUILD_NUMBER" >> "$REPORT"
+          echo "TOTAL_DURATION_SECONDS=$(( $(date +%s) - $(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$GITHUB_RUN_STARTED_AT" '+%s' 2>/dev/null || date +%s) ))" >> "$REPORT"
+          cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload final report, IPA and App Store logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-physical-testflight-final-${{ github.run_id }}
+          path: release-artifacts/**
+          if-no-files-found: warn
+          retention-days: 14
