@@ -119,8 +119,8 @@ jobs:
           with open(dest,"w") as f:
               for k in allowed:
                   v=vals.get(k)
-                  if v is not None and "\\n" not in v and "\\r" not in v and "'" not in v:
-                      f.write("export "+k+"='"+v+"'\\n")
+                  if v is not None and "\n" not in v and "\r" not in v and "'" not in v:
+                      f.write("export "+k+"='"+v+"'\n")
           for k in required: print(k+"="+vals[k])
           PY
           SETTINGS_PARSE_STATUS=$?
@@ -263,7 +263,6 @@ jobs:
             echo "TASK_RESULT=$RESULT"
             echo "LAST_GRADLE_TASK=${LAST_TASK:-NOT_REPORTED}"
             echo "THREAD_DUMP_CAPTURED=$([[ -s ios-kmp-diagnostic/thread-dump-jcmd.txt || -s ios-kmp-diagnostic/thread-dump-jstack.txt || -s ios-kmp-diagnostic/thread-dump-at-timeout.txt ]] && echo YES || echo NO)"
-            echo "TASK_RESULT=$RESULT"
             echo "Shared.framework=$FRAMEWORK_STATUS"
             echo "FRAMEWORK_PATH=${FRAMEWORK:-NOT_FOUND}"
           } | tee -a "$REPORT"
