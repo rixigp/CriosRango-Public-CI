@@ -5,6 +5,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
+import io.ktor.http.Url
+import io.ktor.http.decodeURLPart
 import org.jetbrains.compose.resources.painterResource
 import es.criosrango.shared.generated.resources.Res
 import es.criosrango.shared.generated.resources.home_logo
@@ -271,6 +273,7 @@ fun CriosRangoIOSRootScreen(
                     catalogRestoration = catalogRestoration
                 )
                 IosRootSection.CART -> IosCartScreen(
+                    storeApi = storeApi,
                     cartStore = cartStore,
                     loyaltyRepository = loyaltyRepository,
                     walletEnabled = accountRepository.hasSession,
@@ -761,6 +764,7 @@ private val IosCartCloseLineIcon = iosBuildLineIcon("IosCartCloseLineIcon") { mo
 
 @Composable
 private fun IosCartScreen(
+    storeApi: es.criosrango.shared.api.StoreApiClient,
     cartStore: StoreCartStore,
     loyaltyRepository: LoyaltyRepository,
     walletEnabled: Boolean,
@@ -853,6 +857,8 @@ private fun IosCartScreen(
     var promotions by remember { mutableStateOf(emptyList<Promotion>()) }
     var promotionsLoading by remember { mutableStateOf(true) }
     var promotionsError by remember { mutableStateOf<String?>(null) }
+    var openingProductKey by remember { mutableStateOf<String?>(null) }
+    var productOpenError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         cartStore.refresh()
@@ -877,6 +883,9 @@ private fun IosCartScreen(
         item { Text("Tu carrito", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
         if (state == StoreCartLoadState.LOADING && cart.items.isEmpty()) item { IosStoreLoading() }
         if (!error.isNullOrBlank()) item { IosStoreError(error!!, cartStore::refresh) }
+        if (!productOpenError.isNullOrBlank()) item {
+            IosStoreError(productOpenError!!) { productOpenError = null }
+        }
         if (state == StoreCartLoadState.SUCCESS_EMPTY && error == null) item {
             Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Tu carrito está vacío", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -884,8 +893,24 @@ private fun IosCartScreen(
         }
         items(cart.items, key = { it.key }) { line ->
             Surface(
-                modifier = Modifier.fillMaxWidth().clickable {
-                    onOpenProduct(StoreProduct(id = line.id, name = line.name, images = line.images, prices = line.prices))
+                modifier = Modifier.fillMaxWidth().clickable(enabled = openingProductKey == null) {
+                    loyaltyScope.launch {
+                        openingProductKey = line.key
+                        productOpenError = null
+                        try {
+                            val path = Url(line.permalink).encodedPath.trimEnd('/')
+                            val slug = path.substringAfterLast('/').decodeURLPart()
+                            require(slug.isNotBlank()) { "La URL del producto no contiene un slug válido." }
+                            val parentProduct = storeApi.productBySlug(slug)
+                            onOpenProduct(parentProduct)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            productOpenError = e.message ?: "No se ha podido abrir el producto desde el carrito."
+                        } finally {
+                            openingProductKey = null
+                        }
+                    }
                 },
                 shape = RoundedCornerShape(12.dp),
                 tonalElevation = 1.dp
@@ -894,6 +919,7 @@ private fun IosCartScreen(
                     RemoteStoreImage(line.images.firstOrNull()?.src, line.name, Modifier.size(84.dp), ContentScale.Crop)
                     Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(normalizeWooPlainText(line.name), fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (openingProductKey == line.key) Text("Abriendo producto…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (line.variation.isNotEmpty()) Text(
                             line.variation.joinToString(" · ") { "${it.attribute.removePrefix("pa_")}: ${it.value}" },
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant

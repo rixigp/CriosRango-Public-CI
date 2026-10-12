@@ -18,6 +18,7 @@ data class StoreCart(
 data class StoreCartLine(
     val key: String = "",
     val id: Int = 0,
+    val permalink: String = "",
     val name: String = "",
     val quantity: Int = 0,
     @SerialName("quantity_limits") val quantityLimits: StoreQuantityLimits? = null,

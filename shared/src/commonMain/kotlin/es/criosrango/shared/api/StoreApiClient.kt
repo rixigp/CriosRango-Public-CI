@@ -2,6 +2,7 @@ package es.criosrango.shared.api
 
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
+import io.ktor.http.encodeURLPathPart
 import es.criosrango.shared.account.AccountTokenStore
 import es.criosrango.shared.createStoreHttpClient
 import es.criosrango.shared.model.StoreCart
@@ -237,6 +238,11 @@ class StoreApiClient(
 
     suspend fun product(id: Int): StoreProduct =
         client.get(baseUrl + "products/" + id).body()
+
+    suspend fun productBySlug(slug: String): StoreProduct {
+        require(slug.isNotBlank()) { "La URL del producto no contiene un slug válido." }
+        return client.get(baseUrl + "products/" + slug.encodeURLPathPart()).body()
+    }
 
     suspend fun productWithVariationAvailability(id: Int): StoreProduct {
         val product = product(id)

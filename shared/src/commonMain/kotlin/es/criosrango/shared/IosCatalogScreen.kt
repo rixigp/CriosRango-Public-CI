@@ -798,7 +798,7 @@ internal fun IosProductDetail(
         primaryActionLabel = if (product.type == "variable" && selectedVariation == null) "Elige una combinación" else "Añadir al carrito",
         primaryActionEnabled = canAdd && cartStore != null,
         shareEnabled = true,
-        reserveEnabled = product.type != "variable" || (selectedVariation != null && selectedVariation.isInStock && selectedVariation.isPurchasable == true),
+        reserveEnabled = product.type != "variable" || (selectedVariation != null && selectedVariation.isInStock == true && selectedVariation.isPurchasable == true),
         descriptionText = remainingInfo,
         brandText = brandLine,
         compositionText = compositionLine
