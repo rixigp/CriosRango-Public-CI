@@ -7,6 +7,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -148,7 +149,11 @@ fun StoreProductDetailScreen(
                                     },
                                     disabledContentColor = Color(0xFFAAA6AA)
                                 ),
-                                contentPadding = when (option.kind) {\n                                    StoreProductDetailOptionKind.Size -> PaddingValues(horizontal = 18.dp, vertical = 10.dp)\n                                    StoreProductDetailOptionKind.Color -> PaddingValues(horizontal = 14.dp, vertical = 9.dp)\n                                    StoreProductDetailOptionKind.Default -> ButtonDefaults.ContentPadding\n                                },
+                                contentPadding = when (option.kind) {
+                                    StoreProductDetailOptionKind.Size -> PaddingValues(horizontal = 18.dp, vertical = 10.dp)
+                                    StoreProductDetailOptionKind.Color -> PaddingValues(horizontal = 14.dp, vertical = 9.dp)
+                                    StoreProductDetailOptionKind.Default -> ButtonDefaults.ContentPadding
+                                },
                                 modifier = Modifier.storeProductDetailOptionSlash(option.incompatible && !option.selected, RoundedCornerShape(if (round) 50.dp else 14.dp))
                             ) {
                                 if (option.swatchColor != null) {
