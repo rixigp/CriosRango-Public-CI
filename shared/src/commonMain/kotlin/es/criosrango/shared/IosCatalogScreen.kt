@@ -168,6 +168,11 @@ internal fun IosCategoryPage(
     }
 }
 
+private fun isRestorableCatalogSnapshot(snapshot: CatalogPagingState<*>): Boolean =
+    !snapshot.isInitialLoading &&
+        !snapshot.isAppending &&
+        (snapshot.currentPage > 0 || snapshot.initialError != null)
+
 private enum class IosCatalogSortMode(val label: String) {
     RECENT("Más recientes"),
     PRICE_ASC("Precio: menor a mayor"),
@@ -251,7 +256,11 @@ internal fun IosCategoryProducts(
     }
 
     LaunchedEffect(queryKey) {
-        if (savedState?.queryKey == queryKey) paginator.restore(queryKey, savedState.pagingState)
+        val restoredState = savedState?.takeIf {
+            it.queryKey == queryKey &&
+                isRestorableCatalogSnapshot(it.pagingState)
+        }
+        if (restoredState != null) paginator.restore(queryKey, restoredState.pagingState)
         else paginator.start(queryKey, loadPage)
     }
 
