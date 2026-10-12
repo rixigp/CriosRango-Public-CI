@@ -276,7 +276,9 @@ internal fun OutletAwareCatalogGrid(
             pagingKey = pagingKey,
             headerTitle = headerTitle,
             headerOnBack = headerOnBack,
-            headerContent = headerContent
+            headerContent = headerContent,
+            sharedFilterDialog = current == null ||
+                !isCategoryDescendantOf(current.id, 445, allCategories.associateBy { it.id })
         )
         return
     }
@@ -448,7 +450,8 @@ internal fun OutletAwareCatalogGrid(
                             }
                         }
                     }
-                } else null
+                } else null,
+                sharedFilterDialog = false
             )
         }
     }
@@ -458,7 +461,7 @@ internal fun OutletAwareCatalogGrid(
 
 @Composable
 internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<StoreProduct>, path: MutableList<Int>, padding: PaddingValues, loading: Boolean, categoryPagingState: es.criosrango.shared.CatalogPagingState<StoreProduct>, loadNextCategoryPage: () -> Unit, loadCategory: (Int) -> Unit, loadCategoryTree: (Int) -> Unit, onProduct: (StoreProduct) -> Unit, availabilityStore: OutletAvailabilityStore, onRootBack: (() -> Unit)? = null, onOpen: (ProductCategory) -> Unit,
-    outletSeasonFilter: HomeOutletSeason? = null, onSingleLevelBack: (() -> Unit)? = null) {
+    outletSeasonFilter: HomeOutletSeason? = null, onSingleLevelBack: (() -> Unit)? = null, onRootRetry: (() -> Unit)? = null) {
     val currentId = path.lastOrNull()
     val current = categories.firstOrNull { it.id == currentId }
     val rawChildren =
@@ -511,7 +514,8 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             padding,
             loading,
             onOpen,
-            onBack = onCategoriesBack
+            onBack = onCategoriesBack,
+            onRetry = onRootRetry ?: onCategoriesBack
         )
     } else if (children.isNotEmpty()) {
         CategoryParentWithFilters(
@@ -545,132 +549,15 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
 }
 
 @Composable
-internal fun CategoryList(
-    categories: List<ProductCategory>,
-    allCategories: List<ProductCategory>,
-    products: List<StoreProduct>,
-    padding: PaddingValues,
-    loading: Boolean,
-    onOpen: (ProductCategory) -> Unit,
-    onBack: () -> Unit
-) {
-    val visibleCategories = categories
-        .filter {
-            it.parent == 0 &&
-            !it.name.equals("Outlet", ignoreCase = true) &&
-            !it.slug.equals("outlet", ignoreCase = true)
-        }
-        .distinctBy { it.id }
-
-    val rows = visibleCategories.chunked(3)
-
-    if (visibleCategories.isEmpty() && loading) {
-        CategorySkeletonList(padding)
-        return
-    }
-
-    Column(
-        modifier = Modifier
-            .padding(padding)
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        es.criosrango.shared.StoreCatalogHeader(
-            title = "Categorías",
-            showBack = true,
-            onBack = onBack
-        )
-        es.criosrango.shared.StoreCategoriesGrid(
-            categories = visibleCategories.map { category ->
-                es.criosrango.shared.model.StoreCategory(
-                    id = category.id,
-                    parent = category.parent,
-                    name = category.name,
-                    slug = category.slug,
-                    count = category.count
-                )
-            },
-            onCategory = { selected ->
-                visibleCategories.firstOrNull { it.id == selected.id }?.let(onOpen)
-            },
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = CatalogCategoryVisualTokens.horizontalPadding,
-                top = CatalogCategoryVisualTokens.rowSpacing,
-                end = CatalogCategoryVisualTokens.horizontalPadding,
-                bottom = 0.dp
-            ),
-            columnSpacing = CatalogCategoryVisualTokens.columnSpacing,
-            rowSpacing = CatalogCategoryVisualTokens.rowSpacing,
-            imagePadding = CatalogCategoryVisualTokens.imagePadding,
-            imageToLabelSpacing = CatalogCategoryVisualTokens.imageToLabelSpacing
-        )
-}
-
-
-
-
-
-}
-
-@Composable
-private fun CategorySkeletonList(padding: PaddingValues) {
-    LazyColumn(
-        modifier = Modifier
-            .padding(padding)
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        item {
-            Box(
-                Modifier
-                    .padding(horizontal = 20.dp, vertical = 12.dp)
-                    .fillMaxWidth(.42f)
-                    .height(28.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFFE8E5DF))
-            )
-        }
-        items(4) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(CatalogCategoryVisualTokens.columnSpacing)
-            ) {
-                repeat(3) {
-                    Column(
-                        Modifier.weight(1f),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1f)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(Color(0xFFE8E5DF))
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Box(
-                            Modifier
-                                .fillMaxWidth(.78f)
-                                .height(14.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0xFFE8E5DF))
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Box(
-                            Modifier
-                                .fillMaxWidth(.58f)
-                                .height(14.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0xFFE8E5DF))
-                        )
-                    }
-                }
-            }
-        }
-    }
+internal fun CategoryList(categories: List<ProductCategory>, allCategories: List<ProductCategory>, products: List<StoreProduct>,
+    padding: PaddingValues, loading: Boolean, onOpen: (ProductCategory) -> Unit, onBack: () -> Unit, onRetry: () -> Unit) {
+    val visibleCategories = categories.filter { it.parent == 0 && !it.name.equals("Outlet", true) && !it.slug.equals("outlet", true) }.distinctBy { it.id }
+    es.criosrango.shared.StoreCategoriesScreen(
+        categories = visibleCategories.map { es.criosrango.shared.model.StoreCategory(id=it.id,parent=it.parent,name=it.name,slug=it.slug,count=it.count) },
+        loading = loading, onBack = onBack,
+        onCategory = { selected -> visibleCategories.firstOrNull { it.id == selected.id }?.let(onOpen) },
+        onRetry = onRetry, modifier = Modifier.padding(padding)
+    )
 }
 
 internal fun subcategoryImageRes(
@@ -916,6 +803,7 @@ else -> null
 
 
 
+
 @Composable
 internal fun CategoryCard(
     category: ProductCategory,
@@ -940,14 +828,7 @@ internal fun StoreProduct.filterValues(attribute: String): Set<String> =
         .filter { it.isNotBlank() }
         .toSet()
 
-internal fun catalogFilterKey(value: String): String =
-    java.text.Normalizer
-        .normalize(
-            value.lowercase().trim(),
-            java.text.Normalizer.Form.NFD
-        )
-        .replace("\\p{Mn}+".toRegex(), "")
-        .replace("\\s+".toRegex(), " ")
+internal fun catalogFilterKey(value: String): String = es.criosrango.shared.storeCatalogFilterKey(value)
 
 internal fun StoreProduct.matchesCatalogFilters(
     sizes: Set<String>,
@@ -1003,7 +884,8 @@ internal fun CatalogFilteredProductGrid(
     headerTitle: String? = null,
     headerOnBack: (() -> Unit)? = null,
     headerContent: (@Composable ColumnScope.() -> Unit)? = null,
-    compactHeaderSpacing: Boolean = false
+    compactHeaderSpacing: Boolean = false,
+    sharedFilterDialog: Boolean = true
 ) {
     var filtersOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var sortMode by androidx.compose.runtime.saveable.rememberSaveable {
@@ -1232,43 +1114,41 @@ internal fun CatalogFilteredProductGrid(
     }
 
     if (filtersOpen) {
-        AlertDialog(
-            onDismissRequest = { filtersOpen = false },
-            title = { Text("Filtros") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    CatalogFilterChoices("Talla", sizes, selectedSizes, possibleSizes) { selectedSizes = it }
-
-                    Spacer(Modifier.height(20.dp))
-
-                    CatalogFilterChoices("Color", colors, selectedColors, possibleColors) { selectedColors = it }
-
-                    if (allowBrandFilter && brands.isNotEmpty()) {
+        if (sharedProductList && sharedFilterDialog) {
+            es.criosrango.shared.StoreCatalogFilterDialog(
+                sizes = sizes, colors = colors, brands = brands,
+                selectedSizes = selectedSizes, selectedColors = selectedColors, selectedBrands = selectedBrands,
+                enabledSizes = possibleSizes, enabledColors = possibleColors, enabledBrands = possibleBrands,
+                showBrands = allowBrandFilter,
+                onSizesChanged = { selectedSizes = it }, onColorsChanged = { selectedColors = it }, onBrandsChanged = { selectedBrands = it },
+                onApply = { filtersOpen = false },
+                onClear = { selectedSizes = emptySet(); selectedColors = emptySet(); if (allowBrandFilter) selectedBrands = emptySet() },
+                onDismiss = { filtersOpen = false }
+            )
+        } else {
+            AlertDialog(
+                onDismissRequest = { filtersOpen = false },
+                title = { Text("Filtros") },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        CatalogFilterChoices("Talla", sizes, selectedSizes, possibleSizes) { selectedSizes = it }
                         Spacer(Modifier.height(20.dp))
-
-                        CatalogFilterChoices("Marca", brands, selectedBrands, possibleBrands) { selectedBrands = it }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { filtersOpen = false }) {
-                    Text("Aplicar")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        selectedSizes = emptySet()
-                        selectedColors = emptySet()
-                        if (allowBrandFilter) {
-                            selectedBrands = emptySet()
+                        CatalogFilterChoices("Color", colors, selectedColors, possibleColors) { selectedColors = it }
+                        if (allowBrandFilter && brands.isNotEmpty()) {
+                            Spacer(Modifier.height(20.dp))
+                            CatalogFilterChoices("Marca", brands, selectedBrands, possibleBrands) { selectedBrands = it }
                         }
                     }
-                ) {
-                    Text("Limpiar")
+                },
+                confirmButton = { TextButton(onClick = { filtersOpen = false }) { Text("Aplicar") } },
+                dismissButton = {
+                    TextButton(onClick = {
+                        selectedSizes = emptySet(); selectedColors = emptySet()
+                        if (allowBrandFilter) selectedBrands = emptySet()
+                    }) { Text("Limpiar") }
                 }
-            }
-        )
+            )
+        }
     }
 }
 
@@ -1283,60 +1163,27 @@ internal fun CatalogFilterChoices(
 ) {
     Text(title, style = MaterialTheme.typography.titleMedium)
     Spacer(Modifier.height(8.dp))
-
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        val orderedValues =
-            if (
-                title.equals("Talla", true) ||
-                title.equals("Tallas", true)
-            ) {
-                values.sortedWith(
-                    compareBy(
-                        { productSizeSortKey(it) },
-                        { it }
-                    )
-                )
-            } else {
-                values
-            }
-
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        val orderedValues = if (title.equals("Talla", true) || title.equals("Tallas", true)) {
+            values.sortedWith(compareBy({ productSizeSortKey(it) }, { it }))
+        } else values
         orderedValues.forEach { value ->
             FilterChip(
                 selected = value in selected,
                 enabled = value in selected || value in enabledValues,
-                onClick = {
-                    onChange(
-                        if (value in selected)
-                            selected - value
-                        else
-                            selected + value
-                    )
-                },
+                onClick = { onChange(if (value in selected) selected - value else selected + value) },
                 leadingIcon = {
                     if (title.equals("Color", true)) {
                         productColorSwatch(value)?.let { swatch ->
-                            Box(
-                                modifier = Modifier
-                                    .size(18.dp)
-                                    .background(
-                                        swatch,
-                                        RoundedCornerShape(50)
-                                    )
-                            )
+                            Box(Modifier.size(18.dp).background(swatch, RoundedCornerShape(50)))
                         }
                     }
                 },
-                label = {
-                    Text(value)
-                }
+                label = { Text(value) }
             )
         }
     }
 }
-
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -1397,151 +1244,212 @@ internal fun CategoryParentWithFilters(
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(padding)) {
-        es.criosrango.shared.StoreCatalogHeader(
-            title = title,
-            showBack = true,
-            onBack = onBack,
-            trailing = {
-                OutlinedButton(onClick = { open = true }) {
-                    Text(if (active == 0) "Filtros" else "Filtros ($active)")
-                }
-            }
-        )
+    val parentCategory = allCategories.firstOrNull { it.id == children.firstOrNull()?.parent }
+    val isOutletParent = parentCategory?.slug.equals("outlet", ignoreCase = true) ||
+        parentCategory?.name.equals("Outlet", ignoreCase = true)
 
-        ActiveFilterChips(
-            filters = activeFilterChips,
-            onClearAll = {
-                sizes = emptySet()
-                colors = emptySet()
-                brands = emptySet()
-            }
-        )
-
-        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-
+    if (parentCategory != null && !isOutletParent) {
         if (active == 0) {
-            val parentCategory = allCategories.firstOrNull { it.id == children.firstOrNull()?.parent }
-            val isOutletParent = parentCategory?.slug.equals("outlet", ignoreCase = true) ||
-                parentCategory?.name.equals("Outlet", ignoreCase = true)
-            if (parentCategory == null || isOutletParent) {
-                LazyColumn(
-                    contentPadding = PaddingValues(
-                        start = CatalogCategoryVisualTokens.horizontalPadding,
-                        top = CatalogCategoryVisualTokens.rowSpacing,
-                        end = CatalogCategoryVisualTokens.horizontalPadding,
-                        bottom = 28.dp
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(CatalogCategoryVisualTokens.rowSpacing)
-                ) {
-                    items(children.chunked(3)) { row ->
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            row.forEach { category ->
-                                CategoryCard(
-                                    category = category,
-                                    allCategories = allCategories,
-                                    products = products,
-                                    onOpen = onOpen,
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                            repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
-                        }
+            es.criosrango.shared.StoreSubcategoriesScreen(
+                parent = es.criosrango.shared.model.StoreCategory(
+                    id = parentCategory.id, parent = parentCategory.parent, name = parentCategory.name,
+                    slug = parentCategory.slug, count = parentCategory.count
+                ),
+                title = title,
+                categories = children.map { category ->
+                    es.criosrango.shared.model.StoreCategory(
+                        id = category.id, parent = category.parent, name = category.name,
+                        slug = category.slug, count = category.count
+                    )
+                },
+                loading = loading,
+                onBack = onBack,
+                onCategory = { selected -> children.firstOrNull { it.id == selected.id }?.let(onOpen) },
+                onFilterClick = { open = true },
+                modifier = Modifier.fillMaxSize().padding(padding)
+            )
+        } else {
+            val sortedProducts = sortProducts(filtered, sortMode)
+            val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+            val listState = es.criosrango.shared.StoreProductListUiState(
+                title = title,
+                items = sortedProducts.map { it.toStoreProductItemUi() },
+                selectedSort = sortMode.toStoreProductSortOption(),
+                availableSortOptions = es.criosrango.shared.StoreProductSortOption.values().toList(),
+                activeFilterCount = active,
+                activeFilterChips = androidActiveFilterChips(sizes, colors, brands, true),
+                isInitialLoading = sortedProducts.isEmpty() && loading,
+                isLoadingMore = false,
+                isEmpty = sortedProducts.isEmpty() && !loading,
+                emptyMessage = "No hay productos con estos filtros",
+                initialErrorMessage = null,
+                appendErrorMessage = null,
+                appendRetryLabel = "Reintentar",
+                canLoadMore = false
+            )
+            es.criosrango.shared.StoreProductListScreen(
+                state = listState,
+                gridState = gridState,
+                modifier = Modifier.fillMaxSize().padding(padding),
+                onBack = onBack,
+                onProductSelected = { id -> sortedProducts.firstOrNull { it.id == id }?.let(onProduct) },
+                onSortSelected = { sortMode = it.toAndroidProductSortMode() },
+                onFilterClick = { open = true },
+                onRemoveFilter = { id ->
+                    when {
+                        id.startsWith("size:") -> sizes = sizes - id.removePrefix("size:")
+                        id.startsWith("color:") -> colors = colors - id.removePrefix("color:")
+                        id.startsWith("brand:") -> brands = brands - id.removePrefix("brand:")
+                    }
+                },
+                onClearFilters = { sizes = emptySet(); colors = emptySet(); brands = emptySet() },
+                onRetryInitial = {},
+                onRetryAppend = {},
+                imageContent = { item, imageModifier ->
+                    val product = sortedProducts.firstOrNull { it.id == item.id }
+                    val image = product?.images?.firstOrNull()
+                    val targetWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) { maxWidth.roundToPx() }
+                    CatalogImage(
+                        product?.let {
+                            selectResponsiveImageUrl(
+                                src = image?.src.orEmpty(),
+                                thumbnail = image?.thumbnail.orEmpty(),
+                                srcSet = image?.srcSet.orEmpty(),
+                                targetWidthPx = targetWidthPx
+                            )
+                        },
+                        item.nameText,
+                        imageModifier,
+                        androidx.compose.ui.layout.ContentScale.Crop
+                    )
+                }
+            )
+        }
+    } else {
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            es.criosrango.shared.StoreCatalogHeader(
+                title = title,
+                showBack = true,
+                onBack = onBack,
+                trailing = {
+                    OutlinedButton(onClick = { open = true }) {
+                        Text(if (active == 0) "Filtros" else "Filtros ($active)")
                     }
                 }
-            } else {
-                es.criosrango.shared.StoreSubcategoriesGrid(
-                    parent = es.criosrango.shared.model.StoreCategory(
-                        id = parentCategory.id, parent = parentCategory.parent,
-                        name = parentCategory.name, slug = parentCategory.slug, count = parentCategory.count
-                    ),
-                    categories = children.map { category ->
-                        es.criosrango.shared.model.StoreCategory(
-                            id = category.id, parent = category.parent,
-                            name = category.name, slug = category.slug, count = category.count
-                        )
-                    },
-                    onCategory = { selected -> children.firstOrNull { it.id == selected.id }?.let(onOpen) },
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = CatalogCategoryVisualTokens.horizontalPadding,
-                        top = CatalogCategoryVisualTokens.rowSpacing,
-                        end = CatalogCategoryVisualTokens.horizontalPadding,
-                        bottom = 28.dp
-                    ),
-                    columnSpacing = CatalogCategoryVisualTokens.columnSpacing,
-                    rowSpacing = CatalogCategoryVisualTokens.rowSpacing,
-                    imagePadding = CatalogCategoryVisualTokens.imagePadding,
-                    imageScale = CatalogCategoryVisualTokens.imageScale,
-                    imageToLabelSpacing = CatalogCategoryVisualTokens.imageToLabelSpacing
-                )
-            }
-        } else if (!loading && filtered.isEmpty()) {
-            Column(
-                Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text("No hay productos con estos filtros")
-                TextButton(onClick = {
+            )
+    
+            ActiveFilterChips(
+                filters = activeFilterChips,
+                onClearAll = {
                     sizes = emptySet()
                     colors = emptySet()
                     brands = emptySet()
-                }) {
-                    Text("Limpiar filtros")
                 }
-            }
-        } else {
-            Column(Modifier.fillMaxSize()) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.Start
+            )
+    
+            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+    
+            if (active == 0) {
+                val parentCategory = allCategories.firstOrNull { it.id == children.firstOrNull()?.parent }
+                val isOutletParent = parentCategory?.slug.equals("outlet", ignoreCase = true) ||
+                    parentCategory?.name.equals("Outlet", ignoreCase = true)
+                if (parentCategory == null || isOutletParent) {
+                    LazyColumn(
+                        contentPadding = PaddingValues(
+                            start = CatalogCategoryVisualTokens.horizontalPadding,
+                            top = CatalogCategoryVisualTokens.rowSpacing,
+                            end = CatalogCategoryVisualTokens.horizontalPadding,
+                            bottom = 28.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(CatalogCategoryVisualTokens.rowSpacing)
+                    ) {
+                        items(children.chunked(3)) { row ->
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                row.forEach { category ->
+                                    CategoryCard(
+                                        category = category,
+                                        allCategories = allCategories,
+                                        products = products,
+                                        onOpen = onOpen,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                        }
+                    }
+                }
+            } else if (!loading && filtered.isEmpty()) {
+                Column(
+                    Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    ProductSortControl(
-                        mode = sortMode,
-                        onMode = { sortMode = it }
+                    Text("No hay productos con estos filtros")
+                    TextButton(onClick = {
+                        sizes = emptySet()
+                        colors = emptySet()
+                        brands = emptySet()
+                    }) {
+                        Text("Limpiar filtros")
+                    }
+                }
+            } else {
+                Column(Modifier.fillMaxSize()) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        ProductSortControl(
+                            mode = sortMode,
+                            onMode = { sortMode = it }
+                        )
+                    }
+                    ProductGrid(
+                        sortProducts(filtered, sortMode),
+                        Modifier.weight(1f),
+                        onProduct
                     )
                 }
-                ProductGrid(
-                    sortProducts(filtered, sortMode),
-                    Modifier.weight(1f),
-                    onProduct
-                )
             }
         }
     }
 
     if (open) {
-        AlertDialog(
-            onDismissRequest = { open = false },
-            title = { Text("Filtros") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    CatalogFilterChoices("Talla", allSizes, sizes, possibleParentSizes) { sizes = it }
-                    Spacer(Modifier.height(20.dp))
-                    CatalogFilterChoices("Color", allColors, colors, possibleParentColors) { colors = it }
-
-                    if (allBrands.isNotEmpty()) {
+        if (parentCategory != null && !isOutletParent) {
+            es.criosrango.shared.StoreCatalogFilterDialog(
+                sizes = allSizes.sortedWith(compareBy({ productSizeSortKey(it) }, { it })),
+                colors = allColors, brands = allBrands,
+                selectedSizes = sizes, selectedColors = colors, selectedBrands = brands,
+                enabledSizes = possibleParentSizes, enabledColors = possibleParentColors, enabledBrands = possibleParentBrands,
+                onSizesChanged = { sizes = it }, onColorsChanged = { colors = it }, onBrandsChanged = { brands = it },
+                onApply = { open = false },
+                onClear = { sizes = emptySet(); colors = emptySet(); brands = emptySet() },
+                onDismiss = { open = false }
+            )
+        } else {
+            AlertDialog(
+                onDismissRequest = { open = false },
+                title = { Text("Filtros") },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        CatalogFilterChoices("Talla", allSizes, sizes, possibleParentSizes) { sizes = it }
                         Spacer(Modifier.height(20.dp))
-                        CatalogFilterChoices("Marca", allBrands, brands, possibleParentBrands) { brands = it }
+                        CatalogFilterChoices("Color", allColors, colors, possibleParentColors) { colors = it }
+                        if (allBrands.isNotEmpty()) {
+                            Spacer(Modifier.height(20.dp))
+                            CatalogFilterChoices("Marca", allBrands, brands, possibleParentBrands) { brands = it }
+                        }
                     }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { open = false }) { Text("Aplicar") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    sizes = emptySet()
-                    colors = emptySet()
-                    brands = emptySet()
-                }) { Text("Limpiar") }
-            }
-        )
+                },
+                confirmButton = { TextButton(onClick = { open = false }) { Text("Aplicar") } },
+                dismissButton = { TextButton(onClick = { sizes = emptySet(); colors = emptySet(); brands = emptySet() }) { Text("Limpiar") } }
+            )
+        }
     }
 }

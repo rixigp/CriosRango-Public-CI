@@ -87,22 +87,8 @@ internal fun IosCategoryRoot(
             .onSuccess { categories = it; loading = false }
             .onFailure { error = it.message ?: "No se han podido cargar las categorías."; loading = false }
     }
-    Column(Modifier.fillMaxSize().padding(padding)) {
-        StoreCatalogHeader(title = "Categorías", showBack = true, onBack = onBack)
-        when {
-            loading -> IosStoreLoading()
-            error != null -> IosStoreError(error!!) { loading = true; error = null }
-            categories.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No hay categorías.") }
-            else -> StoreCategoriesGrid(
-                categories = categories,
-                onCategory = onOpenCategory,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 0.dp),
-                columnSpacing = 12.dp,
-                rowSpacing = 16.dp
-            )
-        }
-    }
+    StoreCategoriesScreen(categories=categories, loading=loading, errorMessage=error, onBack=onBack,
+        onCategory=onOpenCategory, onRetry={loading=true; error=null}, modifier=Modifier.fillMaxSize().padding(padding))
 }
 
 @Composable
@@ -132,41 +118,44 @@ internal fun IosCategoryPage(
         ?.filter { it.parent == category.id }
         ?.distinctBy { it.id }
         ?: emptyList()
+    var showProductsFromFilters by remember(category.id) { mutableStateOf(false) }
 
-    Column(Modifier.fillMaxSize().padding(padding)) {
-        if (error != null || categories == null || children.isNotEmpty()) {
-            StoreCatalogHeader(title = storeCategoryDisplayName(category), showBack = true, onBack = onBack)
-        }
-
-        when {
-            error != null -> IosStoreError(error!!) {
+    when {
+        error != null || categories == null -> StoreSubcategoriesScreen(
+            parent = category,
+            categories = emptyList(),
+            loading = categories == null && error == null,
+            errorMessage = error,
+            onBack = onBack,
+            onCategory = onOpenCategory,
+            onFilterClick = { showProductsFromFilters = true },
+            onRetry = {
                 categories = null
                 error = null
                 retryGeneration++
-            }
-            categories == null -> IosStoreLoading()
-            children.isNotEmpty() -> StoreSubcategoriesGrid(
-                parent = category,
-                categories = children,
-                onCategory = onOpenCategory,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 28.dp),
-                columnSpacing = 12.dp,
-                rowSpacing = 12.dp,
-                imagePadding = 1.dp,
-                imageScale = 1.16f,
-                imageToLabelSpacing = 6.dp
-            )
-            else -> IosCategoryProducts(
-                storeApi = storeApi,
-                padding = PaddingValues(),
-                category = category,
-                onOpenProduct = onOpenProduct,
-                onBack = onBack,
-                cartStore = cartStore,
-                catalogRestoration = catalogRestoration
-            )
-        }
+            },
+            modifier = Modifier.fillMaxSize().padding(padding)
+        )
+        children.isNotEmpty() && !showProductsFromFilters -> StoreSubcategoriesScreen(
+            parent = category,
+            categories = children,
+            loading = false,
+            onBack = onBack,
+            onCategory = onOpenCategory,
+            onFilterClick = { showProductsFromFilters = true },
+            modifier = Modifier.fillMaxSize().padding(padding)
+        )
+        else -> IosCategoryProducts(
+            storeApi = storeApi,
+            padding = padding,
+            category = category,
+            onOpenProduct = onOpenProduct,
+            onBack = onBack,
+            cartStore = cartStore,
+            catalogRestoration = catalogRestoration,
+            initialFiltersOpen = children.isNotEmpty() && showProductsFromFilters,
+            onNoActiveFilters = { if (children.isNotEmpty()) showProductsFromFilters = false }
+        )
     }
 }
 
@@ -191,7 +180,9 @@ internal fun IosCategoryProducts(
     onOpenProduct: (StoreProduct) -> Unit,
     onBack: () -> Unit,
     cartStore: StoreCartStore,
-    catalogRestoration: MutableMap<Long, IosCatalogRestorationState>
+    catalogRestoration: MutableMap<Long, IosCatalogRestorationState>,
+    initialFiltersOpen: Boolean = false,
+    onNoActiveFilters: (() -> Unit)? = null
 ) {
     val scope = rememberCoroutineScope()
     val paginator = remember(category.id) {
@@ -207,7 +198,7 @@ internal fun IosCategoryProducts(
         IosCatalogSortModeState.NAME_ASC -> IosCatalogSortMode.NAME_ASC
         else -> IosCatalogSortMode.RECENT
     }
-    var filtersOpen by remember(category.id) { mutableStateOf(false) }
+    var filtersOpen by remember(category.id) { mutableStateOf(initialFiltersOpen) }
     var sortMode by remember(category.id) { mutableStateOf(initialSortMode) }
     var selectedSizes by remember(category.id) { mutableStateOf(savedState?.selectedSizes ?: emptySet()) }
     var selectedColors by remember(category.id) { mutableStateOf(savedState?.selectedColors ?: emptySet()) }
@@ -291,7 +282,7 @@ internal fun IosCategoryProducts(
             .filter { it.isNotBlank() }
             .toSet()
 
-    fun normalized(value: String): String = value.trim().lowercase()
+    fun normalized(value: String): String = storeCatalogFilterKey(value)
 
     fun matchesFilters(product: StoreProduct): Boolean {
         val productSizes = filterValues(product, "Tallas").map(::normalized).toSet()
@@ -402,7 +393,7 @@ internal fun IosCategoryProducts(
     }
 
     val activeFilterChips = buildList {
-        selectedSizes.sorted().forEach { add(StoreActiveFilterChipUi("size:$it", "Talla $it")) }
+        selectedSizes.sortedWith(compareBy({ storeCatalogFilterSizeSortKey(it) }, { it })).forEach { add(StoreActiveFilterChipUi("size:$it", "Talla $it")) }
         selectedColors.sorted().forEach { add(StoreActiveFilterChipUi("color:$it", it)) }
         selectedBrands.sorted().forEach { add(StoreActiveFilterChipUi("brand:$it", it)) }
     }
@@ -468,16 +459,19 @@ internal fun IosCategoryProducts(
         },
         onFilterClick = { filtersOpen = true },
         onRemoveFilter = { id ->
-            when {
-                id.startsWith("size:") -> selectedSizes = selectedSizes - id.removePrefix("size:")
-                id.startsWith("color:") -> selectedColors = selectedColors - id.removePrefix("color:")
-                id.startsWith("brand:") -> selectedBrands = selectedBrands - id.removePrefix("brand:")
-            }
+            val nextSizes = if (id.startsWith("size:")) selectedSizes - id.removePrefix("size:") else selectedSizes
+            val nextColors = if (id.startsWith("color:")) selectedColors - id.removePrefix("color:") else selectedColors
+            val nextBrands = if (id.startsWith("brand:")) selectedBrands - id.removePrefix("brand:") else selectedBrands
+            selectedSizes = nextSizes
+            selectedColors = nextColors
+            selectedBrands = nextBrands
+            if (nextSizes.isEmpty() && nextColors.isEmpty() && nextBrands.isEmpty()) onNoActiveFilters?.invoke()
         },
         onClearFilters = {
             selectedSizes = emptySet()
             selectedColors = emptySet()
             selectedBrands = emptySet()
+            onNoActiveFilters?.invoke()
         },
         onRetryInitial = { paginator.start(queryKey, loadPage) },
         onRetryAppend = { paginator.loadNext(loadPage) },
@@ -493,81 +487,26 @@ internal fun IosCategoryProducts(
     )
 
     if (filtersOpen) {
-        AlertDialog(
-            onDismissRequest = { filtersOpen = false },
-            title = { Text("Filtros") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    IosFilterChoices(
-                        title = "Talla",
-                        values = sizes,
-                        selected = selectedSizes,
-                        enabledValues = possibleSizes,
-                        onChange = { selectedSizes = it }
-                    )
-                    Spacer(Modifier.height(20.dp))
-                    IosFilterChoices(
-                        title = "Color",
-                        values = colors,
-                        selected = selectedColors,
-                        enabledValues = possibleColors,
-                        onChange = { selectedColors = it }
-                    )
-                    Spacer(Modifier.height(20.dp))
-                    IosFilterChoices(
-                        title = "Marca",
-                        values = brands,
-                        selected = selectedBrands,
-                        enabledValues = possibleBrands,
-                        onChange = { selectedBrands = it }
-                    )
-                }
+        StoreCatalogFilterDialog(
+            sizes=sizes.sortedWith(compareBy(String::lowercase)), colors=colors, brands=brands,
+            selectedSizes=selectedSizes, selectedColors=selectedColors, selectedBrands=selectedBrands,
+            enabledSizes=possibleSizes, enabledColors=possibleColors, enabledBrands=possibleBrands,
+            onSizesChanged={selectedSizes=it}, onColorsChanged={selectedColors=it}, onBrandsChanged={selectedBrands=it},
+            onApply={
+                filtersOpen = false
+                if (selectedSizes.isEmpty() && selectedColors.isEmpty() && selectedBrands.isEmpty()) onNoActiveFilters?.invoke()
             },
-            confirmButton = {
-                TextButton(onClick = { filtersOpen = false }) { Text("Aplicar") }
+            onClear={
+                selectedSizes = emptySet()
+                selectedColors = emptySet()
+                selectedBrands = emptySet()
+                onNoActiveFilters?.invoke()
             },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        selectedSizes = emptySet()
-                        selectedColors = emptySet()
-                        selectedBrands = emptySet()
-                    }
-                ) {
-                    Text("Limpiar")
-                }
+            onDismiss={
+                filtersOpen = false
+                if (selectedSizes.isEmpty() && selectedColors.isEmpty() && selectedBrands.isEmpty()) onNoActiveFilters?.invoke()
             }
         )
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun IosFilterChoices(
-    title: String,
-    values: List<String>,
-    selected: Set<String>,
-    enabledValues: Set<String>,
-    onChange: (Set<String>) -> Unit
-) {
-    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-    Spacer(Modifier.height(8.dp))
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        values.forEach { value ->
-            FilterChip(
-                selected = value in selected,
-                enabled = value in selected || value in enabledValues,
-                onClick = {
-                    onChange(
-                        if (value in selected) selected - value else selected + value
-                    )
-                },
-                label = { Text(value) }
-            )
-        }
     }
 }
 
