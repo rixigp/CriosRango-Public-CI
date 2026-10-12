@@ -35,7 +35,7 @@ fun StoreSubcategoryCard(
     imageScale: Float = 1.16f,
     imageToLabelSpacing: Dp = 6.dp
 ) {
-    val image = storeSubcategoryResource(parent.slug, category.slug)
+    val image = storeSubcategoryResource(parent, category)
     Column(modifier = modifier.fillMaxWidth().clickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(modifier = Modifier.fillMaxWidth().aspectRatio(1f), contentAlignment = Alignment.Center) {
             if (image != null) {

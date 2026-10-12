@@ -41,11 +41,19 @@ import es.criosrango.shared.generated.resources.category_recien_nacido
 import es.criosrango.shared.model.StoreCategory
 import org.jetbrains.compose.resources.painterResource
 
-private fun normalizedRootCategoryName(value: String): String =
+internal fun normalizedRootCategoryName(value: String): String =
     value.lowercase().trim()
         .replace('á', 'a').replace('é', 'e').replace('í', 'i')
         .replace('ó', 'o').replace('ú', 'u').replace('ü', 'u')
         .replace('ñ', 'n')
+
+/** Canonical shared display name used by the root card and catalog page header. */
+internal fun storeCategoryDisplayName(category: StoreCategory): String =
+    when (normalizedRootCategoryName(category.name)) {
+        "bebe nina" -> "Bebé niña"
+        "bebe nino" -> "Bebé niño"
+        else -> category.name
+    }
 
 private fun rootCategoryResource(category: StoreCategory) = when {
     normalizedRootCategoryName(category.name).contains("bautizo") -> Res.drawable.category_bautizo
@@ -102,11 +110,7 @@ fun StoreCategoryCard(
         }
         Spacer(Modifier.size(width = 0.dp, height = imageToLabelSpacing))
         Text(
-            text = when (normalizedRootCategoryName(category.name)) {
-                "bebe nina" -> "Bebé niña"
-                "bebe nino" -> "Bebé niño"
-                else -> category.name
-            },
+            text = storeCategoryDisplayName(category),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onBackground,
             textAlign = TextAlign.Center,

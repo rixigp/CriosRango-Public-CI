@@ -132,7 +132,7 @@ internal fun IosCategoryPage(
         ?: emptyList()
 
     Column(Modifier.fillMaxSize().padding(padding)) {
-        StoreCatalogHeader(title = category.name, showBack = true, onBack = onBack)
+        StoreCatalogHeader(title = storeCategoryDisplayName(category), showBack = true, onBack = onBack)
 
         when {
             error != null -> IosStoreError(error!!) {
