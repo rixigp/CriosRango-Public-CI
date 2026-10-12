@@ -742,124 +742,132 @@ internal fun IosProductDetail(
         maximum?.let { quantity = quantity.coerceAtMost(it) }
         if ((quantity - minimum) % multiple != 0) quantity = minimum
     }
-    LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(top = 2.dp, bottom = 72.dp)) {
-        item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack) { Text("Atrás") }
-                Text(displayProductName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            }
-        }
-        item {
+
+    val infoText = normalizeWooDescriptionText(product.description.ifBlank { product.shortDescription })
+    val infoLines = infoText.lines().map { it.trim() }.filter { it.isNotBlank() }
+    val brandLine = infoLines.firstOrNull { it.startsWith("Marca:", ignoreCase = true) }
+    val compositionLine = infoLines.firstOrNull {
+        it.startsWith("Composición:", ignoreCase = true) || it.startsWith("Composicion:", ignoreCase = true)
+    }
+    val remainingInfo = infoLines.filterNot { it == brandLine || it == compositionLine }.joinToString("\n")
+    val detailUiState = StoreProductDetailUiState(
+        title = displayProductName,
+        displayPrice = if (currentPrices.price.toLongOrNull()?.let { it > 0L } == true) formatStorePrice(currentPrices.price, currentPrices.currencyMinorUnit, currentPrices.currencySymbol) else "",
+        regularPrice = formatStorePrice(currentPrices.regularPrice, currentPrices.currencyMinorUnit, currentPrices.currencySymbol),
+        showRegularPrice = product.onSale && currentPrices.regularPrice != currentPrices.price,
+        isOnSale = product.onSale,
+        attributeGroups = selectableAttributes.map { attribute ->
+            StoreProductDetailAttributeGroupUi(
+                label = attribute.name,
+                options = attribute.terms.map { term ->
+                    val chosen = selected[attribute.name]?.let {
+                        iosProductDetailValuesMatch(it, term.slug) || iosProductDetailValuesMatch(it, term.name)
+                    } == true
+                    val optionState = iosProductDetailAttributeOptionState(
+                        variations = variationSnapshots,
+                        selected = selected,
+                        attributeName = attribute.name,
+                        termSlug = term.slug,
+                        termName = term.name
+                    )
+                    StoreProductDetailOptionUi(
+                        value = term.name,
+                        selected = chosen,
+                        enabled = chosen || optionState.existsGlobally,
+                        incompatible = optionState.existsGlobally && !optionState.compatibleWithCurrentSelection && !chosen,
+                        strikeThrough = attribute.name.equals("Tallas", true) && !optionState.existsGlobally,
+                        kind = when {
+                            attribute.name.equals("Color", true) -> StoreProductDetailOptionKind.Color
+                            attribute.name.equals("Tallas", true) -> StoreProductDetailOptionKind.Size
+                            else -> StoreProductDetailOptionKind.Default
+                        }
+                    )
+                }
+            )
+        },
+        quantity = quantity,
+        quantityMinusEnabled = quantity > minimum,
+        quantityPlusEnabled = maximum == null || quantity < maximum,
+        primaryActionLabel = if (product.type == "variable" && selectedVariation == null) "Elige una combinación" else "Añadir al carrito",
+        primaryActionEnabled = canAdd && cartStore != null,
+        descriptionText = remainingInfo,
+        brandText = brandLine,
+        compositionText = compositionLine
+    )
+    StoreProductDetailScreen(
+        modifier = Modifier.fillMaxSize().padding(padding),
+        state = detailUiState,
+        imageSlot = { imageModifier ->
             if (currentImages.isNotEmpty()) {
                 val pagerState = rememberPagerState(pageCount = { currentImages.size })
-                HorizontalPager(state = pagerState, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 20.dp), pageSpacing = 10.dp) { index ->
-                    RemoteStoreImage(currentImages[index].src, product.name, Modifier.fillMaxWidth().aspectRatio(.78f).clickable { fullscreenPage = index }.semantics { role = Role.Button; contentDescription = "Ampliar imagen ${index + 1}" }, ContentScale.Crop)
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = imageModifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    pageSpacing = 10.dp
+                ) { index ->
+                    RemoteStoreImage(
+                        currentImages[index].src,
+                        product.name,
+                        Modifier.fillMaxWidth().aspectRatio(.78f).clickable { fullscreenPage = index }
+                            .semantics { role = Role.Button; contentDescription = "Ampliar imagen ${index + 1}" },
+                        ContentScale.Crop
+                    )
                 }
                 if (currentImages.size > 1) {
                     Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
                         repeat(currentImages.size) { index ->
-                            Box(Modifier.padding(horizontal = 3.dp).size(if (pagerState.currentPage == index) 8.dp else 6.dp).background(if (pagerState.currentPage == index) Color(0xFF183B35) else Color(0xFFD8D4D7), RoundedCornerShape(50)))
+                            Box(Modifier.padding(horizontal = 3.dp).size(if (pagerState.currentPage == index) 8.dp else 6.dp)
+                                .background(if (pagerState.currentPage == index) Color(0xFF183B35) else Color(0xFFD8D4D7), RoundedCornerShape(50)))
                         }
                     }
                 }
             }
-            Text(displayProductName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(20.dp, 16.dp, 20.dp, 4.dp))
-            if (currentPrices.price.toLongOrNull()?.let { it > 0L } == true) {
-                Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(formatStorePrice(currentPrices.price, currentPrices.currencyMinorUnit, currentPrices.currencySymbol), fontWeight = FontWeight.Bold, color = Color(0xFF183B35))
-                    if (product.onSale && currentPrices.regularPrice != currentPrices.price) Text(formatStorePrice(currentPrices.regularPrice, currentPrices.currencyMinorUnit, currentPrices.currencySymbol), color = Color(0xFF9E9E9E), textDecoration = TextDecoration.LineThrough)
-                }
-            }
-            product.attributes.filter { it.terms.isNotEmpty() }.forEach { attribute ->
-                Text(attribute.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(20.dp, 18.dp, 20.dp, 6.dp))
-                Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    attribute.terms.forEach { term ->
-                        run {
-                            val chosen = selected[attribute.name]?.let {
-                                iosProductDetailValuesMatch(it, term.slug) || iosProductDetailValuesMatch(it, term.name)
-                            } == true
-                            val optionState = iosProductDetailAttributeOptionState(
-                                variations = variationSnapshots,
-                                selected = selected,
-                                attributeName = attribute.name,
-                                termSlug = term.slug,
-                                termName = term.name
-                            )
-                            val existsGlobally = optionState.existsGlobally
-                            val compatibleNow = optionState.compatibleWithCurrentSelection
-                            val clickable = chosen || existsGlobally
-                            OutlinedButton(
-                                onClick = {
-                                    iosProductDetailToggleAttributeSelection(
-                                        selected = selected,
-                                        attributeName = attribute.name,
-                                        termSlug = term.slug,
-                                        termName = term.name,
-                                        chosen = chosen,
-                                        existsGlobally = existsGlobally,
-                                        variations = variationSnapshots
-                                    )
-                                },
-                                enabled = clickable,
-                                shape = RoundedCornerShape(if (attribute.name.equals("Color", true)) 50.dp else 14.dp),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    if (chosen) 2.dp else 1.dp,
-                                    when {
-                                        chosen -> Color(0xFF183B35)
-                                        existsGlobally && !compatibleNow -> Color(0xFFD0CDD0)
-                                        else -> Color(0xFF8B878B)
-                                    }
-                                ),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = if (chosen) Color(0xFFE4EFEA) else Color.Transparent,
-                                    contentColor = if (existsGlobally && !compatibleNow) Color(0xFF777277) else LocalContentColor.current
-                                ),
-                                modifier = Modifier.iosProductDetailIncompatibleSlash(
-                                    show = existsGlobally && !compatibleNow && !chosen,
-                                    shape = RoundedCornerShape(if (attribute.name.equals("Color", true)) 50.dp else 14.dp)
-                                )
-                            ) {
-                                Text(
-                                    term.name,
-                                    textDecoration = if (!existsGlobally && attribute.name.equals("Tallas", true)) TextDecoration.LineThrough else TextDecoration.None
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            Text(
-                if (!currentInStock) "Sin stock" else if (selectedVariation?.lowStockRemaining != null) "Últimas unidades" else "Disponible",
-                color = if (currentInStock) Color(0xFF183B35) else MaterialTheme.colorScheme.error,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-            )
-            if (product.type == "variable" && selectedVariation == null) Text("Elige una combinación para continuar.", modifier = Modifier.padding(20.dp))
-            Text("Cantidad", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(20.dp, 18.dp, 20.dp, 6.dp))
-            Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(onClick = { quantity = (quantity - multiple).coerceAtLeast(minimum) }, enabled = quantity > minimum) { Text("−") }
-                Text(quantity.toString(), modifier = Modifier.padding(horizontal = 18.dp), fontWeight = FontWeight.Bold)
-                OutlinedButton(onClick = { quantity = maximum?.let { (quantity + multiple).coerceAtMost(it) } ?: (quantity + multiple) }, enabled = maximum == null || quantity < maximum) { Text("+") }
-            }
-            cartStore?.let { store ->
-                Button(onClick = {
-                    val attrs = product.attributes.mapNotNull { attribute ->
-                        selected[attribute.name]?.let { value ->
-                            val taxonomy = attribute.taxonomy?.takeIf { it.isNotBlank() } ?: "pa_${attribute.name.lowercase().replace(Regex("[^a-z0-9]+"), "_")}"
-                            StoreCartVariation(taxonomy, value)
-                        }
-                    }
-                    store.add(currentId, quantity, attrs)
-                }, enabled = canAdd, modifier = Modifier.fillMaxWidth().padding(20.dp)) {
-                    Text(if (product.type == "variable" && selectedVariation == null) "Elige una combinación" else "Añadir al carrito")
-                }
-            }
+        },
+        statusSlot = {
             if (loading) CircularProgressIndicator(Modifier.padding(20.dp).size(24.dp))
             error?.let { message -> IosStoreError(message) { error = null; loading = true } }
-            if (displayShortDescription.isNotBlank()) Text(displayShortDescription, modifier = Modifier.padding(20.dp))
-            if (displayDescription.isNotBlank()) Text(displayDescription, modifier = Modifier.padding(20.dp))
+        },
+        onBack = onBack,
+        onAttributeOptionSelected = { groupLabel, value ->
+            val attribute = selectableAttributes.firstOrNull { it.name == groupLabel }
+            val term = attribute?.terms?.firstOrNull { it.name == value }
+            if (attribute != null && term != null) {
+                val chosen = selected[attribute.name]?.let {
+                    iosProductDetailValuesMatch(it, term.slug) || iosProductDetailValuesMatch(it, term.name)
+                } == true
+                val optionState = iosProductDetailAttributeOptionState(
+                    variations = variationSnapshots,
+                    selected = selected,
+                    attributeName = attribute.name,
+                    termSlug = term.slug,
+                    termName = term.name
+                )
+                iosProductDetailToggleAttributeSelection(
+                    selected = selected,
+                    attributeName = attribute.name,
+                    termSlug = term.slug,
+                    termName = term.name,
+                    chosen = chosen,
+                    existsGlobally = optionState.existsGlobally,
+                    variations = variationSnapshots
+                )
+            }
+        },
+        onQuantityMinus = { quantity = (quantity - multiple).coerceAtLeast(minimum) },
+        onQuantityPlus = { quantity = maximum?.let { (quantity + multiple).coerceAtMost(it) } ?: (quantity + multiple) },
+        onAddToCart = {
+            cartStore?.let { store ->
+                val attrs = product.attributes.mapNotNull { attribute ->
+                    selected[attribute.name]?.let { value ->
+                        val taxonomy = attribute.taxonomy?.takeIf { it.isNotBlank() } ?: "pa_${attribute.name.lowercase().replace(Regex("[^a-z0-9]+"), "_")}"
+                        StoreCartVariation(taxonomy, value)
+                    }
+                }
+                store.add(currentId, quantity, attrs)
+            }
         }
-    }
+    )
     fullscreenPage?.let { initialPage ->
         if (currentImages.isNotEmpty()) {
             Dialog(onDismissRequest = { fullscreenPage = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
