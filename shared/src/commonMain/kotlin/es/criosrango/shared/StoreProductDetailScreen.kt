@@ -284,7 +284,7 @@ fun StoreProductDetailTopBar(cartQuantity: Int, onSearch: () -> Unit, onCart: ()
         actions = {
             IconButton(onClick = onSearch) { Icon(Icons.Outlined.Search, contentDescription = "Buscar") }
             Box(Modifier.width(56.dp).fillMaxHeight()) {
-                BadgedBox(Modifier.size(48.dp).align(Alignment.CenterStart), badge = {
+                BadgedBox(modifier = Modifier.size(48.dp).align(Alignment.CenterStart), badge = {
                     if (cartQuantity > 0) Badge { Text(cartBadgeText(cartQuantity), maxLines = 1) }
                 }) {
                     IconButton(onClick = onCart) { Icon(Icons.Outlined.ShoppingBag, contentDescription = "Carrito") }
