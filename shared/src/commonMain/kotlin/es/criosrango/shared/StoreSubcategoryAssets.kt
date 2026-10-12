@@ -1,6 +1,46 @@
 package es.criosrango.shared
 
 import es.criosrango.shared.generated.resources.Res
+import es.criosrango.shared.generated.resources.subcat_bebe_nina_abrigos_cazadoras
+import es.criosrango.shared.generated.resources.subcat_bebe_nina_ropa_bano
+import es.criosrango.shared.generated.resources.subcat_bebe_nina_ropa_sport
+import es.criosrango.shared.generated.resources.subcat_bebe_nina_ropa_vestir
+import es.criosrango.shared.generated.resources.subcat_bebe_nino_abrigos_cazadoras
+import es.criosrango.shared.generated.resources.subcat_bebe_nino_ropa_bano
+import es.criosrango.shared.generated.resources.subcat_bebe_nino_ropa_sport
+import es.criosrango.shared.generated.resources.subcat_bebe_nino_ropa_vestir
+import es.criosrango.shared.generated.resources.subcat_nina_abrigos_cazadoras
+import es.criosrango.shared.generated.resources.subcat_nina_calzado
+import es.criosrango.shared.generated.resources.subcat_nina_ropa_bano
+import es.criosrango.shared.generated.resources.subcat_nina_ropa_sport
+import es.criosrango.shared.generated.resources.subcat_nina_ropa_vestir
+import es.criosrango.shared.generated.resources.subcat_nino_abrigos_cazadoras
+import es.criosrango.shared.generated.resources.subcat_nino_ropa_bano
+import es.criosrango.shared.generated.resources.subcat_nino_ropa_sport
+import es.criosrango.shared.generated.resources.subcat_nino_ropa_vestir
+import es.criosrango.shared.generated.resources.subcat_recien_nacido_abrigos_cazadoras
+import es.criosrango.shared.generated.resources.subcat_recien_nacido_bodys
+import es.criosrango.shared.generated.resources.subcat_recien_nacido_complementos
+import es.criosrango.shared.generated.resources.subcat_recien_nacido_jesusitos_vestidos
+import es.criosrango.shared.generated.resources.subcat_recien_nacido_peleles_conjuntos
+import es.criosrango.shared.generated.resources.subcat_hombre_abrigos_cazadoras
+import es.criosrango.shared.generated.resources.subcat_hombre_americanas_trajes
+import es.criosrango.shared.generated.resources.subcat_hombre_camisas
+import es.criosrango.shared.generated.resources.subcat_hombre_camisetas_polos
+import es.criosrango.shared.generated.resources.subcat_hombre_complementos_bano
+import es.criosrango.shared.generated.resources.subcat_hombre_jerseis_chaquetas
+import es.criosrango.shared.generated.resources.subcat_hombre_pantalones_bermudas
+import es.criosrango.shared.generated.resources.subcat_hombre_sudaderas
+import es.criosrango.shared.generated.resources.subcat_mujer_abrigos_cazadoras
+import es.criosrango.shared.generated.resources.subcat_mujer_camisas_camisetas
+import es.criosrango.shared.generated.resources.subcat_mujer_chaquetas_chalecos
+import es.criosrango.shared.generated.resources.subcat_mujer_complementos
+import es.criosrango.shared.generated.resources.subcat_mujer_jerseis
+import es.criosrango.shared.generated.resources.subcat_mujer_pantalones_faldas
+import es.criosrango.shared.generated.resources.subcat_mujer_ropa_fiesta
+import es.criosrango.shared.generated.resources.subcat_mujer_vestidos_conjuntos_monos
+import es.criosrango.shared.generated.resources.subcat_mujer_fiesta_conjuntos_monos
+import es.criosrango.shared.generated.resources.subcat_mujer_fiesta_vestidos
 import org.jetbrains.compose.resources.DrawableResource
 
 /** Current Android subcategory mapping expressed by stable WooCommerce slugs (Outlet excluded). */
