@@ -132,7 +132,9 @@ internal fun IosCategoryPage(
         ?: emptyList()
 
     Column(Modifier.fillMaxSize().padding(padding)) {
-        StoreCatalogHeader(title = storeCategoryDisplayName(category), showBack = true, onBack = onBack)
+        if (error != null || categories == null || children.isNotEmpty()) {
+            StoreCatalogHeader(title = storeCategoryDisplayName(category), showBack = true, onBack = onBack)
+        }
 
         when {
             error != null -> IosStoreError(error!!) {
@@ -388,147 +390,96 @@ internal fun IosCategoryProducts(
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(padding)) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = onBack) { Text("Atrás") }
-            Text(
-                category.name,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            OutlinedButton(
-                onClick = { filtersOpen = true },
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-            ) {
-                Text(if (activeFilterCount == 0) "Filtros" else "Filtros ($activeFilterCount)")
-            }
-        }
-
-        if (activeFilterCount > 0) {
-            FlowRow(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                selectedSizes.sorted().forEach { value ->
-                    FilterChip(
-                        selected = true,
-                        onClick = { selectedSizes = selectedSizes - value },
-                        label = { Text("Talla $value") },
-                        trailingIcon = { Text("×") }
-                    )
-                }
-                selectedColors.sorted().forEach { value ->
-                    FilterChip(
-                        selected = true,
-                        onClick = { selectedColors = selectedColors - value },
-                        label = { Text(value) },
-                        trailingIcon = { Text("×") }
-                    )
-                }
-                selectedBrands.sorted().forEach { value ->
-                    FilterChip(
-                        selected = true,
-                        onClick = { selectedBrands = selectedBrands - value },
-                        label = { Text(value) },
-                        trailingIcon = { Text("×") }
-                    )
-                }
-                TextButton(
-                    onClick = {
-                        selectedSizes = emptySet()
-                        selectedColors = emptySet()
-                        selectedBrands = emptySet()
-                    }
-                ) {
-                    Text("Borrar filtros")
-                }
-            }
-        }
-
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Ordenar por", style = MaterialTheme.typography.bodyMedium)
-            Box {
-                var sortExpanded by remember(category.id) { mutableStateOf(false) }
-                TextButton(onClick = { sortExpanded = true }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
-                    Text("${sortMode.label}  ▾")
-                }
-                DropdownMenu(
-                    expanded = sortExpanded,
-                    onDismissRequest = { sortExpanded = false }
-                ) {
-                    IosCatalogSortMode.values().forEach { option ->
-                        DropdownMenuItem(
-                            text = { Text(option.label) },
-                            onClick = {
-                                sortExpanded = false
-                                sortMode = option
-                            }
-                        )
-                    }
-                }
-            }
-        }
-
-        when {
-            pagingState.isInitialLoading -> IosStoreLoading()
-            pagingState.initialError != null -> IosStoreError(
-                pagingState.initialError?.message ?: "No se han podido cargar los productos."
-            ) {
-                paginator.start(queryKey, loadPage)
-            }
-            filteredProducts.isEmpty() && !pagingState.hasMore -> Box(
-                Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    if (activeFilterCount > 0) {
-                        "No hay productos con estos filtros."
-                    } else {
-                        "No hay productos en esta categoría."
-                    }
-                )
-            }
-            else -> LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                state = gridState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 12.dp, top = 6.dp, end = 12.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(filteredProducts, key = { it.id }) { IosProductCard(it, onOpenProduct, cartStore) }
-                if (pagingState.isAppending) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Box(
-                            Modifier.fillMaxWidth().padding(16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(Modifier.size(24.dp))
-                        }
-                    }
-                }
-                if (pagingState.appendError != null) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        IosStoreError(
-                            pagingState.appendError?.message ?: "No se han podido cargar más productos."
-                        ) {
-                            paginator.loadNext(loadPage)
-                        }
-                    }
-                }
-            }
-        }
+    val activeFilterChips = buildList {
+        selectedSizes.sorted().forEach { add(StoreActiveFilterChipUi("size:$it", "Talla $it")) }
+        selectedColors.sorted().forEach { add(StoreActiveFilterChipUi("color:$it", it)) }
+        selectedBrands.sorted().forEach { add(StoreActiveFilterChipUi("brand:$it", it)) }
     }
+    val productListState = StoreProductListUiState(
+        title = category.name,
+        items = filteredProducts.map { product ->
+            StoreProductItemUi(
+                id = product.id,
+                nameText = product.name,
+                imageIdentity = product.images.firstOrNull()?.src,
+                displayPriceText = formatStorePrice(
+                    product.prices.price,
+                    product.prices.currencyMinorUnit,
+                    product.prices.currencySymbol
+                ),
+                regularPriceText = formatStorePrice(
+                    product.prices.regularPrice,
+                    product.prices.currencyMinorUnit,
+                    product.prices.currencySymbol
+                ),
+                showPrice = product.prices.price.toLongOrNull()?.let { it > 0L } == true,
+                isOnSale = product.onSale
+            )
+        },
+        selectedSort = when (sortMode) {
+            IosCatalogSortMode.RECENT -> StoreProductSortOption.RECENT
+            IosCatalogSortMode.PRICE_ASC -> StoreProductSortOption.PRICE_ASC
+            IosCatalogSortMode.PRICE_DESC -> StoreProductSortOption.PRICE_DESC
+            IosCatalogSortMode.NAME_ASC -> StoreProductSortOption.NAME_ASC
+        },
+        availableSortOptions = StoreProductSortOption.values().toList(),
+        activeFilterCount = activeFilterCount,
+        activeFilterChips = activeFilterChips,
+        isInitialLoading = pagingState.isInitialLoading,
+        isLoadingMore = pagingState.isAppending,
+        isEmpty = filteredProducts.isEmpty() && !pagingState.hasMore,
+        emptyMessage = if (activeFilterCount > 0) {
+            "No hay productos con estos filtros."
+        } else {
+            "No hay productos en esta categoría."
+        },
+        initialErrorMessage = pagingState.initialError?.message
+            ?: if (pagingState.initialError != null) "No se han podido cargar los productos." else null,
+        appendErrorMessage = pagingState.appendError?.message
+            ?: if (pagingState.appendError != null) "No se han podido cargar más productos." else null,
+        appendRetryLabel = "Reintentar",
+        canLoadMore = pagingState.hasMore
+    )
+
+    StoreProductListScreen(
+        state = productListState,
+        gridState = gridState,
+        modifier = Modifier.fillMaxSize().padding(padding),
+        onBack = onBack,
+        onProductSelected = { id -> filteredProducts.firstOrNull { it.id == id }?.let(onOpenProduct) },
+        onSortSelected = { option ->
+            sortMode = when (option) {
+                StoreProductSortOption.RECENT -> IosCatalogSortMode.RECENT
+                StoreProductSortOption.PRICE_ASC -> IosCatalogSortMode.PRICE_ASC
+                StoreProductSortOption.PRICE_DESC -> IosCatalogSortMode.PRICE_DESC
+                StoreProductSortOption.NAME_ASC -> IosCatalogSortMode.NAME_ASC
+            }
+        },
+        onFilterClick = { filtersOpen = true },
+        onRemoveFilter = { id ->
+            when {
+                id.startsWith("size:") -> selectedSizes = selectedSizes - id.removePrefix("size:")
+                id.startsWith("color:") -> selectedColors = selectedColors - id.removePrefix("color:")
+                id.startsWith("brand:") -> selectedBrands = selectedBrands - id.removePrefix("brand:")
+            }
+        },
+        onClearFilters = {
+            selectedSizes = emptySet()
+            selectedColors = emptySet()
+            selectedBrands = emptySet()
+        },
+        onRetryInitial = { paginator.start(queryKey, loadPage) },
+        onRetryAppend = { paginator.loadNext(loadPage) },
+        imageContent = { item, imageModifier ->
+            val product = filteredProducts.firstOrNull { it.id == item.id }
+            RemoteStoreImage(
+                product?.images?.firstOrNull()?.src.orEmpty(),
+                item.nameText,
+                imageModifier,
+                ContentScale.Crop
+            )
+        }
+    )
 
     if (filtersOpen) {
         AlertDialog(

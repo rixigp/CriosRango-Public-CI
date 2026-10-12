@@ -1075,49 +1075,160 @@ internal fun CatalogFilteredProductGrid(
         }
     }
 
-    Column(modifier) {
-        if (headerTitle != null && headerOnBack != null) {
-            CatalogProductListHeader(title = headerTitle, onBack = headerOnBack, activeFilters = active, onOpenFilters = { filtersOpen = true }, bottomPadding = if (compactHeaderSpacing) 0.dp else CatalogHeaderGeometry.bottomPadding)
+    val sharedProductList = headerTitle != null && headerOnBack != null && headerContent == null
+    val categoryStatus by categoryCatalogLoadStatus.collectAsStateWithLifecycle()
+    val sharedGridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    val sharedResetKey = if (pagingState != null) {
+        listOf(pagingKey, sortMode, selectedSizes, selectedColors, selectedBrands)
+    } else {
+        null
+    }
+    var previousSharedResetKey by remember { mutableStateOf(sharedResetKey) }
+    LaunchedEffect(sharedProductList, sharedResetKey) {
+        if (!sharedProductList) return@LaunchedEffect
+        if (previousSharedResetKey != sharedResetKey) {
+            if (filtered.isNotEmpty()) sharedGridState.scrollToItem(0)
+            previousSharedResetKey = sharedResetKey
         }
-        headerContent?.invoke(this)
+    }
+    val latestSharedPagingState by rememberUpdatedState(pagingState)
+    val latestSharedProductsSize by rememberUpdatedState(filtered.size)
+    val latestSharedLoadNextPage by rememberUpdatedState(onLoadNextPage)
+    val sharedPrefetchDistance = es.criosrango.shared.CatalogPaginator.PREFETCH_DISTANCE
+    LaunchedEffect(sharedGridState, sharedResetKey, sharedProductList) {
+        if (!sharedProductList || pagingState == null || onLoadNextPage == null) return@LaunchedEffect
+        snapshotFlow {
+            val currentPaging = latestSharedPagingState
+            val itemCount = latestSharedProductsSize
+            val lastVisibleIndex = sharedGridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            itemCount > 0 &&
+                currentPaging?.isInitialLoading != true &&
+                currentPaging?.isAppending != true &&
+                currentPaging?.appendError == null &&
+                currentPaging?.hasMore == true &&
+                lastVisibleIndex >= itemCount - 1 - sharedPrefetchDistance
+        }.collect { shouldLoad ->
+            if (shouldLoad) latestSharedLoadNextPage?.invoke()
+        }
+    }
 
-        if (activeFilterChips.isNotEmpty()) {
-            ActiveFilterChips(
-                filters = activeFilterChips,
-                onClearAll = {
+    if (sharedProductList) {
+        val sharedState = es.criosrango.shared.StoreProductListUiState(
+            title = headerTitle.orEmpty(),
+            items = filtered.map { it.toStoreProductItemUi() },
+            selectedSort = sortMode.toStoreProductSortOption(),
+            availableSortOptions = es.criosrango.shared.StoreProductSortOption.values().toList(),
+            activeFilterCount = active,
+            activeFilterChips = androidActiveFilterChips(
+                selectedSizes,
+                selectedColors,
+                selectedBrands,
+                allowBrandFilter
+            ),
+            isInitialLoading = filtered.isEmpty() &&
+                (pagingState?.isInitialLoading == true || categoryStatus.state == CategoryLoadState.LOADING),
+            isLoadingMore = filtered.isNotEmpty() && pagingState?.isAppending == true,
+            isEmpty = filtered.isEmpty() &&
+                !(pagingState?.isInitialLoading == true || categoryStatus.state == CategoryLoadState.LOADING),
+            emptyMessage = "No encontramos productos",
+            initialErrorMessage = null,
+            appendErrorMessage = if (pagingState?.appendError != null) "" else null,
+            appendRetryLabel = "Reintentar",
+            canLoadMore = pagingState?.hasMore == true
+        )
+        es.criosrango.shared.StoreProductListScreen(
+            state = sharedState,
+            gridState = sharedGridState,
+            modifier = modifier,
+            onBack = { headerOnBack?.invoke() },
+            onProductSelected = { id -> filtered.firstOrNull { it.id == id }?.let(onProduct) },
+            onSortSelected = { sortMode = it.toAndroidProductSortMode() },
+            onFilterClick = { filtersOpen = true },
+            onRemoveFilter = { id ->
+                when {
+                    id.startsWith("size:") -> selectedSizes = selectedSizes - id.removePrefix("size:")
+                    id.startsWith("color:") -> selectedColors = selectedColors - id.removePrefix("color:")
+                    id.startsWith("brand:") -> selectedBrands = selectedBrands - id.removePrefix("brand:")
+                }
+            },
+            onClearFilters = {
                 selectedSizes = emptySet()
                 selectedColors = emptySet()
-                    if (allowBrandFilter) selectedBrands = emptySet()
+                if (allowBrandFilter) selectedBrands = emptySet()
+            },
+            onRetryInitial = {},
+            onRetryAppend = { onLoadNextPage?.invoke() },
+            imageContent = { item, imageModifier ->
+                val product = filtered.firstOrNull { it.id == item.id }
+                val image = product?.images?.firstOrNull()
+                val targetWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) {
+                    maxWidth.roundToPx()
+                }
+                CatalogImage(
+                    product?.let {
+                        selectResponsiveImageUrl(
+                            src = image?.src.orEmpty(),
+                            thumbnail = image?.thumbnail.orEmpty(),
+                            srcSet = image?.srcSet.orEmpty(),
+                            targetWidthPx = targetWidthPx
+                        )
+                    },
+                    item.nameText,
+                    imageModifier,
+                    androidx.compose.ui.layout.ContentScale.Crop,
+                    onSuccess = {
+                        categoryStatus.categoryId?.let { categoryId ->
+                            CategoryLoadTelemetry.firstImage(categoryId, item.id)
+                        }
+                    }
+                )
+            }
+        )
+    } else {
+        Column(modifier) {
+            if (headerTitle != null && headerOnBack != null) {
+                CatalogProductListHeader(title = headerTitle, onBack = headerOnBack, activeFilters = active, onOpenFilters = { filtersOpen = true }, bottomPadding = if (compactHeaderSpacing) 0.dp else CatalogHeaderGeometry.bottomPadding)
+            }
+            headerContent?.invoke(this)
+
+            if (activeFilterChips.isNotEmpty()) {
+                ActiveFilterChips(
+                    filters = activeFilterChips,
+                    onClearAll = {
+                        selectedSizes = emptySet()
+                        selectedColors = emptySet()
+                        if (allowBrandFilter) selectedBrands = emptySet()
+                    }
+                )
+            }
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = CatalogHeaderGeometry.horizontalPadding, vertical = if (compactHeaderSpacing) 0.dp else CatalogHeaderGeometry.controlsVerticalPadding),
+                horizontalArrangement = Arrangement.Start
+            ) {
+                ProductSortControl(mode = sortMode, onMode = { sortMode = it })
+                if (headerTitle == null) {
+                    Spacer(Modifier.weight(1f))
+                    OutlinedButton(onClick = { filtersOpen = true }) {
+                        Text(if (active == 0) "Filtros" else "Filtros ($active)")
+                    }
+                }
+            }
+            ProductGrid(
+                products = filtered,
+                modifier = Modifier.weight(1f),
+                onProduct = onProduct,
+                pagingState = pagingState,
+                onLoadNextPage = onLoadNextPage,
+                resetKey = if (pagingState != null) {
+                    listOf(pagingKey, sortMode, selectedSizes, selectedColors, selectedBrands)
+                } else {
+                    null
                 }
             )
         }
-
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = CatalogHeaderGeometry.horizontalPadding, vertical = if (compactHeaderSpacing) 0.dp else CatalogHeaderGeometry.controlsVerticalPadding),
-            horizontalArrangement = Arrangement.Start
-        ) {
-            ProductSortControl(mode = sortMode, onMode = { sortMode = it })
-            if (headerTitle == null) {
-                Spacer(Modifier.weight(1f))
-                OutlinedButton(onClick = { filtersOpen = true }) {
-                    Text(if (active == 0) "Filtros" else "Filtros ($active)")
-                }
-            }
-        }
-        ProductGrid(
-            products = filtered,
-            modifier = Modifier.weight(1f),
-            onProduct = onProduct,
-            pagingState = pagingState,
-            onLoadNextPage = onLoadNextPage,
-            resetKey = if (pagingState != null) {
-                listOf(pagingKey, sortMode, selectedSizes, selectedColors, selectedBrands)
-            } else {
-                null
-            }
-        )
     }
 
     if (filtersOpen) {
