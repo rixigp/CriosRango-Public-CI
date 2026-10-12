@@ -2,7 +2,7 @@ name: iOS Physical TestFlight
 
 on:
   push:
-    branches: [main]
+    branches: [main, compose-multiplatform-convergence]
     paths:
       - "shared/**"
       - "iosApp/**"
@@ -43,7 +43,7 @@ jobs:
           set -euo pipefail
           ACTUAL_SHA="$(git rev-parse HEAD)"
           [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || { echo "::error::Checkout SHA mismatch"; exit 1; }
-          [[ "$BRANCH_NAME" == "main" ]] || { echo "::error::Only main is authorized"; exit 1; }
+          [[ "$BRANCH_NAME" == "main" || "$BRANCH_NAME" == "compose-multiplatform-convergence" ]] || { echo "::error::Only main and the convergence pilot branch are authorized"; exit 1; }
           VERSION="$(grep -m1 'MARKETING_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
           BASE_BUILD="$(grep -m1 'CURRENT_PROJECT_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*CURRENT_PROJECT_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
           [[ "$VERSION" == "2.0.1" ]] || { echo "::error::Expected marketing version 2.0.1, found $VERSION"; exit 1; }
@@ -311,7 +311,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          LATEST_SHA="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+          TARGET_BRANCH="$GITHUB_REF_NAME"
+          [[ "$TARGET_BRANCH" == "main" || "$TARGET_BRANCH" == "compose-multiplatform-convergence" ]]
+          LATEST_SHA="$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
           if [[ "$LATEST_SHA" != "$GITHUB_SHA" ]]; then
             echo "Current main is $LATEST_SHA; this build is stale ($GITHUB_SHA). No Apple upload started." | tee -a release-artifacts/ios-physical-testflight-report.txt
             echo "current=false" >> "$GITHUB_OUTPUT"
