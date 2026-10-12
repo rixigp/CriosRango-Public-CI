@@ -780,7 +780,10 @@ internal fun IosProductDetail(
                             attribute.name.equals("Color", true) -> StoreProductDetailOptionKind.Color
                             attribute.name.equals("Tallas", true) -> StoreProductDetailOptionKind.Size
                             else -> StoreProductDetailOptionKind.Default
-                        }
+                        },
+                        swatchColor = if (attribute.name.equals("Color", true)) {
+                            productColorSwatchMapping(term.name)
+                        } else null
                     )
                 }
             )
