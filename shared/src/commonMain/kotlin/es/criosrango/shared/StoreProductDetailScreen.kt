@@ -1,5 +1,24 @@
 package es.criosrango.shared
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import org.jetbrains.compose.resources.painterResource
+import es.criosrango.shared.generated.resources.Res
+import es.criosrango.shared.generated.resources.home_logo
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.clip
@@ -22,6 +41,8 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.ShoppingBag
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -34,10 +55,17 @@ import androidx.compose.ui.unit.dp
 fun StoreProductDetailScreen(
     state: StoreProductDetailUiState,
     modifier: Modifier = Modifier,
-    topBarSlot: (@Composable () -> Unit)? = null,
+    showStoreTopBar: Boolean = true,
+    cartQuantity: Int = 0,
+    onSearch: () -> Unit = {},
+    onCart: () -> Unit = {},
     imageCount: Int,
     imageSlot: @Composable (Int, Modifier) -> Unit,
-    statusSlot: (@Composable () -> Unit)? = null,
+    fullscreenImageSlot: @Composable (Int, Modifier) -> Unit = imageSlot,
+    galleryKey: Any? = state.title,
+    isLoading: Boolean = false,
+    errorMessage: String? = null,
+    onRetry: () -> Unit = {},
     onBack: () -> Unit,
     onShare: () -> Unit,
     onReserve: () -> Unit,
@@ -46,11 +74,14 @@ fun StoreProductDetailScreen(
     onQuantityPlus: () -> Unit,
     onAddToCart: () -> Unit
 ) {
+    var fullscreenPage by androidx.compose.runtime.remember(galleryKey, imageCount) {
+        androidx.compose.runtime.mutableStateOf<Int?>(null)
+    }
     Scaffold(
         modifier = modifier,
         topBar = {
             Column {
-                topBarSlot?.invoke()
+                if (showStoreTopBar) StoreProductDetailTopBar(cartQuantity, onSearch, onCart)
                 StoreCatalogHeader(title = state.title, showBack = true, onBack = onBack)
             }
         },
@@ -87,7 +118,10 @@ fun StoreProductDetailScreen(
             if (imageCount > 0) {
                 val pagerState = rememberPagerState(pageCount = { imageCount })
                 HorizontalPager(state = pagerState, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 20.dp), pageSpacing = 10.dp) { index ->
-                    imageSlot(index, Modifier.fillMaxWidth().aspectRatio(.78f))
+                    imageSlot(index, Modifier.fillMaxWidth().aspectRatio(.78f).clickable { fullscreenPage = index }.semantics {
+                        role = Role.Button
+                        contentDescription = "Ampliar imagen ${index + 1}"
+                    })
                 }
                 if (imageCount > 1) {
                     Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
@@ -209,7 +243,20 @@ fun StoreProductDetailScreen(
                     }
                 }
             }
-            statusSlot?.invoke()
+            if (isLoading) {
+                Box(Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(Modifier.size(24.dp))
+                }
+            }
+            errorMessage?.let { message ->
+                Surface(Modifier.fillMaxWidth().padding(20.dp), shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
+                    Column(Modifier.fillMaxWidth().padding(vertical = 28.dp, horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                        Spacer(Modifier.height(12.dp))
+                        Button(onClick = onRetry) { Text("Reintentar") }
+                    }
+                }
+            }
             Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.Center) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Cantidad", fontWeight = FontWeight.Bold)
@@ -217,6 +264,74 @@ fun StoreProductDetailScreen(
                     IconButton(onClick = onQuantityMinus, enabled = state.quantityMinusEnabled) { Icon(Icons.Default.Remove, contentDescription = "Reducir") }
                     Text(state.quantity.toString(), fontWeight = FontWeight.Bold)
                     IconButton(onClick = onQuantityPlus, enabled = state.quantityPlusEnabled) { Icon(Icons.Default.Add, contentDescription = "Aumentar") }
+                }
+            }
+        }
+    }
+    fullscreenPage?.let { initialPage ->
+        if (imageCount > 0) StoreProductDetailFullscreenGallery(imageCount, initialPage, fullscreenImageSlot) { fullscreenPage = null }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StoreProductDetailTopBar(cartQuantity: Int, onSearch: () -> Unit, onCart: () -> Unit) {
+    TopAppBar(
+        title = {},
+        navigationIcon = {
+            Image(painterResource(Res.drawable.home_logo), "Críos & Rango", Modifier.size(34.dp), contentScale = ContentScale.Fit)
+        },
+        actions = {
+            IconButton(onClick = onSearch) { Icon(Icons.Outlined.Search, contentDescription = "Buscar") }
+            Box(Modifier.width(56.dp).fillMaxHeight()) {
+                BadgedBox(Modifier.size(48.dp).align(Alignment.CenterStart), badge = {
+                    if (cartQuantity > 0) Badge { Text(cartBadgeText(cartQuantity), maxLines = 1) }
+                }) {
+                    IconButton(onClick = onCart) { Icon(Icons.Outlined.ShoppingBag, contentDescription = "Carrito") }
+                }
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent)
+    )
+}
+
+@Composable
+fun StoreProductDetailFullscreenGallery(
+    imageCount: Int,
+    initialPage: Int,
+    imageSlot: @Composable (Int, Modifier) -> Unit,
+    onDismiss: () -> Unit
+) {
+    if (imageCount <= 0) return
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        val pagerState = rememberPagerState(initialPage = initialPage.coerceIn(0, imageCount - 1), pageCount = { imageCount })
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+                var scale by androidx.compose.runtime.remember(page) { androidx.compose.runtime.mutableStateOf(1f) }
+                var offsetX by androidx.compose.runtime.remember(page) { androidx.compose.runtime.mutableStateOf(0f) }
+                var offsetY by androidx.compose.runtime.remember(page) { androidx.compose.runtime.mutableStateOf(0f) }
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    imageSlot(page, Modifier.fillMaxWidth().pointerInput(page) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            scale = (scale * zoom).coerceIn(1f, 4f)
+                            if (scale > 1f) { offsetX += pan.x; offsetY += pan.y }
+                            else { offsetX = 0f; offsetY = 0f }
+                        }
+                    }.graphicsLayer {
+                        scaleX = scale; scaleY = scale; translationX = offsetX; translationY = offsetY
+                    })
+                }
+            }
+            IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp)
+                .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(50))) {
+                Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
+            }
+            if (imageCount > 1) {
+                Row(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 24.dp), horizontalArrangement = Arrangement.Center) {
+                    repeat(imageCount) { index ->
+                        Box(Modifier.padding(horizontal = 4.dp).size(if (pagerState.currentPage == index) 8.dp else 6.dp)
+                            .background(if (pagerState.currentPage == index) Color.White else Color.White.copy(alpha = .4f), RoundedCornerShape(50)))
+                    }
                 }
             }
         }

@@ -3,11 +3,6 @@ package es.criosrango.app
 import es.criosrango.shared.StoreProductDetailScreen
 
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.outlined.LocalOffer
 import androidx.compose.ui.draw.scale
@@ -47,8 +42,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -288,9 +281,6 @@ internal fun productSizeSortKey(value: String): Int {
 internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cartItems: List<CartItem>, loadVariation: (Int) -> Unit, onBack: () -> Unit, onCart: () -> Unit, onSearch: () -> Unit, onAdd: (CartItem) -> Unit) {
     val context = LocalContext.current
     val selected = remember(product.id) { mutableStateMapOf<String, String>() }
-    var fullscreenGalleryPage by remember(product.id) {
-        mutableStateOf<Int?>(null)
-    }
     var quantity by remember(product.id) { mutableIntStateOf(1) }
     val selectableAttributes = product.attributes.filter { it.terms.isNotEmpty() }
     val variationSnapshots = product.variations.map { candidate ->
@@ -448,17 +438,17 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
 
     StoreProductDetailScreen(
         state = detailUiState,
-        topBarSlot = {
-            StoreTopBar(
-                cartQuantity = cartItems.sumOf { it.quantity },
-                onSearch = onSearch,
-                onCart = onCart
-            )
-        },
+        cartQuantity = cartItems.sumOf { it.quantity },
+        onSearch = onSearch,
+        onCart = onCart,
         imageCount = galleryImages.size,
+        galleryKey = product.id,
         imageSlot = { index, imageModifier ->
             val item = galleryImages[index]
-            CatalogImage(item.src, product.name, imageModifier.clip(RoundedCornerShape(16.dp)).clickable { fullscreenGalleryPage = index }, ContentScale.Crop)
+            CatalogImage(item.src, product.name, imageModifier.clip(RoundedCornerShape(16.dp)), ContentScale.Crop)
+        },
+        fullscreenImageSlot = { index, imageModifier ->
+            AsyncImage(model = galleryImages[index].src, contentDescription = product.name, modifier = imageModifier, contentScale = ContentScale.Fit)
         },
         onBack = onBack,
         onShare = {
@@ -508,130 +498,6 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
         onQuantityPlus = { if (availableMaximum == null || quantity + multipleOf <= availableMaximum) quantity += multipleOf },
         onAddToCart = addCurrentProductToCart
     )
-    fullscreenGalleryPage?.let { initialPage ->
-        val fullscreenImages =
-            (current?.images ?: product.images).ifEmpty { product.images }
 
-        if (fullscreenImages.isNotEmpty()) {
-            Dialog(
-                onDismissRequest = {
-                    fullscreenGalleryPage = null
-                },
-                properties = DialogProperties(
-                    usePlatformDefaultWidth = false
-                )
-            ) {
-                val fullscreenPagerState = rememberPagerState(
-                    initialPage = initialPage,
-                    pageCount = { fullscreenImages.size }
-                )
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black)
-                ) {
-                    HorizontalPager(
-                        state = fullscreenPagerState,
-                        modifier = Modifier.fillMaxSize()
-                    ) { page ->
-                        var scale by remember(page) {
-                            mutableFloatStateOf(1f)
-                        }
-                        var offsetX by remember(page) {
-                            mutableFloatStateOf(0f)
-                        }
-                        var offsetY by remember(page) {
-                            mutableFloatStateOf(0f)
-                        }
-
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            AsyncImage(
-                                model = fullscreenImages[page].src,
-                                contentDescription = product.name,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .pointerInput(page) {
-                                        detectTransformGestures { _, pan, zoom, _ ->
-                                            scale =
-                                                (scale * zoom)
-                                                    .coerceIn(1f, 4f)
-
-                                            if (scale > 1f) {
-                                                offsetX += pan.x
-                                                offsetY += pan.y
-                                            } else {
-                                                offsetX = 0f
-                                                offsetY = 0f
-                                            }
-                                        }
-                                    }
-                                    .graphicsLayer {
-                                        scaleX = scale
-                                        scaleY = scale
-                                        translationX = offsetX
-                                        translationY = offsetY
-                                    },
-                                contentScale = ContentScale.Fit
-                            )
-                        }
-                    }
-
-                    IconButton(
-                        onClick = {
-                            fullscreenGalleryPage = null
-                        },
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .statusBarsPadding()
-                            .padding(12.dp)
-                            .background(
-                                Color.Black.copy(alpha = 0.45f),
-                                RoundedCornerShape(50)
-                            )
-                    ) {
-                        Icon(
-                            Icons.Default.Close,
-                            contentDescription = "Cerrar",
-                            tint = Color.White
-                        )
-                    }
-
-                    if (fullscreenImages.size > 1) {
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .navigationBarsPadding()
-                                .padding(bottom = 24.dp),
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            repeat(fullscreenImages.size) { index ->
-                                Box(
-                                    modifier = Modifier
-                                        .padding(horizontal = 4.dp)
-                                        .size(
-                                            if (fullscreenPagerState.currentPage == index)
-                                                8.dp
-                                            else
-                                                6.dp
-                                        )
-                                        .background(
-                                            if (fullscreenPagerState.currentPage == index)
-                                                Color.White
-                                            else
-                                                Color.White.copy(alpha = 0.4f),
-                                            RoundedCornerShape(50)
-                                        )
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 
 }

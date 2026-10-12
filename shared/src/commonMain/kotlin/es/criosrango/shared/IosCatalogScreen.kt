@@ -694,7 +694,6 @@ internal fun IosProductDetail(
     var loading by remember(initialProduct.id) { mutableStateOf(true) }
     var error by remember(initialProduct.id) { mutableStateOf<String?>(null) }
     var quantity by remember(initialProduct.id) { mutableStateOf(1) }
-    var fullscreenPage by remember(initialProduct.id) { mutableStateOf<Int?>(null) }
     val selected = remember(initialProduct.id) { mutableStateMapOf<String, String>() }
     LaunchedEffect(initialProduct.id, loading) {
         if (!loading) return@LaunchedEffect
@@ -807,19 +806,17 @@ internal fun IosProductDetail(
         modifier = Modifier.fillMaxSize().padding(padding),
         state = detailUiState,
         imageCount = currentImages.size,
+        showStoreTopBar = false,
+        galleryKey = initialProduct.id,
         imageSlot = { index, imageModifier ->
-            RemoteStoreImage(
-                currentImages[index].src,
-                product.name,
-                imageModifier.clickable { fullscreenPage = index }
-                    .semantics { role = Role.Button; contentDescription = "Ampliar imagen ${index + 1}" },
-                ContentScale.Crop
-            )
+            RemoteStoreImage(currentImages[index].src, product.name, imageModifier, ContentScale.Crop)
         },
-        statusSlot = {
-            if (loading) CircularProgressIndicator(Modifier.padding(20.dp).size(24.dp))
-            error?.let { message -> IosStoreError(message) { error = null; loading = true } }
+        fullscreenImageSlot = { index, imageModifier ->
+            RemoteStoreImage(currentImages[index].src, product.name, imageModifier, ContentScale.Fit)
         },
+        isLoading = loading,
+        errorMessage = error,
+        onRetry = { error = null; loading = true },
         onBack = onBack,
         onShare = {
             val shareText = buildString {
@@ -881,39 +878,5 @@ internal fun IosProductDetail(
             }
         }
     )
-    fullscreenPage?.let { initialPage ->
-        if (currentImages.isNotEmpty()) {
-            Dialog(onDismissRequest = { fullscreenPage = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-                val pagerState = rememberPagerState(initialPage = initialPage.coerceIn(0, currentImages.lastIndex), pageCount = { currentImages.size })
-                Box(Modifier.fillMaxSize().background(Color.Black)) {
-                    HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
-                        var scale by remember(page) { mutableStateOf(1f) }
-                        var offsetX by remember(page) { mutableStateOf(0f) }
-                        var offsetY by remember(page) { mutableStateOf(0f) }
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            RemoteStoreImage(
-                                currentImages[page].src,
-                                product.name,
-                                Modifier.fillMaxWidth().pointerInput(page) {
-                                    detectTransformGestures { _, pan, zoom, _ ->
-                                        scale = (scale * zoom).coerceIn(1f, 4f)
-                                        if (scale > 1f) { offsetX += pan.x; offsetY += pan.y } else { offsetX = 0f; offsetY = 0f }
-                                    }
-                                }.graphicsLayer { scaleX = scale; scaleY = scale; translationX = offsetX; translationY = offsetY },
-                                ContentScale.Fit
-                            )
-                        }
-                    }
-                    TextButton(onClick = { fullscreenPage = null }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)) { Text("✕", color = Color.White) }
-                    if (currentImages.size > 1) {
-                        Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp), horizontalArrangement = Arrangement.Center) {
-                            repeat(currentImages.size) { index ->
-                                Box(Modifier.padding(horizontal = 4.dp).size(if (pagerState.currentPage == index) 8.dp else 6.dp).background(if (pagerState.currentPage == index) Color.White else Color.White.copy(alpha = .4f), RoundedCornerShape(50)))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+
 }

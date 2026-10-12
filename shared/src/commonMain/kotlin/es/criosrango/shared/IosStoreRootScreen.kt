@@ -332,41 +332,7 @@ private fun IosStoreTopBar(
     onSearch: () -> Unit,
     onCart: () -> Unit
 ) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp).statusBarsPadding().height(56.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Image(
-            painter = painterResource(Res.drawable.home_logo),
-            contentDescription = "Críos & Rango",
-            modifier = Modifier.size(36.dp),
-            contentScale = ContentScale.Fit
-        )
-        Spacer(Modifier.weight(1f))
-        IconButton(onClick = onSearch) {
-            androidx.compose.material3.Icon(
-                IosSearchLineIcon,
-                contentDescription = "Buscar",
-                tint = Color(0xFF183B35),
-                modifier = Modifier.size(24.dp)
-            )
-        }
-        Box(Modifier.width(48.dp).height(48.dp)) {
-            BadgedBox(
-                modifier = Modifier.size(48.dp).align(Alignment.Center),
-                badge = { if (cartQuantity > 0) Badge { Text(cartBadgeText(cartQuantity), maxLines = 1) } }
-            ) {
-                IconButton(onClick = onCart) {
-                    androidx.compose.material3.Icon(
-                        IosShoppingBagLineIcon,
-                        contentDescription = "Carrito",
-                        tint = Color(0xFF183B35),
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-        }
-    }
+    StoreProductDetailTopBar(cartQuantity, onSearch, onCart)
 }
 
 @Composable
