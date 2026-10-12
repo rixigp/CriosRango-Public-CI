@@ -129,6 +129,8 @@ fun CriosRangoIOSRootScreen(
     paymentStore: StorePaymentStore,
     onOpenPayment: (String) -> Unit,
     onOpenExternalUrl: (String) -> Unit,
+    onShareProductText: (String) -> Unit,
+    onReserveProductMessage: (String) -> Unit,
     pushNavigation: IosPushNavigation? = null,
     onPushNavigationConsumed: () -> Unit = {}
 ) {
@@ -264,6 +266,8 @@ fun CriosRangoIOSRootScreen(
                             }
                         }
                     },
+                    onShareProductText = onShareProductText,
+                    onReserveProductMessage = onReserveProductMessage,
                     catalogRestoration = catalogRestoration
                 )
                 IosRootSection.CART -> IosCartScreen(

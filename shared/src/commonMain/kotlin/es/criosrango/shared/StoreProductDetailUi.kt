@@ -33,6 +33,8 @@ data class StoreProductDetailUiState(
     val quantityPlusEnabled: Boolean,
     val primaryActionLabel: String,
     val primaryActionEnabled: Boolean,
+    val shareEnabled: Boolean = true,
+    val reserveEnabled: Boolean = false,
     val descriptionText: String,
     val brandText: String? = null,
     val compositionText: String? = null

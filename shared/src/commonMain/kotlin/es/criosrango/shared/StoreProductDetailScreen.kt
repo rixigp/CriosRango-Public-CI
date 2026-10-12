@@ -7,6 +7,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -15,6 +17,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.automirrored.outlined.Chat
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.ShoppingBag
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -31,10 +35,12 @@ fun StoreProductDetailScreen(
     state: StoreProductDetailUiState,
     modifier: Modifier = Modifier,
     topBarSlot: (@Composable () -> Unit)? = null,
-    imageSlot: @Composable (Modifier) -> Unit,
-    productActionsSlot: (@Composable () -> Unit)? = null,
+    imageCount: Int,
+    imageSlot: @Composable (Int, Modifier) -> Unit,
     statusSlot: (@Composable () -> Unit)? = null,
     onBack: () -> Unit,
+    onShare: () -> Unit,
+    onReserve: () -> Unit,
     onAttributeOptionSelected: (String, String) -> Unit,
     onQuantityMinus: () -> Unit,
     onQuantityPlus: () -> Unit,
@@ -78,8 +84,40 @@ fun StoreProductDetailScreen(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Top
         ) {
-            imageSlot(Modifier.fillMaxWidth())
-            productActionsSlot?.invoke()
+            if (imageCount > 0) {
+                val pagerState = rememberPagerState(pageCount = { imageCount })
+                HorizontalPager(state = pagerState, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 20.dp), pageSpacing = 10.dp) { index ->
+                    imageSlot(index, Modifier.fillMaxWidth().aspectRatio(.78f))
+                }
+                if (imageCount > 1) {
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        repeat(imageCount) { index ->
+                            Box(Modifier.padding(horizontal = 3.dp).size(if (pagerState.currentPage == index) 8.dp else 6.dp)
+                                .background(if (pagerState.currentPage == index) Color(0xFF183B35) else Color(0xFFD8D4D7), RoundedCornerShape(50)))
+                        }
+                    }
+                }
+            }
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp).height(46.dp),
+                shape = RoundedCornerShape(23.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD8D4D7)),
+                color = Color.Transparent
+            ) {
+                Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onShare, enabled = state.shareEnabled, modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        Icon(Icons.Outlined.Share, contentDescription = null)
+                        Spacer(Modifier.width(7.dp))
+                        Text("Compartir")
+                    }
+                    VerticalDivider(Modifier.height(24.dp), color = Color(0xFFD8D4D7))
+                    TextButton(onClick = onReserve, enabled = state.reserveEnabled, modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        Icon(Icons.AutoMirrored.Outlined.Chat, contentDescription = null)
+                        Spacer(Modifier.width(7.dp))
+                        Text("Reservarlo")
+                    }
+                }
+            }
             Column(Modifier.padding(horizontal = 20.dp).padding(top = 6.dp)) {
                 if (state.isOnSale) {
                     Text("OFERTA", color = Color(0xFFD18162), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)

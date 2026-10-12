@@ -52,12 +52,14 @@ internal fun IosCatalogScreen(
     onOpenCategory: (StoreCategory) -> Unit,
     onOpenProduct: (StoreProduct) -> Unit,
     onBack: () -> Unit,
+    onShareProductText: (String) -> Unit,
+    onReserveProductMessage: (String) -> Unit,
     catalogRestoration: MutableMap<Long, IosCatalogRestorationState>
 ) {
     when (page) {
         IosCatalogPage.Root -> IosCategoryRoot(storeApi, padding, onOpenCategory, onBack)
         is IosCatalogPage.Category -> IosCategoryPage(storeApi, padding, page.category, onOpenCategory, onOpenProduct, onBack, cartStore, catalogRestoration)
-        is IosCatalogPage.Product -> IosProductDetail(storeApi, padding, page.product, onBack, cartStore)
+        is IosCatalogPage.Product -> IosProductDetail(storeApi, padding, page.product, onBack, cartStore, onShareProductText, onReserveProductMessage)
         IosCatalogPage.Novedades -> IosNovedadesScreen(storeApi, padding, cartStore, onOpenProduct, onBack)
         IosCatalogPage.Search -> IosSearchScreen(storeApi, padding, cartStore, onOpenProduct, onOpenCategory, onBack)
         IosCatalogPage.Brands -> IosBrandsScreen(storeApi, padding, cartStore, onOpenProduct, onBack)
@@ -684,7 +686,9 @@ internal fun IosProductDetail(
     padding: PaddingValues,
     initialProduct: StoreProduct,
     onBack: () -> Unit,
-    cartStore: StoreCartStore? = null
+    cartStore: StoreCartStore? = null,
+    onShareProductText: (String) -> Unit,
+    onReserveProductMessage: (String) -> Unit
 ) {
     var product by remember(initialProduct.id) { mutableStateOf(initialProduct) }
     var loading by remember(initialProduct.id) { mutableStateOf(true) }
@@ -793,6 +797,8 @@ internal fun IosProductDetail(
         quantityPlusEnabled = maximum == null || quantity < maximum,
         primaryActionLabel = if (product.type == "variable" && selectedVariation == null) "Elige una combinación" else "Añadir al carrito",
         primaryActionEnabled = canAdd && cartStore != null,
+        shareEnabled = true,
+        reserveEnabled = product.type != "variable" || (selectedVariation != null && selectedVariation.isInStock && selectedVariation.isPurchasable == true),
         descriptionText = remainingInfo,
         brandText = brandLine,
         compositionText = compositionLine
@@ -800,38 +806,42 @@ internal fun IosProductDetail(
     StoreProductDetailScreen(
         modifier = Modifier.fillMaxSize().padding(padding),
         state = detailUiState,
-        imageSlot = { imageModifier ->
-            if (currentImages.isNotEmpty()) {
-                val pagerState = rememberPagerState(pageCount = { currentImages.size })
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = imageModifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 20.dp),
-                    pageSpacing = 10.dp
-                ) { index ->
-                    RemoteStoreImage(
-                        currentImages[index].src,
-                        product.name,
-                        Modifier.fillMaxWidth().aspectRatio(.78f).clickable { fullscreenPage = index }
-                            .semantics { role = Role.Button; contentDescription = "Ampliar imagen ${index + 1}" },
-                        ContentScale.Crop
-                    )
-                }
-                if (currentImages.size > 1) {
-                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
-                        repeat(currentImages.size) { index ->
-                            Box(Modifier.padding(horizontal = 3.dp).size(if (pagerState.currentPage == index) 8.dp else 6.dp)
-                                .background(if (pagerState.currentPage == index) Color(0xFF183B35) else Color(0xFFD8D4D7), RoundedCornerShape(50)))
-                        }
-                    }
-                }
-            }
+        imageCount = currentImages.size,
+        imageSlot = { index, imageModifier ->
+            RemoteStoreImage(
+                currentImages[index].src,
+                product.name,
+                imageModifier.clickable { fullscreenPage = index }
+                    .semantics { role = Role.Button; contentDescription = "Ampliar imagen ${index + 1}" },
+                ContentScale.Crop
+            )
         },
         statusSlot = {
             if (loading) CircularProgressIndicator(Modifier.padding(20.dp).size(24.dp))
             error?.let { message -> IosStoreError(message) { error = null; loading = true } }
         },
         onBack = onBack,
+        onShare = {
+            val shareText = buildString {
+                append(displayProductName)
+                if (product.permalink.isNotBlank()) { append("\n\n"); append(product.permalink) }
+            }
+            onShareProductText(shareText)
+        },
+        onReserve = {
+            val details = selected.entries.filter { it.value.isNotBlank() }.joinToString("\n") { entry ->
+                val label = if (entry.key.equals("Tallas", true)) "Talla" else entry.key
+                val value = if (entry.key.equals("Color", true)) entry.value.replaceFirstChar { it.uppercase() } else entry.value.uppercase()
+                "$label: $value"
+            }
+            val message = buildString {
+                append("Hola, quiero reservar:\n")
+                append(displayProductName)
+                if (details.isNotBlank()) { append("\n"); append(details) }
+                if (product.permalink.isNotBlank()) { append("\n"); append(product.permalink) }
+            }
+            onReserveProductMessage(message)
+        },
         onAttributeOptionSelected = { groupLabel, value ->
             val attribute = selectableAttributes.firstOrNull { it.name == groupLabel }
             val term = attribute?.terms?.firstOrNull { it.name == value }

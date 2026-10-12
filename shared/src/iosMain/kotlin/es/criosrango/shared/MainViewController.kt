@@ -5,10 +5,12 @@ import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.api.StoreApiClient
 import es.criosrango.shared.loyalty.LoyaltyRepository
 import platform.Foundation.NSURL
+import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
 import platform.UIKit.UIViewController
 
 private var iosPaymentStore: StorePaymentStore? = null
+private var iosRootViewController: UIViewController? = null
 private val iosPushNavigation = androidx.compose.runtime.mutableStateOf<IosPushNavigation?>(null)
 
 fun MainViewController() : UIViewController {
@@ -30,7 +32,7 @@ fun MainViewController() : UIViewController {
     val paymentStore = StorePaymentStore(storeApi, cartStore, pendingStore)
     iosPaymentStore = paymentStore
 
-    return ComposeUIViewController {
+    val controller = ComposeUIViewController {
         CriosRangoIOSRootScreen(
         storeApi = storeApi,
         accountRepository = accountRepository,
@@ -40,10 +42,14 @@ fun MainViewController() : UIViewController {
         paymentStore = paymentStore,
         onOpenPayment = ::openIosPaymentUrl,
         onOpenExternalUrl = ::openIosExternalUrl,
+        onShareProductText = ::shareIosProductText,
+        onReserveProductMessage = ::openIosReserveMessage,
             pushNavigation = iosPushNavigation.value,
             onPushNavigationConsumed = { iosPushNavigation.value = null }
         )
     }
+    iosRootViewController = controller
+    return controller
 }
 
 fun handleIosPaymentReturn(result: String?, orderId: Int?) {
@@ -69,6 +75,22 @@ private fun openIosPaymentUrl(url: String) {
     )
 }
 
+
+private fun shareIosProductText(text: String) {
+    val controller = iosRootViewController ?: return
+    val activityController = UIActivityViewController(activityItems = listOf(text), applicationActivities = null)
+    controller.presentViewController(activityController, animated = true, completion = null)
+}
+
+private fun openIosReserveMessage(message: String) {
+    val encoded = message.encodeToByteArray().joinToString("") { byte ->
+        val value = byte.toInt() and 0xFF
+        val character = value.toChar()
+        val allowed = value in 0x30..0x39 || value in 0x41..0x5A || value in 0x61..0x7A || character in "_-!.~'()*"
+        if (allowed) character.toString() else "%" + value.toString(16).uppercase().padStart(2, '0')
+    }
+    openIosExternalUrl("https://wa.me/34633246788?text=$encoded")
+}
 
 fun openIosExternalUrl(url: String) {
     val nsUrl = NSURL(string = url) ?: return

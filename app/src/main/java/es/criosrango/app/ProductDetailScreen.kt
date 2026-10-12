@@ -52,7 +52,6 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -390,6 +389,7 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
         it.startsWith("Composición:", ignoreCase = true) || it.startsWith("Composicion:", ignoreCase = true)
     }
     val detailRemainingInfo = detailInfoLines.filterNot { it == detailBrandLine || it == detailCompositionLine }.joinToString("\n")
+    val galleryImages = (current?.images ?: product.images).ifEmpty { product.images }
     val detailUiState = es.criosrango.shared.StoreProductDetailUiState(
         title = product.name.cleanWooText(),
         displayPrice = if (effectiveProduct.hasDisplayablePrice) effectiveProduct.displayPrice() else "",
@@ -439,6 +439,8 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
             multipleOf = multipleOf,
             availableMaximum = availableMaximum
         ),
+        shareEnabled = true,
+        reserveEnabled = product.type != "variable" || matching != null,
         descriptionText = detailRemainingInfo,
         brandText = detailBrandLine,
         compositionText = detailCompositionLine
@@ -453,179 +455,38 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                 onCart = onCart
             )
         },
-        imageSlot = { imageModifier ->
-            Column {
-                                    val galleryImages =
-                                    (current?.images ?: product.images).ifEmpty { product.images }
-                
-                                if (galleryImages.isNotEmpty()) {
-                                    val pagerState = rememberPagerState(
-                                        pageCount = { galleryImages.size }
-                                    )
-                
-                                    HorizontalPager(
-                                        state = pagerState,
-                                        modifier = imageModifier.fillMaxWidth(),
-                                        contentPadding = PaddingValues(horizontal = 20.dp),
-                                        pageSpacing = 10.dp
-                                    ) { page ->
-                                        val item = galleryImages[page]
-                
-                                        CatalogImage(
-                                            item.src,
-                                            product.name,
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .aspectRatio(.78f)
-                                                .clip(RoundedCornerShape(16.dp))
-                                                .clickable {
-                                                    fullscreenGalleryPage = page
-                                                },
-                                            ContentScale.Crop
-                                        )
-                                    }
-                
-                                    if (galleryImages.size > 1) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(top = 8.dp),
-                                            horizontalArrangement = Arrangement.Center,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            repeat(galleryImages.size) { index ->
-                                                Box(
-                                                    modifier = Modifier
-                                                        .padding(horizontal = 3.dp)
-                                                        .size(if (pagerState.currentPage == index) 8.dp else 6.dp)
-                                                        .background(
-                                                            if (pagerState.currentPage == index)
-                                                                Color(0xFF183B35)
-                                                            else
-                                                                Color(0xFFD8D4D7),
-                                                            RoundedCornerShape(50)
-                                                        )
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-            }
-        },
-        productActionsSlot = {
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 20.dp, vertical = 6.dp)
-                                    .height(46.dp),
-                                shape = RoundedCornerShape(23.dp),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
-                                    Color(0xFFD8D4D7)
-                                ),
-                                color = Color.Transparent
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxSize(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    TextButton(
-                                        onClick = {
-                                            val shareText = buildString {
-                                                append(product.name.cleanWooText())
-            
-                                                if (product.permalink.isNotBlank()) {
-                                                    append("\n\n")
-                                                    append(product.permalink)
-                                                }
-                                            }
-            
-                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                                type = "text/plain"
-                                                putExtra(Intent.EXTRA_TEXT, shareText)
-                                            }
-            
-                                            context.startActivity(
-                                                Intent.createChooser(
-                                                    shareIntent,
-                                                    "Compartir producto"
-                                                )
-                                            )
-                                        },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                    ) {
-                                        Icon(
-                                            Icons.Outlined.Share,
-                                            contentDescription = null
-                                        )
-                                        Spacer(Modifier.width(7.dp))
-                                        Text("Compartir")
-                                    }
-            
-                                    VerticalDivider(
-                                        modifier = Modifier.height(24.dp),
-                                        color = Color(0xFFD8D4D7)
-                                    )
-            
-                                    TextButton(
-                                        onClick = {
-                                            val details = selected.entries
-                                                .filter { it.value.isNotBlank() }
-                                                .joinToString("\n") { entry ->
-                                                    val label =
-                                                        if (entry.key.equals("Tallas", true)) "Talla"
-                                                        else entry.key
-            
-                                                    val value =
-                                                        if (entry.key.equals("Color", true))
-                                                            entry.value.replaceFirstChar { it.uppercase() }
-                                                        else
-                                                            entry.value.uppercase()
-            
-                                                    "$label: $value"
-                                                }
-            
-                                            val message = buildString {
-                                                append("Hola, quiero reservar:\n")
-                                                append(product.name.cleanWooText())
-            
-                                                if (details.isNotBlank()) {
-                                                    append("\n")
-                                                    append(details)
-                                                }
-            
-                                                if (product.permalink.isNotBlank()) {
-                                                    append("\n")
-                                                    append(product.permalink)
-                                                }
-                                            }
-            
-                                            val uri = Uri.parse(
-                                                "https://wa.me/34633246788?text=${Uri.encode(message)}"
-                                            )
-            
-                                            context.startActivity(
-                                                Intent(Intent.ACTION_VIEW, uri)
-                                            )
-                                        },
-                                        enabled = product.type != "variable" || matching != null,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                    ) {
-                                        Icon(
-                                            Icons.AutoMirrored.Outlined.Chat,
-                                            contentDescription = null
-                                        )
-                                        Spacer(Modifier.width(7.dp))
-                                        Text("Reservarlo")
-                                    }
-                                }
-                            }
+        imageCount = galleryImages.size,
+        imageSlot = { index, imageModifier ->
+            val item = galleryImages[index]
+            CatalogImage(item.src, product.name, imageModifier.clip(RoundedCornerShape(16.dp)).clickable { fullscreenGalleryPage = index }, ContentScale.Crop)
         },
         onBack = onBack,
+        onShare = {
+            val shareText = buildString {
+                append(product.name.cleanWooText())
+                if (product.permalink.isNotBlank()) { append("\n\n"); append(product.permalink) }
+            }
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, shareText)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "Compartir producto"))
+        },
+        onReserve = {
+            val details = selected.entries.filter { it.value.isNotBlank() }.joinToString("\n") { entry ->
+                val label = if (entry.key.equals("Tallas", true)) "Talla" else entry.key
+                val value = if (entry.key.equals("Color", true)) entry.value.replaceFirstChar { it.uppercase() } else entry.value.uppercase()
+                "$label: $value"
+            }
+            val message = buildString {
+                append("Hola, quiero reservar:\n")
+                append(product.name.cleanWooText())
+                if (details.isNotBlank()) { append("\n"); append(details) }
+                if (product.permalink.isNotBlank()) { append("\n"); append(product.permalink) }
+            }
+            val uri = Uri.parse("https://wa.me/34633246788?text=${Uri.encode(message)}")
+            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+        },
         onAttributeOptionSelected = { groupLabel, value ->
             val attribute = product.attributes.firstOrNull { it.name == groupLabel }
             val term = attribute?.terms?.firstOrNull { it.name == value }
