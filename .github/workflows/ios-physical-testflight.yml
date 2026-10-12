@@ -6,6 +6,7 @@ on:
     paths:
       - "shared/**"
       - "iosApp/**"
+      - ".github/workflows/ios-physical-testflight.yml"
   workflow_dispatch:
 
 permissions:
