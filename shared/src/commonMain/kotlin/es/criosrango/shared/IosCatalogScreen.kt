@@ -55,7 +55,7 @@ internal fun IosCatalogScreen(
     catalogRestoration: MutableMap<Long, IosCatalogRestorationState>
 ) {
     when (page) {
-        IosCatalogPage.Root -> IosCategoryRoot(storeApi, padding, onOpenCategory)
+        IosCatalogPage.Root -> IosCategoryRoot(storeApi, padding, onOpenCategory, onBack)
         is IosCatalogPage.Category -> IosCategoryPage(storeApi, padding, page.category, onOpenCategory, onOpenProduct, onBack, cartStore, catalogRestoration)
         is IosCatalogPage.Product -> IosProductDetail(storeApi, padding, page.product, onBack, cartStore)
         IosCatalogPage.Novedades -> IosNovedadesScreen(storeApi, padding, cartStore, onOpenProduct, onBack)
@@ -73,7 +73,8 @@ internal fun IosCatalogScreen(
 internal fun IosCategoryRoot(
     storeApi: es.criosrango.shared.api.StoreApiClient,
     padding: PaddingValues,
-    onOpenCategory: (StoreCategory) -> Unit
+    onOpenCategory: (StoreCategory) -> Unit,
+    onBack: () -> Unit
 ) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -85,7 +86,7 @@ internal fun IosCategoryRoot(
             .onFailure { error = it.message ?: "No se han podido cargar las categorías."; loading = false }
     }
     Column(Modifier.fillMaxSize().padding(padding)) {
-        Text("Categorías", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+        StoreCatalogHeader(title = "Categorías", showBack = true, onBack = onBack)
         when {
             loading -> IosStoreLoading()
             error != null -> IosStoreError(error!!) { loading = true; error = null }
@@ -131,13 +132,7 @@ internal fun IosCategoryPage(
         ?: emptyList()
 
     Column(Modifier.fillMaxSize().padding(padding)) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = onBack) { Text("Atrás") }
-            Text(category.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        }
+        StoreCatalogHeader(title = category.name, showBack = true, onBack = onBack)
 
         when {
             error != null -> IosStoreError(error!!) {
@@ -146,19 +141,18 @@ internal fun IosCategoryPage(
                 retryGeneration++
             }
             categories == null -> IosStoreLoading()
-            children.isNotEmpty() -> LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
+            children.isNotEmpty() -> StoreSubcategoriesGrid(
+                parent = category,
+                categories = children,
+                onCategory = onOpenCategory,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 28.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(children, key = { it.id }) { child ->
-                    Button(onClick = { onOpenCategory(child) }) {
-                        Text(child.name)
-                    }
-                }
-            }
+                columnSpacing = 12.dp,
+                rowSpacing = 12.dp,
+                imagePadding = 1.dp,
+                imageScale = 1.16f,
+                imageToLabelSpacing = 6.dp
+            )
             else -> IosCategoryProducts(
                 storeApi = storeApi,
                 padding = PaddingValues(),

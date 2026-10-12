@@ -575,8 +575,9 @@ internal fun CategoryList(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        CatalogScreenHeader(
+        es.criosrango.shared.StoreCatalogHeader(
             title = "Categorías",
+            showBack = true,
             onBack = onBack
         )
         es.criosrango.shared.StoreCategoriesGrid(
@@ -1286,7 +1287,16 @@ internal fun CategoryParentWithFilters(
     }
 
     Column(Modifier.fillMaxSize().padding(padding)) {
-        CatalogProductListHeader(title = title, onBack = onBack, activeFilters = active, onOpenFilters = { open = true })
+        es.criosrango.shared.StoreCatalogHeader(
+            title = title,
+            showBack = true,
+            onBack = onBack,
+            trailing = {
+                OutlinedButton(onClick = { open = true }) {
+                    Text(if (active == 0) "Filtros" else "Filtros ($active)")
+                }
+            }
+        )
 
         ActiveFilterChips(
             filters = activeFilterChips,
@@ -1300,16 +1310,20 @@ internal fun CategoryParentWithFilters(
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
 
         if (active == 0) {
-            LazyColumn(
-                contentPadding = PaddingValues(
-                    start = CatalogCategoryVisualTokens.horizontalPadding,
-                    top = CatalogCategoryVisualTokens.rowSpacing,
-                    end = CatalogCategoryVisualTokens.horizontalPadding,
-                    bottom = 28.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(CatalogCategoryVisualTokens.rowSpacing)
-            ) {
-                items(children.chunked(3)) { row ->
+            val parentCategory = allCategories.firstOrNull { it.id == children.firstOrNull()?.parent }
+            val isOutletParent = parentCategory?.slug.equals("outlet", ignoreCase = true) ||
+                parentCategory?.name.equals("Outlet", ignoreCase = true)
+            if (parentCategory == null || isOutletParent) {
+                LazyColumn(
+                    contentPadding = PaddingValues(
+                        start = CatalogCategoryVisualTokens.horizontalPadding,
+                        top = CatalogCategoryVisualTokens.rowSpacing,
+                        end = CatalogCategoryVisualTokens.horizontalPadding,
+                        bottom = 28.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(CatalogCategoryVisualTokens.rowSpacing)
+                ) {
+                    items(children.chunked(3)) { row ->
                         Row(
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -1323,11 +1337,36 @@ internal fun CategoryParentWithFilters(
                                     modifier = Modifier.weight(1f)
                                 )
                             }
-                            repeat(3 - row.size) {
-                                Spacer(Modifier.weight(1f))
-                            }
+                            repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                         }
                     }
+                }
+            } else {
+                es.criosrango.shared.StoreSubcategoriesGrid(
+                    parent = es.criosrango.shared.model.StoreCategory(
+                        id = parentCategory.id, parent = parentCategory.parent,
+                        name = parentCategory.name, slug = parentCategory.slug, count = parentCategory.count
+                    ),
+                    categories = children.map { category ->
+                        es.criosrango.shared.model.StoreCategory(
+                            id = category.id, parent = category.parent,
+                            name = category.name, slug = category.slug, count = category.count
+                        )
+                    },
+                    onCategory = { selected -> children.firstOrNull { it.id == selected.id }?.let(onOpen) },
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = CatalogCategoryVisualTokens.horizontalPadding,
+                        top = CatalogCategoryVisualTokens.rowSpacing,
+                        end = CatalogCategoryVisualTokens.horizontalPadding,
+                        bottom = 28.dp
+                    ),
+                    columnSpacing = CatalogCategoryVisualTokens.columnSpacing,
+                    rowSpacing = CatalogCategoryVisualTokens.rowSpacing,
+                    imagePadding = CatalogCategoryVisualTokens.imagePadding,
+                    imageScale = CatalogCategoryVisualTokens.imageScale,
+                    imageToLabelSpacing = CatalogCategoryVisualTokens.imageToLabelSpacing
+                )
             }
         } else if (!loading && filtered.isEmpty()) {
             Column(
