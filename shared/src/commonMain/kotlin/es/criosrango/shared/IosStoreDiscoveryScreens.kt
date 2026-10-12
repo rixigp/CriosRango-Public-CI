@@ -370,7 +370,7 @@ internal fun IosSearchScreen(
                             modifier = Modifier.height(30.dp),
                             contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
                             onClick = { onProduct(product) }
-                        ) { Text(product.name) }
+                        ) { Text(normalizeWooPlainText(product.name)) }
                     }
                 }
             }

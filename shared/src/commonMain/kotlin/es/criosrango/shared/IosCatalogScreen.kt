@@ -409,7 +409,7 @@ internal fun IosCategoryProducts(
         items = filteredProducts.map { product ->
             StoreProductItemUi(
                 id = product.id,
-                nameText = product.name,
+                nameText = normalizeWooPlainText(product.name),
                 imageIdentity = product.images.firstOrNull()?.src,
                 displayPriceText = formatStorePrice(
                     product.prices.price,
@@ -728,6 +728,9 @@ internal fun IosProductDetail(
     val currentId = selectedVariation?.id ?: product.id
     val currentImages = selectedVariation?.images?.takeIf { it.isNotEmpty() } ?: product.images
     val currentPrices = selectedVariation?.prices ?: product.prices
+    val displayProductName = normalizeWooPlainText(product.name)
+    val displayShortDescription = normalizeWooDescriptionText(product.shortDescription)
+    val displayDescription = normalizeWooDescriptionText(product.description)
     val currentInStock = selectedVariation?.isInStock ?: product.isInStock
     val currentPurchasable = selectedVariation?.isPurchasable ?: product.isPurchasable
     val minimum = selectedVariation?.quantityLimits?.minimum ?: selectedVariation?.addToCart?.minimum ?: product.quantityLimits?.minimum ?: product.addToCart?.minimum ?: 1
@@ -743,7 +746,7 @@ internal fun IosProductDetail(
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onBack) { Text("Atrás") }
-                Text(product.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(displayProductName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             }
         }
         item {
@@ -760,7 +763,7 @@ internal fun IosProductDetail(
                     }
                 }
             }
-            Text(product.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(20.dp, 16.dp, 20.dp, 4.dp))
+            Text(displayProductName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(20.dp, 16.dp, 20.dp, 4.dp))
             if (currentPrices.price.toLongOrNull()?.let { it > 0L } == true) {
                 Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(formatStorePrice(currentPrices.price, currentPrices.currencyMinorUnit, currentPrices.currencySymbol), fontWeight = FontWeight.Bold, color = Color(0xFF183B35))
@@ -853,8 +856,8 @@ internal fun IosProductDetail(
             }
             if (loading) CircularProgressIndicator(Modifier.padding(20.dp).size(24.dp))
             error?.let { message -> IosStoreError(message) { error = null; loading = true } }
-            if (product.shortDescription.isNotBlank()) Text(product.shortDescription, modifier = Modifier.padding(20.dp))
-            if (product.description.isNotBlank()) Text(product.description, modifier = Modifier.padding(20.dp))
+            if (displayShortDescription.isNotBlank()) Text(displayShortDescription, modifier = Modifier.padding(20.dp))
+            if (displayDescription.isNotBlank()) Text(displayDescription, modifier = Modifier.padding(20.dp))
         }
     }
     fullscreenPage?.let { initialPage ->

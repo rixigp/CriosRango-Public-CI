@@ -238,7 +238,7 @@ fun IosCheckoutScreen(
                 )
                 cart.items.forEach { line ->
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(line.name, Modifier.weight(1f))
+                        Text(normalizeWooPlainText(line.name), Modifier.weight(1f))
                         Text("×" + line.quantity, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }

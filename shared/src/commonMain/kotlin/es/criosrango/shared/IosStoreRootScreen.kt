@@ -692,7 +692,7 @@ internal fun IosProductCard(product: StoreProduct, onClick: (StoreProduct) -> Un
             contentScale = ContentScale.Crop
         )
         Spacer(Modifier.height(7.dp))
-        Text(product.name, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+        Text(normalizeWooPlainText(product.name), maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
         if (product.hasDisplayablePrice) {
             Text(
                 formatStorePrice(product.prices.price, product.prices.currencyMinorUnit, product.prices.currencySymbol),
@@ -889,7 +889,7 @@ private fun IosCartScreen(
                 Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     RemoteStoreImage(line.images.firstOrNull()?.src, line.name, Modifier.size(84.dp), ContentScale.Crop)
                     Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(line.name, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(normalizeWooPlainText(line.name), fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         if (line.variation.isNotEmpty()) Text(
                             line.variation.joinToString(" · ") { "${it.attribute.removePrefix("pa_")}: ${it.value}" },
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant

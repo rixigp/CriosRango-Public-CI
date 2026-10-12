@@ -1335,7 +1335,7 @@ private fun IosOrdersScreen(
                         if (order.items.isNotEmpty()) {
                             Spacer(Modifier.height(10.dp))
                             order.items.forEach { item ->
-                                Text("${item.quantity} × ${item.name}")
+                                Text("${item.quantity} × ${normalizeWooPlainText(item.name)}")
                                 val variationText = item.variations.filter { it.name.isNotBlank() && it.value.isNotBlank() }
                                     .joinToString(" · ") { "${if (it.name.equals("Tallas", true)) "Talla" else it.name}: ${it.value}" }
                                 if (variationText.isNotBlank()) Text(variationText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1412,7 +1412,7 @@ private fun IosOrderDetailScreen(order: AccountOrderSummary, onBack: () -> Unit)
         item {
             AccountDetailCard("Productos") {
                 order.items.forEachIndexed { index, item ->
-                    Text("${item.quantity} × ${item.name}", fontWeight = FontWeight.Medium)
+                    Text("${item.quantity} × ${normalizeWooPlainText(item.name)}", fontWeight = FontWeight.Medium)
                     item.variations.filter { it.name.isNotBlank() && it.value.isNotBlank() }.forEach {
                         Text("${if (it.name.equals("Tallas", true)) "Talla" else it.name}: ${it.value}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
