@@ -1,9 +1,7 @@
 package es.criosrango.shared
 
-import platform.Foundation.NSDiacriticInsensitiveSearch
 import platform.Foundation.NSString
 
-/** Foundation performs canonical Unicode diacritic folding on iOS. */
-actual fun catalogUnicodeFold(value: String): String =
-    (value as NSString)
-        .stringByFoldingWithOptions(NSDiacriticInsensitiveSearch, locale = null)
+/** Foundation canonical Unicode decomposition; mark removal is shared in common code. */
+actual fun catalogCanonicalDecompose(value: String): String =
+    (value as NSString).decomposedStringWithCanonicalMapping
