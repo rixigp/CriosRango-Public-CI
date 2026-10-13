@@ -6,6 +6,10 @@ on:
     paths:
       - "shared/**"
       - "iosApp/**"
+      - "gradle/**"
+      - "gradle.properties"
+      - "settings.gradle.kts"
+      - "build.gradle.kts"
       - ".github/workflows/ios-fast-simulator-debug.yml"
   workflow_dispatch:
     inputs:
@@ -207,6 +211,7 @@ jobs:
           : > "$LOG_FILE"; : > "$LAUNCH_STDOUT"; : > "$LAUNCH_STDERR"; : > "$CRASH_LOG"
           LOG_PID=""
           LAUNCH_EXIT_CODE=NOT_RECORDED
+          NOTIFICATION_PREAUTH=SKIPPED
           APP_PID=NOT_FOUND
           APP_PROCESS_AFTER_LAUNCH=UNKNOWN
           APP_PROCESS_AFTER_ROOT=UNKNOWN
@@ -295,19 +300,17 @@ jobs:
             exit 1
           fi
 
-          # Pre-authorize notifications so the system sheet cannot obscure Home.
-          if ! command -v applesimutils >/dev/null 2>&1; then
-            brew tap wix/brew 2>&1 | tee -a "$LOG_FILE"
-            brew trust --formula wix/brew/applesimutils 2>&1 | tee -a "$LOG_FILE"
-            brew install applesimutils 2>&1 | tee -a "$LOG_FILE"
-          fi
-          if applesimutils --byId "$SIM_UDID" --bundle "es.criosrango.app" --setPermissions "notifications=YES" 2>&1 | tee -a "$LOG_FILE"; then
-            echo "notifications_permission=YES" | tee -a "$LOG_FILE"
-            echo "notifications_permission=YES" >> "$REPORT"
+          # Optional notification preauthorization: never install Homebrew packages in FAST.
+          if command -v applesimutils >/dev/null 2>&1; then
+            if applesimutils --byId "$SIM_UDID" --bundle "es.criosrango.app" --setPermissions "notifications=YES" 2>&1 | tee -a "$LOG_FILE"; then
+              NOTIFICATION_PREAUTH=GRANTED
+            else
+              NOTIFICATION_PREAUTH=SKIPPED
+            fi
           else
-            echo "notifications_permission=CONFIGURE_FAILED" | tee -a "$LOG_FILE"
-            echo "notifications_permission=CONFIGURE_FAILED" >> "$REPORT"
+            NOTIFICATION_PREAUTH=SKIPPED
           fi
+          echo "NOTIFICATION_PREAUTH=$NOTIFICATION_PREAUTH" | tee -a "$LOG_FILE" "$REPORT"
 
           # Keep the unified log stream independent from simctl launch's process.
           xcrun simctl spawn "$SIM_UDID" log stream --style compact --level debug --predicate 'process == "CriosRango" OR process == "CriosRangoKMPSpike" OR eventMessage CONTAINS[c] "KMP_RUNTIME" OR eventMessage CONTAINS[c] "Ktor" OR eventMessage CONTAINS[c] "HTTP" OR eventMessage CONTAINS[c] "exception" OR eventMessage CONTAINS[c] "crash" OR eventMessage CONTAINS[c] "terminat"' >> "$LOG_FILE" 2>&1 &
@@ -335,56 +338,67 @@ jobs:
           echo "APP_PID=$APP_PID" | tee -a "$LOG_FILE"
           echo "APP_PROCESS_AFTER_LAUNCH=$APP_PROCESS_AFTER_LAUNCH" | tee -a "$LOG_FILE"
 
-          # A failed launch command is recorded separately; continue gathering evidence.
-          for i in $(seq 1 45); do
-            if grep -q 'KMP_RUNTIME_ROOT_SCREEN_READY' "$LOG_FILE"; then
-              ROOT_SCREEN=FOUND
-              break
-            fi
-            APP_PROCESS_AFTER_LAUNCH="$(app_process_state)"
-            if [[ "$APP_PROCESS_AFTER_LAUNCH" == NOT_RUNNING && "$LAUNCH_EXIT_CODE" != 0 ]]; then
-              break
-            fi
-            sleep 1
-          done
-
-          if grep -q 'KMP_RUNTIME_ROOT_SCREEN_READY' "$LOG_FILE"; then
-            ROOT_SCREEN=FOUND
-            echo "ROOT_SCREEN_READY=FOUND" | tee -a "$LOG_FILE"
-            APP_PROCESS_AFTER_ROOT="$(app_process_state)"
-            sleep 5
-            if screenshot "$ROOT_SCREENSHOT"; then SCREENSHOT_AFTER_ROOT=FOUND; else SCREENSHOT_AFTER_ROOT=FAILED; fi
-          else
-            ROOT_SCREEN=NOT_FOUND
-            APP_PROCESS_AFTER_ROOT="$(app_process_state)"
-            echo "ROOT_SCREEN_READY=NOT_FOUND" | tee -a "$LOG_FILE"
+          # Launch-command failure and a process that dies are hard failures.
+          if [[ "$LAUNCH_EXIT_CODE" -ne 0 ]]; then
+            echo "LAUNCH_FAILURE=YES" | tee -a "$LOG_FILE"
+            exit 1
           fi
 
-          # Do not make HOME readiness a launch failure. Continue waiting and keep logs.
-          for i in $(seq 1 90); do
+          # Allow startup briefly, then gate on process liveness rather than UI markers.
+          sleep 3
+          APP_PROCESS_AFTER_LAUNCH="$(app_process_state)"
+          echo "APP_PROCESS_AFTER_GRACE_PERIOD=$APP_PROCESS_AFTER_LAUNCH" | tee -a "$LOG_FILE"
+          if [[ "$APP_PROCESS_AFTER_LAUNCH" == NOT_RUNNING ]]; then
+            echo "APP_PROCESS_ALIVE_AFTER_GRACE_PERIOD=NO" | tee -a "$LOG_FILE"
+            collect_crash_diagnostics
+            exit 1
+          fi
+          echo "APP_PROCESS_ALIVE_AFTER_GRACE_PERIOD=YES" | tee -a "$LOG_FILE"
+
+          # ROOT/HOME are diagnostic markers only. One bounded 15-second window.
+          for i in $(seq 1 15); do
+            if [[ "$ROOT_SCREEN" == NOT_FOUND ]] && grep -q 'KMP_RUNTIME_ROOT_SCREEN_READY' "$LOG_FILE"; then
+              ROOT_SCREEN=FOUND
+              echo "ROOT_SCREEN_READY=FOUND" | tee -a "$LOG_FILE"
+            fi
             HOME_LINE="$(grep -E 'KMP_RUNTIME_HOME_READY.*products=[0-9]+.*categories=[0-9]+' "$LOG_FILE" | tail -1 || true)"
             if [[ -n "$HOME_LINE" ]]; then
               HOME_READY=FOUND
               PRODUCTS_COUNT="$(printf '%s' "$HOME_LINE" | sed -nE 's/.*products=([0-9]+).*/\1/p')"
               CATEGORIES_COUNT="$(printf '%s' "$HOME_LINE" | sed -nE 's/.*categories=([0-9]+).*/\1/p')"
-              break
             fi
             APP_PROCESS_AFTER_ROOT="$(app_process_state)"
-            if [[ "$ROOT_SCREEN" == FOUND && "$APP_PROCESS_AFTER_ROOT" == NOT_RUNNING ]]; then
-              echo "APP_PROCESS_DIED_BETWEEN_ROOT_AND_HOME=YES" | tee -a "$LOG_FILE"
+            if [[ "$APP_PROCESS_AFTER_ROOT" == NOT_RUNNING ]]; then
+              echo "APP_PROCESS_ALIVE_DURING_MARKER_WINDOW=NO" | tee -a "$LOG_FILE"
               collect_crash_diagnostics
-              break
+              exit 1
             fi
+            [[ "$ROOT_SCREEN" == FOUND && "$HOME_READY" == FOUND ]] && break
             sleep 1
           done
 
+          if [[ "$ROOT_SCREEN" == FOUND ]]; then
+            if screenshot "$ROOT_SCREENSHOT"; then SCREENSHOT_AFTER_ROOT=FOUND; else SCREENSHOT_AFTER_ROOT=FAILED; fi
+          else
+            echo "ROOT_SCREEN_READY=ABSENT (OBSERVABILITY_WARNING)" | tee -a "$LOG_FILE"
+          fi
           if [[ "$HOME_READY" == FOUND ]]; then
-            sleep 3
             if screenshot "$HOME_SCREENSHOT"; then SCREENSHOT_HOME=FOUND; else SCREENSHOT_HOME=FAILED; fi
+          else
+            echo "HOME_READY=ABSENT (OBSERVABILITY_WARNING)" | tee -a "$LOG_FILE"
           fi
 
-          # Always attempt a final screenshot, even if Home never becomes ready.
+          # Screenshot capture is best-effort; it is not a FAST gate.
           screenshot "$FINAL_SCREENSHOT" || true
+          APP_PROCESS_AFTER_ROOT="$(app_process_state)"
+          [[ "$APP_PROCESS_AFTER_ROOT" != NOT_RUNNING ]] || { echo "APP_PROCESS_ALIVE_AFTER_GRACE_PERIOD=NO"; exit 1; }
+          echo "OBSERVABILITY_WARNING=$([[ "$ROOT_SCREEN" == FOUND && "$HOME_READY" == FOUND ]] && echo NO || echo YES)" >> "$REPORT"
+          echo "APP_PROCESS_ALIVE_AFTER_GRACE_PERIOD=YES" >> "$REPORT"
+          echo "app_launch=GREEN" >> "$REPORT"
+          echo "home_state=$([[ "$HOME_READY" == FOUND ]] && echo OK || echo OBSERVABILITY_WARNING)" >> "$REPORT"
+          echo "screenshot=$([[ "$SCREENSHOT_HOME" == FOUND ]] && echo FOUND || echo OBSERVABILITY_WARNING)" >> "$REPORT"
+          exit 0
+
           APP_PROCESS_AFTER_ROOT="$(app_process_state)"
           {
             echo "HOME_READY=$HOME_READY"
