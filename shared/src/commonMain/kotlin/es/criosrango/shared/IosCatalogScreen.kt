@@ -11,6 +11,9 @@ import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collect
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.Alignment
@@ -54,11 +57,18 @@ internal fun IosCatalogScreen(
     onBack: () -> Unit,
     onShareProductText: (String) -> Unit,
     onReserveProductMessage: (String) -> Unit,
-    catalogRestoration: MutableMap<Long, IosCatalogRestorationState>
+    catalogRestoration: MutableMap<Long, IosCatalogRestorationState>,
+    categorySnapshot: List<StoreCategory>?,
+    categorySnapshotLoading: Boolean,
+    categorySnapshotError: String?,
+    onRetryCategorySnapshot: () -> Unit
 ) {
     when (page) {
-        IosCatalogPage.Root -> IosCategoryRoot(storeApi, padding, onOpenCategory, onBack)
-        is IosCatalogPage.Category -> IosCategoryPage(storeApi, padding, page.category, onOpenCategory, onOpenProduct, onBack, cartStore, catalogRestoration)
+        IosCatalogPage.Root -> IosCategoryRoot(padding, onOpenCategory, onBack, categorySnapshot.orEmpty(), categorySnapshotLoading, categorySnapshotError, onRetryCategorySnapshot)
+        is IosCatalogPage.Category -> IosCategoryPage(
+            storeApi, padding, page.category, onOpenCategory, onOpenProduct, onBack, cartStore,
+            catalogRestoration, categorySnapshot, categorySnapshotLoading, categorySnapshotError, onRetryCategorySnapshot
+        )
         is IosCatalogPage.Product -> IosProductDetail(storeApi, padding, page.product, onBack, cartStore, onShareProductText, onReserveProductMessage)
         IosCatalogPage.Novedades -> IosNovedadesScreen(storeApi, padding, cartStore, onOpenProduct, onBack)
         IosCatalogPage.Search -> IosSearchScreen(storeApi, padding, cartStore, onOpenProduct, onOpenCategory, onBack)
@@ -73,22 +83,16 @@ internal fun IosCatalogScreen(
 
 @Composable
 internal fun IosCategoryRoot(
-    storeApi: es.criosrango.shared.api.StoreApiClient,
     padding: PaddingValues,
     onOpenCategory: (StoreCategory) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    categories: List<StoreCategory>,
+    loading: Boolean,
+    error: String?,
+    onRetry: () -> Unit
 ) {
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var categories by remember { mutableStateOf(emptyList<StoreCategory>()) }
-    LaunchedEffect(loading) {
-        if (!loading) return@LaunchedEffect
-        runCatching { storeApi.categories(perPage = 100) }
-            .onSuccess { categories = it; loading = false }
-            .onFailure { error = it.message ?: "No se han podido cargar las categorías."; loading = false }
-    }
     StoreCategoriesScreen(categories=categories, loading=loading, errorMessage=error, onBack=onBack,
-        onCategory=onOpenCategory, onRetry={loading=true; error=null}, modifier=Modifier.fillMaxSize().padding(padding))
+        onCategory=onOpenCategory, onRetry=onRetry, modifier=Modifier.fillMaxSize().padding(padding))
 }
 
 @Composable
@@ -100,40 +104,27 @@ internal fun IosCategoryPage(
     onOpenProduct: (StoreProduct) -> Unit,
     onBack: () -> Unit,
     cartStore: StoreCartStore,
-    catalogRestoration: MutableMap<Long, IosCatalogRestorationState>
+    catalogRestoration: MutableMap<Long, IosCatalogRestorationState>,
+    categorySnapshot: List<StoreCategory>?,
+    categorySnapshotLoading: Boolean,
+    categorySnapshotError: String?,
+    onRetryCategorySnapshot: () -> Unit
 ) {
-    var categories by remember { mutableStateOf<List<StoreCategory>?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var retryGeneration by remember { mutableIntStateOf(0) }
-
-    LaunchedEffect(category.id, retryGeneration) {
-        categories = null
-        error = null
-        runCatching { storeApi.categories(perPage = 100) }
-            .onSuccess { categories = it }
-            .onFailure { error = it.message ?: "No se han podido cargar las categorías." }
-    }
-
-    val children = categories
-        ?.filter { it.parent == category.id }
-        ?.distinctBy { it.id }
-        ?: emptyList()
+    val categories = categorySnapshot
+    val error = categorySnapshotError
+    val children = categories?.filter { it.parent == category.id }?.distinctBy { it.id } ?: emptyList()
     var showProductsFromFilters by remember(category.id) { mutableStateOf(false) }
 
     when {
         error != null || categories == null -> StoreSubcategoriesScreen(
             parent = category,
             categories = emptyList(),
-            loading = categories == null && error == null,
+            loading = categorySnapshotLoading && error == null,
             errorMessage = error,
             onBack = onBack,
             onCategory = onOpenCategory,
             onFilterClick = { showProductsFromFilters = true },
-            onRetry = {
-                categories = null
-                error = null
-                retryGeneration++
-            },
+            onRetry = onRetryCategorySnapshot,
             modifier = Modifier.fillMaxSize().padding(padding)
         )
         children.isNotEmpty() && !showProductsFromFilters -> StoreSubcategoriesScreen(
@@ -160,9 +151,10 @@ internal fun IosCategoryPage(
 }
 
 private fun isRestorableCatalogSnapshot(snapshot: CatalogPagingState<*>): Boolean =
-    !snapshot.isInitialLoading &&
-        !snapshot.isAppending &&
-        (snapshot.currentPage > 0 || snapshot.initialError != null)
+    snapshot.currentPage > 0 || snapshot.initialError != null
+
+private fun CatalogPagingState<StoreProduct>.asRestorableSnapshot(): CatalogPagingState<StoreProduct> =
+    copy(isInitialLoading = false, isAppending = false)
 
 private enum class IosCatalogSortMode(val label: String) {
     RECENT("Más recientes"),
@@ -253,8 +245,23 @@ internal fun IosCategoryProducts(
             it.queryKey == queryKey &&
                 isRestorableCatalogSnapshot(it.pagingState)
         }
-        if (restoredState != null) paginator.restore(queryKey, restoredState.pagingState)
-        else paginator.start(queryKey, loadPage)
+        if (restoredState != null) {
+            paginator.restore(queryKey, restoredState.pagingState.asRestorableSnapshot()).join()
+            if (restoredState.firstVisibleItemIndex > 0 || restoredState.firstVisibleItemOffset > 0) {
+                withFrameNanos { }
+                gridState.scrollToItem(restoredState.firstVisibleItemIndex, restoredState.firstVisibleItemOffset)
+            }
+        } else {
+            paginator.start(queryKey, loadPage)
+        }
+        snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
+            .distinctUntilChanged()
+            .collect { (index, offset) ->
+                val current = catalogRestoration[category.id.toLong()]
+                if (current?.queryKey == queryKey &&
+                    (current.firstVisibleItemIndex != index || current.firstVisibleItemOffset != offset)
+                ) catalogRestoration[category.id.toLong()] = current.copy(firstVisibleItemIndex = index, firstVisibleItemOffset = offset)
+            }
     }
 
     LaunchedEffect(pagingState, sortMode, selectedSizes, selectedColors, selectedBrands) {
@@ -270,12 +277,22 @@ internal fun IosCategoryProducts(
         )
     }
 
-    LaunchedEffect(savedState?.firstVisibleItemIndex, savedState?.firstVisibleItemOffset) {
-        val index = savedState?.firstVisibleItemIndex ?: return@LaunchedEffect
-        gridState.scrollToItem(index, savedState.firstVisibleItemOffset)
+    DisposableEffect(category.id, queryKey, pagingState, sortMode, selectedSizes, selectedColors, selectedBrands) {
+        onDispose {
+            val restoredSort = when (sortMode) {
+                IosCatalogSortMode.PRICE_ASC -> IosCatalogSortModeState.PRICE_ASC
+                IosCatalogSortMode.PRICE_DESC -> IosCatalogSortModeState.PRICE_DESC
+                IosCatalogSortMode.NAME_ASC -> IosCatalogSortModeState.NAME_ASC
+                IosCatalogSortMode.RECENT -> IosCatalogSortModeState.RECENT
+            }
+            catalogRestoration[category.id.toLong()] = IosCatalogRestorationState(
+                queryKey, restoredSort, selectedSizes, selectedColors, selectedBrands,
+                pagingState.asRestorableSnapshot(), gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset
+            )
+        }
     }
 
-    fun filterValues(product: StoreProduct, attribute: String): Set<String> =
+    fun filterValues(product: StoreProduct, attribute: String) =
         product.attributes
             .filter { it.name.equals(attribute, ignoreCase = true) }
             .flatMap { it.terms.map { term -> term.name } }

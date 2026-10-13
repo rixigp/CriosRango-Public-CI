@@ -144,9 +144,30 @@ fun CriosRangoIOSRootScreen(
     var catalogOriginHome by remember { mutableStateOf(false) }
     val catalogHistory = remember { mutableStateListOf<IosCatalogPage>() }
     val catalogRestoration = remember { mutableStateMapOf<Long, IosCatalogRestorationState>() }
+    var categorySnapshot by remember { mutableStateOf<List<StoreCategory>?>(null) }
+    var categorySnapshotLoading by remember { mutableStateOf(true) }
+    var categorySnapshotError by remember { mutableStateOf<String?>(null) }
+    var categorySnapshotRetryGeneration by remember { mutableIntStateOf(0) }
     fun openCatalog(page: IosCatalogPage) { if (catalogPage != page) catalogHistory.add(catalogPage); catalogPage = page }
-    fun resetCatalog() { catalogHistory.clear(); catalogRestoration.clear(); catalogPage = IosCatalogPage.Root; catalogOriginHome = false }
+    fun resetCatalog() { catalogHistory.clear(); catalogPage = IosCatalogPage.Root; catalogOriginHome = false }
+    fun retryCategorySnapshot() {
+        categorySnapshot = null
+        categorySnapshotError = null
+        categorySnapshotLoading = true
+        categorySnapshotRetryGeneration++
+    }
     fun backCatalog() { catalogPage = if (catalogHistory.isNotEmpty()) catalogHistory.removeAt(catalogHistory.lastIndex) else IosCatalogPage.Root }
+
+    LaunchedEffect(section, catalogPage, categorySnapshotRetryGeneration) {
+        val needsCategoryTree = section == IosRootSection.CATEGORIES &&
+            (catalogPage == IosCatalogPage.Root || catalogPage is IosCatalogPage.Category)
+        if (!needsCategoryTree || categorySnapshot != null || categorySnapshotError != null) return@LaunchedEffect
+        categorySnapshotLoading = true
+        runCatching { storeApi.categories(perPage = 100) }
+            .onSuccess { categorySnapshot = it; categorySnapshotError = null }
+            .onFailure { categorySnapshotError = it.message ?: "No se han podido cargar las categorías." }
+        categorySnapshotLoading = false
+    }
 
     LaunchedEffect(pushNavigation) {
         val n = pushNavigation ?: return@LaunchedEffect
@@ -270,7 +291,11 @@ fun CriosRangoIOSRootScreen(
                     },
                     onShareProductText = onShareProductText,
                     onReserveProductMessage = onReserveProductMessage,
-                    catalogRestoration = catalogRestoration
+                    catalogRestoration = catalogRestoration,
+                    categorySnapshot = categorySnapshot,
+                    categorySnapshotLoading = categorySnapshotLoading,
+                    categorySnapshotError = categorySnapshotError,
+                    onRetryCategorySnapshot = ::retryCategorySnapshot
                 )
                 IosRootSection.CART -> IosCartScreen(
                     storeApi = storeApi,
