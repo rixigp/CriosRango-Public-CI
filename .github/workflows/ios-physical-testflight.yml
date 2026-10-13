@@ -450,13 +450,15 @@ jobs:
 
           group_response = request_asc(
             token, :get,
-            asc_query('/v1/betaGroups', [['filter[app]', app_id], ['filter[name]', 'Familia'], ['limit', '200']])
+            asc_query('/v1/betaGroups', [['filter[app]', app_id], ['filter[name]', 'Familia'], ['fields[betaGroups]', 'name,isInternalGroup,hasAccessToAllBuilds'], ['limit', '200']])
           )
           groups = group_response['data'] || []
           group = groups.find { |item| item.dig('attributes', 'name') == 'Familia' && item.dig('attributes', 'isInternalGroup') == true }
           raise 'Internal TestFlight group Familia was not found for es.criosrango.app' unless group
           group_id = group.fetch('id')
+          has_access_to_all_builds = group.dig('attributes', 'hasAccessToAllBuilds') == true
           puts "Internal TestFlight group Familia resolved."
+          puts "Internal group automatic distribution: #{has_access_to_all_builds}"
 
           deadline = Time.now + 7200
           build = nil
@@ -484,19 +486,23 @@ jobs:
           end
 
           build_id = build.fetch('id')
-          existing = request_asc(
-            token, :get,
-            asc_query("/v1/betaGroups/#{group_id}/relationships/builds", [['limit', '200']])
-          )
-          already_associated = (existing['data'] || []).any? { |item| item['id'] == build_id }
-          unless already_associated
-            request_asc(
-              token, :post,
-              "/v1/betaGroups/#{group_id}/relationships/builds",
-              { data: [{ type: 'builds', id: build_id }] }
+          if has_access_to_all_builds
+            puts "Internal group Familia has automatic distribution enabled; build #{build_number} is available without explicit association."
+          else
+            existing = request_asc(
+              token, :get,
+              asc_query("/v1/betaGroups/#{group_id}/relationships/builds", [['limit', '200']])
             )
+            already_associated = (existing['data'] || []).any? { |item| item['id'] == build_id }
+            unless already_associated
+              request_asc(
+                token, :post,
+                "/v1/betaGroups/#{group_id}/relationships/builds",
+                { data: [{ type: 'builds', id: build_id }] }
+              )
+            end
+            puts "Build #{build_number} is processed and explicitly associated with internal group Familia."
           end
-          puts "Build #{build_number} is processed and associated with internal group Familia."
           puts "External distribution: NOT_REQUESTED; App Review: NOT_SUBMITTED."
           RUBY
           echo "familia=GREEN" >> "$GITHUB_OUTPUT"
@@ -525,7 +531,7 @@ jobs:
             [[ "$VALIDATION" == GREEN ]] && VALIDATION_STATUS=GREEN || VALIDATION_STATUS=RED
             [[ "$UPLOAD" == GREEN ]] && UPLOAD_STATUS=GREEN || UPLOAD_STATUS=RED
             [[ "$UPLOAD" == GREEN ]] && TF_STATUS=SUCCESS || TF_STATUS=FAILURE
-            [[ "$FAMILIA" == GREEN ]] && GROUP_STATUS=ASSOCIATED || GROUP_STATUS=PENDING_OR_FAILED
+            [[ "$FAMILIA" == GREEN ]] && GROUP_STATUS=AVAILABLE || GROUP_STATUS=PENDING_OR_FAILED
             sed -i '' "s/^APP_STORE_VALIDATION=.*/APP_STORE_VALIDATION=$VALIDATION_STATUS/" "$REPORT"
             sed -i '' "s/^UPLOAD=.*/UPLOAD=$UPLOAD_STATUS/" "$REPORT"
             sed -i '' "s/^TESTFLIGHT_UPLOAD=.*/TESTFLIGHT_UPLOAD=$TF_STATUS/" "$REPORT"
