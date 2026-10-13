@@ -19,9 +19,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import io.ktor.client.request.get
 import io.ktor.client.call.body
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,8 +47,15 @@ internal fun RemoteStoreImage(
             loading = false
             return@LaunchedEffect
         }
-        bitmap = RemoteStoreImageSessionCache.getOrLoad(url)
-        loading = false
+        try {
+            bitmap = RemoteStoreImageSessionCache.getOrLoad(url)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            bitmap = null
+        } finally {
+            loading = false
+        }
     }
 
     Box(modifier.background(Color(0xFFE8E2DD)), contentAlignment = Alignment.Center) {
@@ -72,39 +81,55 @@ private object RemoteStoreImageSessionCache {
         var cached: ImageBitmap? = null
         var pending: Deferred<ImageBitmap?>? = null
         mutex.withLock {
-            cache[url]?.let { cached = it; lru.remove(url); lru.add(url); return@withLock }
+            cache[url]?.let {
+                cached = it
+                lru.remove(url)
+                lru.add(url)
+                return@withLock
+            }
             pending = inFlight[url]
             if (pending == null) {
-                val request = scope.async {
-                    runCatching {
+                lateinit var request: Deferred<ImageBitmap?>
+                request = scope.async {
+                    try {
                         val bytes = sharedImageHttpClient.get(url).body<ByteArray>()
-                        withContext(Dispatchers.Default) { decodeStoreImage(bytes) }
-                    }.getOrNull()
+                        val decoded = withContext(Dispatchers.Default) { decodeStoreImage(bytes) }
+                        if (decoded != null) {
+                            mutex.withLock {
+                                if (!cache.containsKey(url)) {
+                                    val pixels = decoded.width.toLong() * decoded.height.toLong()
+                                    if (pixels in 1..MAX_CACHED_PIXELS) {
+                                        while (lru.isNotEmpty() &&
+                                            (cache.size >= MAX_ENTRIES || cachedPixels + pixels > MAX_CACHED_PIXELS)
+                                        ) {
+                                            val oldest = lru.removeAt(0)
+                                            cache.remove(oldest)?.let {
+                                                cachedPixels -= it.width.toLong() * it.height.toLong()
+                                            }
+                                        }
+                                        cache[url] = decoded
+                                        lru.add(url)
+                                        cachedPixels += pixels
+                                        visibleCache.value = cache.toMap()
+                                    }
+                                }
+                            }
+                        }
+                        decoded
+                    } finally {
+                        withContext(NonCancellable) {
+                            mutex.withLock {
+                                if (inFlight[url] === request) inFlight.remove(url)
+                            }
+                        }
+                    }
                 }
                 inFlight[url] = request
                 pending = request
             }
         }
         if (cached != null) return cached
-        val request = pending ?: return null
-        val decoded = request.await()
-        mutex.withLock {
-            if (inFlight[url] === request) inFlight.remove(url)
-            if (decoded != null && !cache.containsKey(url)) {
-                val pixels = decoded.width.toLong() * decoded.height.toLong()
-                if (pixels in 1..MAX_CACHED_PIXELS) {
-                    while (lru.isNotEmpty() && (cache.size >= MAX_ENTRIES || cachedPixels + pixels > MAX_CACHED_PIXELS)) {
-                        val oldest = lru.removeAt(0)
-                        cache.remove(oldest)?.let { cachedPixels -= it.width.toLong() * it.height.toLong() }
-                    }
-                    cache[url] = decoded
-                    lru.add(url)
-                    cachedPixels += pixels
-                    visibleCache.value = cache.toMap()
-                }
-            }
-        }
-        return decoded
+        return (pending ?: return null).await()
     }
 }
 
