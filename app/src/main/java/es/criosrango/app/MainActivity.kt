@@ -360,7 +360,6 @@ private fun CriosRangoApp(
                     onAdd = viewModel::addToCart
                 )
             } else {
-                val padding = androidx.compose.foundation.layout.PaddingValues(0.dp)
                 es.criosrango.shared.StoreGlobalShell(
                 selectedTab = when (tab) {
                     AppTab.HOME -> es.criosrango.shared.StoreMainTab.HOME
@@ -400,7 +399,7 @@ private fun CriosRangoApp(
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.background)
                     .navigationBarsPadding()
-            ) {
+            ) { padding ->
                 when {
                     error != null && tab != AppTab.ACCOUNT && tab != AppTab.CART && !catalogHasUsableContent(tab, products, homeProducts, activeCategoryProducts) -> StoreErrorState(error!!, padding, viewModel::retryLastOperation)
                     showAllBrands -> AllBrandsScreen(brands = normalizedBrands, padding = padding, onBrand = { brand -> brandOrigin = BrandOrigin.ALL_BRANDS; showAllBrands = false; selectedBrand = brand; viewModel.loadBrand(brand) }, onBack = { showAllBrands = false; selectedBrand = null; tab = AppTab.HOME })

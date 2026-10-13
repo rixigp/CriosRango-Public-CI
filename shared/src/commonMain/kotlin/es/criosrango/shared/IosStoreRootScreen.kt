@@ -216,7 +216,6 @@ fun CriosRangoIOSRootScreen(
 
     MaterialTheme {
         androidx.compose.runtime.LaunchedEffect(Unit) { println("KMP_RUNTIME_ROOT_SCREEN_READY") }
-        val padding = androidx.compose.foundation.layout.PaddingValues(0.dp)
         StoreGlobalShell(
             selectedTab = when (section) {
                 IosRootSection.HOME -> StoreMainTab.HOME
@@ -249,7 +248,8 @@ fun CriosRangoIOSRootScreen(
                 )
             },
             bottomNavigationModifier = Modifier.navigationBarsPadding()
-        ) {
+        ) { paddingValues ->
+            val padding = paddingValues
             Column(Modifier.fillMaxSize()) {
             if (checkoutOpen && postOrderSuccess == null) {
                 IosCheckoutScreen(

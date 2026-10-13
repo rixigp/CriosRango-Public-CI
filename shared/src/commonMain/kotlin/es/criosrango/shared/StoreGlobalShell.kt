@@ -1,14 +1,12 @@
 package es.criosrango.shared
 
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
-/** Shared visual structure for the main tabbed shell; navigation stays platform-owned. */
+/** Shared shell owns chrome and forwards Scaffold insets; each body keeps its historical padding semantics. */
 @Composable
 fun StoreGlobalShell(
     selectedTab: StoreMainTab,
@@ -16,7 +14,7 @@ fun StoreGlobalShell(
     onTabSelected: (StoreMainTab) -> Unit,
     topBar: @Composable () -> Unit,
     bottomNavigationModifier: Modifier = Modifier,
-    content: @Composable () -> Unit
+    content: @Composable (PaddingValues) -> Unit
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -30,8 +28,6 @@ fun StoreGlobalShell(
             )
         }
     ) { paddingValues ->
-        Box(Modifier.fillMaxSize().padding(paddingValues)) {
-            content()
-        }
+        content(paddingValues)
     }
 }
