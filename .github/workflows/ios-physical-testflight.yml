@@ -1,43 +1,44 @@
 name: iOS Physical TestFlight
 
 on:
-  push:
-    branches: [main, compose-multiplatform-convergence]
-    paths:
-      - "shared/**"
-      - "iosApp/**"
-      - ".github/workflows/ios-physical-testflight.yml"
   workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Exact 40-character commit SHA to archive, sign and upload"
+        required: true
+        type: string
 
 permissions:
   contents: read
+
+concurrency:
+  group: ios-physical-testflight-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build-release-ipa:
     name: Archive, sign and validate iPhone IPA
     runs-on: macos-26
     timeout-minutes: 90
-    concurrency:
-      group: ios-testflight-build-main
-      cancel-in-progress: true
     outputs:
       version: ${{ steps.metadata.outputs.version }}
       build_number: ${{ steps.metadata.outputs.build_number }}
       ipa_name: ${{ steps.metadata.outputs.ipa_name }}
       signing_ready: ${{ steps.credentials.outputs.ready }}
       start_epoch: ${{ steps.metadata.outputs.start_epoch }}
+      sha: ${{ steps.metadata.outputs.sha }}
     steps:
-      - name: Checkout exact push SHA
+      - name: Checkout exact target SHA
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.target_sha }}
           fetch-depth: 1
 
-      - name: Verify SHA, branch, version and unique build
+      - name: Verify target SHA, branch, version and unique build
         id: metadata
         shell: bash
         env:
-          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SHA: ${{ inputs.target_sha }}
           BRANCH_NAME: ${{ github.ref_name }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
@@ -67,6 +68,23 @@ jobs:
             echo "- Version: $VERSION"
             echo "- Generated build: $BUILD_NUMBER"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install Java 17 for Kotlin Multiplatform
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configure Gradle caching
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Cache Kotlin/Native Konan downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: macos-konan-physical-v1-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', 'shared/build.gradle.kts', 'gradle.properties') }}
+          restore-keys: |
+            macos-konan-physical-v1-
 
       - name: Check existing signing and App Store Connect secrets
         id: credentials
@@ -291,14 +309,11 @@ jobs:
     if: needs.build-release-ipa.result == 'success'
     runs-on: macos-26
     timeout-minutes: 150
-    concurrency:
-      group: ios-testflight-upload-main
-      cancel-in-progress: false
     steps:
-      - name: Checkout exact source SHA
+      - name: Checkout exact target SHA
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.build-release-ipa.outputs.sha }}
           fetch-depth: 1
 
       - name: Download signed IPA and evidence
@@ -307,20 +322,18 @@ jobs:
           name: ios-physical-testflight-build-${{ github.run_id }}
           path: release-artifacts
 
-      - name: Skip stale SHA before starting any Apple upload
+      - name: Verify downloaded IPA and checkout match exact target SHA
         id: freshness
         shell: bash
+        env:
+          EXPECTED_SHA: ${{ needs.build-release-ipa.outputs.sha }}
         run: |
           set -euo pipefail
-          TARGET_BRANCH="$GITHUB_REF_NAME"
-          [[ "$TARGET_BRANCH" == "main" || "$TARGET_BRANCH" == "compose-multiplatform-convergence" ]]
-          LATEST_SHA="$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
-          if [[ "$LATEST_SHA" != "$GITHUB_SHA" ]]; then
-            echo "Current main is $LATEST_SHA; this build is stale ($GITHUB_SHA). No Apple upload started." | tee -a release-artifacts/ios-physical-testflight-report.txt
-            echo "current=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || { echo "::error::Upload checkout SHA differs from target SHA"; exit 1; }
+          grep -Fx "SHA=$EXPECTED_SHA" release-artifacts/ios-physical-testflight-report.txt
           echo "current=true" >> "$GITHUB_OUTPUT"
+          echo "Verified upload job uses exact target SHA $EXPECTED_SHA" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install App Store Connect API key
         if: steps.freshness.outputs.current == 'true'
@@ -511,7 +524,6 @@ jobs:
         if: always()
         shell: bash
         env:
-          FRESH: ${{ steps.freshness.outputs.current }}
           VALIDATION: ${{ steps.validate.outputs.validation }}
           UPLOAD: ${{ steps.upload.outputs.upload }}
           FAMILIA: ${{ steps.familia.outputs.familia }}
@@ -522,21 +534,14 @@ jobs:
           set -u
           REPORT=release-artifacts/ios-physical-testflight-report.txt
           [[ -f "$REPORT" ]] || printf 'IOS PHYSICAL TESTFLIGHT REPORT\n' > "$REPORT"
-          if [[ "$FRESH" != true ]]; then
-            sed -i '' 's/^APP_STORE_VALIDATION=.*/APP_STORE_VALIDATION=RED/' "$REPORT" 2>/dev/null || true
-            sed -i '' 's/^UPLOAD=.*/UPLOAD=SKIPPED_STALE_SHA/' "$REPORT" 2>/dev/null || echo "UPLOAD=SKIPPED_STALE_SHA" >> "$REPORT"
-            sed -i '' 's/^TESTFLIGHT_UPLOAD=.*/TESTFLIGHT_UPLOAD=NOT_STARTED/' "$REPORT" 2>/dev/null || echo "TESTFLIGHT_UPLOAD=NOT_STARTED" >> "$REPORT"
-            sed -i '' 's/^FAMILIA_GROUP=.*/FAMILIA_GROUP=NOT_ATTEMPTED/' "$REPORT" 2>/dev/null || echo "FAMILIA_GROUP=NOT_ATTEMPTED" >> "$REPORT"
-          else
-            [[ "$VALIDATION" == GREEN ]] && VALIDATION_STATUS=GREEN || VALIDATION_STATUS=RED
-            [[ "$UPLOAD" == GREEN ]] && UPLOAD_STATUS=GREEN || UPLOAD_STATUS=RED
-            [[ "$UPLOAD" == GREEN ]] && TF_STATUS=SUCCESS || TF_STATUS=FAILURE
-            [[ "$FAMILIA" == GREEN ]] && GROUP_STATUS=AVAILABLE || GROUP_STATUS=PENDING_OR_FAILED
-            sed -i '' "s/^APP_STORE_VALIDATION=.*/APP_STORE_VALIDATION=$VALIDATION_STATUS/" "$REPORT"
-            sed -i '' "s/^UPLOAD=.*/UPLOAD=$UPLOAD_STATUS/" "$REPORT"
-            sed -i '' "s/^TESTFLIGHT_UPLOAD=.*/TESTFLIGHT_UPLOAD=$TF_STATUS/" "$REPORT"
-            sed -i '' "s/^FAMILIA_GROUP=.*/FAMILIA_GROUP=$GROUP_STATUS/" "$REPORT"
-          fi
+          [[ "$VALIDATION" == GREEN ]] && VALIDATION_STATUS=GREEN || VALIDATION_STATUS=RED
+          [[ "$UPLOAD" == GREEN ]] && UPLOAD_STATUS=GREEN || UPLOAD_STATUS=RED
+          [[ "$UPLOAD" == GREEN ]] && TF_STATUS=SUCCESS || TF_STATUS=FAILURE
+          [[ "$FAMILIA" == GREEN ]] && GROUP_STATUS=AVAILABLE || GROUP_STATUS=PENDING_OR_FAILED
+          sed -i '' "s/^APP_STORE_VALIDATION=.*/APP_STORE_VALIDATION=$VALIDATION_STATUS/" "$REPORT"
+          sed -i '' "s/^UPLOAD=.*/UPLOAD=$UPLOAD_STATUS/" "$REPORT"
+          sed -i '' "s/^TESTFLIGHT_UPLOAD=.*/TESTFLIGHT_UPLOAD=$TF_STATUS/" "$REPORT"
+          sed -i '' "s/^FAMILIA_GROUP=.*/FAMILIA_GROUP=$GROUP_STATUS/" "$REPORT"
           sed -i '' "s/^VERSION=.*/VERSION=$VERSION/" "$REPORT"
           sed -i '' "s/^BUILD=.*/BUILD=$BUILD_NUMBER/" "$REPORT"
           sed -i '' "s/^TOTAL_DURATION=.*/TOTAL_DURATION=$(( $(date +%s) - RUN_START_EPOCH )) seconds/" "$REPORT"
