@@ -12,18 +12,24 @@ import es.criosrango.shared.model.StoreCategory
 /** Single root-category presentation owner. Data loading and navigation remain host-owned. */
 @Composable
 fun StoreCategoriesScreen(categories: List<StoreCategory>, loading: Boolean, errorMessage: String? = null,
-    onBack: () -> Unit, onCategory: (StoreCategory) -> Unit, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    onBack: () -> Unit, onCategory: (StoreCategory) -> Unit, onRetry: (() -> Unit)? = null, showEmptyRetry: Boolean = true, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize()) {
         StoreCatalogHeader(title = "Categorías", showBack = true, onBack = onBack)
         when {
             errorMessage != null -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(errorMessage); TextButton(onClick = onRetry) { Text("Reintentar") } }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(errorMessage)
+                    onRetry?.let { retry -> TextButton(onClick = retry) { Text("Reintentar") } }
+                }
             }
             categories.none { it.parent == 0 && !it.name.equals("Outlet", true) && !it.slug.equals("outlet", true) } && loading ->
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             categories.none { it.parent == 0 && !it.name.equals("Outlet", true) && !it.slug.equals("outlet", true) } ->
                 Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("No hay categorías."); TextButton(onClick = onRetry) { Text("Reintentar") } }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("No hay categorías.")
+                        if (showEmptyRetry) onRetry?.let { retry -> TextButton(onClick = retry) { Text("Reintentar") } }
+                    }
                 }
             else -> Column(Modifier.fillMaxSize()) {
                 if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())

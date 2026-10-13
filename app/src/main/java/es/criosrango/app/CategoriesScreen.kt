@@ -262,7 +262,8 @@ internal fun OutletAwareCatalogGrid(
     headerTitle: String? = null,
     headerOnBack: (() -> Unit)? = null,
     headerContent: (@Composable ColumnScope.() -> Unit)? = null,
-    compactHeaderSpacing: Boolean = false
+    compactHeaderSpacing: Boolean = false,
+    onRetryInitial: (() -> Unit)? = null
 ) {
 
     // Solo las categorías finales dentro de Outlet.
@@ -278,7 +279,8 @@ internal fun OutletAwareCatalogGrid(
             headerOnBack = headerOnBack,
             headerContent = headerContent,
             sharedFilterDialog = current == null ||
-                !isCategoryDescendantOf(current.id, 445, allCategories.associateBy { it.id })
+                !isCategoryDescendantOf(current.id, 445, allCategories.associateBy { it.id }),
+            onRetryInitial = onRetryInitial
         )
         return
     }
@@ -515,7 +517,8 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             loading,
             onOpen,
             onBack = onCategoriesBack,
-            onRetry = onRootRetry ?: onCategoriesBack
+            onRetry = if (onRootRetry != null) null else onCategoriesBack,
+            showEmptyRetry = onRootRetry == null
         )
     } else if (children.isNotEmpty()) {
         CategoryParentWithFilters(
@@ -542,7 +545,10 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
                 onLoadNextPage = loadNextCategoryPage,
                 pagingKey = currentId,
                 headerTitle = current?.name ?: "Productos",
-                headerOnBack = onCategoriesBack
+                headerOnBack = onCategoriesBack,
+                onRetryInitial = current?.takeIf {
+                    it.id != 445 && !isCategoryDescendantOf(it.id, 445, categories.associateBy { category -> category.id })
+                }?.let { category -> { loadCategory(category.id) } }
             )
         }
     }
@@ -550,13 +556,13 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
 
 @Composable
 internal fun CategoryList(categories: List<ProductCategory>, allCategories: List<ProductCategory>, products: List<StoreProduct>,
-    padding: PaddingValues, loading: Boolean, onOpen: (ProductCategory) -> Unit, onBack: () -> Unit, onRetry: () -> Unit) {
+    padding: PaddingValues, loading: Boolean, onOpen: (ProductCategory) -> Unit, onBack: () -> Unit, onRetry: (() -> Unit)?, showEmptyRetry: Boolean) {
     val visibleCategories = categories.filter { it.parent == 0 && !it.name.equals("Outlet", true) && !it.slug.equals("outlet", true) }.distinctBy { it.id }
     es.criosrango.shared.StoreCategoriesScreen(
         categories = visibleCategories.map { es.criosrango.shared.model.StoreCategory(id=it.id,parent=it.parent,name=it.name,slug=it.slug,count=it.count) },
-        loading = loading, onBack = onBack,
+        loading = loading, errorMessage = null, onBack = onBack,
         onCategory = { selected -> visibleCategories.firstOrNull { it.id == selected.id }?.let(onOpen) },
-        onRetry = onRetry, modifier = Modifier.padding(padding)
+        onRetry = onRetry, showEmptyRetry = showEmptyRetry, modifier = Modifier.padding(padding)
     )
 }
 
@@ -830,35 +836,68 @@ internal fun StoreProduct.filterValues(attribute: String): Set<String> =
 
 internal fun catalogFilterKey(value: String): String = es.criosrango.shared.storeCatalogFilterKey(value)
 
+/** Preserve the pre-migration Outlet filter semantics until the separate Outlet batch. */
+private fun outletCatalogFilterKey(value: String): String {
+    val unaccented = buildString {
+        value.lowercase().trim().forEach { character ->
+            when (character) {
+                'à', 'á', 'â', 'ã', 'ä', 'å', 'ā', 'ă', 'ą' -> append('a')
+                'ç', 'ć', 'ĉ', 'ċ', 'č' -> append('c')
+                'ď' -> append('d')
+                'è', 'é', 'ê', 'ë', 'ē', 'ĕ', 'ė', 'ę', 'ě' -> append('e')
+                'ĝ', 'ğ', 'ġ', 'ģ' -> append('g')
+                'ĥ' -> append('h')
+                'ì', 'í', 'î', 'ï', 'ĩ', 'ī', 'ĭ', 'į' -> append('i')
+                'ĵ' -> append('j')
+                'ķ' -> append('k')
+                'ĺ', 'ļ', 'ľ' -> append('l')
+                'ñ', 'ń', 'ņ', 'ň' -> append('n')
+                'ò', 'ó', 'ô', 'õ', 'ö', 'ō', 'ŏ', 'ő' -> append('o')
+                'ŕ', 'ŗ', 'ř' -> append('r')
+                'ś', 'ŝ', 'ş', 'š' -> append('s')
+                'ţ', 'ť' -> append('t')
+                'ù', 'ú', 'û', 'ü', 'ũ', 'ū', 'ŭ', 'ů', 'ű', 'ų' -> append('u')
+                'ŵ' -> append('w')
+                'ý', 'ÿ', 'ŷ' -> append('y')
+                'ź', 'ż', 'ž' -> append('z')
+                in '\u0300'..'\u036F' -> Unit
+                else -> append(character)
+            }
+        }
+    }
+    return unaccented.replace(Regex("\\s+"), " ")
+}
+
 internal fun StoreProduct.matchesCatalogFilters(
     sizes: Set<String>,
     colors: Set<String>,
-    brands: Set<String>
+    brands: Set<String>,
+    filterKey: (String) -> String = ::catalogFilterKey
 ): Boolean {
     val productSizes =
         filterValues("Tallas")
-            .map(::catalogFilterKey)
+            .map(filterKey)
             .toSet()
 
     val productColors =
         filterValues("Color")
-            .map(::catalogFilterKey)
+            .map(filterKey)
             .toSet()
 
     val productBrands =
         tags.map { it.name }
             .filter { it.isNotBlank() }
-            .map(::catalogFilterKey)
+            .map(filterKey)
             .toSet()
 
     val wantedSizes =
-        sizes.map(::catalogFilterKey).toSet()
+        sizes.map(filterKey).toSet()
 
     val wantedColors =
-        colors.map(::catalogFilterKey).toSet()
+        colors.map(filterKey).toSet()
 
     val wantedBrands =
-        brands.map(::catalogFilterKey).toSet()
+        brands.map(filterKey).toSet()
 
     return (
         (wantedSizes.isEmpty() ||
@@ -885,7 +924,8 @@ internal fun CatalogFilteredProductGrid(
     headerOnBack: (() -> Unit)? = null,
     headerContent: (@Composable ColumnScope.() -> Unit)? = null,
     compactHeaderSpacing: Boolean = false,
-    sharedFilterDialog: Boolean = true
+    sharedFilterDialog: Boolean = true,
+    onRetryInitial: (() -> Unit)? = null
 ) {
     var filtersOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var sortMode by androidx.compose.runtime.saveable.rememberSaveable {
@@ -894,6 +934,8 @@ internal fun CatalogFilteredProductGrid(
     var selectedSizes by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(setOf<String>()) }
     var selectedColors by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(setOf<String>()) }
     var selectedBrands by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(setOf<String>()) }
+
+    val filterKey = if (sharedFilterDialog) ::catalogFilterKey else ::outletCatalogFilterKey
 
     val sizes = products.flatMap { it.filterValues("Tallas") }
         .distinct().sorted()
@@ -906,17 +948,17 @@ internal fun CatalogFilteredProductGrid(
         .distinct().sorted()
 
     val possibleSizes = products
-        .filter { it.matchesCatalogFilters(emptySet(), selectedColors, if (allowBrandFilter) selectedBrands else emptySet()) }
+        .filter { it.matchesCatalogFilters(emptySet(), selectedColors, if (allowBrandFilter) selectedBrands else emptySet(), filterKey) }
         .flatMap { it.filterValues("Tallas") }
         .toSet()
 
     val possibleColors = products
-        .filter { it.matchesCatalogFilters(selectedSizes, emptySet(), if (allowBrandFilter) selectedBrands else emptySet()) }
+        .filter { it.matchesCatalogFilters(selectedSizes, emptySet(), if (allowBrandFilter) selectedBrands else emptySet(), filterKey) }
         .flatMap { it.filterValues("Color") }
         .toSet()
 
     val possibleBrands = products
-        .filter { it.matchesCatalogFilters(selectedSizes, selectedColors, emptySet()) }
+        .filter { it.matchesCatalogFilters(selectedSizes, selectedColors, emptySet(), filterKey) }
         .flatMap { it.tags.map { tag -> tag.name } }
         .toSet()
 
@@ -928,7 +970,8 @@ internal fun CatalogFilteredProductGrid(
         it.matchesCatalogFilters(
             selectedSizes,
             selectedColors,
-            effectiveSelectedBrands
+            effectiveSelectedBrands,
+            filterKey
         )
     }
 
@@ -1013,7 +1056,9 @@ internal fun CatalogFilteredProductGrid(
             isEmpty = filtered.isEmpty() &&
                 !(pagingState?.isInitialLoading == true || categoryStatus.state == CategoryLoadState.LOADING),
             emptyMessage = "No encontramos productos",
-            initialErrorMessage = null,
+            initialErrorMessage = if (onRetryInitial != null) {
+                pagingState?.initialError?.let { error -> error.message?.takeIf { it.isNotBlank() } ?: "No se han podido cargar los productos." }
+            } else null,
             appendErrorMessage = if (pagingState?.appendError != null) "" else null,
             appendRetryLabel = "Reintentar",
             canLoadMore = pagingState?.hasMore == true
@@ -1038,7 +1083,7 @@ internal fun CatalogFilteredProductGrid(
                 selectedColors = emptySet()
                 if (allowBrandFilter) selectedBrands = emptySet()
             },
-            onRetryInitial = {},
+            onRetryInitial = { onRetryInitial?.invoke() },
             onRetryAppend = { onLoadNextPage?.invoke() },
             imageContent = { item, imageModifier ->
                 val product = filtered.firstOrNull { it.id == item.id }
@@ -1204,28 +1249,33 @@ internal fun CategoryParentWithFilters(
     var brands by remember { mutableStateOf(setOf<String>()) }
     var sortMode by remember { mutableStateOf(ProductSortMode.RECENT) }
 
+    val parentCategory = allCategories.firstOrNull { it.id == children.firstOrNull()?.parent }
+    val isOutletParent = parentCategory?.slug.equals("outlet", ignoreCase = true) ||
+        parentCategory?.name.equals("Outlet", ignoreCase = true)
+    val filterKey = if (isOutletParent) ::outletCatalogFilterKey else ::catalogFilterKey
+
     val allSizes = products.flatMap { it.filterValues("Tallas") }.distinct().sorted()
     val allColors = products.flatMap { it.filterValues("Color") }.distinct().sorted()
     val allBrands = products.flatMap { it.tags.map { t -> t.name } }
         .filter { it.isNotBlank() }.distinct().sorted()
 
     val possibleParentSizes = products
-        .filter { it.matchesCatalogFilters(emptySet(), colors, brands) }
+        .filter { it.matchesCatalogFilters(emptySet(), colors, brands, filterKey) }
         .flatMap { it.filterValues("Tallas") }
         .toSet()
 
     val possibleParentColors = products
-        .filter { it.matchesCatalogFilters(sizes, emptySet(), brands) }
+        .filter { it.matchesCatalogFilters(sizes, emptySet(), brands, filterKey) }
         .flatMap { it.filterValues("Color") }
         .toSet()
 
     val possibleParentBrands = products
-        .filter { it.matchesCatalogFilters(sizes, colors, emptySet()) }
+        .filter { it.matchesCatalogFilters(sizes, colors, emptySet(), filterKey) }
         .flatMap { it.tags.map { tag -> tag.name } }
         .toSet()
 
     val filtered = products.filter {
-        it.matchesCatalogFilters(sizes, colors, brands)
+        it.matchesCatalogFilters(sizes, colors, brands, filterKey)
     }
 
     val active = sizes.size + colors.size + brands.size
@@ -1243,10 +1293,6 @@ internal fun CategoryParentWithFilters(
             add(ActiveFilterChip(value) { brands = brands - value })
         }
     }
-
-    val parentCategory = allCategories.firstOrNull { it.id == children.firstOrNull()?.parent }
-    val isOutletParent = parentCategory?.slug.equals("outlet", ignoreCase = true) ||
-        parentCategory?.name.equals("Outlet", ignoreCase = true)
 
     if (parentCategory != null && !isOutletParent) {
         if (active == 0) {
@@ -1350,9 +1396,6 @@ internal fun CategoryParentWithFilters(
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
     
             if (active == 0) {
-                val parentCategory = allCategories.firstOrNull { it.id == children.firstOrNull()?.parent }
-                val isOutletParent = parentCategory?.slug.equals("outlet", ignoreCase = true) ||
-                    parentCategory?.name.equals("Outlet", ignoreCase = true)
                 if (parentCategory == null || isOutletParent) {
                     LazyColumn(
                         contentPadding = PaddingValues(
