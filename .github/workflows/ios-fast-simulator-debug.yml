@@ -399,20 +399,6 @@ jobs:
           echo "screenshot=$([[ "$SCREENSHOT_HOME" == FOUND ]] && echo FOUND || echo OBSERVABILITY_WARNING)" >> "$REPORT"
           exit 0
 
-          APP_PROCESS_AFTER_ROOT="$(app_process_state)"
-          {
-            echo "HOME_READY=$HOME_READY"
-            echo "PRODUCTS_COUNT=$PRODUCTS_COUNT"
-            echo "CATEGORIES_COUNT=$CATEGORIES_COUNT"
-            echo "APP_PROCESS_FINAL=$APP_PROCESS_AFTER_ROOT"
-          } | tee -a "$LOG_FILE"
-          echo "app_launch=GREEN" >> "$REPORT"
-          echo "home_state=$([[ "$HOME_READY" == FOUND ]] && echo OK || echo ERROR)" >> "$REPORT"
-          echo "screenshot=$([[ "$SCREENSHOT_HOME" == FOUND ]] && echo FOUND || echo NOT_FOUND)" >> "$REPORT"
-          # Intentionally exit zero when Home readiness is missing: preserve evidence
-          # and do not let Simulator readiness block the separate TestFlight circuit.
-          exit 0
-
       - name: Final report and total duration
         if: always()
         shell: bash
