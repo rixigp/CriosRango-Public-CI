@@ -1324,6 +1324,26 @@ internal fun CategoryParentWithFilters(
         } else {
             val sortedProducts = sortProducts(filtered, sortMode)
             val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+            val latestCategoryPagingState by rememberUpdatedState(pagingState)
+            val latestFilteredProductsSize by rememberUpdatedState(sortedProducts.size)
+            val latestCategoryLoadNextPage by rememberUpdatedState(onLoadNextPage)
+            val categoryPrefetchDistance = es.criosrango.shared.CatalogPaginator.PREFETCH_DISTANCE
+            LaunchedEffect(gridState, parentCategory.id, sortMode, sizes, colors, brands) {
+                snapshotFlow {
+                    val currentPaging = latestCategoryPagingState
+                    val itemCount = latestFilteredProductsSize
+                    val lastVisibleIndex = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+                    itemCount > 0 &&
+                        !currentPaging.isInitialLoading &&
+                        !currentPaging.isAppending &&
+                        currentPaging.appendError == null &&
+                        currentPaging.hasMore &&
+                        lastVisibleIndex >= itemCount - 1 - categoryPrefetchDistance
+                }.collect { shouldLoad ->
+                    if (shouldLoad) latestCategoryLoadNextPage()
+                }
+            }
+
             val listState = es.criosrango.shared.StoreProductListUiState(
                 title = title,
                 items = sortedProducts.map { it.toStoreProductItemUi() },
