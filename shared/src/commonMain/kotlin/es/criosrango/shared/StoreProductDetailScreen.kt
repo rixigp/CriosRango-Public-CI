@@ -1,24 +1,15 @@
 package es.criosrango.shared
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import org.jetbrains.compose.resources.painterResource
-import es.criosrango.shared.generated.resources.Res
-import es.criosrango.shared.generated.resources.home_logo
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.clip
@@ -81,7 +72,13 @@ fun StoreProductDetailScreen(
         modifier = modifier,
         topBar = {
             Column {
-                if (showStoreTopBar) StoreProductDetailTopBar(cartQuantity, onSearch, onCart)
+                if (showStoreTopBar) {
+                    StoreGlobalTopBar(
+                        cartQuantity = cartQuantity,
+                        onSearch = onSearch,
+                        onCart = onCart
+                    )
+                }
                 StoreCatalogHeader(title = state.title, showBack = true, onBack = onBack)
             }
         },
@@ -271,28 +268,6 @@ fun StoreProductDetailScreen(
     fullscreenPage?.let { initialPage ->
         if (imageCount > 0) StoreProductDetailFullscreenGallery(imageCount, initialPage, fullscreenImageSlot) { fullscreenPage = null }
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun StoreProductDetailTopBar(cartQuantity: Int, onSearch: () -> Unit, onCart: () -> Unit) {
-    TopAppBar(
-        title = {},
-        navigationIcon = {
-            Image(painterResource(Res.drawable.home_logo), "Críos & Rango", Modifier.size(34.dp), contentScale = ContentScale.Fit)
-        },
-        actions = {
-            IconButton(onClick = onSearch) { Icon(Icons.Outlined.Search, contentDescription = "Buscar") }
-            Box(Modifier.width(56.dp).fillMaxHeight()) {
-                BadgedBox(modifier = Modifier.size(48.dp).align(Alignment.CenterStart), badge = {
-                    if (cartQuantity > 0) Badge { Text(cartBadgeText(cartQuantity), maxLines = 1) }
-                }) {
-                    IconButton(onClick = onCart) { Icon(Icons.Outlined.ShoppingBag, contentDescription = "Carrito") }
-                }
-            }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent)
-    )
 }
 
 @Composable
