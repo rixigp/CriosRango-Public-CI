@@ -216,25 +216,40 @@ fun CriosRangoIOSRootScreen(
 
     MaterialTheme {
         androidx.compose.runtime.LaunchedEffect(Unit) { println("KMP_RUNTIME_ROOT_SCREEN_READY") }
-        Scaffold(
-            bottomBar = {
-                IosMainTabBar(
-                    selected = section,
-                    cartCount = cartQuantity,
-                    onSelected = {
-                        section = it
-                        if (it == IosRootSection.CATEGORIES) resetCatalog()
-                        if (it == IosRootSection.OUTLET) { resetCatalog(); openCatalog(IosCatalogPage.Outlet) }
-                    }
-                )
-            }
-        ) { padding ->
-            Column(Modifier.fillMaxSize()) {
+        StoreGlobalShell(
+            selectedTab = when (section) {
+                IosRootSection.HOME -> StoreMainTab.HOME
+                IosRootSection.CATEGORIES -> StoreMainTab.CATEGORIES
+                IosRootSection.OUTLET -> StoreMainTab.OUTLET
+                IosRootSection.CART -> StoreMainTab.CART
+                IosRootSection.ACCOUNT -> StoreMainTab.ACCOUNT
+            },
+            cartQuantity = cartQuantity,
+            onTabSelected = { item ->
+                val destination = when (item) {
+                    StoreMainTab.HOME -> IosRootSection.HOME
+                    StoreMainTab.CATEGORIES -> IosRootSection.CATEGORIES
+                    StoreMainTab.OUTLET -> IosRootSection.OUTLET
+                    StoreMainTab.CART -> IosRootSection.CART
+                    StoreMainTab.ACCOUNT -> IosRootSection.ACCOUNT
+                }
+                section = destination
+                if (destination == IosRootSection.CATEGORIES) resetCatalog()
+                if (destination == IosRootSection.OUTLET) {
+                    resetCatalog()
+                    openCatalog(IosCatalogPage.Outlet)
+                }
+            },
+            topBar = {
                 StoreGlobalTopBar(
                     cartQuantity = cartQuantity,
                     onSearch = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Search) },
                     onCart = { section = IosRootSection.CART }
                 )
+            },
+            bottomNavigationModifier = Modifier.navigationBarsPadding()
+        ) { padding ->
+            Column(Modifier.fillMaxSize()) {
             if (checkoutOpen && postOrderSuccess == null) {
                 IosCheckoutScreen(
                     checkoutStore = checkoutStore,
@@ -349,123 +364,6 @@ fun CriosRangoIOSRootScreen(
             )
         }
     }
-}
-
-@Composable
-private fun IosMainTabBar(
-    selected: IosRootSection,
-    cartCount: Int,
-    onSelected: (IosRootSection) -> Unit
-) {
-    Surface(shadowElevation = 3.dp) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(68.dp).navigationBarsPadding(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            listOf(
-                IosRootSection.HOME to "Inicio",
-                IosRootSection.CATEGORIES to "Categorías",
-                IosRootSection.OUTLET to "Outlet",
-                IosRootSection.CART to "Carrito",
-                IosRootSection.ACCOUNT to "Cuenta"
-            ).forEach { (item, label) ->
-                val active = item == selected
-                val tint = if (active) Color(0xFF183B35) else Color(0xFF777277)
-                Column(
-                    modifier = Modifier.weight(1f).fillMaxSize().clickable { onSelected(item) }
-                        .semantics { role = Role.Tab; contentDescription = label },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    BadgedBox(
-                        badge = { if (item == IosRootSection.CART && cartCount > 0) Badge { Text(cartBadgeText(cartCount), maxLines = 1) } }
-                    ) {
-                        androidx.compose.material3.Icon(
-                            imageVector = iosNavigationIcon(item),
-                            contentDescription = null,
-                            tint = tint,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                        color = tint,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-    }
-}
-
-private fun iosNavigationIcon(section: IosRootSection): ImageVector = when (section) {
-    IosRootSection.HOME -> IosHomeLineIcon
-    IosRootSection.CATEGORIES -> IosCategoriesLineIcon
-    IosRootSection.OUTLET -> IosOutletLineIcon
-    IosRootSection.CART -> IosShoppingBagLineIcon
-    IosRootSection.ACCOUNT -> IosAccountLineIcon
-}
-
-private fun iosBuildNavigationIcon(
-    name: String,
-    content: androidx.compose.ui.graphics.vector.PathBuilder.() -> Unit
-): ImageVector = ImageVector.Builder(
-    name = name,
-    defaultWidth = 24.dp,
-    defaultHeight = 24.dp,
-    viewportWidth = 24f,
-    viewportHeight = 24f
-).apply {
-    path(
-        fill = null,
-        stroke = SolidColor(Color.Black),
-        strokeLineWidth = 1.8f,
-        strokeLineCap = StrokeCap.Round,
-        strokeLineJoin = StrokeJoin.Round,
-        pathBuilder = content
-    )
-}.build()
-
-private val IosSearchLineIcon = iosBuildNavigationIcon("IosSearchLineIcon") {
-    moveTo(10.8f, 3.5f); curveTo(14.8f, 3.5f, 18f, 6.7f, 18f, 10.7f)
-    curveTo(18f, 14.7f, 14.8f, 17.9f, 10.8f, 17.9f)
-    curveTo(6.8f, 17.9f, 3.6f, 14.7f, 3.6f, 10.7f)
-    curveTo(3.6f, 6.7f, 6.8f, 3.5f, 10.8f, 3.5f)
-    close(); moveTo(16f, 16f); lineTo(21f, 21f)
-}
-private val IosShoppingBagLineIcon = iosBuildNavigationIcon("IosShoppingBagLineIcon") {
-    moveTo(5f, 8.5f); lineTo(19f, 8.5f); lineTo(20f, 21f); lineTo(4f, 21f); close()
-    moveTo(8.5f, 8.5f); lineTo(8.5f, 6.5f)
-    curveTo(8.5f, 2.5f, 15.5f, 2.5f, 15.5f, 6.5f)
-    lineTo(15.5f, 8.5f)
-}
-private val IosHomeLineIcon = iosBuildNavigationIcon("IosHomeLineIcon") {
-    moveTo(3f, 10.5f); lineTo(12f, 3f); lineTo(21f, 10.5f)
-    moveTo(5.5f, 9f); lineTo(5.5f, 20.5f); lineTo(18.5f, 20.5f); lineTo(18.5f, 9f)
-    moveTo(9.5f, 20.5f); lineTo(9.5f, 14.5f); lineTo(14.5f, 14.5f); lineTo(14.5f, 20.5f)
-}
-private val IosCategoriesLineIcon = iosBuildNavigationIcon("IosCategoriesLineIcon") {
-    moveTo(4f, 4f); lineTo(10f, 4f); lineTo(10f, 10f); lineTo(4f, 10f); close()
-    moveTo(14f, 4f); lineTo(20f, 4f); lineTo(20f, 10f); lineTo(14f, 10f); close()
-    moveTo(4f, 14f); lineTo(10f, 14f); lineTo(10f, 20f); lineTo(4f, 20f); close()
-    moveTo(14f, 14f); lineTo(20f, 14f); lineTo(20f, 20f); lineTo(14f, 20f); close()
-}
-private val IosOutletLineIcon = iosBuildNavigationIcon("IosOutletLineIcon") {
-    moveTo(3f, 11f); lineTo(11f, 3f); lineTo(21f, 13f); lineTo(13f, 21f); close()
-    moveTo(8.5f, 8.5f); lineTo(8.5f, 8.5f)
-    moveTo(12f, 7f); lineTo(10f, 11f); lineTo(14f, 11f); lineTo(12f, 15f)
-}
-private val IosAccountLineIcon = iosBuildNavigationIcon("IosAccountLineIcon") {
-    moveTo(12f, 12f); curveTo(14.2f, 12f, 16f, 10.2f, 16f, 8f)
-    curveTo(16f, 5.8f, 14.2f, 4f, 12f, 4f)
-    curveTo(9.8f, 4f, 8f, 5.8f, 8f, 8f)
-    curveTo(8f, 10.2f, 9.8f, 12f, 12f, 12f)
-    moveTo(4f, 20f); curveTo(4f, 16.7f, 7.6f, 14.5f, 12f, 14.5f)
-    curveTo(16.4f, 14.5f, 20f, 16.7f, 20f, 20f)
 }
 
 @Composable

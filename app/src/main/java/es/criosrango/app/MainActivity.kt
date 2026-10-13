@@ -31,7 +31,6 @@ import android.os.Build
 import android.net.Uri
 import es.criosrango.shared.PushNotificationContract
 import es.criosrango.shared.PushNotificationType
-import es.criosrango.shared.cartBadgeText
 import es.criosrango.shared.cartUnitCount
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -360,37 +359,45 @@ private fun CriosRangoApp(
                     onSearch = { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH; viewModel.closeProduct() },
                     onAdd = viewModel::addToCart
                 )
-            } else Scaffold(
-                containerColor = MaterialTheme.colorScheme.background,
-                topBar = { es.criosrango.shared.StoreGlobalTopBar(cartQuantity, { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH }, { openUtilityTab(AppTab.CART) }) },
-                bottomBar = {
-                    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
-                        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            listOf(AppTab.HOME, AppTab.CATEGORIES, AppTab.OUTLET, AppTab.CART, AppTab.ACCOUNT).forEach { item ->
-                                val selected = tab == item
-                                val itemColor = if (selected) Color(0xFF28252A) else Color(0xFF777277)
-                                Column(Modifier.weight(1f).fillMaxHeight().clickable {
-                                    selectedBrand = null; showAllBrands = false
-                                    if (item == AppTab.HOME) homeShowAll = false
-                                    if (item == AppTab.CATEGORIES) categoryPath.clear()
-                                    if (item == AppTab.OUTLET) { outletSeasonFilter = null; categoryPath.clear(); categoryPath += 445 }
-                                    if (item == AppTab.CART || item == AppTab.ACCOUNT) openUtilityTab(item) else tab = item
-                                }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                    Box {
-                                        Icon(imageVector = if (selected) when (item) { AppTab.HOME -> Icons.Default.Home; AppTab.CATEGORIES -> Icons.Default.Category; AppTab.OUTLET -> Icons.Default.LocalOffer; AppTab.SEARCH -> Icons.Default.Search; AppTab.CART -> Icons.Default.ShoppingBag; AppTab.ACCOUNT -> Icons.Default.Person } else when (item) { AppTab.HOME -> Icons.Outlined.Home; AppTab.CATEGORIES -> Icons.Outlined.Category; AppTab.OUTLET -> Icons.Outlined.LocalOffer; AppTab.SEARCH -> Icons.Outlined.Search; AppTab.CART -> Icons.Outlined.ShoppingBag; AppTab.ACCOUNT -> Icons.Outlined.Person }, contentDescription = item.label, modifier = Modifier.size(24.dp), tint = if (selected) Color.Black else Color(0xFF777277))
-                                        if (item == AppTab.CART && cartQuantity > 0) {
-                                            Badge(modifier = Modifier.align(Alignment.TopEnd).offset(x = 5.dp, y = (-4).dp)) {
-                                                Text(cartBadgeText(cartQuantity), maxLines = 1)
-                                            }
-                                        }
-                                    }
-                                    Spacer(Modifier.height(2.dp))
-                                    Text(text = item.label, style = MaterialTheme.typography.labelSmall, color = if (selected) Color.Black else Color(0xFF777277), fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
-                                }
-                            }
-                        }
+            } else es.criosrango.shared.StoreGlobalShell(
+                selectedTab = when (tab) {
+                    AppTab.HOME -> es.criosrango.shared.StoreMainTab.HOME
+                    AppTab.CATEGORIES, AppTab.SEARCH -> es.criosrango.shared.StoreMainTab.CATEGORIES
+                    AppTab.OUTLET -> es.criosrango.shared.StoreMainTab.OUTLET
+                    AppTab.CART -> es.criosrango.shared.StoreMainTab.CART
+                    AppTab.ACCOUNT -> es.criosrango.shared.StoreMainTab.ACCOUNT
+                },
+                cartQuantity = cartQuantity,
+                onTabSelected = { item ->
+                    selectedBrand = null
+                    showAllBrands = false
+                    if (item == es.criosrango.shared.StoreMainTab.HOME) homeShowAll = false
+                    if (item == es.criosrango.shared.StoreMainTab.CATEGORIES) categoryPath.clear()
+                    if (item == es.criosrango.shared.StoreMainTab.OUTLET) {
+                        outletSeasonFilter = null
+                        categoryPath.clear()
+                        categoryPath += 445
                     }
-                }
+                    val destination = when (item) {
+                        es.criosrango.shared.StoreMainTab.HOME -> AppTab.HOME
+                        es.criosrango.shared.StoreMainTab.CATEGORIES -> AppTab.CATEGORIES
+                        es.criosrango.shared.StoreMainTab.OUTLET -> AppTab.OUTLET
+                        es.criosrango.shared.StoreMainTab.CART -> AppTab.CART
+                        es.criosrango.shared.StoreMainTab.ACCOUNT -> AppTab.ACCOUNT
+                    }
+                    if (destination == AppTab.CART || destination == AppTab.ACCOUNT) openUtilityTab(destination) else tab = destination
+                },
+                topBar = {
+                    es.criosrango.shared.StoreGlobalTopBar(
+                        cartQuantity,
+                        { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH },
+                        { openUtilityTab(AppTab.CART) }
+                    )
+                },
+                bottomNavigationModifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background)
+                    .navigationBarsPadding()
             ) { padding ->
                 when {
                     error != null && tab != AppTab.ACCOUNT && tab != AppTab.CART && !catalogHasUsableContent(tab, products, homeProducts, activeCategoryProducts) -> StoreErrorState(error!!, padding, viewModel::retryLastOperation)
