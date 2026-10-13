@@ -2,6 +2,7 @@
 
 package es.criosrango.app
 
+import es.criosrango.shared.StoreGlobalTopBar
 import es.criosrango.shared.resolveCouponPresentation
 import es.criosrango.shared.loyalty.LoyaltyWallet
 
@@ -165,7 +166,7 @@ fun RedesignedCheckoutScreen(
     BackHandler(onBack = onBack)
     Scaffold(topBar = {
         Column {
-            StoreTopBar(
+            StoreGlobalTopBar(
                 cartQuantity = cartQuantity,
                 onSearch = onSearch,
                 onCart = onCart
