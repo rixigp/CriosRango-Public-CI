@@ -517,8 +517,8 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             loading,
             onOpen,
             onBack = onCategoriesBack,
-            onRetry = if (onRootRetry != null) null else onCategoriesBack,
-            showEmptyRetry = onRootRetry == null
+            onRetry = onRootRetry ?: onCategoriesBack,
+            showEmptyRetry = true
         )
     } else if (children.isNotEmpty()) {
         CategoryParentWithFilters(
@@ -530,7 +530,10 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             loading = loading,
             onBack = onCategoriesBack,
             onOpen = onOpen,
-            onProduct = onProduct
+            onProduct = onProduct,
+            pagingState = categoryPagingState,
+            onLoadNextPage = loadNextCategoryPage,
+            onRetryInitial = { current?.id?.let(loadCategory) }
         )
     } else {
         Column(Modifier.fillMaxSize().padding(padding)) {
@@ -1241,7 +1244,10 @@ internal fun CategoryParentWithFilters(
     loading: Boolean,
     onBack: () -> Unit,
     onOpen: (ProductCategory) -> Unit,
-    onProduct: (StoreProduct) -> Unit
+    onProduct: (StoreProduct) -> Unit,
+    pagingState: es.criosrango.shared.CatalogPagingState<StoreProduct>,
+    onLoadNextPage: () -> Unit,
+    onRetryInitial: () -> Unit
 ) {
     var open by remember { mutableStateOf(false) }
     var sizes by remember { mutableStateOf(setOf<String>()) }
@@ -1308,7 +1314,8 @@ internal fun CategoryParentWithFilters(
                         slug = category.slug, count = category.count
                     )
                 },
-                loading = loading,
+                // These children come from the loaded category tree; this loading flag belongs to parent products.
+                loading = false,
                 onBack = onBack,
                 onCategory = { selected -> children.firstOrNull { it.id == selected.id }?.let(onOpen) },
                 onFilterClick = { open = true },
@@ -1324,14 +1331,16 @@ internal fun CategoryParentWithFilters(
                 availableSortOptions = es.criosrango.shared.StoreProductSortOption.values().toList(),
                 activeFilterCount = active,
                 activeFilterChips = androidActiveFilterChips(sizes, colors, brands, true),
-                isInitialLoading = sortedProducts.isEmpty() && loading,
-                isLoadingMore = false,
-                isEmpty = sortedProducts.isEmpty() && !loading,
+                isInitialLoading = sortedProducts.isEmpty() && pagingState.isInitialLoading,
+                isLoadingMore = sortedProducts.isNotEmpty() && pagingState.isAppending,
+                isEmpty = sortedProducts.isEmpty() && !pagingState.isInitialLoading,
                 emptyMessage = "No hay productos con estos filtros",
-                initialErrorMessage = null,
-                appendErrorMessage = null,
+                initialErrorMessage = pagingState.initialError?.let { error ->
+                    error.message?.takeIf { it.isNotBlank() } ?: "No se han podido cargar los productos."
+                },
+                appendErrorMessage = if (pagingState.appendError != null) "" else null,
                 appendRetryLabel = "Reintentar",
-                canLoadMore = false
+                canLoadMore = pagingState.hasMore
             )
             es.criosrango.shared.StoreProductListScreen(
                 state = listState,
@@ -1349,8 +1358,8 @@ internal fun CategoryParentWithFilters(
                     }
                 },
                 onClearFilters = { sizes = emptySet(); colors = emptySet(); brands = emptySet() },
-                onRetryInitial = {},
-                onRetryAppend = {},
+                onRetryInitial = onRetryInitial,
+                onRetryAppend = onLoadNextPage,
                 imageContent = { item, imageModifier ->
                     val product = sortedProducts.firstOrNull { it.id == item.id }
                     val image = product?.images?.firstOrNull()
