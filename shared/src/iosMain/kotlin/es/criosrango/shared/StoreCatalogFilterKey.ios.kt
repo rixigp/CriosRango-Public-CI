@@ -5,5 +5,5 @@ import platform.Foundation.NSString
 
 /** Foundation performs canonical Unicode diacritic folding on iOS. */
 actual fun catalogUnicodeFold(value: String): String =
-    NSString.create(string = value)
+    (value as NSString)
         .stringByFoldingWithOptions(NSDiacriticInsensitiveSearch, locale = null)
