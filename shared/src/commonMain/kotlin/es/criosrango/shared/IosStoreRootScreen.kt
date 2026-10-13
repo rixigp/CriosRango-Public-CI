@@ -147,7 +147,7 @@ fun CriosRangoIOSRootScreen(
     var categorySnapshot by remember { mutableStateOf<List<StoreCategory>?>(null) }
     var categorySnapshotLoading by remember { mutableStateOf(true) }
     var categorySnapshotError by remember { mutableStateOf<String?>(null) }
-    var categorySnapshotRetryGeneration by remember { mutableIntStateOf(0) }
+    var categorySnapshotRetryGeneration by remember { mutableStateOf(0) }
     fun openCatalog(page: IosCatalogPage) { if (catalogPage != page) catalogHistory.add(catalogPage); catalogPage = page }
     fun resetCatalog() { catalogHistory.clear(); catalogPage = IosCatalogPage.Root; catalogOriginHome = false }
     fun retryCategorySnapshot() {
