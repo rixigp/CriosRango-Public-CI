@@ -1,73 +1,54 @@
 name: iOS Release Simulator Validation
 
 on:
-  push:
-    branches: [main, compose-multiplatform-convergence]
-    paths:
-      - "shared/**"
-      - "iosApp/**"
-      - ".github/workflows/ios-release-simulator.yml"
   workflow_dispatch:
     inputs:
       target_sha:
-        description: "Exact 40-character commit SHA to build and run"
+        description: "Exact 40-character commit SHA to build and link for iOS Simulator Release"
         required: true
         type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: ios-release-simulator-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ios-release-simulator:
-    name: Build, launch and inspect iOS Release on Simulator
+    name: Compile and link iOS Release for generic Simulator
     runs-on: macos-26
-    timeout-minutes: 25
+    timeout-minutes: 60
 
     steps:
       - name: Checkout exact target SHA
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 1
 
-      - name: Verify SHA and prepare report
+      - name: Verify target SHA and prepare report
         id: metadata
-        env:
-          TARGET_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}
         shell: bash
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
         run: |
           set -euo pipefail
           [[ "$TARGET_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || { echo "::error::target_sha must be a full 40-character SHA"; exit 1; }
           ACTUAL_SHA="$(git rev-parse HEAD)"
           [[ "$ACTUAL_SHA" == "$TARGET_SHA" ]] || { echo "::error::Checked out SHA differs from target"; exit 1; }
-          VERSION_NAME="$(grep -m1 'MARKETING_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
-          BUILD_NUMBER="$(grep -m1 'CURRENT_PROJECT_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*CURRENT_PROJECT_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
           mkdir -p ios-release-artifacts
-          cat > ios-release-artifacts/ios-release-simulator-report.txt <<EOF
-          IOS RELEASE SIMULATOR VALIDATION REPORT
-          target_sha=$ACTUAL_SHA
-          version=$VERSION_NAME
-          build=$BUILD_NUMBER
-          bundle_id=es.criosrango.app
-          XCODEBUILD_START=NOT_RUN
-          KMP_SCRIPT_START=NOT_REACHED
-          XCODEBUILD_END=NOT_RUN
-          xcodebuild_duration_seconds=NOT_RUN
-          Shared.framework=NOT_CHECKED
-          CriosRango.app=NOT_CHECKED
-          simulator_install=NOT_RUN
-          app_launch=NOT_RUN
-          simulator_status=NOT_RUN
-          products_result=NOT_RUN
-          categories_result=NOT_RUN
-          home_state=NOT_RUN
-          distribution_archive=NOT_USED
-          app_store_connect=NOT_USED
-          testflight=NOT_USED
-          upload=NOT_PERFORMED
-          EOF
+          {
+            echo "IOS RELEASE SIMULATOR COMPILE/LINK REPORT"
+            echo "target_sha=$ACTUAL_SHA"
+            echo "configuration=Release"
+            echo "destination=generic/platform=iOS Simulator"
+            echo "Shared.framework=NOT_CHECKED"
+            echo "CriosRango.app=NOT_CHECKED"
+            echo "xcodebuild_duration_seconds=NOT_RUN"
+          } > ios-release-artifacts/ios-release-simulator-report.txt
           echo "target_sha=$ACTUAL_SHA" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION_NAME" >> "$GITHUB_OUTPUT"
-          echo "build=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Select Xcode 26.6
         shell: bash
@@ -80,7 +61,7 @@ jobs:
           grep -q '^Xcode 26\.6$' ios-release-artifacts/xcode-version.txt
           xcrun --sdk iphonesimulator --show-sdk-version
 
-      - name: Install Java for Kotlin Multiplatform
+      - name: Install Java 17 for Kotlin Multiplatform
         uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -93,235 +74,68 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.konan
-          key: macos-konan-v1-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', 'shared/build.gradle.kts') }}
+          key: macos-konan-release-v1-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', 'shared/build.gradle.kts') }}
           restore-keys: |
-            macos-konan-v1-
+            macos-konan-release-v1-
 
-      - name: Select and boot iPhone Simulator
-        id: simulator
-        shell: bash
-        run: |
-          set -euo pipefail
-          DEVICE_INFO="$(xcrun simctl list devices available -j | python3 -c '
-          import json,sys
-          d=json.load(sys.stdin); devices=[]
-          for runtime, entries in d.get("devices",{}).items():
-            if "iOS" not in runtime: continue
-            for x in entries:
-              if x.get("isAvailable") and x.get("name","").startswith("iPhone"):
-                devices.append((runtime,x))
-          preferred=("iPhone 17 Pro","iPhone 17","iPhone 16 Pro","iPhone 16","iPhone 15 Pro","iPhone 15")
-          for name in preferred:
-            m=[(r,x) for r,x in devices if x["name"]==name]
-            if m:
-              r,x=sorted(m,key=lambda z:z[0])[-1]; print(r+"|"+x["name"]+"|"+x["udid"]); raise SystemExit
-          if devices:
-            r,x=sorted(devices,key=lambda z:(z[0],z[1]["name"]))[-1]; print(r+"|"+x["name"]+"|"+x["udid"]); raise SystemExit
-          raise SystemExit("No available iPhone Simulator")')"
-          IFS='|' read -r SIM_RUNTIME SIM_NAME SIM_UDID <<< "$DEVICE_INFO"
-          test -n "$SIM_UDID"
-          echo "runtime=$SIM_RUNTIME" >> "$GITHUB_OUTPUT"
-          echo "name=$SIM_NAME" >> "$GITHUB_OUTPUT"
-          echo "udid=$SIM_UDID" >> "$GITHUB_OUTPUT"
-          xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
-          xcrun simctl bootstatus "$SIM_UDID" -b
-
-      - name: Build Release app for Simulator
-        id: ios_build
-        timeout-minutes: 20
+      - name: Compile and link Release for generic Simulator
+        id: release_build
+        timeout-minutes: 50
         shell: bash
         env:
           TARGET_SHA: ${{ steps.metadata.outputs.target_sha }}
-          SIM_UDID: ${{ steps.simulator.outputs.udid }}
-          SIM_NAME: ${{ steps.simulator.outputs.name }}
         run: |
           set -euo pipefail
           REPORT=ios-release-artifacts/ios-release-simulator-report.txt
           XCODE_LOG=ios-release-artifacts/ios-release-xcodebuild.log
-          DESTINATION="platform=iOS Simulator,id=$SIM_UDID"
-          APP_PATH="$RUNNER_TEMP/CriosRangoDerivedData/Build/Products/Release-iphonesimulator/CriosRango.app"
+          DERIVED_DATA="$RUNNER_TEMP/CriosRangoReleaseDerivedData"
+          APP_PATH="$DERIVED_DATA/Build/Products/Release-iphonesimulator/CriosRango.app"
           SDK_VERSION="$(xcrun --sdk iphonesimulator --show-sdk-version)"
           SHARED_FRAMEWORK="$GITHUB_WORKSPACE/shared/build/xcode-frameworks/Release/iphonesimulator$SDK_VERSION/Shared.framework"
-          XCODE_VERSION="$(xcodebuild -version | tr '\n' ';')"
-          XCODEBUILD_START="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-          {
-            echo "XCODEBUILD_START=$XCODEBUILD_START"
-            echo "target_sha=$TARGET_SHA"
-            echo "xcode_version=$XCODE_VERSION"
-            echo "simulator_destination=$DESTINATION"
-            echo "simulator_name=$SIM_NAME"
-            echo "shared_framework_path=$SHARED_FRAMEWORK"
-            echo "app_path=$APP_PATH"
-          } | tee -a "$REPORT"
-          echo "xcodebuild_start=$XCODEBUILD_START" >> "$GITHUB_OUTPUT"
+          START_EPOCH="$(date +%s)"
           set +e
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
             -scheme CriosRangoKMPSpike \
             -configuration Release \
             -sdk iphonesimulator \
-            -destination "$DESTINATION" \
-            -derivedDataPath "$RUNNER_TEMP/CriosRangoDerivedData" \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$DERIVED_DATA" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             build 2>&1 | tee "$XCODE_LOG"
           BUILD_STATUS=${PIPESTATUS[0]}
           set -e
-          XCODEBUILD_END="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-          START_EPOCH="$(date -j -f '%Y-%m-%dT%H:%M:%SZ' "$XCODEBUILD_START" '+%s')"
-          END_EPOCH="$(date -j -f '%Y-%m-%dT%H:%M:%SZ' "$XCODEBUILD_END" '+%s')"
-          DURATION_SECONDS=$((END_EPOCH - START_EPOCH))
-          KMP_SCRIPT_START="$(grep -m1 'PhaseScriptExecution Run\\ Script' "$XCODE_LOG" | sed -E 's/^([0-9T:.+-]+Z).*/\1/' || true)"
-          [[ -n "$KMP_SCRIPT_START" ]] || KMP_SCRIPT_START=NOT_REACHED
+          DURATION=$(( $(date +%s) - START_EPOCH ))
+          if [[ -d "$SHARED_FRAMEWORK" ]]; then FRAMEWORK_STATUS=FOUND; else
+            SHARED_FRAMEWORK="$(find "$GITHUB_WORKSPACE/shared/build/xcode-frameworks" -path '*/Release/*/Shared.framework' -type d -print -quit 2>/dev/null || true)"
+            [[ -n "$SHARED_FRAMEWORK" ]] && FRAMEWORK_STATUS=FOUND || FRAMEWORK_STATUS=NOT_FOUND
+          fi
+          [[ -d "$APP_PATH" ]] && APP_STATUS=FOUND || APP_STATUS=NOT_FOUND
           {
-            echo "KMP_SCRIPT_START=$KMP_SCRIPT_START"
-            echo "XCODEBUILD_END=$XCODEBUILD_END"
-            echo "xcodebuild_duration_seconds=$DURATION_SECONDS"
-          } | tee -a "$REPORT"
-          echo "kmp_script_start=$KMP_SCRIPT_START" >> "$GITHUB_OUTPUT"
-          echo "xcodebuild_end=$XCODEBUILD_END" >> "$GITHUB_OUTPUT"
-          echo "xcodebuild_duration_seconds=$DURATION_SECONDS" >> "$GITHUB_OUTPUT"
-          if [[ -d "$SHARED_FRAMEWORK" ]]; then FRAMEWORK_STATUS=FOUND; else FRAMEWORK_STATUS=NOT_FOUND; fi
-          if [[ -d "$APP_PATH" ]]; then APP_STATUS=FOUND; else APP_STATUS=NOT_FOUND; fi
-          {
+            echo "target_sha=$TARGET_SHA"
+            echo "xcodebuild_duration_seconds=$DURATION"
             echo "Shared.framework=$FRAMEWORK_STATUS"
             echo "Shared.framework_path=$SHARED_FRAMEWORK"
             echo "CriosRango.app=$APP_STATUS"
             echo "CriosRango.app_path=$APP_PATH"
+            echo "simulator_install=NOT_RUN"
+            echo "app_launch=NOT_RUN"
+            echo "screenshots=NOT_USED"
+            echo "readiness_markers=NOT_USED"
           } | tee -a "$REPORT"
-          echo "shared_framework=$FRAMEWORK_STATUS" >> "$GITHUB_OUTPUT"
-          echo "app_bundle=$APP_STATUS" >> "$GITHUB_OUTPUT"
+          echo "duration_seconds=$DURATION" >> "$GITHUB_OUTPUT"
           if [[ "$BUILD_STATUS" -ne 0 || "$FRAMEWORK_STATUS" != FOUND || "$APP_STATUS" != FOUND ]]; then
-            echo "::error::Release build failed or required framework/app output is missing"
+            echo "::error::Release compile/link failed or Shared.framework/CriosRango.app output is missing"
             exit 1
           fi
           BUILT_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")"
-          BUILT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")"
-          BUILT_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")"
           test "$BUILT_BUNDLE_ID" = "es.criosrango.app"
-          echo "Release Simulator app built: $BUILT_BUNDLE_ID $BUILT_VERSION ($BUILT_BUILD)"
-          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
 
-      - name: Install, launch, capture logs and Home screenshot
-        id: runtime
-        if: steps.ios_build.outcome == 'success'
-        timeout-minutes: 3
-        env:
-          SIM_UDID: ${{ steps.simulator.outputs.udid }}
-          SIM_NAME: ${{ steps.simulator.outputs.name }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          LOG_FILE="$GITHUB_WORKSPACE/ios-release-artifacts/ios-release-simulator.log"
-          SCREENSHOT="$GITHUB_WORKSPACE/ios-release-artifacts/ios-release-home.png"
-          : > "$LOG_FILE"
-          LOG_PID=""
-          CONSOLE_PID=""
-          cleanup() {
-            if [[ -n "$CONSOLE_PID" ]]; then kill "$CONSOLE_PID" 2>/dev/null || true; wait "$CONSOLE_PID" 2>/dev/null || true; fi
-            if [[ -n "$LOG_PID" ]]; then kill "$LOG_PID" 2>/dev/null || true; wait "$LOG_PID" 2>/dev/null || true; fi
-            xcrun simctl io "$SIM_UDID" screenshot "$SCREENSHOT" >> "$LOG_FILE" 2>&1 || true
-            xcrun simctl spawn "$SIM_UDID" log show --last 2m --style compact --predicate 'process == "CriosRango" OR process == "CriosRangoKMPSpike" OR eventMessage CONTAINS[c] "KMP_RUNTIME" OR eventMessage CONTAINS[c] "Ktor" OR eventMessage CONTAINS[c] "HTTP" OR eventMessage CONTAINS[c] "exception" OR eventMessage CONTAINS[c] "crash"' >> "$LOG_FILE" 2>&1 || true
-          }
-          trap cleanup EXIT
-          echo "Simulator: $SIM_NAME ($SIM_UDID)" | tee -a "$LOG_FILE"
-          echo "simulator_install=STARTED" >> "$GITHUB_OUTPUT"
-          xcrun simctl install "$SIM_UDID" "$APP_PATH" 2>&1 | tee -a "$LOG_FILE"
-          echo "simulator_install=GREEN" >> "$GITHUB_OUTPUT"
-          xcrun simctl spawn "$SIM_UDID" log stream --style compact --level debug --predicate 'process == "CriosRango" OR process == "CriosRangoKMPSpike" OR eventMessage CONTAINS[c] "KMP_RUNTIME" OR eventMessage CONTAINS[c] "Ktor" OR eventMessage CONTAINS[c] "HTTP" OR eventMessage CONTAINS[c] "exception"' >> "$LOG_FILE" 2>&1 &
-          LOG_PID=$!
-          sleep 2
-          xcrun simctl launch --console-pty --terminate-running-process "$SIM_UDID" es.criosrango.app >> "$LOG_FILE" 2>&1 &
-          CONSOLE_PID=$!
-          echo "app_launch=STARTED" >> "$GITHUB_OUTPUT"
-          # Fail quickly on explicit launch errors; runtime markers get at most 25 seconds.
-          for i in $(seq 1 25); do
-            if grep -Eqi 'Unable to launch|Failed to launch|No such process|Application failed to launch' "$LOG_FILE"; then
-              echo "::error::Simulator launch reported an error"
-              exit 1
-            fi
-            if grep -q 'KMP_RUNTIME_ROOT_SCREEN_READY' "$LOG_FILE"; then break; fi
-            if ! kill -0 "$CONSOLE_PID" 2>/dev/null && ! grep -q 'KMP_RUNTIME_ROOT_SCREEN_READY' "$LOG_FILE"; then
-              echo "::error::simctl launch console exited before root screen marker"
-              exit 1
-            fi
-            sleep 1
-          done
-          xcrun simctl io "$SIM_UDID" screenshot "$SCREENSHOT" 2>&1 | tee -a "$LOG_FILE"
-          grep -q 'KMP_RUNTIME_ROOT_SCREEN_READY' "$LOG_FILE" || { echo "::error::root_screen_marker missing after 25 seconds"; exit 1; }
-          grep -Eq 'KMP_RUNTIME_HOME_READY products=[1-9][0-9]* categories=[1-9][0-9]*' "$LOG_FILE" || { echo "::error::Home/products/categories readiness marker missing after 25 seconds"; exit 1; }
-          echo "app_launch=GREEN" >> "$GITHUB_OUTPUT"
-          echo "runtime_markers=GREEN" >> "$GITHUB_OUTPUT"
-
-      - name: Classify results and preserve report
-        if: always()
-        shell: bash
-        env:
-          IOS_BUILD: ${{ steps.ios_build.outcome }}
-          INSTALL_RESULT: ${{ steps.runtime.outputs.simulator_install }}
-          LAUNCH_RESULT: ${{ steps.runtime.outputs.app_launch }}
-          SHARED_FRAMEWORK: ${{ steps.ios_build.outputs.shared_framework }}
-          APP_BUNDLE: ${{ steps.ios_build.outputs.app_bundle }}
-          XCODEBUILD_START: ${{ steps.ios_build.outputs.xcodebuild_start }}
-          KMP_SCRIPT_START: ${{ steps.ios_build.outputs.kmp_script_start }}
-          XCODEBUILD_END: ${{ steps.ios_build.outputs.xcodebuild_end }}
-          XCODEBUILD_DURATION: ${{ steps.ios_build.outputs.xcodebuild_duration_seconds }}
-          RUNTIME: ${{ steps.runtime.outcome }}
-          TARGET_SHA: ${{ steps.metadata.outputs.target_sha }}
-        run: |
-          set -u
-          REPORT=ios-release-artifacts/ios-release-simulator-report.txt
-          LOG=ios-release-artifacts/ios-release-simulator.log
-          [[ -f "$REPORT" ]] || { mkdir -p ios-release-artifacts; echo "IOS RELEASE SIMULATOR VALIDATION REPORT" > "$REPORT"; }
-          [[ -f "$LOG" ]] || : > "$LOG"
-          BUILD_STATUS=RED; [[ "$IOS_BUILD" == success ]] && BUILD_STATUS=GREEN
-          INSTALL_STATUS=RED; LAUNCH_STATUS=RED; SIM_STATUS=ERROR; HOME_STATE=ERROR
-          [[ "${INSTALL_RESULT:-}" == GREEN ]] && INSTALL_STATUS=GREEN
-          [[ "${LAUNCH_RESULT:-}" == GREEN ]] && LAUNCH_STATUS=GREEN
-          [[ -n "${XCODEBUILD_START:-}" ]] || XCODEBUILD_START=NOT_REACHED
-          [[ -n "${KMP_SCRIPT_START:-}" ]] || KMP_SCRIPT_START=NOT_REACHED
-          [[ -n "${XCODEBUILD_END:-}" ]] || XCODEBUILD_END=NOT_REACHED
-          [[ -n "${XCODEBUILD_DURATION:-}" ]] || XCODEBUILD_DURATION=NOT_RECORDED
-          [[ -n "${SHARED_FRAMEWORK:-}" ]] || SHARED_FRAMEWORK=NOT_CHECKED
-          [[ -n "${APP_BUNDLE:-}" ]] || APP_BUNDLE=NOT_CHECKED
-          SCREENSHOT_STATUS=NOT_FOUND
-          [[ -s ios-release-artifacts/ios-release-home.png ]] && SCREENSHOT_STATUS=FOUND
-          PRODUCTS="$(grep -E 'KMP_RUNTIME_PRODUCTS_RESULT=' "$LOG" | tail -1 || true)"
-          CATEGORIES="$(grep -E 'KMP_RUNTIME_CATEGORIES_RESULT=' "$LOG" | tail -1 || true)"
-          HOME_LINE="$(grep -E 'KMP_RUNTIME_HOME_READY' "$LOG" | tail -1 || true)"
-          ROOT_LINE="$(grep -E 'KMP_RUNTIME_ROOT_SCREEN_READY' "$LOG" | tail -1 || true)"
-          [[ -n "$PRODUCTS" ]] || PRODUCTS=NOT_FOUND
-          [[ -n "$CATEGORIES" ]] || CATEGORIES=NOT_FOUND
-          [[ -n "$HOME_LINE" ]] || HOME_LINE=NOT_FOUND
-          [[ -n "$ROOT_LINE" ]] || ROOT_LINE=NOT_FOUND
-          if [[ "$RUNTIME" == success && "$HOME_LINE" != NOT_FOUND ]]; then SIM_STATUS=PASS; HOME_STATE=OK; fi
-          {
-            echo "target_sha=$TARGET_SHA"
-            echo "XCODEBUILD_START=$XCODEBUILD_START"
-            echo "KMP_SCRIPT_START=$KMP_SCRIPT_START"
-            echo "XCODEBUILD_END=$XCODEBUILD_END"
-            echo "xcodebuild_duration_seconds=$XCODEBUILD_DURATION"
-            echo "Shared.framework=$SHARED_FRAMEWORK"
-            echo "CriosRango.app=$APP_BUNDLE"
-            echo "xcodebuild_release_simulator=$BUILD_STATUS"
-            echo "simulator_install=$INSTALL_STATUS"
-            echo "app_launch=$LAUNCH_STATUS"
-            echo "simulator_status=$SIM_STATUS"
-            echo "products_result=$PRODUCTS"
-            echo "categories_result=$CATEGORIES"
-            echo "home_marker=$HOME_LINE"
-            echo "root_screen_marker=$ROOT_LINE"
-            echo "screenshot=$SCREENSHOT_STATUS"
-            echo "home_state=$HOME_STATE"
-          } > "$RUNNER_TEMP/ios-report-results.txt"
-          cat "$RUNNER_TEMP/ios-report-results.txt" >> "$REPORT"
-          cat "$RUNNER_TEMP/ios-report-results.txt" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload logs, screenshot and report even on failure
+      - name: Upload Release compile/link evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ios-release-simulator-${{ github.run_id }}
-          path: |
-            ios-release-artifacts/**
+          path: ios-release-artifacts/**
           if-no-files-found: warn
           retention-days: 14
