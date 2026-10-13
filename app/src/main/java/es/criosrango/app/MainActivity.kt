@@ -362,7 +362,7 @@ private fun CriosRangoApp(
                 )
             } else Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
-                topBar = { StoreTopBar(cartQuantity, { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH }, { openUtilityTab(AppTab.CART) }) },
+                topBar = { es.criosrango.shared.StoreGlobalTopBar(cartQuantity, { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH }, { openUtilityTab(AppTab.CART) }) },
                 bottomBar = {
                     Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
                         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -520,38 +520,6 @@ private fun CriosRangoApp(
 }
 
 }
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun StoreTopBar(cartQuantity: Int, onSearch: () -> Unit, onCart: () -> Unit) = TopAppBar(
-    title = {},
-    navigationIcon = {
-        Image(
-            painter = painterResource(R.drawable.home_logo),
-            contentDescription = "Críos & Rango",
-            modifier = Modifier.size(34.dp),
-            contentScale = ContentScale.Fit
-        )
-    },
-    actions = {
-        IconButton(onSearch) { Icon(Icons.Outlined.Search, "Buscar") }
-        Box(
-            modifier = Modifier
-                .width(56.dp)
-                .fillMaxHeight()
-        ) {
-            BadgedBox(
-                modifier = Modifier
-                    .size(48.dp)
-                    .align(Alignment.CenterStart),
-                badge = { if (cartQuantity > 0) { Badge { Text(cartBadgeText(cartQuantity), maxLines = 1) } } }
-            ) {
-                IconButton(onCart) { Icon(Icons.Outlined.ShoppingBag, "Carrito") }
-            }
-        }
-    },
-    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent)
-)
 
 @Composable
 private fun LoadingState(padding: PaddingValues) {

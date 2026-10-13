@@ -209,7 +209,7 @@ fun CriosRangoIOSRootScreen(
             }
         ) { padding ->
             Column(Modifier.fillMaxSize()) {
-                IosStoreTopBar(
+                StoreGlobalTopBar(
                     cartQuantity = cartQuantity,
                     onSearch = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Search) },
                     onCart = { section = IosRootSection.CART }
@@ -324,15 +324,6 @@ fun CriosRangoIOSRootScreen(
             )
         }
     }
-}
-
-@Composable
-private fun IosStoreTopBar(
-    cartQuantity: Int,
-    onSearch: () -> Unit,
-    onCart: () -> Unit
-) {
-    StoreProductDetailTopBar(cartQuantity, onSearch, onCart)
 }
 
 @Composable
