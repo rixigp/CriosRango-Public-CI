@@ -617,7 +617,12 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             loading = if (outletController != null && currentIsOutletPath) outletControllerState.paging.isInitialLoading else loading,
             onBack = onCategoriesBack,
             onCategory = { child -> categories.firstOrNull { it.id == child.id }?.let(onOpen) },
-            onFilterClick = if (current.id == 445) null else { showOutletProductsFromFilters = true },
+            onFilterClick =
+                if (current.id == 445) {
+                    null
+                } else {
+                    { showOutletProductsFromFilters = true }
+                },
             showFilterButton = current.id != 445,
             onRetry = { loadCategoryTree(current.id) },
             modifier = Modifier.fillMaxSize().padding(padding)
