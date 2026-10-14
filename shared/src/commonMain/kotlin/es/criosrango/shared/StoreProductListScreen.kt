@@ -40,8 +40,8 @@ fun StoreProductListScreen(
     onClearFilters: () -> Unit,
     onRetryInitial: () -> Unit,
     onRetryAppend: () -> Unit,
-    headerContent: @Composable ColumnScope.() -> Unit = {},
-    imageContent: @Composable BoxWithConstraintsScope.(StoreProductItemUi, Modifier) -> Unit
+    imageContent: @Composable BoxWithConstraintsScope.(StoreProductItemUi, Modifier) -> Unit,
+    headerContent: @Composable ColumnScope.() -> Unit = {}
 ) {
     Column(modifier) {
         StoreCatalogHeader(
