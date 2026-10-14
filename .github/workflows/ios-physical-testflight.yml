@@ -7,6 +7,9 @@ on:
         description: "Exact 40-character commit SHA to archive, sign and upload"
         required: true
         type: string
+  push:
+    branches:
+      - outlet-full-shared-convergence
 
 permissions:
   contents: read
@@ -29,11 +32,22 @@ jobs:
         id: resolve
         shell: bash
         env:
-          REQUESTED_TARGET_SHA: ${{ inputs.target_sha }}
+          DISPATCH_TARGET_SHA: ${{ inputs.target_sha }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
           WORKFLOW_RUN_SHA: ${{ github.sha }}
           BRANCH_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          if [[ "$WORKFLOW_EVENT" == "workflow_dispatch" ]]; then
+            REQUESTED_TARGET_SHA="$DISPATCH_TARGET_SHA"
+          elif [[ "$WORKFLOW_EVENT" == "push" ]]; then
+            [[ "$BRANCH_NAME" == "outlet-full-shared-convergence" ]] || { echo "::error::Automatic physical build is restricted to the Outlet working branch"; exit 1; }
+            [[ "$HEAD_COMMIT_MESSAGE" == "CI_ONLY_OUTLET_PHASE_B_PHYSICAL_TESTFLIGHT_TARGET_B9D566641BD2420731E25549AC6A329F2ADC5353" ]] || { echo "::error::Push is not the explicitly authorized CI-only physical trigger"; exit 1; }
+            REQUESTED_TARGET_SHA="b9d566641bd2420731e25549ac6a329f2adc5353"
+          else
+            echo "::error::Unsupported event"; exit 1
+          fi
           [[ "$REQUESTED_TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::target_sha must be an exact lowercase 40-character commit SHA"; exit 1; }
           RESOLVED_TARGET_SHA="$REQUESTED_TARGET_SHA"
           echo "REQUESTED_TARGET_SHA=$REQUESTED_TARGET_SHA"
@@ -84,7 +98,12 @@ jobs:
           echo "WORKFLOW_RUN_SHA=$WORKFLOW_RUN_SHA"
           [[ "$REQUESTED_TARGET_SHA" == "$RESOLVED_TARGET_SHA" ]] || { echo "::error::Requested/resolved SHA mismatch"; exit 1; }
           [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" && "$ACTUAL_SHA" == "$RESOLVED_TARGET_SHA" ]] || { echo "::error::Checkout SHA mismatch"; exit 1; }
-          [[ "$BRANCH_NAME" == "main" || "$BRANCH_NAME" == "compose-multiplatform-convergence" ]] || { echo "::error::Only main and the convergence pilot branch are authorized"; exit 1; }
+          if [[ "$WORKFLOW_EVENT" == "workflow_dispatch" ]]; then
+            [[ "$BRANCH_NAME" == "main" || "$BRANCH_NAME" == "compose-multiplatform-convergence" ]] || { echo "::error::Manual dispatch is only authorized on main or the convergence pilot branch"; exit 1; }
+          else
+            [[ "$BRANCH_NAME" == "outlet-full-shared-convergence" && "$HEAD_COMMIT_MESSAGE" == "CI_ONLY_OUTLET_PHASE_B_PHYSICAL_TESTFLIGHT_TARGET_B9D566641BD2420731E25549AC6A329F2ADC5353" ]] || { echo "::error::Push-triggered physical build is restricted to the explicit CI-only Outlet trigger"; exit 1; }
+            [[ "$REQUESTED_TARGET_SHA" == "b9d566641bd2420731e25549ac6a329f2adc5353" ]] || { echo "::error::CI-only Outlet trigger target is frozen"; exit 1; }
+          fi
           VERSION="$(grep -m1 'MARKETING_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
           BASE_BUILD="$(grep -m1 'CURRENT_PROJECT_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*CURRENT_PROJECT_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
           [[ "$VERSION" == "2.0.1" ]] || { echo "::error::Expected marketing version 2.0.1, found $VERSION"; exit 1; }
