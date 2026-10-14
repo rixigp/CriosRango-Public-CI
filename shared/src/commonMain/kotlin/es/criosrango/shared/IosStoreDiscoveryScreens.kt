@@ -593,6 +593,28 @@ internal fun IosOutletScreen(
         StoreProductSortOption.PRICE_DESC -> filteredItems.sortedByDescending { it.prices.price.toLongOrNull() ?: Long.MIN_VALUE }
         StoreProductSortOption.NAME_ASC -> filteredItems.sortedBy { it.name.lowercase() }
     }
+    val activeFilterCount = selectedSizes.size + selectedColors.size + selectedBrands.size
+    LaunchedEffect(
+        pagingState.items.size,
+        pagingState.currentPage,
+        pagingState.hasMore,
+        pagingState.isInitialLoading,
+        pagingState.isAppending,
+        selectedSizes,
+        selectedColors,
+        selectedBrands
+    ) {
+        if (
+            activeFilterCount > 0 &&
+            filteredItems.size < CatalogPaginator.PREFETCH_DISTANCE &&
+            pagingState.hasMore &&
+            !pagingState.isInitialLoading &&
+            !pagingState.isAppending &&
+            pagingState.currentPage > 0
+        ) {
+            paginator.loadNext(loadPage)
+        }
+    }
     val sizes = rawItems.flatMap { values(it, "Tallas") }.distinct().sorted()
     val colors = rawItems.flatMap { values(it, "Color") }.distinct().sorted()
     val brands = rawItems.flatMap { it.tags.map { tag -> tag.name } }.filter { it.isNotBlank() }.distinct().sorted()
