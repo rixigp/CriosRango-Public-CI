@@ -16,6 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.ktor.client.call.body
+import io.ktor.client.request.get
+import io.ktor.http.HttpHeaders
 import es.criosrango.shared.api.StoreApiClient
 import es.criosrango.shared.model.OutletAvailability
 import es.criosrango.shared.model.StoreCategory
@@ -440,6 +443,97 @@ private class IosOutletRetainedCategoryState {
     val scrollPositions = mutableMapOf<String, Pair<Int, Int>>()
 }
 
+private data class OutletImageProbeResult(
+    val productId: Int,
+    val url: String,
+    val status: String,
+    val finalUrl: String,
+    val contentType: String,
+    val byteLength: Int?,
+    val decode: String,
+    val width: Int?,
+    val height: Int?,
+    val error: String?
+)
+
+@Composable
+private fun OutletImageDiagnosticPanel(products: List<StoreProduct>) {
+    var results by remember { mutableStateOf<Map<Int, OutletImageProbeResult>>(emptyMap()) }
+    val targetProducts = products.filter { it.id == 50009 || it.id == 49948 }
+    val targetSignature = targetProducts.joinToString("|") {
+        "${it.id}:${it.images.firstOrNull()?.src.orEmpty()}"
+    }
+
+    LaunchedEffect(targetSignature) {
+        if (targetProducts.isEmpty()) return@LaunchedEffect
+        val client = createStoreHttpClient()
+        try {
+            targetProducts.forEach { product ->
+                val url = product.images.firstOrNull()?.src.orEmpty()
+                if (url.isBlank()) {
+                    results = results + (product.id to OutletImageProbeResult(
+                        product.id, "(empty)", "NOT_REQUESTED", "", "", null,
+                        "NOT_RUN", null, null, "images[0].src is empty"
+                    ))
+                } else {
+                    results = results + (product.id to OutletImageProbeResult(
+                        product.id, url, "REQUESTING", "", "", null,
+                        "NOT_RUN", null, null, null
+                    ))
+                    try {
+                        val response = client.get(url)
+                        val finalUrl = response.call.request.url.toString()
+                        val contentType = response.headers[HttpHeaders.ContentType].orEmpty()
+                        val bytes = response.body<ByteArray>()
+                        try {
+                            val bitmap = decodeStoreImage(bytes)
+                            results = results + (product.id to OutletImageProbeResult(
+                                product.id, url, response.status.value.toString(), finalUrl,
+                                contentType, bytes.size, if (bitmap == null) "NULL" else "OK",
+                                bitmap?.width, bitmap?.height, null
+                            ))
+                        } catch (error: Throwable) {
+                            results = results + (product.id to OutletImageProbeResult(
+                                product.id, url, response.status.value.toString(), finalUrl,
+                                contentType, bytes.size, "EXCEPTION", null, null,
+                                error.message ?: error::class.simpleName ?: "decode exception"
+                            ))
+                        }
+                    } catch (error: Throwable) {
+                        results = results + (product.id to OutletImageProbeResult(
+                            product.id, url, "REQUEST_ERROR", "", "", null,
+                            "NOT_RUN", null, null,
+                            error.message ?: error::class.simpleName ?: "request exception"
+                        ))
+                    }
+                }
+            }
+        } finally {
+            client.close()
+        }
+    }
+
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)
+            .background(Color(0xFFFFF3CD)).padding(8.dp)
+    ) {
+        Text("TEMP iOS IMAGE PROBE", fontWeight = FontWeight.Bold)
+        listOf(50009, 49948).forEach { id ->
+            val product = targetProducts.firstOrNull { it.id == id }
+            val result = results[id]
+            Text("ID=$id · ${product?.name ?: "waiting for live product"}", fontWeight = FontWeight.Bold)
+            Text("URL=${result?.url ?: product?.images?.firstOrNull()?.src ?: "not in current page"}")
+            Text("HTTP_STATUS=${result?.status ?: "WAITING"}")
+            Text("FINAL_URL=${result?.finalUrl?.ifBlank { "(not exposed)" } ?: "WAITING"}")
+            Text("CONTENT_TYPE=${result?.contentType ?: "WAITING"}")
+            Text("BYTE_LENGTH=${result?.byteLength?.toString() ?: "WAITING"}")
+            Text("DECODE=${result?.decode ?: "WAITING"}")
+            Text("SIZE=${if (result?.width != null && result.height != null) "${result.width}x${result.height}" else "n/a"}")
+            result?.error?.let { Text("ERROR=$it") }
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun IosOutletScreen(
@@ -697,6 +791,7 @@ internal fun IosOutletScreen(
         onRetryInitial = { paginator.start(queryKey, loadPage) },
         onRetryAppend = { paginator.loadNext(loadPage) },
         headerContent = {
+            OutletImageDiagnosticPanel(rawItems)
             if (selectedOutletCategory != null) {
                 StoreOutletBubbles(
                     bubbles = visibleBubbles,
