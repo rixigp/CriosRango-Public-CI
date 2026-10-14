@@ -429,6 +429,16 @@ private fun IosDiscoveryFilterChoices(
     }
 }
 
+private class IosOutletRetainedCategoryState {
+    var selectedBubbleKey by mutableStateOf<String?>(null)
+    var filtersOpen by mutableStateOf(false)
+    var selectedSizes by mutableStateOf(emptySet<String>())
+    var selectedColors by mutableStateOf(emptySet<String>())
+    var selectedBrands by mutableStateOf(emptySet<String>())
+    var selectedSort by mutableStateOf(StoreProductSortOption.RECENT)
+    val scrollPositions = mutableMapOf<String, Pair<Int, Int>>()
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun IosOutletScreen(
@@ -459,11 +469,21 @@ internal fun IosOutletScreen(
         return
     }
 
-    // Retain list/paginator instances above the root-versus-products branch.
-    // The map is scoped to this Outlet screen and keyed by the complete query.
+    // Keep Outlet data/state owners above the root-versus-products branch so
+    // leaving a category for the Outlet root does not discard loaded state.
     val outletScope = rememberCoroutineScope()
     val retainedOutletPaginators = remember(outlet.id) {
         mutableMapOf<String, CatalogPaginatorStore<StoreProduct>>()
+    }
+    val retainedOutletCategoryStates = remember(outlet.id) {
+        mutableMapOf<Int, IosOutletRetainedCategoryState>()
+    }
+    var availability by remember(outlet.id) { mutableStateOf<OutletAvailability?>(null) }
+    var availabilityError by remember(outlet.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(outlet.id) {
+        runCatching { storeApi.outletAvailability() }
+            .onSuccess { availability = it }
+            .onFailure { availabilityError = it.message ?: "No se ha podido cargar la disponibilidad." }
     }
 
     val outletChildren = categories.filter { it.parent == outlet.id }.distinctBy { it.id }
@@ -485,19 +505,14 @@ internal fun IosOutletScreen(
     val bubbles = remember(activeCategoryId) {
         selectedOutletCategory?.let { fixedOutletBubbles(it.id) }.orEmpty()
     }
-    var selectedBubbleKey by rememberSaveable(activeCategoryId) { mutableStateOf<String?>(null) }
-    var availability by remember(outlet.id) { mutableStateOf<OutletAvailability?>(null) }
-    var availabilityError by remember(outlet.id) { mutableStateOf<String?>(null) }
-    var filtersOpen by rememberSaveable(activeCategoryId, selectedBubbleKey) { mutableStateOf(false) }
-        var selectedSizes by rememberSaveable(activeCategoryId, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
-    var selectedColors by rememberSaveable(activeCategoryId, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
-    var selectedBrands by rememberSaveable(activeCategoryId, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
-
-    LaunchedEffect(outlet.id) {
-        runCatching { storeApi.outletAvailability() }
-            .onSuccess { availability = it }
-            .onFailure { availabilityError = it.message ?: "No se ha podido cargar la disponibilidad." }
+    val retainedCategoryState = retainedOutletCategoryStates.getOrPut(activeCategoryId) {
+        IosOutletRetainedCategoryState()
     }
+    var selectedBubbleKey by retainedCategoryState::selectedBubbleKey
+    var filtersOpen by retainedCategoryState::filtersOpen
+    var selectedSizes by retainedCategoryState::selectedSizes
+    var selectedColors by retainedCategoryState::selectedColors
+    var selectedBrands by retainedCategoryState::selectedBrands
     val visibleBubbles = if (availability == null) bubbles else bubbles.filter { bubble ->
         bubble.categoryIds.any { availability!!.countFor(activeCategoryId, it) > 0 }
     }
@@ -512,7 +527,15 @@ internal fun IosOutletScreen(
         CatalogPaginatorStore<StoreProduct>(outletScope, identity = { it.id })
     }
     val pagingState by paginator.state.collectAsState()
-    val gridState = rememberLazyGridState()
+    val savedScroll = retainedCategoryState.scrollPositions[queryKey] ?: (0 to 0)
+    val gridState = rememberLazyGridState(
+        initialFirstVisibleItemIndex = savedScroll.first,
+        initialFirstVisibleItemScrollOffset = savedScroll.second
+    )
+    LaunchedEffect(gridState, queryKey) {
+        snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
+            .collect { retainedCategoryState.scrollPositions[queryKey] = it }
+    }
 
     val loadPage: suspend (Int, Int) -> CatalogPage<StoreProduct> = { page, perPage ->
         val loaded = if (selectedBubble == null) {
@@ -527,9 +550,7 @@ internal fun IosOutletScreen(
         CatalogPage(loaded, loaded.size >= perPage)
     }
 
-    var selectedSort by rememberSaveable(activeCategoryId, selectedBubbleKey) {
-        mutableStateOf(StoreProductSortOption.RECENT)
-    }
+    var selectedSort by retainedCategoryState::selectedSort
     LaunchedEffect(queryKey) {
         // Re-entering a previously loaded query must reuse its retained pages.
         val retained = paginator.state.value
