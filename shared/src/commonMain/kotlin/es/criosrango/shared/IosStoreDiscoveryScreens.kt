@@ -554,7 +554,9 @@ internal fun IosOutletScreen(
     LaunchedEffect(queryKey) {
         // Re-entering a previously loaded query must reuse its retained pages.
         val retained = paginator.state.value
-        if (retained.currentPage == 0 && retained.items.isEmpty() && selectedOutletCategory != null || retained.currentPage == 0 && retained.items.isEmpty() && showAllOutletProducts) {
+        if (retained.currentPage == 0 && retained.items.isEmpty() &&
+            (selectedOutletCategory != null || showAllOutletProducts)
+        ) {
             paginator.start(queryKey, loadPage)
         }
     }
