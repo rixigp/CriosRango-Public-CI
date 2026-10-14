@@ -41,7 +41,8 @@ fun StoreProductListScreen(
     onRetryInitial: () -> Unit,
     onRetryAppend: () -> Unit,
     imageContent: @Composable BoxWithConstraintsScope.(StoreProductItemUi, Modifier) -> Unit,
-    headerContent: @Composable ColumnScope.() -> Unit = {}
+    headerContent: @Composable ColumnScope.() -> Unit = {},
+    outletPresentation: Boolean = false
 ) {
     Column(modifier) {
         StoreCatalogHeader(
@@ -102,7 +103,7 @@ fun StoreProductListScreen(
         }
 
         when {
-            state.isInitialLoading -> StoreProductGridSkeleton(Modifier.weight(1f))
+            state.isInitialLoading -> StoreProductGridSkeleton(Modifier.weight(1f), outletPresentation)
             state.initialErrorMessage != null -> Box(
                 Modifier.fillMaxWidth().weight(1f).padding(24.dp),
                 contentAlignment = Alignment.Center
@@ -124,7 +125,8 @@ fun StoreProductListScreen(
                 modifier = Modifier.weight(1f),
                 onProductSelected = onProductSelected,
                 onRetryAppend = onRetryAppend,
-                imageContent = imageContent
+                imageContent = imageContent,
+                outletPresentation = outletPresentation
             )
         }
     }
@@ -162,21 +164,25 @@ fun StoreProductGrid(
     modifier: Modifier = Modifier,
     onProductSelected: (Int) -> Unit,
     onRetryAppend: () -> Unit,
-    imageContent: @Composable BoxWithConstraintsScope.(StoreProductItemUi, Modifier) -> Unit
+    imageContent: @Composable BoxWithConstraintsScope.(StoreProductItemUi, Modifier) -> Unit,
+    outletPresentation: Boolean = false
 ) {
     LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
+        columns = GridCells.Fixed(if (outletPresentation) 3 else 2),
         modifier = modifier,
         state = gridState,
-        contentPadding = PaddingValues(start = 20.dp, top = 4.dp, end = 20.dp, bottom = 20.dp),
+        contentPadding = if (outletPresentation) {
+            PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 28.dp)
+        } else PaddingValues(start = 20.dp, top = 4.dp, end = 20.dp, bottom = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(if (outletPresentation) 12.dp else 14.dp)
     ) {
         items(state.items, key = { it.id }) { item ->
             StoreProductCard(
                 item = item,
                 onClick = { onProductSelected(item.id) },
-                imageContent = imageContent
+                imageContent = imageContent,
+                outletPresentation = outletPresentation
             )
         }
         if (state.isLoadingMore) {
@@ -208,11 +214,15 @@ fun StoreProductGrid(
 fun StoreProductCard(
     item: StoreProductItemUi,
     onClick: () -> Unit,
-    imageContent: @Composable BoxWithConstraintsScope.(StoreProductItemUi, Modifier) -> Unit
+    imageContent: @Composable BoxWithConstraintsScope.(StoreProductItemUi, Modifier) -> Unit,
+    outletPresentation: Boolean = false
 ) {
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(.78f)) {
-            imageContent(item, Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp)))
+        BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(if (outletPresentation) 1f else .78f)) {
+            imageContent(
+                item,
+                Modifier.fillMaxSize().clip(RoundedCornerShape(if (outletPresentation) 0.dp else 14.dp))
+            )
             if (item.isOnSale) {
                 Text(
                     "OFERTA",
@@ -225,13 +235,18 @@ fun StoreProductCard(
                 )
             }
         }
-        Spacer(Modifier.height(8.dp))
-        Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.TopStart) {
+        Spacer(Modifier.height(if (outletPresentation) 6.dp else 8.dp))
+        Box(
+            Modifier.fillMaxWidth().height(48.dp),
+            contentAlignment = if (outletPresentation) Alignment.Center else Alignment.TopStart
+        ) {
             Text(
                 item.nameText,
+                style = if (outletPresentation) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                fontWeight = FontWeight.SemiBold
+                textAlign = if (outletPresentation) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
+                fontWeight = if (outletPresentation) FontWeight.Normal else FontWeight.SemiBold
             )
         }
         if (item.showPrice) {
@@ -252,19 +267,21 @@ fun StoreProductCard(
 }
 
 @Composable
-private fun StoreProductGridSkeleton(modifier: Modifier = Modifier) {
+private fun StoreProductGridSkeleton(modifier: Modifier = Modifier, outletPresentation: Boolean = false) {
     LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
+        columns = GridCells.Fixed(if (outletPresentation) 3 else 2),
         modifier = modifier,
-        contentPadding = PaddingValues(start = 20.dp, top = 4.dp, end = 20.dp, bottom = 20.dp),
+        contentPadding = if (outletPresentation) {
+            PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 28.dp)
+        } else PaddingValues(start = 20.dp, top = 4.dp, end = 20.dp, bottom = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(if (outletPresentation) 12.dp else 14.dp)
     ) {
         items(6) {
             Column(Modifier.fillMaxWidth()) {
                 Box(
-                    Modifier.fillMaxWidth().aspectRatio(.78f)
-                        .clip(RoundedCornerShape(14.dp))
+                    Modifier.fillMaxWidth().aspectRatio(if (outletPresentation) 1f else .78f)
+                        .clip(RoundedCornerShape(if (outletPresentation) 0.dp else 14.dp))
                         .background(Color(0xFFE8E5DF))
                 )
                 Spacer(Modifier.height(8.dp))

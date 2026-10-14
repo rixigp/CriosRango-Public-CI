@@ -429,20 +429,75 @@ private fun IosDiscoveryFilterChoices(
     }
 }
 
+private class IosOutletRetainedCategoryState {
+    val selectedBubbleKey = mutableStateOf<String?>(null)
+    val filtersOpen = mutableStateOf(false)
+    val selectedSizes = mutableStateOf(emptySet<String>())
+    val selectedColors = mutableStateOf(emptySet<String>())
+    val selectedBrands = mutableStateOf(emptySet<String>())
+    val selectedSort = mutableStateOf(StoreProductSortOption.RECENT)
+    val scrollPositions = mutableMapOf<String, Pair<Int, Int>>()
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun IosOutletScreen(
     storeApi: StoreApiClient,
     padding: PaddingValues,
     cartStore: StoreCartStore,
-    categories: List<StoreCategory>,
+    categories: List<StoreCategory>?,
+    categoriesLoading: Boolean,
+    categoriesError: String?,
+    onRetry: () -> Unit,
     onProduct: (StoreProduct) -> Unit,
     onBack: () -> Unit
 ) {
+    val outletRootFallback = StoreCategory(id = 445, parent = 0, name = "Outlet", slug = "outlet", count = 0)
+    if (categories == null) {
+        StoreSubcategoriesScreen(
+            parent = outletRootFallback,
+            categories = emptyList(),
+            loading = categoriesLoading,
+            errorMessage = if (categoriesLoading) null else categoriesError ?: "No se han podido cargar las categorías.",
+            onBack = onBack,
+            onCategory = {},
+            onFilterClick = {},
+            onRetry = onRetry,
+            modifier = Modifier.fillMaxSize().padding(padding)
+        )
+        return
+    }
     val outlet = categories.firstOrNull { it.parent == 0 && it.name.contains("outlet", true) }
     if (outlet == null) {
-        IosStoreEmpty("Outlet no disponible.")
+        StoreSubcategoriesScreen(
+            parent = outletRootFallback,
+            categories = emptyList(),
+            loading = false,
+            errorMessage = "Outlet no disponible.",
+            onBack = onBack,
+            onCategory = {},
+            onFilterClick = {},
+            onRetry = onRetry,
+            modifier = Modifier.fillMaxSize().padding(padding)
+        )
         return
+    }
+
+    // Keep Outlet data/state owners above the root-versus-products branch so
+    // leaving a category for the Outlet root does not discard loaded state.
+    val outletScope = rememberCoroutineScope()
+    val retainedOutletPaginators = remember(outlet.id) {
+        mutableMapOf<String, CatalogPaginatorStore<StoreProduct>>()
+    }
+    val retainedOutletCategoryStates = remember(outlet.id) {
+        mutableMapOf<Int, IosOutletRetainedCategoryState>()
+    }
+    var availability by remember(outlet.id) { mutableStateOf<OutletAvailability?>(null) }
+    var availabilityError by remember(outlet.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(outlet.id) {
+        runCatching { storeApi.outletAvailability() }
+            .onSuccess { availability = it }
+            .onFailure { availabilityError = it.message ?: "No se ha podido cargar la disponibilidad." }
     }
 
     val outletChildren = categories.filter { it.parent == outlet.id }.distinctBy { it.id }
@@ -464,19 +519,14 @@ internal fun IosOutletScreen(
     val bubbles = remember(activeCategoryId) {
         selectedOutletCategory?.let { fixedOutletBubbles(it.id) }.orEmpty()
     }
-    var selectedBubbleKey by rememberSaveable(activeCategoryId) { mutableStateOf<String?>(null) }
-    var availability by remember(outlet.id) { mutableStateOf<OutletAvailability?>(null) }
-    var availabilityError by remember(outlet.id) { mutableStateOf<String?>(null) }
-    var filtersOpen by rememberSaveable(activeCategoryId, selectedBubbleKey) { mutableStateOf(false) }
-        var selectedSizes by rememberSaveable(activeCategoryId, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
-    var selectedColors by rememberSaveable(activeCategoryId, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
-    var selectedBrands by rememberSaveable(activeCategoryId, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
-
-    LaunchedEffect(outlet.id) {
-        runCatching { storeApi.outletAvailability() }
-            .onSuccess { availability = it }
-            .onFailure { availabilityError = it.message ?: "No se ha podido cargar la disponibilidad." }
+    val retainedCategoryState = retainedOutletCategoryStates.getOrPut(activeCategoryId) {
+        IosOutletRetainedCategoryState()
     }
+    var selectedBubbleKey by retainedCategoryState.selectedBubbleKey
+    var filtersOpen by retainedCategoryState.filtersOpen
+    var selectedSizes by retainedCategoryState.selectedSizes
+    var selectedColors by retainedCategoryState.selectedColors
+    var selectedBrands by retainedCategoryState.selectedBrands
     val visibleBubbles = if (availability == null) bubbles else bubbles.filter { bubble ->
         bubble.categoryIds.any { availability!!.countFor(activeCategoryId, it) > 0 }
     }
@@ -487,12 +537,19 @@ internal fun IosOutletScreen(
     }
     val selectedBubble = selectedBubbleKey?.let { key -> visibleBubbles.firstOrNull { it.key == key } }
     val queryKey = "outlet:" + activeCategoryId + ":" + (selectedBubble?.key ?: "all")
-    val scope = rememberCoroutineScope()
-    val paginator = remember(queryKey) {
-        CatalogPaginatorStore<StoreProduct>(scope, identity = { it.id })
+    val paginator = retainedOutletPaginators.getOrPut(queryKey) {
+        CatalogPaginatorStore<StoreProduct>(outletScope, identity = { it.id })
     }
     val pagingState by paginator.state.collectAsState()
-    val gridState = rememberLazyGridState()
+    val savedScroll = retainedCategoryState.scrollPositions[queryKey] ?: (0 to 0)
+    val gridState = rememberLazyGridState(
+        initialFirstVisibleItemIndex = savedScroll.first,
+        initialFirstVisibleItemScrollOffset = savedScroll.second
+    )
+    LaunchedEffect(gridState, queryKey) {
+        snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
+            .collect { retainedCategoryState.scrollPositions[queryKey] = it }
+    }
 
     val loadPage: suspend (Int, Int) -> CatalogPage<StoreProduct> = { page, perPage ->
         val loaded = if (selectedBubble == null) {
@@ -507,10 +564,17 @@ internal fun IosOutletScreen(
         CatalogPage(loaded, loaded.size >= perPage)
     }
 
-    var selectedSort by rememberSaveable(activeCategoryId, selectedBubbleKey) {
-        mutableStateOf(StoreProductSortOption.RECENT)
+    var selectedSort by retainedCategoryState.selectedSort
+    LaunchedEffect(queryKey) {
+        // Re-entering a previously loaded query must reuse its retained pages.
+        val retained = paginator.state.value
+        if (retained.currentPage == 0 && retained.items.isEmpty() &&
+            !retained.isInitialLoading &&
+            (selectedOutletCategory != null || showAllOutletProducts)
+        ) {
+            paginator.start(queryKey, loadPage)
+        }
     }
-    LaunchedEffect(queryKey) { paginator.start(queryKey, loadPage) }
     LaunchedEffect(gridState, pagingState.items.size, pagingState.hasMore, pagingState.isInitialLoading, pagingState.isAppending) {
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
             .collect { lastVisible ->
@@ -526,14 +590,14 @@ internal fun IosOutletScreen(
         product.attributes.filter { it.name.equals(attribute, true) }
             .flatMap { it.terms.map { term -> term.name } }
             .filter { it.isNotBlank() }.toSet()
-    fun matches(product: StoreProduct): Boolean {
-        val sizes = values(product, "Tallas")
-        val colors = values(product, "Color")
-        val brands = product.tags.map { it.name }.filter { it.isNotBlank() }.toSet()
-        return (selectedSizes.isEmpty() || sizes.any { it in selectedSizes }) &&
-            (selectedColors.isEmpty() || colors.any { it in selectedColors }) &&
-            (selectedBrands.isEmpty() || brands.any { it in selectedBrands })
-    }
+    fun matchesValues(values: Set<String>, selected: Set<String>): Boolean =
+        selected.isEmpty() || values.any { value ->
+            selected.any { outletCatalogFilterKey(it) == outletCatalogFilterKey(value) }
+        }
+    fun matches(product: StoreProduct): Boolean =
+        matchesValues(values(product, "Tallas"), selectedSizes) &&
+            matchesValues(values(product, "Color"), selectedColors) &&
+            matchesValues(product.tags.map { it.name }.filter { it.isNotBlank() }.toSet(), selectedBrands)
 
     val rawItems = pagingState.items
     val filteredItems = rawItems.filter(::matches)
@@ -543,20 +607,42 @@ internal fun IosOutletScreen(
         StoreProductSortOption.PRICE_DESC -> filteredItems.sortedByDescending { it.prices.price.toLongOrNull() ?: Long.MIN_VALUE }
         StoreProductSortOption.NAME_ASC -> filteredItems.sortedBy { it.name.lowercase() }
     }
+    val activeFilterCount = selectedSizes.size + selectedColors.size + selectedBrands.size
+    LaunchedEffect(
+        pagingState.items.size,
+        pagingState.currentPage,
+        pagingState.hasMore,
+        pagingState.isInitialLoading,
+        pagingState.isAppending,
+        selectedSizes,
+        selectedColors,
+        selectedBrands
+    ) {
+        if (
+            activeFilterCount > 0 &&
+            filteredItems.size < CatalogPaginator.PREFETCH_DISTANCE &&
+            pagingState.hasMore &&
+            !pagingState.isInitialLoading &&
+            !pagingState.isAppending &&
+            pagingState.currentPage > 0
+        ) {
+            paginator.loadNext(loadPage)
+        }
+    }
     val sizes = rawItems.flatMap { values(it, "Tallas") }.distinct().sorted()
     val colors = rawItems.flatMap { values(it, "Color") }.distinct().sorted()
     val brands = rawItems.flatMap { it.tags.map { tag -> tag.name } }.filter { it.isNotBlank() }.distinct().sorted()
     val possibleSizes = rawItems.filter { product ->
-        (selectedColors.isEmpty() || values(product, "Color").any { it in selectedColors }) &&
-            (selectedBrands.isEmpty() || product.tags.any { it.name in selectedBrands })
+        matchesValues(values(product, "Color"), selectedColors) &&
+            matchesValues(product.tags.map { it.name }.filter { it.isNotBlank() }.toSet(), selectedBrands)
     }.flatMap { values(it, "Tallas") }.toSet()
     val possibleColors = rawItems.filter { product ->
-        (selectedSizes.isEmpty() || values(product, "Tallas").any { it in selectedSizes }) &&
-            (selectedBrands.isEmpty() || product.tags.any { it.name in selectedBrands })
+        matchesValues(values(product, "Tallas"), selectedSizes) &&
+            matchesValues(product.tags.map { it.name }.filter { it.isNotBlank() }.toSet(), selectedBrands)
     }.flatMap { values(it, "Color") }.toSet()
     val possibleBrands = rawItems.filter { product ->
-        (selectedSizes.isEmpty() || values(product, "Tallas").any { it in selectedSizes }) &&
-            (selectedColors.isEmpty() || values(product, "Color").any { it in selectedColors })
+        matchesValues(values(product, "Tallas"), selectedSizes) &&
+            matchesValues(values(product, "Color"), selectedColors)
     }.flatMap { it.tags.map { tag -> tag.name } }.toSet()
     val activeChips = buildList {
         selectedSizes.sorted().forEach { add(StoreActiveFilterChipUi("size:$it", "Talla $it")) }
@@ -621,8 +707,13 @@ internal fun IosOutletScreen(
         },
         imageContent = { item, imageModifier ->
             val product = sortedItems.firstOrNull { it.id == item.id }
-            RemoteStoreImage(product?.images?.firstOrNull()?.src.orEmpty(), item.nameText, imageModifier, androidx.compose.ui.layout.ContentScale.Crop)
-        }
+            val outletImageModifier = imageModifier.padding(1.dp).graphicsLayer {
+                scaleX = 1.16f
+                scaleY = 1.16f
+            }
+            RemoteStoreImage(product?.images?.firstOrNull()?.src.orEmpty(), item.nameText, outletImageModifier, androidx.compose.ui.layout.ContentScale.Fit)
+        },
+        outletPresentation = true
     )
 
     if (filtersOpen) {

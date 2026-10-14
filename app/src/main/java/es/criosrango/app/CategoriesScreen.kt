@@ -81,6 +81,7 @@ import es.criosrango.shared.OutletBubbleDefinition
 import es.criosrango.shared.fixedOutletBubbles
 import es.criosrango.shared.outletBubbleDisplayLabel
 import es.criosrango.shared.StoreOutletBubbles
+import es.criosrango.shared.outletCatalogFilterKey
 
 // OUTLET_CATEGORY_BUBBLES_START
 
@@ -171,7 +172,7 @@ internal fun productBelongsToOutletBubble(
     }
 
 @Composable
-internal fun OutletAwareCatalogGrid(
+internal fun OutletCatalogStateAdapter(
     current: ProductCategory?,
     products: List<StoreProduct>,
     availabilityStore: OutletAvailabilityStore,
@@ -190,6 +191,8 @@ internal fun OutletAwareCatalogGrid(
 
     // Solo las categorías finales dentro de Outlet.
     if (current?.parent != 445) {
+        val isOutletPath = current != null &&
+            isCategoryDescendantOf(current.id, 445, allCategories.associateBy { it.id })
         CatalogFilteredProductGrid(
             products = products,
             modifier = modifier,
@@ -200,8 +203,11 @@ internal fun OutletAwareCatalogGrid(
             headerTitle = headerTitle,
             headerOnBack = headerOnBack,
             headerContent = headerContent,
-            sharedFilterDialog = current == null ||
-                !isCategoryDescendantOf(current.id, 445, allCategories.associateBy { it.id }),
+            // Outlet's final dialog is always the shared owner. The normal
+            // Catalog keeps its existing defaults and presentation.
+            sharedFilterDialog = true,
+            useOutletFilterKey = isOutletPath,
+            useSharedProductListHeaderContent = isOutletPath,
             onRetryInitial = onRetryInitial
         )
         return
@@ -387,8 +393,14 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
         } else {
             rawChildren
         }
+    var showOutletProductsFromFilters by remember(currentId) { mutableStateOf(false) }
+    val currentIsOutletPath = current != null &&
+        isCategoryDescendantOf(current.id, 445, categories.associateBy { it.id })
+
     val onCategoriesBack: () -> Unit = {
-        if (path.size == 1 && onSingleLevelBack != null) {
+        if (showOutletProductsFromFilters) {
+            showOutletProductsFromFilters = false
+        } else if (path.size == 1 && onSingleLevelBack != null) {
             onSingleLevelBack()
         } else if (path.isNotEmpty()) {
             path.removeAt(path.lastIndex)
@@ -419,7 +431,24 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             onRetry = onRootRetry ?: onCategoriesBack,
             showEmptyRetry = true
         )
-    } else if (children.isNotEmpty()) {
+    } else if (children.isNotEmpty() && currentIsOutletPath && !showOutletProductsFromFilters && current != null) {
+        es.criosrango.shared.StoreSubcategoriesScreen(
+            parent = es.criosrango.shared.model.StoreCategory(
+                id = current.id, parent = current.parent, name = current.name, slug = current.slug, count = current.count
+            ),
+            categories = children.map { child ->
+                es.criosrango.shared.model.StoreCategory(
+                    id = child.id, parent = child.parent, name = child.name, slug = child.slug, count = child.count
+                )
+            },
+            loading = loading,
+            onBack = onCategoriesBack,
+            onCategory = { child -> categories.firstOrNull { it.id == child.id }?.let(onOpen) },
+            onFilterClick = { showOutletProductsFromFilters = true },
+            onRetry = { loadCategoryTree(current.id) },
+            modifier = Modifier.fillMaxSize().padding(padding)
+        )
+    } else if (children.isNotEmpty() && !showOutletProductsFromFilters) {
         CategoryParentWithFilters(
             title = current?.let { approvedCategoryName(it) } ?: "Categorías",
             children = children,
@@ -436,7 +465,7 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
         )
     } else {
         Column(Modifier.fillMaxSize().padding(padding)) {
-            OutletAwareCatalogGrid(
+            OutletCatalogStateAdapter(
                 current = current,
                 products = products,
                 allCategories = categories,
@@ -448,7 +477,12 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
                 pagingKey = currentId,
                 headerTitle = current?.name ?: "Productos",
                 headerOnBack = onCategoriesBack,
-                onRetryInitial = current?.takeIf {
+                onRetryInitial = if (currentIsOutletPath && current != null) {
+                    {
+                        if (children.isNotEmpty() && showOutletProductsFromFilters) loadCategoryTree(current.id)
+                        else loadCategory(current.id)
+                    }
+                } else current?.takeIf {
                     it.id != 445 && !isCategoryDescendantOf(it.id, 445, categories.associateBy { category -> category.id })
                 }?.let { category -> { loadCategory(category.id) } }
             )
@@ -738,38 +772,6 @@ internal fun StoreProduct.filterValues(attribute: String): Set<String> =
 
 internal fun catalogFilterKey(value: String): String = es.criosrango.shared.storeCatalogFilterKey(value)
 
-/** Preserve the pre-migration Outlet filter semantics until the separate Outlet batch. */
-private fun outletCatalogFilterKey(value: String): String {
-    val unaccented = buildString {
-        value.lowercase().trim().forEach { character ->
-            when (character) {
-                'à', 'á', 'â', 'ã', 'ä', 'å', 'ā', 'ă', 'ą' -> append('a')
-                'ç', 'ć', 'ĉ', 'ċ', 'č' -> append('c')
-                'ď' -> append('d')
-                'è', 'é', 'ê', 'ë', 'ē', 'ĕ', 'ė', 'ę', 'ě' -> append('e')
-                'ĝ', 'ğ', 'ġ', 'ģ' -> append('g')
-                'ĥ' -> append('h')
-                'ì', 'í', 'î', 'ï', 'ĩ', 'ī', 'ĭ', 'į' -> append('i')
-                'ĵ' -> append('j')
-                'ķ' -> append('k')
-                'ĺ', 'ļ', 'ľ' -> append('l')
-                'ñ', 'ń', 'ņ', 'ň' -> append('n')
-                'ò', 'ó', 'ô', 'õ', 'ö', 'ō', 'ŏ', 'ő' -> append('o')
-                'ŕ', 'ŗ', 'ř' -> append('r')
-                'ś', 'ŝ', 'ş', 'š' -> append('s')
-                'ţ', 'ť' -> append('t')
-                'ù', 'ú', 'û', 'ü', 'ũ', 'ū', 'ŭ', 'ů', 'ű', 'ų' -> append('u')
-                'ŵ' -> append('w')
-                'ý', 'ÿ', 'ŷ' -> append('y')
-                'ź', 'ż', 'ž' -> append('z')
-                in '\u0300'..'\u036F' -> Unit
-                else -> append(character)
-            }
-        }
-    }
-    return unaccented.replace(Regex("\\s+"), " ")
-}
-
 internal fun StoreProduct.matchesCatalogFilters(
     sizes: Set<String>,
     colors: Set<String>,
@@ -990,12 +992,16 @@ internal fun CatalogFilteredProductGrid(
             onRetryInitial = { onRetryInitial?.invoke() },
             onRetryAppend = { onLoadNextPage?.invoke() },
             headerContent = headerContent ?: {},
+            outletPresentation = useOutletFilterKey,
             imageContent = { item, imageModifier ->
                 val product = filtered.firstOrNull { it.id == item.id }
                 val image = product?.images?.firstOrNull()
                 val targetWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) {
                     maxWidth.roundToPx()
                 }
+                val outletImageModifier = if (useOutletFilterKey) {
+                    imageModifier.padding(1.dp).graphicsLayer { scaleX = 1.16f; scaleY = 1.16f }
+                } else imageModifier
                 CatalogImage(
                     product?.let {
                         selectResponsiveImageUrl(
@@ -1006,8 +1012,8 @@ internal fun CatalogFilteredProductGrid(
                         )
                     },
                     item.nameText,
-                    imageModifier,
-                    androidx.compose.ui.layout.ContentScale.Crop,
+                    outletImageModifier,
+                    if (useOutletFilterKey) androidx.compose.ui.layout.ContentScale.Fit else androidx.compose.ui.layout.ContentScale.Crop,
                     onSuccess = {
                         categoryStatus.categoryId?.let { categoryId ->
                             CategoryLoadTelemetry.firstImage(categoryId, item.id)

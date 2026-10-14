@@ -74,9 +74,26 @@ internal fun IosCatalogScreen(
         IosCatalogPage.Search -> IosSearchScreen(storeApi, padding, cartStore, onOpenProduct, onOpenCategory, onBack)
         IosCatalogPage.Brands -> IosBrandsScreen(storeApi, padding, cartStore, onOpenProduct, onBack)
         IosCatalogPage.Outlet -> {
-            var categories by remember { mutableStateOf(emptyList<StoreCategory>()) }
-            LaunchedEffect(Unit) { categories = runCatching { storeApi.categories(100) }.getOrDefault(emptyList()) }
-            IosOutletScreen(storeApi, padding, cartStore, categories, onOpenProduct, onBack)
+            var categories by remember { mutableStateOf<List<StoreCategory>?>(null) }
+            var loading by remember { mutableStateOf(true) }
+            var loadError by remember { mutableStateOf<String?>(null) }
+            var retryToken by remember { mutableStateOf(0) }
+            LaunchedEffect(retryToken) {
+                loading = true
+                loadError = null
+                try {
+                    categories = storeApi.categories(100)
+                } catch (exception: Exception) {
+                    // Keep the last successful snapshot visible during a failed refresh.
+                    if (categories == null) loadError = exception.message ?: "No se han podido cargar las categorías."
+                } finally {
+                    loading = false
+                }
+            }
+            IosOutletScreen(
+                storeApi, padding, cartStore, categories, loading, loadError,
+                onRetry = { retryToken++ }, onProduct = onOpenProduct, onBack = onBack
+            )
         }
     }
 }
