@@ -435,10 +435,24 @@ internal fun IosOutletScreen(
     storeApi: StoreApiClient,
     padding: PaddingValues,
     cartStore: StoreCartStore,
-    categories: List<StoreCategory>,
+    categories: List<StoreCategory>?,
+    categoriesLoading: Boolean,
+    categoriesError: String?,
+    onRetry: () -> Unit,
     onProduct: (StoreProduct) -> Unit,
     onBack: () -> Unit
 ) {
+    if (categories == null) {
+        Column(Modifier.fillMaxSize().padding(padding), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            if (categoriesLoading) {
+                CircularProgressIndicator()
+            } else {
+                Text(categoriesError ?: "No se han podido cargar las categorías.")
+                TextButton(onClick = onRetry) { Text("Reintentar") }
+            }
+        }
+        return
+    }
     val outlet = categories.firstOrNull { it.parent == 0 && it.name.contains("outlet", true) }
     if (outlet == null) {
         IosStoreEmpty("Outlet no disponible.")
