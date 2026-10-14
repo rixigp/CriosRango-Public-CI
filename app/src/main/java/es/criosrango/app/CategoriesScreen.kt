@@ -186,8 +186,37 @@ internal fun OutletCatalogStateAdapter(
     headerOnBack: (() -> Unit)? = null,
     headerContent: (@Composable ColumnScope.() -> Unit)? = null,
     compactHeaderSpacing: Boolean = false,
-    onRetryInitial: (() -> Unit)? = null
+    onRetryInitial: (() -> Unit)? = null,
+    controller: es.criosrango.shared.StoreOutletController? = null,
+    productLookup: ((Int) -> StoreProduct?)? = null
 ) {
+
+    if (controller != null && current != null) {
+        val availability by availabilityStore.snapshot.collectAsStateWithLifecycle()
+        LaunchedEffect(allCategories) {
+            controller.updateCategories(allCategories.map { category ->
+                es.criosrango.shared.model.StoreCategory(
+                    id = category.id, parent = category.parent, name = category.name,
+                    slug = category.slug, count = category.count
+                )
+            })
+        }
+        LaunchedEffect(availability) { controller.updateAvailability(availability) }
+        LaunchedEffect(current.id, allCategories) {
+            if (controller.state.value.activeCategoryId != current.id) controller.selectCategory(current.id)
+        }
+        LaunchedEffect(current.id) { runCatching { availabilityStore.refresh() } }
+        OutletControlledProductGrid(
+            controller = controller,
+            modifier = modifier,
+            title = headerTitle ?: current.name,
+            onBack = headerOnBack ?: {},
+            onProduct = onProduct,
+            showBubbles = current.parent == 445,
+            productLookup = productLookup ?: { id -> null }
+        )
+        return
+    }
 
     // Solo las categorías finales dentro de Outlet.
     if (current?.parent != 445) {
@@ -364,11 +393,159 @@ internal fun OutletCatalogStateAdapter(
     }
 }
 
+@Composable
+private fun OutletControlledProductGrid(
+    controller: es.criosrango.shared.StoreOutletController,
+    modifier: Modifier,
+    title: String,
+    onBack: () -> Unit,
+    onProduct: (StoreProduct) -> Unit,
+    showBubbles: Boolean,
+    productLookup: (Int) -> StoreProduct?
+) {
+    val state by controller.state.collectAsStateWithLifecycle()
+    val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    var filtersOpen by remember { mutableStateOf(false) }
+    val resetKey = listOf(
+        state.activeCategoryId, state.selectedBubbleKey, state.selectedSort,
+        state.selectedSizes, state.selectedColors, state.selectedBrands
+    )
+    var previousResetKey by remember { mutableStateOf(resetKey) }
+    LaunchedEffect(resetKey) {
+        if (previousResetKey != resetKey && state.sortedProducts.isNotEmpty()) gridState.scrollToItem(0)
+        previousResetKey = resetKey
+    }
+    LaunchedEffect(gridState, controller, state.activeCategoryId) {
+        androidx.compose.runtime.snapshotFlow {
+            gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+        }.collect { lastVisible -> controller.onVisibleRangeChanged(lastVisible) }
+    }
+
+    val paging = state.paging
+    val uiState = es.criosrango.shared.StoreProductListUiState(
+        title = title,
+        items = state.sortedProducts.map { (productLookup(it.id) ?: it.toAndroid()).toStoreProductItemUi() },
+        selectedSort = when (state.selectedSort) {
+            es.criosrango.shared.StoreOutletSort.RECENT -> es.criosrango.shared.StoreProductSortOption.RECENT
+            es.criosrango.shared.StoreOutletSort.PRICE_ASC -> es.criosrango.shared.StoreProductSortOption.PRICE_ASC
+            es.criosrango.shared.StoreOutletSort.PRICE_DESC -> es.criosrango.shared.StoreProductSortOption.PRICE_DESC
+            es.criosrango.shared.StoreOutletSort.NAME_ASC -> es.criosrango.shared.StoreProductSortOption.NAME_ASC
+        },
+        availableSortOptions = es.criosrango.shared.StoreProductSortOption.values().toList(),
+        activeFilterCount = state.activeFilterCount,
+        activeFilterChips = androidActiveFilterChips(state.selectedSizes, state.selectedColors, state.selectedBrands, true),
+        isInitialLoading = state.sortedProducts.isEmpty() && paging.isInitialLoading,
+        isLoadingMore = state.sortedProducts.isNotEmpty() && paging.isAppending,
+        isEmpty = state.sortedProducts.isEmpty() && !paging.isInitialLoading && paging.initialError == null,
+        emptyMessage = "No encontramos productos",
+        initialErrorMessage = paging.initialError?.let { it.message?.takeIf(String::isNotBlank) ?: "No se han podido cargar los productos." },
+        appendErrorMessage = if (paging.appendError != null) "" else null,
+        appendRetryLabel = "Reintentar",
+        canLoadMore = paging.hasMore
+    )
+
+    val probingSelectedBubble = showBubbles && state.selectedBubbleKey != null &&
+        state.matchedProducts.isEmpty() && paging.appendError == null &&
+        (paging.isInitialLoading || paging.isAppending || paging.hasMore)
+    if (probingSelectedBubble) {
+        Box(
+            modifier = modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(28.dp))
+        }
+    } else {
+    es.criosrango.shared.StoreProductListScreen(
+        state = uiState,
+        gridState = gridState,
+        modifier = modifier,
+        onBack = onBack,
+        onProductSelected = { id ->
+            val product = productLookup(id) ?: state.sortedProducts.firstOrNull { it.id == id }?.toAndroid()
+            product?.let(onProduct)
+        },
+        onSortSelected = { option ->
+            controller.selectSort(when (option) {
+                es.criosrango.shared.StoreProductSortOption.RECENT -> es.criosrango.shared.StoreOutletSort.RECENT
+                es.criosrango.shared.StoreProductSortOption.PRICE_ASC -> es.criosrango.shared.StoreOutletSort.PRICE_ASC
+                es.criosrango.shared.StoreProductSortOption.PRICE_DESC -> es.criosrango.shared.StoreOutletSort.PRICE_DESC
+                es.criosrango.shared.StoreProductSortOption.NAME_ASC -> es.criosrango.shared.StoreOutletSort.NAME_ASC
+            })
+        },
+        onFilterClick = { filtersOpen = true },
+        onRemoveFilter = { id ->
+            when {
+                id.startsWith("size:") -> controller.selectSizes(state.selectedSizes - id.removePrefix("size:"))
+                id.startsWith("color:") -> controller.selectColors(state.selectedColors - id.removePrefix("color:"))
+                id.startsWith("brand:") -> controller.selectBrands(state.selectedBrands - id.removePrefix("brand:"))
+            }
+        },
+        onClearFilters = controller::clearFilters,
+        onRetryInitial = controller::retryInitial,
+        onRetryAppend = controller::retryAppend,
+        headerContent = {
+            if (showBubbles) {
+                es.criosrango.shared.StoreOutletBubbles(
+                    bubbles = state.visibleBubbles,
+                    selectedKey = state.selectedBubbleKey,
+                    onSelected = controller::selectBubble
+                )
+            }
+        },
+        imageContent = { item, imageModifier ->
+            val product = productLookup(item.id) ?: state.sortedProducts.firstOrNull { it.id == item.id }?.toAndroid()
+            val image = product?.images?.firstOrNull()
+            val targetWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) { maxWidth.roundToPx() }
+            CatalogImage(
+                product?.let {
+                    selectResponsiveImageUrl(
+                        src = image?.src.orEmpty(),
+                        thumbnail = image?.thumbnail.orEmpty(),
+                        srcSet = image?.srcSet.orEmpty(),
+                        targetWidthPx = targetWidthPx
+                    )
+                },
+                item.nameText,
+                imageModifier,
+                androidx.compose.ui.layout.ContentScale.Crop
+            )
+        }
+    )
+    }
+
+    if (filtersOpen) {
+        es.criosrango.shared.StoreCatalogFilterDialog(
+            sizes = state.sizes.sortedWith(compareBy({ productSizeSortKey(it) }, { it })),
+            colors = state.colors,
+            brands = state.brands,
+            selectedSizes = state.selectedSizes,
+            selectedColors = state.selectedColors,
+            selectedBrands = state.selectedBrands,
+            enabledSizes = state.enabledSizes,
+            enabledColors = state.enabledColors,
+            enabledBrands = state.enabledBrands,
+            showBrands = true,
+            onSizesChanged = controller::selectSizes,
+            onColorsChanged = controller::selectColors,
+            onBrandsChanged = controller::selectBrands,
+            onApply = { filtersOpen = false },
+            onClear = controller::clearFilters,
+            onDismiss = { filtersOpen = false }
+        )
+    }
+}
+
 // OUTLET_CATEGORY_BUBBLES_END
 
 @Composable
 internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<StoreProduct>, path: MutableList<Int>, padding: PaddingValues, loading: Boolean, categoryPagingState: es.criosrango.shared.CatalogPagingState<StoreProduct>, loadNextCategoryPage: () -> Unit, loadCategory: (Int) -> Unit, loadCategoryTree: (Int) -> Unit, onProduct: (StoreProduct) -> Unit, availabilityStore: OutletAvailabilityStore, onRootBack: (() -> Unit)? = null, onOpen: (ProductCategory) -> Unit,
-    outletSeasonFilter: HomeOutletSeason? = null, onSingleLevelBack: (() -> Unit)? = null, onRootRetry: (() -> Unit)? = null) {
+    outletSeasonFilter: HomeOutletSeason? = null, onSingleLevelBack: (() -> Unit)? = null, onRootRetry: (() -> Unit)? = null,
+    outletController: es.criosrango.shared.StoreOutletController? = null,
+    outletProductLookup: ((Int) -> StoreProduct?)? = null) {
+    val outletStateFlow = remember(outletController) {
+        outletController?.state ?: kotlinx.coroutines.flow.MutableStateFlow(es.criosrango.shared.StoreOutletState())
+    }
+    val outletControllerState by outletStateFlow.collectAsStateWithLifecycle()
     val currentId = path.lastOrNull()
     val current = categories.firstOrNull { it.id == currentId }
     val rawChildren =
@@ -413,9 +590,17 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
     BackHandler(enabled = true) {
         onCategoriesBack()
     }
-    LaunchedEffect(currentId, children.size) {
+    LaunchedEffect(currentId, children.size, categories) {
         if (currentId != null) {
-            if (children.isEmpty()) loadCategory(currentId)
+            if (currentIsOutletPath && outletController != null) {
+                outletController.updateCategories(categories.map { category ->
+                    es.criosrango.shared.model.StoreCategory(
+                        id = category.id, parent = category.parent, name = category.name,
+                        slug = category.slug, count = category.count
+                    )
+                })
+                outletController.selectCategory(currentId)
+            } else if (children.isEmpty()) loadCategory(currentId)
             else loadCategoryTree(currentId)
         }
     }
@@ -441,7 +626,7 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
                     id = child.id, parent = child.parent, name = child.name, slug = child.slug, count = child.count
                 )
             },
-            loading = loading,
+            loading = if (outletController != null && currentIsOutletPath) outletControllerState.paging.isInitialLoading else loading,
             onBack = onCategoriesBack,
             onCategory = { child -> categories.firstOrNull { it.id == child.id }?.let(onOpen) },
             onFilterClick = { showOutletProductsFromFilters = true },
@@ -477,6 +662,8 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
                 pagingKey = currentId,
                 headerTitle = current?.name ?: "Productos",
                 headerOnBack = onCategoriesBack,
+                controller = if (currentIsOutletPath) outletController else null,
+                productLookup = if (currentIsOutletPath) outletProductLookup else null,
                 onRetryInitial = if (currentIsOutletPath && current != null) {
                     {
                         if (children.isNotEmpty() && showOutletProductsFromFilters) loadCategoryTree(current.id)

@@ -21,6 +21,8 @@ import kotlinx.coroutines.TimeoutCancellationException
 import es.criosrango.shared.CatalogPage
 import es.criosrango.shared.CatalogPaginator
 import es.criosrango.shared.CatalogPagingState
+import es.criosrango.shared.StoreOutletController
+import es.criosrango.shared.StoreOutletDataSource
 
 internal suspend fun clearPendingAfterPaidCartCleanup(clearCart: suspend () -> Boolean, clearPending: () -> Boolean): Boolean {
     if (!clearCart()) return false
@@ -48,6 +50,19 @@ internal val categoryCatalogLoadStatus = MutableStateFlow(CategoryLoadStatus())
 data class CategoryProductsState(val products: List<StoreProduct> = emptyList(), val loading: Boolean = false, val loaded: Boolean = false, val error: StoreUiError? = null, val requestVersion: Int = 0)
 
 class ShopViewModel(private val repository: StoreRepository, val cartStore: CartStore, val deliveryAddressStore: DeliveryAddressStore, private val pendingCardPaymentStore: PendingCardPaymentStore) : ViewModel() {
+    private val outletAndroidProducts = mutableMapOf<Int, StoreProduct>()
+    val outletController = StoreOutletController(viewModelScope, StoreOutletDataSource { query, page, perPage ->
+        val androidItems = repository.productsByCategoryPage(
+            categoryId = query.categoryId,
+            page = page,
+            perPage = perPage
+        )
+        androidItems.forEach { outletAndroidProducts[it.id] = it }
+        val items = androidItems.map(StoreProduct::toSharedOutletProduct)
+        CatalogPage(items = items, hasMore = items.size >= perPage)
+    })
+
+    fun outletProduct(productId: Int): StoreProduct? = outletAndroidProducts[productId]
     private val _checkout = MutableStateFlow<CheckoutResponse?>(null)
     val checkout: StateFlow<CheckoutResponse?> = _checkout.asStateFlow()
     private val _checkoutError = MutableStateFlow<String?>(null)
