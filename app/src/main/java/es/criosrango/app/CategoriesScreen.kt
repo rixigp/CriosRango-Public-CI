@@ -1427,8 +1427,3 @@ internal fun CategoryParentWithFilters(
         }
     }
 }
-) } }
-            )
-        }
-    }
-}
