@@ -580,10 +580,10 @@ internal fun IosOutletScreen(
         activeFilterChips = activeChips,
         isInitialLoading = pagingState.isInitialLoading,
         isLoadingMore = pagingState.isAppending,
-        isEmpty = sortedItems.isEmpty() && !pagingState.isInitialLoading && pagingState.initialError == null && !pagingState.hasMore,
+        isEmpty = sortedItems.isEmpty() && !pagingState.hasMore,
         emptyMessage = if (selectedSizes.isNotEmpty() || selectedColors.isNotEmpty() || selectedBrands.isNotEmpty()) "No hay productos con estos filtros." else "No hay productos.",
-        initialErrorMessage = pagingState.initialError?.message,
-        appendErrorMessage = pagingState.appendError?.message,
+        initialErrorMessage = pagingState.initialError?.message ?: if (pagingState.initialError != null) "No se han podido cargar los productos." else null,
+        appendErrorMessage = pagingState.appendError?.message ?: if (pagingState.appendError != null) "No se han podido cargar más productos." else null,
         appendRetryLabel = "Reintentar",
         canLoadMore = pagingState.hasMore
     )
