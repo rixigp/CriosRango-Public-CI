@@ -54,7 +54,7 @@ class StoreOutletControllerTest {
 
     @Test fun controller_retains_paginators_when_switching_categories() = runTest {
         val calls = mutableListOf<Pair<Int, Int>>()
-        val controller = StoreOutletController(backgroundScope, StoreOutletDataSource { query, page, perPage ->
+        val controller = StoreOutletController(this, StoreOutletDataSource { query, page, perPage ->
             calls += (query.categoryId to page)
             CatalogPage(listOf(StoreProduct(id = query.categoryId * 100 + page)), hasMore = true)
         })
@@ -72,7 +72,7 @@ class StoreOutletControllerTest {
     @Test fun bubble_filter_and_sort_are_local_and_recent_preserves_input_order() = runTest {
         val first = StoreProduct(id = 2, name = "Z", categories = listOf(StoreCategory(id = 430)), attributes = listOf(ProductAttribute(name = "Color", terms = listOf(AttributeTerm(name = "Azúl")))), tags = listOf(ProductTag(name = "Marca")))
         val second = StoreProduct(id = 1, name = "A", categories = listOf(StoreCategory(id = 430)), attributes = listOf(ProductAttribute(name = "Color", terms = listOf(AttributeTerm(name = "azul")))), tags = listOf(ProductTag(name = "Marca")))
-        val controller = StoreOutletController(backgroundScope, StoreOutletDataSource { _, _, _ -> CatalogPage(listOf(first, second), false) })
+        val controller = StoreOutletController(this, StoreOutletDataSource { _, _, _ -> CatalogPage(listOf(first, second), false) })
         controller.updateCategories(listOf(StoreCategory(id = 430, parent = 0)))
         controller.selectCategory(446)
         advanceUntilIdle()
@@ -89,7 +89,7 @@ class StoreOutletControllerTest {
     }
 
     @Test fun empty_filter_does_not_activate_bubble_probe() = runTest {
-        val controller = StoreOutletController(backgroundScope, StoreOutletDataSource { _, _, _ -> CatalogPage(emptyList(), true) })
+        val controller = StoreOutletController(this, StoreOutletDataSource { _, _, _ -> CatalogPage(emptyList(), true) })
         controller.selectCategory(446)
         advanceUntilIdle()
         controller.selectSizes(setOf("impossible"))
@@ -98,7 +98,7 @@ class StoreOutletControllerTest {
 
     @Test fun near_end_prefetch_loads_one_next_page_and_has_more_false_blocks_it() = runTest {
         val calls = mutableListOf<Int>()
-        val controller = StoreOutletController(backgroundScope, StoreOutletDataSource { query, page, _ ->
+        val controller = StoreOutletController(this, StoreOutletDataSource { query, page, _ ->
             calls += page
             val products = if (page == 1) (1..12).map { StoreProduct(id = it, categories = listOf(StoreCategory(id = 430))) }
                 else (13..24).map { StoreProduct(id = it, categories = listOf(StoreCategory(id = 430))) }
@@ -118,7 +118,7 @@ class StoreOutletControllerTest {
     @Test fun duplicate_near_end_notifications_do_not_duplicate_append() = runTest {
         val calls = mutableListOf<Int>()
         val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val controller = StoreOutletController(backgroundScope, StoreOutletDataSource { _, page, _ ->
+        val controller = StoreOutletController(this, StoreOutletDataSource { _, page, _ ->
             calls += page
             if (page == 2) gate.await()
             CatalogPage((page * 100..page * 100 + 11).map { StoreProduct(id = it) }, true)
@@ -135,7 +135,7 @@ class StoreOutletControllerTest {
 
     @Test fun empty_selected_bubble_probes_next_category_page() = runTest {
         val calls = mutableListOf<Int>()
-        val controller = StoreOutletController(backgroundScope, StoreOutletDataSource { _, page, _ ->
+        val controller = StoreOutletController(this, StoreOutletDataSource { _, page, _ ->
             calls += page
             CatalogPage(emptyList(), hasMore = page == 1)
         })
@@ -151,7 +151,7 @@ class StoreOutletControllerTest {
         val invalid = StoreProduct(id = 1, name = "B", prices = es.criosrango.shared.model.ProductPrices(price = "invalid"))
         val expensive = StoreProduct(id = 2, name = "A", prices = es.criosrango.shared.model.ProductPrices(price = "200"))
         val cheap = StoreProduct(id = 3, name = "C", prices = es.criosrango.shared.model.ProductPrices(price = "100"))
-        val controller = StoreOutletController(backgroundScope, StoreOutletDataSource { _, _, _ ->
+        val controller = StoreOutletController(this, StoreOutletDataSource { _, _, _ ->
             CatalogPage(listOf(invalid, expensive, cheap), false)
         })
         controller.selectCategory(446)
@@ -174,7 +174,7 @@ class StoreOutletControllerTest {
                 ProductAttribute(name = "Tallas", terms = listOf(AttributeTerm(name = size)))
             )
         )
-        val controller = StoreOutletController(backgroundScope, StoreOutletDataSource { _, _, _ ->
+        val controller = StoreOutletController(this, StoreOutletDataSource { _, _, _ ->
             CatalogPage(listOf(product(1, "Azul", "S"), product(2, "Rojo", "M"), product(3, "Azul", "M")), false)
         })
         controller.selectCategory(446)
@@ -188,7 +188,7 @@ class StoreOutletControllerTest {
 
     @Test fun obsolete_category_response_never_replaces_active_query_state() = runTest {
         val oldGate = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val controller = StoreOutletController(backgroundScope, StoreOutletDataSource { query, _, _ ->
+        val controller = StoreOutletController(this, StoreOutletDataSource { query, _, _ ->
             if (query.categoryId == 446) oldGate.await()
             CatalogPage(listOf(StoreProduct(id = query.categoryId)), false)
         })

@@ -339,7 +339,7 @@ internal fun StoreProduct.toSharedOutletProduct(): SharedStoreProduct = SharedSt
     shortDescription = shortDescription,
     description = description,
     onSale = onSale,
-    prices = SharedProductPrices(price, regularPrice, salePrice, currencySymbol, currencyMinorUnit),
+    prices = SharedProductPrices(prices.price, prices.regularPrice, prices.salePrice, prices.currencySymbol, prices.currencyMinorUnit),
     images = images.map { SharedProductImage(src = it.src, thumbnail = it.thumbnail, srcSet = it.srcSet, alt = it.alt) },
     categories = categories.map { category ->
         SharedStoreCategory(
