@@ -86,6 +86,8 @@ jobs:
           RESOLVED_TARGET_SHA: ${{ needs.resolve-target.outputs.resolved_sha }}
           EXPECTED_SHA: ${{ needs.resolve-target.outputs.resolved_sha }}
           WORKFLOW_RUN_SHA: ${{ needs.resolve-target.outputs.workflow_run_sha }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
           BRANCH_NAME: ${{ needs.resolve-target.outputs.branch }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
