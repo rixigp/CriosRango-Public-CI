@@ -51,6 +51,7 @@ jobs:
           set -euo pipefail
           BASELINE_SHA=179a3077c862c5d4d03934cd93a8643303493542
           TARGET_SHA="$GITHUB_SHA"
+          git fetch --no-tags --depth=1 origin "$BASELINE_SHA"
           git cat-file -e "$BASELINE_SHA^{commit}"
           python3 - "$BASELINE_SHA" "$TARGET_SHA" <<'PY'
           import pathlib, subprocess, sys
