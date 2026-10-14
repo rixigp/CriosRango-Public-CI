@@ -1202,7 +1202,7 @@ internal fun CategoryParentWithFilters(
         }
     }
 
-    if (parentCategory != null && !isOutletParent) {
+    if (parentCategory != null) {
         if (active == 0) {
             es.criosrango.shared.StoreSubcategoriesScreen(
                 parent = es.criosrango.shared.model.StoreCategory(
@@ -1395,7 +1395,7 @@ internal fun CategoryParentWithFilters(
     }
 
     if (open) {
-        if (parentCategory != null && !isOutletParent) {
+        if (parentCategory != null) {
             es.criosrango.shared.StoreCatalogFilterDialog(
                 sizes = allSizes.sortedWith(compareBy({ productSizeSortKey(it) }, { it })),
                 colors = allColors, brands = allBrands,
@@ -1423,6 +1423,11 @@ internal fun CategoryParentWithFilters(
                 },
                 confirmButton = { TextButton(onClick = { open = false }) { Text("Aplicar") } },
                 dismissButton = { TextButton(onClick = { sizes = emptySet(); colors = emptySet(); brands = emptySet() }) { Text("Limpiar") } }
+            )
+        }
+    }
+}
+) } }
             )
         }
     }
