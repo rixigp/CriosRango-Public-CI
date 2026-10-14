@@ -1,0 +1,245 @@
+name: Outlet Full Shared Phase A Validation
+
+on:
+  push:
+    branches:
+      - outlet-full-shared-convergence
+
+permissions:
+  contents: read
+
+concurrency:
+  group: outlet-full-shared-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-candidate:
+    name: Validate pinned Android candidate
+    runs-on: ubuntu-24.04
+    env:
+      VALIDATION_TARGET_SHA: ae02986985195c8616c36b68011e828591b4e304
+      VALIDATION_WORKFLOW_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout exact application candidate
+        uses: actions/checkout@v7
+        with:
+          ref: ae02986985195c8616c36b68011e828591b4e304
+          persist-credentials: false
+
+      - name: Verify target and checkout SHAs
+        id: sha
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHECKOUT_SHA="$(git rev-parse HEAD)"
+          echo "VALIDATION_WORKFLOW_SHA=$VALIDATION_WORKFLOW_SHA"
+          echo "VALIDATION_TARGET_SHA=$VALIDATION_TARGET_SHA"
+          echo "CHECKOUT_SHA=$CHECKOUT_SHA"
+          echo "validation_target_sha=$VALIDATION_TARGET_SHA" >> "$GITHUB_OUTPUT"
+          echo "checkout_sha=$CHECKOUT_SHA" >> "$GITHUB_OUTPUT"
+          test "$VALIDATION_TARGET_SHA" = "$CHECKOUT_SHA" || {
+            echo "::error::Pinned checkout does not match validation target"
+            exit 1
+          }
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Prepare Google Services configuration
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$GOOGLE_SERVICES_JSON_BASE64"
+          printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
+          test -s app/google-services.json
+
+      - name: Discover and run common/KMP tests
+        id: common-tests
+        shell: bash
+        run: |
+          set -uo pipefail
+          TASKS_FILE="$RUNNER_TEMP/shared-tasks.txt"
+          ./gradlew :shared:tasks --all --console=plain > "$TASKS_FILE" 2>&1
+          TASKS_STATUS=$?
+          cat "$TASKS_FILE"
+          if [ "$TASKS_STATUS" -ne 0 ]; then
+            echo "COMMON_TEST_COMMAND=./gradlew :shared:tasks --all --console=plain"
+            echo "COMMON_TESTS_STATUS=NOT_EXECUTED"
+            echo "COMMON_TESTS_EXECUTED_COUNT=0"
+            echo "COMMON_TESTS_FAILED_COUNT=0"
+            {
+              echo "command=./gradlew :shared:tasks --all --console=plain"
+              echo "status=NOT_EXECUTED"
+              echo "executed=0"
+              echo "failed=0"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Prefer the Android host test task because this runner has no Xcode;
+          # it compiles and executes commonTest sources without attempting iOS tests.
+          if grep -Eq '^[[:space:]]*testDebugUnitTest([[:space:]]+-|[[:space:]]*$)' "$TASKS_FILE"; then
+            TASK=":shared:testDebugUnitTest"
+          elif grep -Eq '^[[:space:]]*testReleaseUnitTest([[:space:]]+-|[[:space:]]*$)' "$TASKS_FILE"; then
+            TASK=":shared:testReleaseUnitTest"
+          else
+            echo "::error::No executable Android host unit-test task found in :shared:tasks --all"
+            echo "COMMON_TEST_COMMAND=./gradlew :shared:tasks --all --console=plain"
+            echo "COMMON_TESTS_STATUS=NOT_EXECUTED"
+            echo "COMMON_TESTS_EXECUTED_COUNT=0"
+            echo "COMMON_TESTS_FAILED_COUNT=0"
+            {
+              echo "command=./gradlew :shared:tasks --all --console=plain"
+              echo "status=NOT_EXECUTED"
+              echo "executed=0"
+              echo "failed=0"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "COMMON_TEST_COMMAND=./gradlew $TASK --warning-mode all --stacktrace"
+          set +e
+          ./gradlew "$TASK" --warning-mode all --stacktrace 2>&1 | tee "$RUNNER_TEMP/common-tests.log"
+          TEST_STATUS=${PIPESTATUS[0]}
+          set -e
+
+          REPORT_ROOT="shared/build/test-results"
+          if [ -d "$REPORT_ROOT" ]; then
+            python3 - "$REPORT_ROOT" <<'PY' > "$RUNNER_TEMP/common-test-counts.txt"
+          import pathlib, sys, xml.etree.ElementTree as ET
+          root = pathlib.Path(sys.argv[1])
+          executed = failed = 0
+          for path in root.rglob("*.xml"):
+              try:
+                  doc = ET.parse(path).getroot()
+              except (ET.ParseError, OSError):
+                  continue
+              for case in doc.iter("testcase"):
+                  classname = case.attrib.get("classname", "")
+                  name = case.attrib.get("name", "")
+                  if "StoreOutletControllerTest" not in classname and "StoreOutletControllerTest" not in name:
+                      continue
+                  executed += 1
+                  failed += sum(1 for child in case if child.tag in ("failure", "error"))
+          print(executed)
+          print(failed)
+          PY
+            EXECUTED="$(sed -n '1p' "$RUNNER_TEMP/common-test-counts.txt")"
+            FAILED="$(sed -n '2p' "$RUNNER_TEMP/common-test-counts.txt")"
+          else
+            EXECUTED=0
+            FAILED=0
+          fi
+
+          if [ "$TEST_STATUS" -eq 0 ] && [ "$EXECUTED" -gt 0 ] && [ "$FAILED" -eq 0 ]; then
+            STATUS=PASS
+          elif [ "$TEST_STATUS" -ne 0 ] && [ "$EXECUTED" -gt 0 ]; then
+            STATUS=FAIL
+          elif [ "$TEST_STATUS" -eq 0 ] && [ "$EXECUTED" -eq 0 ]; then
+            STATUS=NOT_EXECUTED
+          else
+            STATUS=FAIL
+          fi
+
+          echo "COMMON_TEST_COMMAND=./gradlew $TASK --warning-mode all --stacktrace"
+          echo "COMMON_TESTS_STATUS=$STATUS"
+          echo "COMMON_TESTS_EXECUTED_COUNT=$EXECUTED"
+          echo "COMMON_TESTS_FAILED_COUNT=$FAILED"
+          {
+            echo "command=./gradlew $TASK --warning-mode all --stacktrace"
+            echo "status=$STATUS"
+            echo "executed=$EXECUTED"
+            echo "failed=$FAILED"
+            echo "task=$TASK"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Compile Android debug application
+        id: android-compile
+        shell: bash
+        run: |
+          set -uo pipefail
+          echo "ANDROID_COMPILE_COMMAND=./gradlew :app:assembleDebug --warning-mode all --stacktrace"
+          set +e
+          ./gradlew :app:assembleDebug --warning-mode all --stacktrace 2>&1 | tee "$RUNNER_TEMP/android-compile.log"
+          BUILD_STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$BUILD_STATUS" -eq 0 ]; then
+            STATUS=PASS
+            ERROR=""
+            FILE=""
+            LINE=""
+            COLUMN=""
+          else
+            STATUS=FAIL
+            MATCH="$(grep -m1 -E '(^e: file://|\.kt:[0-9]+:[0-9]+: error:|\.java:[0-9]+: error:|Execution failed for task|Could not resolve all files)' "$RUNNER_TEMP/android-compile.log" || true)"
+            ERROR="${MATCH:-Gradle command failed; inspect the complete step log for the first actionable cause}"
+            FILE=""
+            LINE=""
+            COLUMN=""
+            if [[ "$MATCH" =~ file://([^:]+):[[:space:]]*\(([0-9]+),[[:space:]]*([0-9]+)\) ]]; then
+              FILE="${BASH_REMATCH[1]}"
+              LINE="${BASH_REMATCH[2]}"
+              COLUMN="${BASH_REMATCH[3]}"
+            elif [[ "$MATCH" =~ ([^[:space:]]+\.(kt|java))[:space:]:?([0-9]+):([0-9]+) ]]; then
+              FILE="${BASH_REMATCH[1]}"
+              LINE="${BASH_REMATCH[3]}"
+              COLUMN="${BASH_REMATCH[4]}"
+            fi
+          fi
+          echo "ANDROID_COMPILE_STATUS=$STATUS"
+          echo "FIRST_REAL_ERROR=$ERROR"
+          echo "FILE=$FILE"
+          echo "LINE=$LINE"
+          echo "COLUMN=$COLUMN"
+          {
+            echo "status=$STATUS"
+            echo "error=$ERROR"
+            echo "file=$FILE"
+            echo "line=$LINE"
+            echo "column=$COLUMN"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Emit validation summary and enforce gate
+        if: always()
+        shell: bash
+        env:
+          CHECKOUT_SHA: ${{ steps.sha.outputs.checkout_sha }}
+          COMMON_STATUS: ${{ steps.common-tests.outputs.status }}
+          COMMON_COMMAND: ${{ steps.common-tests.outputs.command }}
+          COMMON_EXECUTED: ${{ steps.common-tests.outputs.executed }}
+          COMMON_FAILED: ${{ steps.common-tests.outputs.failed }}
+          ANDROID_STATUS: ${{ steps.android-compile.outputs.status }}
+          FIRST_ERROR: ${{ steps.android-compile.outputs.error }}
+          ERROR_FILE: ${{ steps.android-compile.outputs.file }}
+          ERROR_LINE: ${{ steps.android-compile.outputs.line }}
+          ERROR_COLUMN: ${{ steps.android-compile.outputs.column }}
+        run: |
+          {
+            echo "### Outlet Full Shared Phase A validation"
+            echo
+            echo "- VALIDATION_WORKFLOW_SHA=$VALIDATION_WORKFLOW_SHA"
+            echo "- VALIDATION_TARGET_SHA=$VALIDATION_TARGET_SHA"
+            echo "- CHECKOUT_SHA=${CHECKOUT_SHA:-NOT_VERIFIED}"
+            echo "- COMMON_TEST_COMMAND=${COMMON_COMMAND:-NOT_EXECUTED}"
+            echo "- COMMON_TESTS_STATUS=${COMMON_STATUS:-NOT_EXECUTED}"
+            echo "- COMMON_TESTS_EXECUTED_COUNT=${COMMON_EXECUTED:-0}"
+            echo "- COMMON_TESTS_FAILED_COUNT=${COMMON_FAILED:-0}"
+            echo "- ANDROID_COMPILE_STATUS=${ANDROID_STATUS:-NOT_EXECUTED}"
+            echo "- FIRST_REAL_ERROR=${FIRST_ERROR:-NONE}"
+            echo "- FILE=${ERROR_FILE:-}"
+            echo "- LINE=${ERROR_LINE:-}"
+            echo "- COLUMN=${ERROR_COLUMN:-}"
+            echo "- IOS_WORKFLOW_LAUNCHED=NO"
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$CHECKOUT_SHA" = "$VALIDATION_TARGET_SHA"
+          test "$COMMON_STATUS" = "PASS"
+          test "$ANDROID_STATUS" = "PASS"
+
+      - name: Cleanup temporary Google Services configuration
+        if: always()
+        run: rm -f app/google-services.json
