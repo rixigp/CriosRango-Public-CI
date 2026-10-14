@@ -52,6 +52,7 @@ internal fun IosCatalogScreen(
     padding: PaddingValues,
     page: IosCatalogPage,
     cartStore: StoreCartStore,
+    outletController: StoreOutletController,
     onOpenCategory: (StoreCategory) -> Unit,
     onOpenProduct: (StoreProduct) -> Unit,
     onBack: () -> Unit,
@@ -91,8 +92,16 @@ internal fun IosCatalogScreen(
                 }
             }
             IosOutletScreen(
-                storeApi, padding, cartStore, categories, loading, loadError,
-                onRetry = { retryToken++ }, onProduct = onOpenProduct, onBack = onBack
+                storeApi = storeApi,
+                padding = padding,
+                cartStore = cartStore,
+                controller = outletController,
+                categories = categories,
+                categoriesLoading = loading,
+                categoriesError = loadError,
+                onRetry = { retryToken++ },
+                onProduct = onOpenProduct,
+                onBack = onBack
             )
         }
     }

@@ -144,6 +144,10 @@ fun CriosRangoIOSRootScreen(
     var catalogOriginHome by remember { mutableStateOf(false) }
     val catalogHistory = remember { mutableStateListOf<IosCatalogPage>() }
     val catalogRestoration = remember { mutableStateMapOf<Long, IosCatalogRestorationState>() }
+    val outletControllerScope = rememberCoroutineScope()
+    val outletController = remember(storeApi) {
+        StoreOutletController(outletControllerScope, storeOutletDataSource(storeApi))
+    }
     var categorySnapshot by remember { mutableStateOf<List<StoreCategory>?>(null) }
     var categorySnapshotLoading by remember { mutableStateOf(true) }
     var categorySnapshotError by remember { mutableStateOf<String?>(null) }
@@ -288,6 +292,7 @@ fun CriosRangoIOSRootScreen(
                     padding = padding,
                     page = catalogPage,
                     cartStore = cartStore,
+                    outletController = outletController,
                     onOpenCategory = { openCatalog(IosCatalogPage.Category(it)) },
                     onOpenProduct = { openCatalog(IosCatalogPage.Product(it)) },
                     onBack = {

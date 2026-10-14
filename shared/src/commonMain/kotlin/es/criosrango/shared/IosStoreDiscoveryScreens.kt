@@ -1,6 +1,5 @@
 package es.criosrango.shared
 
-
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.lazy.*
@@ -12,7 +11,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -436,6 +434,7 @@ internal fun IosOutletScreen(
     storeApi: StoreApiClient,
     padding: PaddingValues,
     cartStore: StoreCartStore,
+    controller: StoreOutletController,
     categories: List<StoreCategory>?,
     categoriesLoading: Boolean,
     categoriesError: String?,
@@ -475,10 +474,6 @@ internal fun IosOutletScreen(
     }
 
     val outletChildren = categories.filter { it.parent == outlet.id }.distinctBy { it.id }
-    val outletScope = rememberCoroutineScope()
-    val controller = remember(outlet.id, storeApi) {
-        StoreOutletController(outletScope, storeOutletDataSource(storeApi))
-    }
     val controllerState by controller.state.collectAsState()
     var showOutletChooser by remember(outlet.id) { mutableStateOf(true) }
     var filtersOpen by remember(outlet.id) { mutableStateOf(false) }
@@ -517,6 +512,7 @@ internal fun IosOutletScreen(
 
     val activeCategoryId = controllerState.activeCategoryId ?: outlet.id
     val activeCategory = categories.firstOrNull { it.id == activeCategoryId } ?: outlet
+    val selectedBubble = controllerState.visibleBubbles.firstOrNull { it.key == controllerState.selectedBubbleKey }
     val showBubbles = activeCategoryId != outlet.id
     val gridState = rememberLazyGridState()
     val paging = controllerState.paging
@@ -542,7 +538,7 @@ internal fun IosOutletScreen(
         controllerState.selectedBrands.sorted().forEach { add(StoreActiveFilterChipUi("brand:$it", it)) }
     }
     val listState = StoreProductListUiState(
-        title = activeCategory.name,
+        title = selectedBubble?.label ?: (if (activeCategoryId == outlet.id) "Outlet" else activeCategory.name),
         items = controllerState.sortedProducts.map { product ->
             StoreProductItemUi(
                 id = product.id,
@@ -563,17 +559,17 @@ internal fun IosOutletScreen(
         availableSortOptions = StoreProductSortOption.values().toList(),
         activeFilterCount = controllerState.activeFilterCount,
         activeFilterChips = activeChips,
-        isInitialLoading = controllerState.sortedProducts.isEmpty() && paging.isInitialLoading,
-        isLoadingMore = controllerState.sortedProducts.isNotEmpty() && paging.isAppending,
-        isEmpty = controllerState.sortedProducts.isEmpty() && !paging.isInitialLoading && paging.initialError == null,
-        emptyMessage = "No encontramos productos",
-        initialErrorMessage = paging.initialError?.let { it.message?.takeIf(String::isNotBlank) ?: "No se han podido cargar los productos." },
-        appendErrorMessage = if (paging.appendError != null) "" else null,
+        isInitialLoading = paging.isInitialLoading,
+        isLoadingMore = paging.isAppending,
+        isEmpty = controllerState.sortedProducts.isEmpty() && !paging.hasMore,
+        emptyMessage = if (controllerState.selectedSizes.isNotEmpty() || controllerState.selectedColors.isNotEmpty() || controllerState.selectedBrands.isNotEmpty()) "No hay productos con estos filtros." else "No hay productos.",
+        initialErrorMessage = paging.initialError?.message ?: if (paging.initialError != null) "No se han podido cargar los productos." else null,
+        appendErrorMessage = paging.appendError?.message ?: if (paging.appendError != null) "No se han podido cargar más productos." else null,
         appendRetryLabel = "Reintentar",
         canLoadMore = paging.hasMore
     )
 
-    val probingSelectedBubble = showBubbles && controllerState.selectedBubbleKey != null &&
+    val probingSelectedBubble = showBubbles && selectedBubble != null &&
         controllerState.matchedProducts.isEmpty() && paging.appendError == null &&
         (paging.isInitialLoading || paging.isAppending || paging.hasMore)
 

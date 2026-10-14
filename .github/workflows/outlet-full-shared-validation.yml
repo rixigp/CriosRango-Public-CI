@@ -72,6 +72,8 @@ jobs:
           start = src.index("internal fun IosOutletScreen(")
           end = src.index("private fun IosPagedProductScreen", start)
           outlet = src[start:end]
+          root = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/IosStoreRootScreen.kt").read_text()
+          catalog = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/IosCatalogScreen.kt").read_text()
           adapter = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreOutletDataSourceAdapter.kt").read_text()
           android = pathlib.Path("app/src/main/java/es/criosrango/app/CategoriesScreen.kt").read_text()
           checks = {
@@ -82,6 +84,7 @@ jobs:
               "IOS_LOCAL_PAGING_OWNER_REMOVED": "CatalogPaginatorStore<StoreProduct>" not in outlet and "paginator.loadNext" not in outlet,
               "IOS_LOCAL_RETENTION_OWNER_REMOVED": "retainedOutletPaginators" not in outlet and "retainedOutletCategoryStates" not in outlet,
               "QUERY_IDENTITY_CONTROLLER_OWNED": "StoreOutletController" in outlet and "queryKey" not in outlet,
+              "OUTLET_CONTROLLER_LIFETIME_HOISTED": "val outletController = remember(storeApi)" in root and "outletController = outletController" in root and "outletController: StoreOutletController" in catalog,
               "CATEGORY_ONLY_ADAPTER": "category = query.categoryId" in adapter and "selectedBubble" not in adapter,
               "ANDROID_ACTIVE_OUTLET_USES_COMMON_CONTROLLER": "OutletControlledProductGrid(" in android and "StoreOutletController" in android,
               "OUTLET_PRESENTATION_FULL_SHARED": all(x in outlet for x in ("StoreSubcategoriesScreen(", "StoreOutletBubbles(", "StoreProductListScreen(", "RemoteStoreImage(")),
@@ -103,6 +106,7 @@ jobs:
           print("ANDROID_COIL_CHANGED=NO")
           print("COMMON_CONTROLLER_ANDROID_BEHAVIOR_CHANGED=NO")
           print("QUERY_KEY_FIX_STATUS=absorbed by common owner")
+          print("REENTRY_REUSES_COMMON_PAGINATOR=YES")
           PY
 
       - name: Set up JDK 17
