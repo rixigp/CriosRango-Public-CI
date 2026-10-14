@@ -17,13 +17,13 @@ jobs:
     name: Validate pinned Android candidate
     runs-on: ubuntu-24.04
     env:
-      VALIDATION_TARGET_SHA: d33d66cdb005d79a7619d15f5e31893bc3b9d1b9
+      VALIDATION_TARGET_SHA: 179a3077c862c5d4d03934cd93a8643303493542
       VALIDATION_WORKFLOW_SHA: ${{ github.sha }}
     steps:
       - name: Checkout exact application candidate
         uses: actions/checkout@v7
         with:
-          ref: d33d66cdb005d79a7619d15f5e31893bc3b9d1b9
+          ref: 179a3077c862c5d4d03934cd93a8643303493542
           persist-credentials: false
 
       - name: Verify target and checkout SHAs
@@ -37,8 +37,8 @@ jobs:
           echo "CHECKOUT_SHA=$CHECKOUT_SHA"
           echo "validation_target_sha=$VALIDATION_TARGET_SHA" >> "$GITHUB_OUTPUT"
           echo "checkout_sha=$CHECKOUT_SHA" >> "$GITHUB_OUTPUT"
-          test "$VALIDATION_TARGET_SHA" = "d33d66cdb005d79a7619d15f5e31893bc3b9d1b9"
-          test "$CHECKOUT_SHA" = "d33d66cdb005d79a7619d15f5e31893bc3b9d1b9"
+          test "$VALIDATION_TARGET_SHA" = "179a3077c862c5d4d03934cd93a8643303493542"
+          test "$CHECKOUT_SHA" = "179a3077c862c5d4d03934cd93a8643303493542"
           test "$VALIDATION_TARGET_SHA" = "$CHECKOUT_SHA" || {
             echo "::error::Pinned checkout does not match validation target"
             exit 1
