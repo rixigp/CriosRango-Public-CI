@@ -477,7 +477,12 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
                 pagingKey = currentId,
                 headerTitle = current?.name ?: "Productos",
                 headerOnBack = onCategoriesBack,
-                onRetryInitial = current?.takeIf {
+                onRetryInitial = if (currentIsOutletPath && current != null) {
+                    {
+                        if (children.isNotEmpty() && showOutletProductsFromFilters) loadCategoryTree(current.id)
+                        else loadCategory(current.id)
+                    }
+                } else current?.takeIf {
                     it.id != 445 && !isCategoryDescendantOf(it.id, 445, categories.associateBy { category -> category.id })
                 }?.let { category -> { loadCategory(category.id) } }
             )
