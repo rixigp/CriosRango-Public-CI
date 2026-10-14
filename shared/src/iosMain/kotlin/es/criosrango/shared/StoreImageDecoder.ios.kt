@@ -2,12 +2,14 @@ package es.criosrango.shared
 
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import org.jetbrains.skia.Image
 import platform.Foundation.NSData
 import platform.UIKit.UIImage
 import platform.UIKit.UIImagePNGRepresentation
+import platform.posix.memcpy
 
 actual fun decodeStoreImage(bytes: ByteArray): ImageBitmap? {
     val skiaBitmap = runCatching {
@@ -16,22 +18,31 @@ actual fun decodeStoreImage(bytes: ByteArray): ImageBitmap? {
     if (skiaBitmap != null) return skiaBitmap
 
     if (!bytes.isAvifOrAvis()) return null
-
-    return runCatching {
-        val encodedData = bytes.usePinned { pinned ->
-            NSData.dataWithBytes(pinned.addressOf(0), bytes.size.toULong())
-        }
-        val nativeImage = UIImage(data = encodedData) ?: return@runCatching null
-        val pngData = UIImagePNGRepresentation(nativeImage) ?: return@runCatching null
-        if (pngData.length == 0uL) return@runCatching null
-
-        val pngBytes = ByteArray(pngData.length.toInt())
-        pngBytes.usePinned { pinned ->
-            pngData.getBytes(pinned.addressOf(0), pngData.length)
-        }
-        Image.makeFromEncoded(pngBytes).toComposeImageBitmap()
-    }.getOrNull()
+    return decodeAvifWithUIKit(bytes)
 }
+
+@OptIn(ExperimentalForeignApi::class)
+private fun decodeAvifWithUIKit(bytes: ByteArray): ImageBitmap? = runCatching {
+    if (bytes.isEmpty()) return@runCatching null
+
+    val encodedData = bytes.usePinned { pinned ->
+        NSData.create(
+            bytes = pinned.addressOf(0),
+            length = bytes.size.toULong()
+        )
+    }
+    val nativeImage = UIImage(data = encodedData) ?: return@runCatching null
+    val pngData = UIImagePNGRepresentation(nativeImage) ?: return@runCatching null
+    val pngLength = pngData.length.toInt()
+    if (pngLength <= 0) return@runCatching null
+
+    val pngSource = pngData.bytes ?: return@runCatching null
+    val pngBytes = ByteArray(pngLength)
+    pngBytes.usePinned { pinned ->
+        memcpy(pinned.addressOf(0), pngSource, pngLength.toULong())
+    }
+    Image.makeFromEncoded(pngBytes).toComposeImageBitmap()
+}.getOrNull()
 
 private fun ByteArray.isAvifOrAvis(): Boolean {
     if (size < 16) return false
@@ -48,10 +59,19 @@ private fun ByteArray.isAvifOrAvis(): Boolean {
         (this[3].toInt() and 0xff)
     )
     val scanEnd = minOf(size, if (declaredBoxSize in 16..size) declaredBoxSize else 64)
-    var offset = 8
+
+    fun matchesBrand(offset: Int): Boolean =
+        offset + 4 <= scanEnd &&
+            this[offset] == 'a'.code.toByte() &&
+            this[offset + 1] == 'v'.code.toByte() &&
+            this[offset + 2] == 'i'.code.toByte() &&
+            (this[offset + 3] == 'f'.code.toByte() || this[offset + 3] == 's'.code.toByte())
+
+    if (matchesBrand(8)) return true
+
+    var offset = 16
     while (offset + 4 <= scanEnd) {
-        val brand = String(this, offset, 4, Charsets.ISO_8859_1)
-        if (brand == "avif" || brand == "avis") return true
+        if (matchesBrand(offset)) return true
         offset += 4
     }
     return false
