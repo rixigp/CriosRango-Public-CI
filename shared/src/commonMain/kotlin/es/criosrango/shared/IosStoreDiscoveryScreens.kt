@@ -459,6 +459,13 @@ internal fun IosOutletScreen(
         return
     }
 
+    // Retain list/paginator instances above the root-versus-products branch.
+    // The map is scoped to this Outlet screen and keyed by the complete query.
+    val outletScope = rememberCoroutineScope()
+    val retainedOutletPaginators = remember(outlet.id) {
+        mutableMapOf<String, CatalogPaginatorStore<StoreProduct>>()
+    }
+
     val outletChildren = categories.filter { it.parent == outlet.id }.distinctBy { it.id }
     var selectedOutletCategory by remember(outlet.id) { mutableStateOf<StoreCategory?>(null) }
     var showAllOutletProducts by remember(outlet.id) { mutableStateOf(false) }
@@ -501,9 +508,8 @@ internal fun IosOutletScreen(
     }
     val selectedBubble = selectedBubbleKey?.let { key -> visibleBubbles.firstOrNull { it.key == key } }
     val queryKey = "outlet:" + activeCategoryId + ":" + (selectedBubble?.key ?: "all")
-    val scope = rememberCoroutineScope()
-    val paginator = remember(queryKey) {
-        CatalogPaginatorStore<StoreProduct>(scope, identity = { it.id })
+    val paginator = retainedOutletPaginators.getOrPut(queryKey) {
+        CatalogPaginatorStore<StoreProduct>(outletScope, identity = { it.id })
     }
     val pagingState by paginator.state.collectAsState()
     val gridState = rememberLazyGridState()
@@ -524,7 +530,13 @@ internal fun IosOutletScreen(
     var selectedSort by rememberSaveable(activeCategoryId, selectedBubbleKey) {
         mutableStateOf(StoreProductSortOption.RECENT)
     }
-    LaunchedEffect(queryKey) { paginator.start(queryKey, loadPage) }
+    LaunchedEffect(queryKey) {
+        // Re-entering a previously loaded query must reuse its retained pages.
+        val retained = paginator.state.value
+        if (retained.currentPage == 0 && retained.items.isEmpty() && selectedOutletCategory != null || retained.currentPage == 0 && retained.items.isEmpty() && showAllOutletProducts) {
+            paginator.start(queryKey, loadPage)
+        }
+    }
     LaunchedEffect(gridState, pagingState.items.size, pagingState.hasMore, pagingState.isInitialLoading, pagingState.isAppending) {
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
             .collect { lastVisible ->
