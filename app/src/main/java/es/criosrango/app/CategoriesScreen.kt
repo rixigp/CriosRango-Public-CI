@@ -171,7 +171,7 @@ internal fun productBelongsToOutletBubble(
     }
 
 @Composable
-internal fun OutletAwareCatalogGrid(
+internal fun OutletCatalogStateAdapter(
     current: ProductCategory?,
     products: List<StoreProduct>,
     availabilityStore: OutletAvailabilityStore,
@@ -190,6 +190,8 @@ internal fun OutletAwareCatalogGrid(
 
     // Solo las categorías finales dentro de Outlet.
     if (current?.parent != 445) {
+        val isOutletPath = current != null &&
+            isCategoryDescendantOf(current.id, 445, allCategories.associateBy { it.id })
         CatalogFilteredProductGrid(
             products = products,
             modifier = modifier,
@@ -200,8 +202,11 @@ internal fun OutletAwareCatalogGrid(
             headerTitle = headerTitle,
             headerOnBack = headerOnBack,
             headerContent = headerContent,
-            sharedFilterDialog = current == null ||
-                !isCategoryDescendantOf(current.id, 445, allCategories.associateBy { it.id }),
+            // Outlet's final dialog is always the shared owner. The normal
+            // Catalog keeps its existing defaults and presentation.
+            sharedFilterDialog = isOutletPath || current == null,
+            useOutletFilterKey = isOutletPath,
+            useSharedProductListHeaderContent = isOutletPath,
             onRetryInitial = onRetryInitial
         )
         return
@@ -387,6 +392,10 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
         } else {
             rawChildren
         }
+    var showOutletProductsFromFilters by remember(currentId) { mutableStateOf(false) }
+    val currentIsOutletPath = current != null &&
+        isCategoryDescendantOf(current.id, 445, categories.associateBy { it.id })
+
     val onCategoriesBack: () -> Unit = {
         if (path.size == 1 && onSingleLevelBack != null) {
             onSingleLevelBack()
@@ -419,7 +428,24 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             onRetry = onRootRetry ?: onCategoriesBack,
             showEmptyRetry = true
         )
-    } else if (children.isNotEmpty()) {
+    } else if (children.isNotEmpty() && currentIsOutletPath && !showOutletProductsFromFilters && current != null) {
+        es.criosrango.shared.StoreSubcategoriesScreen(
+            parent = es.criosrango.shared.model.StoreCategory(
+                id = current.id, parent = current.parent, name = current.name, slug = current.slug, count = current.count
+            ),
+            categories = children.map { child ->
+                es.criosrango.shared.model.StoreCategory(
+                    id = child.id, parent = child.parent, name = child.name, slug = child.slug, count = child.count
+                )
+            },
+            loading = loading,
+            onBack = onCategoriesBack,
+            onCategory = { child -> categories.firstOrNull { it.id == child.id }?.let(onOpen) },
+            onFilterClick = { showOutletProductsFromFilters = true },
+            onRetry = { current.id.let(loadCategoryTree) },
+            modifier = Modifier.fillMaxSize().padding(padding)
+        )
+    } else if (children.isNotEmpty() && !showOutletProductsFromFilters) {
         CategoryParentWithFilters(
             title = current?.let { approvedCategoryName(it) } ?: "Categorías",
             children = children,
@@ -436,7 +462,7 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
         )
     } else {
         Column(Modifier.fillMaxSize().padding(padding)) {
-            OutletAwareCatalogGrid(
+            OutletCatalogStateAdapter(
                 current = current,
                 products = products,
                 allCategories = categories,
