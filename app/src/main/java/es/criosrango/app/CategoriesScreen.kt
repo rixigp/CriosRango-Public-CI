@@ -342,40 +342,17 @@ internal fun OutletAwareCatalogGrid(
                 ),
                 headerTitle = headerTitle,
                 headerOnBack = headerOnBack,
-                headerContent = if (bubbles.isNotEmpty()) {
-                    {
-                        Row(
-                            Modifier.fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = CatalogHeaderGeometry.horizontalPadding, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(7.dp)
-                        ) {
-                            val allSelected = selectedBubbleKey == null
-                            Surface(
-                                Modifier.height(34.dp).clickable { selectedBubbleKey = null },
-                                shape = RoundedCornerShape(17.dp),
-                                color = if (allSelected) Color(0xFF163B35) else Color(0xFFF1EDEF)
-                            ) {
-                                Box(Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-                                    Text("Todas", color = if (allSelected) Color.White else Color(0xFF3F3A3D), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Clip)
-                                }
-                            }
-                            visibleBubbles.forEach { bubble ->
-                                val selected = selectedBubbleKey == bubble.key
-                                Surface(
-                                    Modifier.height(34.dp).clickable { selectedBubbleKey = bubble.key },
-                                    shape = RoundedCornerShape(17.dp),
-                                    color = if (selected) Color(0xFF163B35) else Color(0xFFF1EDEF)
-                                ) {
-                                    Box(Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-                                        Text(outletBubbleDisplayLabel(bubble.label), color = if (selected) Color.White else Color(0xFF3F3A3D), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Clip)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else null,
-                sharedFilterDialog = false
+                headerContent = {
+                    StoreOutletBubbles(
+                        bubbles = visibleBubbles,
+                        selectedKey = selectedBubbleKey,
+                        onSelected = { selectedBubbleKey = it }
+                    )
+                },
+                sharedFilterDialog = true,
+                useOutletFilterKey = true,
+                useSharedProductListHeaderContent = true
+
             )
         }
     }
@@ -850,6 +827,8 @@ internal fun CatalogFilteredProductGrid(
     headerContent: (@Composable ColumnScope.() -> Unit)? = null,
     compactHeaderSpacing: Boolean = false,
     sharedFilterDialog: Boolean = true,
+    useOutletFilterKey: Boolean = false,
+    useSharedProductListHeaderContent: Boolean = false,
     onRetryInitial: (() -> Unit)? = null
 ) {
     var filtersOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
@@ -860,7 +839,7 @@ internal fun CatalogFilteredProductGrid(
     var selectedColors by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(setOf<String>()) }
     var selectedBrands by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(setOf<String>()) }
 
-    val filterKey = if (sharedFilterDialog) ::catalogFilterKey else ::outletCatalogFilterKey
+    val filterKey = if (useOutletFilterKey) ::outletCatalogFilterKey else ::catalogFilterKey
 
     val sizes = products.flatMap { it.filterValues("Tallas") }
         .distinct().sorted()
@@ -925,7 +904,7 @@ internal fun CatalogFilteredProductGrid(
         }
     }
 
-    val sharedProductList = headerTitle != null && headerOnBack != null && headerContent == null
+    val sharedProductList = headerTitle != null && headerOnBack != null && (headerContent == null || useSharedProductListHeaderContent)
     val categoryStatus by categoryCatalogLoadStatus.collectAsStateWithLifecycle()
     val sharedGridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     val sharedResetKey = if (pagingState != null) {
@@ -1010,6 +989,7 @@ internal fun CatalogFilteredProductGrid(
             },
             onRetryInitial = { onRetryInitial?.invoke() },
             onRetryAppend = { onLoadNextPage?.invoke() },
+            headerContent = headerContent ?: {},
             imageContent = { item, imageModifier ->
                 val product = filtered.firstOrNull { it.id == item.id }
                 val image = product?.images?.firstOrNull()
