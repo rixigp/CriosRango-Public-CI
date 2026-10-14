@@ -827,9 +827,9 @@ internal fun CatalogFilteredProductGrid(
     headerContent: (@Composable ColumnScope.() -> Unit)? = null,
     compactHeaderSpacing: Boolean = false,
     sharedFilterDialog: Boolean = true,
+    onRetryInitial: (() -> Unit)? = null,
     useOutletFilterKey: Boolean = false,
-    useSharedProductListHeaderContent: Boolean = false,
-    onRetryInitial: (() -> Unit)? = null
+    useSharedProductListHeaderContent: Boolean = false
 ) {
     var filtersOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var sortMode by androidx.compose.runtime.saveable.rememberSaveable {
