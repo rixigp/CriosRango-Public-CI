@@ -452,20 +452,34 @@ internal fun IosOutletScreen(
     onProduct: (StoreProduct) -> Unit,
     onBack: () -> Unit
 ) {
+    val outletRootFallback = StoreCategory(id = 445, parent = 0, name = "Outlet", slug = "outlet", count = 0)
     if (categories == null) {
-        Column(Modifier.fillMaxSize().padding(padding), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            if (categoriesLoading) {
-                CircularProgressIndicator()
-            } else {
-                Text(categoriesError ?: "No se han podido cargar las categorías.")
-                TextButton(onClick = onRetry) { Text("Reintentar") }
-            }
-        }
+        StoreSubcategoriesScreen(
+            parent = outletRootFallback,
+            categories = emptyList(),
+            loading = categoriesLoading,
+            errorMessage = if (categoriesLoading) null else categoriesError ?: "No se han podido cargar las categorías.",
+            onBack = onBack,
+            onCategory = {},
+            onFilterClick = {},
+            onRetry = onRetry,
+            modifier = Modifier.fillMaxSize().padding(padding)
+        )
         return
     }
     val outlet = categories.firstOrNull { it.parent == 0 && it.name.contains("outlet", true) }
     if (outlet == null) {
-        IosStoreEmpty("Outlet no disponible.")
+        StoreSubcategoriesScreen(
+            parent = outletRootFallback,
+            categories = emptyList(),
+            loading = false,
+            errorMessage = "Outlet no disponible.",
+            onBack = onBack,
+            onCategory = {},
+            onFilterClick = {},
+            onRetry = onRetry,
+            modifier = Modifier.fillMaxSize().padding(padding)
+        )
         return
     }
 
