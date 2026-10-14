@@ -50,7 +50,7 @@ fun StoreOutletBubbles(
 @Composable
 private fun OutletBubble(label: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.height(34.dp).clickable(onClick = onClick),
         shape = RoundedCornerShape(17.dp),
         color = if (selected) Color(0xFF163B35) else Color(0xFFF1EDEF)
     ) {
