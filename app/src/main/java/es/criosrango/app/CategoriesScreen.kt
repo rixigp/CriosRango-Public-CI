@@ -839,7 +839,7 @@ internal fun CatalogFilteredProductGrid(
     var selectedColors by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(setOf<String>()) }
     var selectedBrands by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(setOf<String>()) }
 
-    val filterKey = if (useOutletFilterKey) ::outletCatalogFilterKey else ::catalogFilterKey
+    val filterKey = if (useOutletFilterKey || !sharedFilterDialog) ::outletCatalogFilterKey else ::catalogFilterKey
 
     val sizes = products.flatMap { it.filterValues("Tallas") }
         .distinct().sorted()
