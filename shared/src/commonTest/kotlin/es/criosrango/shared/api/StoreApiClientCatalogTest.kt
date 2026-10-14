@@ -14,8 +14,45 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import es.criosrango.shared.model.countFor
+import es.criosrango.shared.StoreOutletQuery
+import es.criosrango.shared.storeOutletDataSource
+import es.criosrango.shared.model.StoreProduct
 
 class StoreApiClientCatalogTest {
+
+    @Test
+    fun outletDataSourceUsesOnlyCategoryPageAndPerPage() = runTest {
+        var requestPath = ""
+        var requestParameters: io.ktor.http.Parameters? = null
+        val engine = MockEngine { request ->
+            requestPath = request.url.encodedPath
+            requestParameters = request.url.parameters
+            respond(
+                "[]",
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        }
+        val client = HttpClient(engine) {
+            install(ContentNegotiation) {
+                json(Json { ignoreUnknownKeys = true })
+            }
+        }
+        try {
+            val source = storeOutletDataSource(StoreApiClient(client = client))
+            val result = source.loadPage(StoreOutletQuery(categoryId = 446), page = 3, perPage = 24)
+
+            assertEquals(emptyList<StoreProduct>(), result.items)
+            assertEquals(false, result.hasMore)
+            assertEquals("/wp-json/wc/store/v1/products", requestPath)
+            assertEquals(setOf("per_page", "page", "category"), requestParameters!!.names())
+            assertEquals("24", requestParameters!!["per_page"])
+            assertEquals("3", requestParameters!!["page"])
+            assertEquals("446", requestParameters!!["category"])
+        } finally {
+            client.close()
+        }
+    }
+
     @Test
     fun catalogQueriesUseSharedClientAndPreserveCatalogData() = runTest {
         val requests = mutableListOf<String>()

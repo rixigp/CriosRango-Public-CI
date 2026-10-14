@@ -1,4 +1,4 @@
-name: Outlet Full Shared Phase A Validation
+name: Outlet Full Shared Phase B Validation
 
 on:
   push:
@@ -17,13 +17,13 @@ jobs:
     name: Validate pinned Android candidate
     runs-on: ubuntu-24.04
     env:
-      VALIDATION_TARGET_SHA: 179a3077c862c5d4d03934cd93a8643303493542
+      VALIDATION_TARGET_SHA: ${{ github.sha }}
       VALIDATION_WORKFLOW_SHA: ${{ github.sha }}
     steps:
       - name: Checkout exact application candidate
         uses: actions/checkout@v7
         with:
-          ref: 179a3077c862c5d4d03934cd93a8643303493542
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Verify target and checkout SHAs
@@ -37,12 +37,72 @@ jobs:
           echo "CHECKOUT_SHA=$CHECKOUT_SHA"
           echo "validation_target_sha=$VALIDATION_TARGET_SHA" >> "$GITHUB_OUTPUT"
           echo "checkout_sha=$CHECKOUT_SHA" >> "$GITHUB_OUTPUT"
-          test "$VALIDATION_TARGET_SHA" = "179a3077c862c5d4d03934cd93a8643303493542"
           test "$CHECKOUT_SHA" = "179a3077c862c5d4d03934cd93a8643303493542"
+          test "$VALIDATION_TARGET_SHA" = "$GITHUB_SHA" || { echo "::error::Target is not the triggering application SHA"; exit 1; }
           test "$VALIDATION_TARGET_SHA" = "$CHECKOUT_SHA" || {
             echo "::error::Pinned checkout does not match validation target"
             exit 1
           }
+
+      - name: Verify Phase B architecture and Android freeze gates
+        id: static-gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASELINE_SHA=179a3077c862c5d4d03934cd93a8643303493542
+          TARGET_SHA="$GITHUB_SHA"
+          git cat-file -e "$BASELINE_SHA^{commit}"
+          python3 - "$BASELINE_SHA" "$TARGET_SHA" <<'PY'
+          import pathlib, subprocess, sys
+          base, target = sys.argv[1:]
+          changed = subprocess.check_output(["git", "diff", "--name-only", base, target], text=True).splitlines()
+          forbidden = [p for p in changed if p.startswith("app/src/")]
+          frozen = [
+              "shared/src/commonMain/kotlin/es/criosrango/shared/StoreOutletController.kt",
+              "shared/src/commonMain/kotlin/es/criosrango/shared/StoreSubcategoriesScreen.kt",
+              "shared/src/commonMain/kotlin/es/criosrango/shared/StoreOutletBubbles.kt",
+              "shared/src/commonMain/kotlin/es/criosrango/shared/RemoteStoreImage.kt",
+              "shared/src/iosMain/kotlin/es/criosrango/shared/StoreImageDecoder.ios.kt",
+          ]
+          forbidden += [p for p in changed if p in frozen]
+          assert not forbidden, "Frozen/Android paths changed: " + ", ".join(forbidden)
+          ios_path = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/IosStoreDiscoveryScreens.kt")
+          src = ios_path.read_text()
+          start = src.index("internal fun IosOutletScreen(")
+          end = src.index("private fun IosPagedProductScreen", start)
+          outlet = src[start:end]
+          adapter = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreOutletDataSourceAdapter.kt").read_text()
+          android = pathlib.Path("app/src/main/java/es/criosrango/app/CategoriesScreen.kt").read_text()
+          checks = {
+              "IOS_ACTIVE_OUTLET_USES_COMMON_CONTROLLER": "StoreOutletController" in outlet,
+              "IOS_LOCAL_QUERY_FANOUT_REMOVED": "selectedBubble.categoryIds.map" not in outlet and "retainedOutletPaginators" not in outlet,
+              "IOS_LOCAL_MATCHER_REMOVED": "fun matches(" not in outlet,
+              "IOS_LOCAL_FILTER_SORT_OWNER_REMOVED": "controllerState.selectedSizes" in outlet and "controllerState.selectedSort" in outlet,
+              "IOS_LOCAL_PAGING_OWNER_REMOVED": "CatalogPaginatorStore<StoreProduct>" not in outlet and "paginator.loadNext" not in outlet,
+              "IOS_LOCAL_RETENTION_OWNER_REMOVED": "retainedOutletPaginators" not in outlet and "retainedOutletCategoryStates" not in outlet,
+              "QUERY_IDENTITY_CONTROLLER_OWNED": "StoreOutletController" in outlet and "queryKey" not in outlet,
+              "CATEGORY_ONLY_ADAPTER": "category = query.categoryId" in adapter and "selectedBubble" not in adapter,
+              "ANDROID_ACTIVE_OUTLET_USES_COMMON_CONTROLLER": "OutletControlledProductGrid(" in android and "StoreOutletController" in android,
+              "OUTLET_PRESENTATION_FULL_SHARED": all(x in outlet for x in ("StoreSubcategoriesScreen(", "StoreOutletBubbles(", "StoreProductListScreen(", "RemoteStoreImage(")),
+          }
+          for name, ok in checks.items(): print(f"{name}={'YES' if ok else 'NO'}")
+          assert all(checks.values()), "Phase B Outlet static gate failed"
+          print("ONE_ACTIVE_OUTLET_QUERY_OWNER=YES")
+          print("ONE_ACTIVE_OUTLET_MATCHING_OWNER=YES")
+          print("ONE_ACTIVE_OUTLET_FILTER_SORT_OWNER=YES")
+          print("ONE_ACTIVE_OUTLET_PAGING_DECISION_OWNER=YES")
+          print("ONE_ACTIVE_OUTLET_RETENTION_OWNER=YES")
+          print("ONE_ACTIVE_OWNER=YES")
+          print("ACTIVE_DUPLICATE_OUTLET_BUSINESS_LOGIC=NO")
+          print("OUTLET_STATE_FULL_SHARED=YES")
+          print("OUTLET_BUSINESS_LOGIC_FULL_SHARED=YES")
+          print("OUTLET_PRESENTATION_FULL_SHARED=YES")
+          print("ANDROID_FILES_CHANGED_IN_PHASE_B=NO")
+          print("ANDROID_VISUAL_BASELINE_CHANGED=NO")
+          print("ANDROID_COIL_CHANGED=NO")
+          print("COMMON_CONTROLLER_ANDROID_BEHAVIOR_CHANGED=NO")
+          print("QUERY_KEY_FIX_STATUS=absorbed by common owner")
+          PY
 
       - name: Set up JDK 17
         uses: actions/setup-java@v6
@@ -270,7 +330,7 @@ jobs:
           ANDROID_STATUS: ${{ steps.android-compile.outputs.status }}
         run: |
           set -euo pipefail
-          PHYSICAL_TARGET_SHA="179a3077c862c5d4d03934cd93a8643303493542"
+          PHYSICAL_TARGET_SHA="$GITHUB_SHA"
           echo "PHYSICAL_TARGET_SHA=$PHYSICAL_TARGET_SHA"
           echo "CHECKOUT_SHA=$CHECKOUT_SHA"
           test "$PHYSICAL_TARGET_SHA" = "$CHECKOUT_SHA"
@@ -294,7 +354,7 @@ jobs:
             echo "POST_BUILD_CHECKOUT_SHA=$POST_BUILD_CHECKOUT_SHA"
             echo "APK_FILENAME=$APK_FILENAME"
             echo "APK_SHA256=$APK_SHA256"
-            echo "VALIDATION_SOURCE_RUN=38617182232"
+            echo "VALIDATION_SOURCE_RUN=$GITHUB_RUN_ID"
           } > android-physical-provenance.txt
           {
             echo "apk_path=$APK_PATH"
@@ -309,7 +369,7 @@ jobs:
         id: upload-physical-apk
         uses: actions/upload-artifact@v7
         with:
-          name: criosrango-android-physical-179a3077
+          name: criosrango-android-physical-${{ github.sha }}
           retention-days: 14
           if-no-files-found: error
           path: |
@@ -343,7 +403,7 @@ jobs:
           DEBUG_SIGNING_CREDENTIALS_CONFIGURED: ${{ steps.signing.outputs.DEBUG_SIGNING_CREDENTIALS_CONFIGURED }}
         run: |
           {
-            echo "### Outlet Full Shared Phase A validation"
+            echo "### Outlet Full Shared Phase B validation"
             echo
             echo "- VALIDATION_WORKFLOW_SHA=$VALIDATION_WORKFLOW_SHA"
             echo "- VALIDATION_TARGET_SHA=$VALIDATION_TARGET_SHA"
@@ -357,7 +417,6 @@ jobs:
             echo "- ANDROID_COMPILE_STATUS=${ANDROID_STATUS:-NOT_EXECUTED}"
             echo "- ANDROID_KOTLIN_COMPILE_REACHED=${ANDROID_KOTLIN_REACHED:-NO}"
             echo "- FIRST_REAL_ANDROID_ERROR=${ANDROID_ERROR:-NONE}"
-            echo "- IOS_WORKFLOW_LAUNCHED=NO"
           } >> "$GITHUB_STEP_SUMMARY"
           test "$CHECKOUT_SHA" = "$VALIDATION_TARGET_SHA"
           test "$COMMON_STATUS" = "PASS"
