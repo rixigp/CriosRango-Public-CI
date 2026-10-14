@@ -465,10 +465,9 @@ internal fun IosOutletScreen(
     var availability by remember(outlet.id) { mutableStateOf<OutletAvailability?>(null) }
     var availabilityError by remember(outlet.id) { mutableStateOf<String?>(null) }
     var filtersOpen by rememberSaveable(activeOutletCategory.id, selectedBubbleKey) { mutableStateOf(false) }
-    var sortMode by rememberSaveable(outlet.id, selectedBubbleKey) { mutableStateOf(IosCatalogSortModeState.RECENT) }
-    var selectedSizes by rememberSaveable(outlet.id, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
-    var selectedColors by rememberSaveable(outlet.id, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
-    var selectedBrands by rememberSaveable(outlet.id, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
+        var selectedSizes by rememberSaveable(activeOutletCategory.id, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
+    var selectedColors by rememberSaveable(activeOutletCategory.id, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
+    var selectedBrands by rememberSaveable(activeOutletCategory.id, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
 
     LaunchedEffect(outlet.id) {
         runCatching { storeApi.outletAvailability() }
@@ -505,7 +504,7 @@ internal fun IosOutletScreen(
         CatalogPage(loaded, loaded.size >= perPage)
     }
 
-    var selectedSort by rememberSaveable(outlet.id, selectedBubbleKey) {
+    var selectedSort by rememberSaveable(activeOutletCategory.id, selectedBubbleKey) {
         mutableStateOf(StoreProductSortOption.RECENT)
     }
     LaunchedEffect(queryKey) { paginator.start(queryKey, loadPage) }
