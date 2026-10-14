@@ -119,6 +119,14 @@ internal val STORE_SUBCATEGORY_ASSETS: List<StoreSubcategoryAsset> = listOf(
     StoreSubcategoryAsset("outlet", "nina verano", Res.drawable.outlet_nina_verano),
     StoreSubcategoryAsset("outlet", "nino invierno", Res.drawable.outlet_nino_invierno),
     StoreSubcategoryAsset("outlet", "nino verano", Res.drawable.outlet_nino_verano),
+    StoreSubcategoryAsset("outlet", "outlet hombre invierno", Res.drawable.outlet_hombre_invierno),
+    StoreSubcategoryAsset("outlet", "outlet hombre verano", Res.drawable.outlet_hombre_verano),
+    StoreSubcategoryAsset("outlet", "outlet mujer invierno", Res.drawable.outlet_mujer_invierno),
+    StoreSubcategoryAsset("outlet", "outlet mujer verano", Res.drawable.outlet_mujer_verano),
+    StoreSubcategoryAsset("outlet", "outlet nina invierno", Res.drawable.outlet_nina_invierno),
+    StoreSubcategoryAsset("outlet", "outlet nina verano", Res.drawable.outlet_nina_verano),
+    StoreSubcategoryAsset("outlet", "outlet nino invierno", Res.drawable.outlet_nino_invierno),
+    StoreSubcategoryAsset("outlet", "outlet nino verano", Res.drawable.outlet_nino_verano),
 )
 
 private fun normalizeAndroidCategoryName(value: String): String =
