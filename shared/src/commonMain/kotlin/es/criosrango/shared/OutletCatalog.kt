@@ -4,7 +4,14 @@ import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
 
 data class OutletBubbleDefinition(val key: String, val label: String, val categoryIds: Set<Int>)
-private fun outletKey(value: String): String = value.lowercase().trim().replace(Regex("[^a-z0-9]+"), " ")
+private fun outletKey(value: String): String = value.lowercase().trim()
+    .replace('á', 'a').replace('à', 'a').replace('ä', 'a').replace('â', 'a')
+    .replace('é', 'e').replace('è', 'e').replace('ë', 'e').replace('ê', 'e')
+    .replace('í', 'i').replace('ì', 'i').replace('ï', 'i').replace('î', 'i')
+    .replace('ó', 'o').replace('ò', 'o').replace('ö', 'o').replace('ô', 'o')
+    .replace('ú', 'u').replace('ù', 'u').replace('ü', 'u').replace('û', 'u')
+    .replace('ñ', 'n')
+    .replace(Regex("[^a-z0-9]+"), " ").trim().replace(Regex("\\\\s+"), " ")
 fun outletBubble(label: String, vararg categoryIds: Int) = OutletBubbleDefinition(outletKey(label), label, categoryIds.toSet())
 
 fun fixedOutletBubbles(outletCategoryId: Int): List<OutletBubbleDefinition> = when (outletCategoryId) {
