@@ -16,8 +16,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  resolve-target:
+    name: Resolve and freeze requested target SHA
+    runs-on: ubuntu-latest
+    outputs:
+      requested_sha: ${{ steps.resolve.outputs.requested_sha }}
+      resolved_sha: ${{ steps.resolve.outputs.resolved_sha }}
+      workflow_run_sha: ${{ steps.resolve.outputs.workflow_run_sha }}
+      branch: ${{ steps.resolve.outputs.branch }}
+    steps:
+      - name: Validate and freeze explicit target SHA
+        id: resolve
+        shell: bash
+        env:
+          REQUESTED_TARGET_SHA: ${{ inputs.target_sha }}
+          WORKFLOW_RUN_SHA: ${{ github.sha }}
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::target_sha must be an exact lowercase 40-character commit SHA"; exit 1; }
+          RESOLVED_TARGET_SHA="$REQUESTED_TARGET_SHA"
+          echo "REQUESTED_TARGET_SHA=$REQUESTED_TARGET_SHA"
+          echo "RESOLVED_TARGET_SHA=$RESOLVED_TARGET_SHA"
+          echo "BRANCH=$BRANCH_NAME"
+          echo "WORKFLOW_RUN_SHA=$WORKFLOW_RUN_SHA"
+          echo "requested_sha=$REQUESTED_TARGET_SHA" >> "$GITHUB_OUTPUT"
+          echo "resolved_sha=$RESOLVED_TARGET_SHA" >> "$GITHUB_OUTPUT"
+          echo "workflow_run_sha=$WORKFLOW_RUN_SHA" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+
   build-release-ipa:
     name: Archive, sign and validate iPhone IPA
+    needs: resolve-target
     runs-on: macos-26
     timeout-minutes: 90
     outputs:
@@ -28,23 +58,32 @@ jobs:
       start_epoch: ${{ steps.metadata.outputs.start_epoch }}
       sha: ${{ steps.metadata.outputs.sha }}
     steps:
-      - name: Checkout exact target SHA
+      - name: Checkout exact resolved target SHA
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.target_sha }}
+          ref: ${{ needs.resolve-target.outputs.resolved_sha }}
           fetch-depth: 1
 
       - name: Verify target SHA, branch, version and unique build
         id: metadata
         shell: bash
         env:
-          EXPECTED_SHA: ${{ inputs.target_sha }}
-          BRANCH_NAME: ${{ github.ref_name }}
+          REQUESTED_TARGET_SHA: ${{ needs.resolve-target.outputs.requested_sha }}
+          RESOLVED_TARGET_SHA: ${{ needs.resolve-target.outputs.resolved_sha }}
+          EXPECTED_SHA: ${{ needs.resolve-target.outputs.resolved_sha }}
+          WORKFLOW_RUN_SHA: ${{ needs.resolve-target.outputs.workflow_run_sha }}
+          BRANCH_NAME: ${{ needs.resolve-target.outputs.branch }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
           ACTUAL_SHA="$(git rev-parse HEAD)"
-          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || { echo "::error::Checkout SHA mismatch"; exit 1; }
+          echo "REQUESTED_TARGET_SHA=$REQUESTED_TARGET_SHA"
+          echo "RESOLVED_TARGET_SHA=$RESOLVED_TARGET_SHA"
+          echo "CHECKOUT_SHA=$ACTUAL_SHA"
+          echo "BRANCH=$BRANCH_NAME"
+          echo "WORKFLOW_RUN_SHA=$WORKFLOW_RUN_SHA"
+          [[ "$REQUESTED_TARGET_SHA" == "$RESOLVED_TARGET_SHA" ]] || { echo "::error::Requested/resolved SHA mismatch"; exit 1; }
+          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" && "$ACTUAL_SHA" == "$RESOLVED_TARGET_SHA" ]] || { echo "::error::Checkout SHA mismatch"; exit 1; }
           [[ "$BRANCH_NAME" == "main" || "$BRANCH_NAME" == "compose-multiplatform-convergence" ]] || { echo "::error::Only main and the convergence pilot branch are authorized"; exit 1; }
           VERSION="$(grep -m1 'MARKETING_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
           BASE_BUILD="$(grep -m1 'CURRENT_PROJECT_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*CURRENT_PROJECT_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
@@ -56,13 +95,17 @@ jobs:
           echo "start_epoch=$START_EPOCH" >> "$GITHUB_OUTPUT"
           echo "RUN_START_EPOCH=$START_EPOCH" >> "$GITHUB_ENV"
           mkdir -p release-artifacts
-          printf 'IOS PHYSICAL TESTFLIGHT REPORT\nSHA=%s\nBRANCH=%s\nVERSION=%s\nBUILD=%s\nBUNDLE_ID=es.criosrango.app\nARCHIVE=NOT_FOUND\nIPA=NOT_FOUND\nSIGNATURE=RED\nAPP_STORE_VALIDATION=RED\nUPLOAD=RED\nTESTFLIGHT_UPLOAD=FAILURE\nFAMILIA_GROUP=NOT_CONFIRMED\n' "$ACTUAL_SHA" "$BRANCH_NAME" "$VERSION" "$BUILD_NUMBER" > release-artifacts/ios-physical-testflight-report.txt
+          printf 'IOS PHYSICAL TESTFLIGHT REPORT\nREQUESTED_TARGET_SHA=%s\nRESOLVED_TARGET_SHA=%s\nCHECKOUT_SHA=%s\nWORKFLOW_RUN_SHA=%s\nARCHIVED_SHA=NOT_ARCHIVED\nSHARED_IOS_COMPILED_FROM_TARGET_SHA=NOT_VERIFIED\nSHA=%s\nBRANCH=%s\nVERSION=%s\nBUILD=%s\nBUNDLE_ID=es.criosrango.app\nARCHIVE=NOT_FOUND\nIPA=NOT_FOUND\nSIGNATURE=RED\nAPP_STORE_VALIDATION=RED\nUPLOAD=RED\nTESTFLIGHT_UPLOAD=FAILURE\nFAMILIA_GROUP=NOT_CONFIRMED\n' "$REQUESTED_TARGET_SHA" "$RESOLVED_TARGET_SHA" "$ACTUAL_SHA" "$WORKFLOW_RUN_SHA" "$ACTUAL_SHA" "$BRANCH_NAME" "$VERSION" "$BUILD_NUMBER" > release-artifacts/ios-physical-testflight-report.txt
           echo "sha=$ACTUAL_SHA" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
           echo "ipa_name=CriosRango-${VERSION}-${BUILD_NUMBER}.ipa" >> "$GITHUB_OUTPUT"
           {
             echo "### iOS Physical TestFlight"
+            echo "- Requested target SHA: $REQUESTED_TARGET_SHA"
+            echo "- Resolved target SHA: $RESOLVED_TARGET_SHA"
+            echo "- Checkout SHA: $ACTUAL_SHA"
+            echo "- Workflow run SHA (context only): $WORKFLOW_RUN_SHA"
             echo "- SHA: $ACTUAL_SHA"
             echo "- Branch: $BRANCH_NAME"
             echo "- Version: $VERSION"
@@ -164,6 +207,15 @@ jobs:
           echo "signature=GREEN" >> "$GITHUB_OUTPUT"
           echo "Existing Apple Distribution identity and exact bundle-ID provisioning profile installed." >> release-artifacts/signing.log
 
+      - name: Clean shared build outputs before archive
+        if: steps.signing.outcome == 'success'
+        shell: bash
+        env:
+          GRADLE_OPTS: -Dorg.gradle.caching=false
+        run: |
+          set -euo pipefail
+          ./gradlew --no-build-cache clean
+
       - name: Archive Release for physical iPhone
         if: steps.signing.outcome == 'success'
         id: archive
@@ -171,8 +223,14 @@ jobs:
         shell: bash
         env:
           BUILD_NUMBER: ${{ steps.metadata.outputs.build_number }}
+          EXPECTED_SHA: ${{ needs.resolve-target.outputs.resolved_sha }}
+          GRADLE_OPTS: -Dorg.gradle.caching=false
         run: |
           set -euo pipefail
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || { echo "::error::Pre-archive SHA mismatch; archive blocked"; exit 1; }
+          echo "PRE_ARCHIVE_CHECKOUT_SHA=$ACTUAL_SHA"
+          echo "PRE_ARCHIVE_EXPECTED_SHA=$EXPECTED_SHA"
           ARCHIVE="$RUNNER_TEMP/CriosRango.xcarchive"
           DERIVED="$RUNNER_TEMP/CriosRangoDerivedData"
           if /usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' iosApp/Info.plist >/dev/null 2>&1; then
@@ -205,6 +263,10 @@ jobs:
           fi
           echo "ARCHIVE_PATH=$ARCHIVE" >> "$GITHUB_ENV"
           echo "ARCHIVE=FOUND" >> "$GITHUB_OUTPUT"
+          grep -Fq ':shared:embedAndSignAppleFrameworkForXcode' release-artifacts/xcodebuild-archive.log || { echo "::error::Kotlin Multiplatform framework build task not visible in archive log"; exit 1; }
+          grep -Eq 'BUILD SUCCESSFUL|BUILD SUCCESSFUL in' release-artifacts/xcodebuild-archive.log || { echo "::error::Kotlin Multiplatform Gradle success not visible in archive log"; exit 1; }
+          sed -i '' "s/^ARCHIVED_SHA=.*/ARCHIVED_SHA=$ACTUAL_SHA/" release-artifacts/ios-physical-testflight-report.txt
+          sed -i '' "s/^SHARED_IOS_COMPILED_FROM_TARGET_SHA=.*/SHARED_IOS_COMPILED_FROM_TARGET_SHA=YES/" release-artifacts/ios-physical-testflight-report.txt
           ditto "$ARCHIVE/dSYMs" release-artifacts/dSYMs 2>/dev/null || true
 
       - name: Export signed App Store IPA and validate bundle
@@ -305,15 +367,15 @@ jobs:
 
   upload-testflight:
     name: Validate and upload to internal TestFlight
-    needs: build-release-ipa
-    if: needs.build-release-ipa.result == 'success'
+    needs: [resolve-target, build-release-ipa]
+    if: needs.resolve-target.result == 'success' && needs.build-release-ipa.result == 'success'
     runs-on: macos-26
     timeout-minutes: 150
     steps:
-      - name: Checkout exact target SHA
+      - name: Checkout exact resolved target SHA
         uses: actions/checkout@v7
         with:
-          ref: ${{ needs.build-release-ipa.outputs.sha }}
+          ref: ${{ needs.resolve-target.outputs.resolved_sha }}
           fetch-depth: 1
 
       - name: Download signed IPA and evidence
@@ -326,14 +388,26 @@ jobs:
         id: freshness
         shell: bash
         env:
-          EXPECTED_SHA: ${{ needs.build-release-ipa.outputs.sha }}
+          REQUESTED_TARGET_SHA: ${{ needs.resolve-target.outputs.requested_sha }}
+          RESOLVED_TARGET_SHA: ${{ needs.resolve-target.outputs.resolved_sha }}
+          EXPECTED_SHA: ${{ needs.resolve-target.outputs.resolved_sha }}
+          WORKFLOW_RUN_SHA: ${{ needs.resolve-target.outputs.workflow_run_sha }}
         run: |
           set -euo pipefail
           ACTUAL_SHA="$(git rev-parse HEAD)"
-          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || { echo "::error::Upload checkout SHA differs from target SHA"; exit 1; }
-          grep -Fx "SHA=$EXPECTED_SHA" release-artifacts/ios-physical-testflight-report.txt
+          echo "REQUESTED_TARGET_SHA=$REQUESTED_TARGET_SHA"
+          echo "RESOLVED_TARGET_SHA=$RESOLVED_TARGET_SHA"
+          echo "CHECKOUT_SHA=$ACTUAL_SHA"
+          echo "WORKFLOW_RUN_SHA=$WORKFLOW_RUN_SHA"
+          [[ "$REQUESTED_TARGET_SHA" == "$RESOLVED_TARGET_SHA" ]] || { echo "::error::Requested/resolved SHA mismatch in upload job"; exit 1; }
+          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || { echo "::error::Upload checkout SHA differs from resolved target SHA"; exit 1; }
+          grep -Fx "REQUESTED_TARGET_SHA=$REQUESTED_TARGET_SHA" release-artifacts/ios-physical-testflight-report.txt
+          grep -Fx "RESOLVED_TARGET_SHA=$RESOLVED_TARGET_SHA" release-artifacts/ios-physical-testflight-report.txt
+          grep -Fx "CHECKOUT_SHA=$EXPECTED_SHA" release-artifacts/ios-physical-testflight-report.txt
+          grep -Fx "ARCHIVED_SHA=$EXPECTED_SHA" release-artifacts/ios-physical-testflight-report.txt
+          grep -Fx "SHARED_IOS_COMPILED_FROM_TARGET_SHA=YES" release-artifacts/ios-physical-testflight-report.txt
           echo "current=true" >> "$GITHUB_OUTPUT"
-          echo "Verified upload job uses exact target SHA $EXPECTED_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "Verified requested, resolved, archive checkout and upload checkout all match $EXPECTED_SHA" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install App Store Connect API key
         if: steps.freshness.outputs.current == 'true'
