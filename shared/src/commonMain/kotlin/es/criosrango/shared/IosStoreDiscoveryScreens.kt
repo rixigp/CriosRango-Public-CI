@@ -445,11 +445,26 @@ internal fun IosOutletScreen(
         return
     }
 
-    val bubbles = remember(outlet.id) { fixedOutletBubbles(outlet.id) }
-    var selectedBubbleKey by rememberSaveable(outlet.id) { mutableStateOf<String?>(null) }
+    val outletChildren = categories.filter { it.parent == outlet.id }.distinctBy { it.id }
+    var selectedOutletCategory by remember(outlet.id) { mutableStateOf<StoreCategory?>(null) }
+    if (selectedOutletCategory == null) {
+        StoreSubcategoriesScreen(
+            parent = outlet,
+            categories = outletChildren,
+            loading = false,
+            onBack = onBack,
+            onCategory = { selectedOutletCategory = it },
+            onFilterClick = {},
+            modifier = Modifier.fillMaxSize().padding(padding)
+        )
+        return
+    }
+    val activeOutletCategory = selectedOutletCategory ?: return
+    val bubbles = remember(activeOutletCategory.id) { fixedOutletBubbles(activeOutletCategory.id) }
+    var selectedBubbleKey by rememberSaveable(activeOutletCategory.id) { mutableStateOf<String?>(null) }
     var availability by remember(outlet.id) { mutableStateOf<OutletAvailability?>(null) }
     var availabilityError by remember(outlet.id) { mutableStateOf<String?>(null) }
-    var filtersOpen by rememberSaveable(outlet.id, selectedBubbleKey) { mutableStateOf(false) }
+    var filtersOpen by rememberSaveable(activeOutletCategory.id, selectedBubbleKey) { mutableStateOf(false) }
     var sortMode by rememberSaveable(outlet.id, selectedBubbleKey) { mutableStateOf(IosCatalogSortModeState.RECENT) }
     var selectedSizes by rememberSaveable(outlet.id, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
     var selectedColors by rememberSaveable(outlet.id, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
@@ -461,7 +476,7 @@ internal fun IosOutletScreen(
             .onFailure { availabilityError = it.message ?: "No se ha podido cargar la disponibilidad." }
     }
     val visibleBubbles = if (availability == null) bubbles else bubbles.filter { bubble ->
-        bubble.categoryIds.any { availability!!.countFor(outlet.id, it) > 0 }
+        bubble.categoryIds.any { availability!!.countFor(activeOutletCategory.id, it) > 0 }
     }
     LaunchedEffect(visibleBubbles, selectedBubbleKey) {
         if (selectedBubbleKey != null && visibleBubbles.none { it.key == selectedBubbleKey }) {
@@ -469,7 +484,7 @@ internal fun IosOutletScreen(
         }
     }
     val selectedBubble = selectedBubbleKey?.let { key -> visibleBubbles.firstOrNull { it.key == key } }
-    val queryKey = "outlet:" + outlet.id + ":" + (selectedBubble?.key ?: "all")
+    val queryKey = "outlet:" + activeOutletCategory.id + ":" + (selectedBubble?.key ?: "all")
     val scope = rememberCoroutineScope()
     val paginator = remember(queryKey) {
         CatalogPaginatorStore<StoreProduct>(scope, identity = { it.id })
@@ -479,7 +494,7 @@ internal fun IosOutletScreen(
 
     val loadPage: suspend (Int, Int) -> CatalogPage<StoreProduct> = { page, perPage ->
         val loaded = if (selectedBubble == null) {
-            storeApi.products(perPage, page, category = outlet.id)
+            storeApi.products(perPage, page, category = activeOutletCategory.id)
         } else {
             coroutineScope {
                 selectedBubble.categoryIds.map { categoryId ->
@@ -548,11 +563,11 @@ internal fun IosOutletScreen(
     }
 
     val listState = StoreProductListUiState(
-        title = selectedBubble?.label ?: "Outlet",
+        title = selectedBubble?.label ?: activeOutletCategory.name,
         items = sortedItems.map { product ->
             StoreProductItemUi(
                 id = product.id,
-                nameText = product.name,
+                nameText = normalizeWooPlainText(product.name),
                 imageIdentity = product.images.firstOrNull()?.src,
                 displayPriceText = formatStorePrice(product.prices.price, product.prices.currencyMinorUnit, product.prices.currencySymbol),
                 regularPriceText = formatStorePrice(product.prices.regularPrice, product.prices.currencyMinorUnit, product.prices.currencySymbol),
@@ -578,14 +593,9 @@ internal fun IosOutletScreen(
         state = listState,
         gridState = gridState,
         modifier = Modifier.fillMaxSize().padding(padding),
-        onBack = { if (selectedBubbleKey != null) selectedBubbleKey = null else onBack() },
+        onBack = { if (selectedBubbleKey != null) selectedBubbleKey = null else selectedOutletCategory = null },
         onProductSelected = { id -> sortedItems.firstOrNull { it.id == id }?.let(onProduct) },
-        onSortSelected = { selectedSort = it; sortMode = when (it) {
-            StoreProductSortOption.RECENT -> IosCatalogSortModeState.RECENT
-            StoreProductSortOption.PRICE_ASC -> IosCatalogSortModeState.PRICE_ASC
-            StoreProductSortOption.PRICE_DESC -> IosCatalogSortModeState.PRICE_DESC
-            StoreProductSortOption.NAME_ASC -> IosCatalogSortModeState.NAME_ASC
-        } },
+        onSortSelected = { selectedSort = it },
         onFilterClick = { filtersOpen = true },
         onRemoveFilter = { id ->
             when {
