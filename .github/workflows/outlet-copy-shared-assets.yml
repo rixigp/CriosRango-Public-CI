@@ -1,5 +1,7 @@
 name: Temporary Outlet shared asset copy
 
+# trigger retry after workflow registration
+
 on:
   push:
     branches:
