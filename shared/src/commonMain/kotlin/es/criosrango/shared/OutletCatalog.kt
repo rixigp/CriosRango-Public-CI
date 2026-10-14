@@ -11,7 +11,7 @@ private fun outletKey(value: String): String = value.lowercase().trim()
     .replace('ó', 'o').replace('ò', 'o').replace('ö', 'o').replace('ô', 'o')
     .replace('ú', 'u').replace('ù', 'u').replace('ü', 'u').replace('û', 'u')
     .replace('ñ', 'n')
-    .replace(Regex("[^a-z0-9]+"), " ").trim().replace(Regex("\\\\s+"), " ")
+    .replace(Regex("[^a-z0-9]+"), " ").trim().replace(Regex("\\s+"), " ")
 fun outletBubble(label: String, vararg categoryIds: Int) = OutletBubbleDefinition(outletKey(label), label, categoryIds.toSet())
 
 fun fixedOutletBubbles(outletCategoryId: Int): List<OutletBubbleDefinition> = when (outletCategoryId) {
