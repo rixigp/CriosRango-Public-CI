@@ -81,6 +81,7 @@ import es.criosrango.shared.OutletBubbleDefinition
 import es.criosrango.shared.fixedOutletBubbles
 import es.criosrango.shared.outletBubbleDisplayLabel
 import es.criosrango.shared.StoreOutletBubbles
+import es.criosrango.shared.outletCatalogFilterKey
 
 // OUTLET_CATEGORY_BUBBLES_START
 
@@ -765,38 +766,6 @@ internal fun StoreProduct.filterValues(attribute: String): Set<String> =
         .toSet()
 
 internal fun catalogFilterKey(value: String): String = es.criosrango.shared.storeCatalogFilterKey(value)
-
-/** Preserve the pre-migration Outlet filter semantics until the separate Outlet batch. */
-private fun outletCatalogFilterKey(value: String): String {
-    val unaccented = buildString {
-        value.lowercase().trim().forEach { character ->
-            when (character) {
-                'à', 'á', 'â', 'ã', 'ä', 'å', 'ā', 'ă', 'ą' -> append('a')
-                'ç', 'ć', 'ĉ', 'ċ', 'č' -> append('c')
-                'ď' -> append('d')
-                'è', 'é', 'ê', 'ë', 'ē', 'ĕ', 'ė', 'ę', 'ě' -> append('e')
-                'ĝ', 'ğ', 'ġ', 'ģ' -> append('g')
-                'ĥ' -> append('h')
-                'ì', 'í', 'î', 'ï', 'ĩ', 'ī', 'ĭ', 'į' -> append('i')
-                'ĵ' -> append('j')
-                'ķ' -> append('k')
-                'ĺ', 'ļ', 'ľ' -> append('l')
-                'ñ', 'ń', 'ņ', 'ň' -> append('n')
-                'ò', 'ó', 'ô', 'õ', 'ö', 'ō', 'ŏ', 'ő' -> append('o')
-                'ŕ', 'ŗ', 'ř' -> append('r')
-                'ś', 'ŝ', 'ş', 'š' -> append('s')
-                'ţ', 'ť' -> append('t')
-                'ù', 'ú', 'û', 'ü', 'ũ', 'ū', 'ŭ', 'ů', 'ű', 'ų' -> append('u')
-                'ŵ' -> append('w')
-                'ý', 'ÿ', 'ŷ' -> append('y')
-                'ź', 'ż', 'ž' -> append('z')
-                in '\u0300'..'\u036F' -> Unit
-                else -> append(character)
-            }
-        }
-    }
-    return unaccented.replace(Regex("\\s+"), " ")
-}
 
 internal fun StoreProduct.matchesCatalogFilters(
     sizes: Set<String>,

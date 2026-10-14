@@ -575,14 +575,14 @@ internal fun IosOutletScreen(
         product.attributes.filter { it.name.equals(attribute, true) }
             .flatMap { it.terms.map { term -> term.name } }
             .filter { it.isNotBlank() }.toSet()
-    fun matches(product: StoreProduct): Boolean {
-        val sizes = values(product, "Tallas")
-        val colors = values(product, "Color")
-        val brands = product.tags.map { it.name }.filter { it.isNotBlank() }.toSet()
-        return (selectedSizes.isEmpty() || sizes.any { it in selectedSizes }) &&
-            (selectedColors.isEmpty() || colors.any { it in selectedColors }) &&
-            (selectedBrands.isEmpty() || brands.any { it in selectedBrands })
-    }
+    fun matchesValues(values: Set<String>, selected: Set<String>): Boolean =
+        selected.isEmpty() || values.any { value ->
+            selected.any { outletCatalogFilterKey(it) == outletCatalogFilterKey(value) }
+        }
+    fun matches(product: StoreProduct): Boolean =
+        matchesValues(values(product, "Tallas"), selectedSizes) &&
+            matchesValues(values(product, "Color"), selectedColors) &&
+            matchesValues(product.tags.map { it.name }.filter { it.isNotBlank() }.toSet(), selectedBrands)
 
     val rawItems = pagingState.items
     val filteredItems = rawItems.filter(::matches)
@@ -596,16 +596,16 @@ internal fun IosOutletScreen(
     val colors = rawItems.flatMap { values(it, "Color") }.distinct().sorted()
     val brands = rawItems.flatMap { it.tags.map { tag -> tag.name } }.filter { it.isNotBlank() }.distinct().sorted()
     val possibleSizes = rawItems.filter { product ->
-        (selectedColors.isEmpty() || values(product, "Color").any { it in selectedColors }) &&
-            (selectedBrands.isEmpty() || product.tags.any { it.name in selectedBrands })
+        matchesValues(values(product, "Color"), selectedColors) &&
+            matchesValues(product.tags.map { it.name }.filter { it.isNotBlank() }.toSet(), selectedBrands)
     }.flatMap { values(it, "Tallas") }.toSet()
     val possibleColors = rawItems.filter { product ->
-        (selectedSizes.isEmpty() || values(product, "Tallas").any { it in selectedSizes }) &&
-            (selectedBrands.isEmpty() || product.tags.any { it.name in selectedBrands })
+        matchesValues(values(product, "Tallas"), selectedSizes) &&
+            matchesValues(product.tags.map { it.name }.filter { it.isNotBlank() }.toSet(), selectedBrands)
     }.flatMap { values(it, "Color") }.toSet()
     val possibleBrands = rawItems.filter { product ->
-        (selectedSizes.isEmpty() || values(product, "Tallas").any { it in selectedSizes }) &&
-            (selectedColors.isEmpty() || values(product, "Color").any { it in selectedColors })
+        matchesValues(values(product, "Tallas"), selectedSizes) &&
+            matchesValues(values(product, "Color"), selectedColors)
     }.flatMap { it.tags.map { tag -> tag.name } }.toSet()
     val activeChips = buildList {
         selectedSizes.sorted().forEach { add(StoreActiveFilterChipUi("size:$it", "Talla $it")) }
