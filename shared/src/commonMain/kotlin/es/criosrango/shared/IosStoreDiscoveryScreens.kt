@@ -430,12 +430,12 @@ private fun IosDiscoveryFilterChoices(
 }
 
 private class IosOutletRetainedCategoryState {
-    var selectedBubbleKey by mutableStateOf<String?>(null)
-    var filtersOpen by mutableStateOf(false)
-    var selectedSizes by mutableStateOf(emptySet<String>())
-    var selectedColors by mutableStateOf(emptySet<String>())
-    var selectedBrands by mutableStateOf(emptySet<String>())
-    var selectedSort by mutableStateOf(StoreProductSortOption.RECENT)
+    val selectedBubbleKey = mutableStateOf<String?>(null)
+    val filtersOpen = mutableStateOf(false)
+    val selectedSizes = mutableStateOf(emptySet<String>())
+    val selectedColors = mutableStateOf(emptySet<String>())
+    val selectedBrands = mutableStateOf(emptySet<String>())
+    val selectedSort = mutableStateOf(StoreProductSortOption.RECENT)
     val scrollPositions = mutableMapOf<String, Pair<Int, Int>>()
 }
 
@@ -508,11 +508,11 @@ internal fun IosOutletScreen(
     val retainedCategoryState = retainedOutletCategoryStates.getOrPut(activeCategoryId) {
         IosOutletRetainedCategoryState()
     }
-    var selectedBubbleKey by retainedCategoryState::selectedBubbleKey
-    var filtersOpen by retainedCategoryState::filtersOpen
-    var selectedSizes by retainedCategoryState::selectedSizes
-    var selectedColors by retainedCategoryState::selectedColors
-    var selectedBrands by retainedCategoryState::selectedBrands
+    var selectedBubbleKey by retainedCategoryState.selectedBubbleKey
+    var filtersOpen by retainedCategoryState.filtersOpen
+    var selectedSizes by retainedCategoryState.selectedSizes
+    var selectedColors by retainedCategoryState.selectedColors
+    var selectedBrands by retainedCategoryState.selectedBrands
     val visibleBubbles = if (availability == null) bubbles else bubbles.filter { bubble ->
         bubble.categoryIds.any { availability!!.countFor(activeCategoryId, it) > 0 }
     }
@@ -550,7 +550,7 @@ internal fun IosOutletScreen(
         CatalogPage(loaded, loaded.size >= perPage)
     }
 
-    var selectedSort by retainedCategoryState::selectedSort
+    var selectedSort by retainedCategoryState.selectedSort
     LaunchedEffect(queryKey) {
         // Re-entering a previously loaded query must reuse its retained pages.
         val retained = paginator.state.value
