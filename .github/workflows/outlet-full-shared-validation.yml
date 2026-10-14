@@ -37,7 +37,7 @@ jobs:
           echo "CHECKOUT_SHA=$CHECKOUT_SHA"
           echo "validation_target_sha=$VALIDATION_TARGET_SHA" >> "$GITHUB_OUTPUT"
           echo "checkout_sha=$CHECKOUT_SHA" >> "$GITHUB_OUTPUT"
-          test "$CHECKOUT_SHA" = "179a3077c862c5d4d03934cd93a8643303493542"
+          test "$CHECKOUT_SHA" = "$VALIDATION_TARGET_SHA"
           test "$VALIDATION_TARGET_SHA" = "$GITHUB_SHA" || { echo "::error::Target is not the triggering application SHA"; exit 1; }
           test "$VALIDATION_TARGET_SHA" = "$CHECKOUT_SHA" || {
             echo "::error::Pinned checkout does not match validation target"
