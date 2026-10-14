@@ -63,9 +63,9 @@ private fun OutletBubble(label: String, selected: Boolean, onClick: () -> Unit) 
                 text = label,
                 color = if (selected) Color.White else Color(0xFF3F3A3D),
                 fontSize = 13.sp,
+                lineHeight = 16.sp,
                 maxLines = 1,
-                overflow = TextOverflow.Clip,
-                modifier = Modifier.padding(vertical = 8.5.dp)
+                overflow = TextOverflow.Clip
             )
         }
     }

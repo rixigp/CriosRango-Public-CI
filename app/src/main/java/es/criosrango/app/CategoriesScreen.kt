@@ -209,7 +209,6 @@ internal fun OutletCatalogStateAdapter(
         OutletControlledProductGrid(
             controller = controller,
             modifier = modifier,
-            title = headerTitle ?: current.name,
             onBack = headerOnBack ?: {},
             onProduct = onProduct,
             showBubbles = current.parent == 445,
@@ -397,7 +396,6 @@ internal fun OutletCatalogStateAdapter(
 private fun OutletControlledProductGrid(
     controller: es.criosrango.shared.StoreOutletController,
     modifier: Modifier,
-    title: String,
     onBack: () -> Unit,
     onProduct: (StoreProduct) -> Unit,
     showBubbles: Boolean,
@@ -423,7 +421,7 @@ private fun OutletControlledProductGrid(
 
     val paging = state.paging
     val uiState = es.criosrango.shared.StoreProductListUiState(
-        title = title,
+        title = state.screenTitle,
         items = state.sortedProducts.map { (productLookup(it.id) ?: it.toAndroid()).toStoreProductItemUi() },
         selectedSort = when (state.selectedSort) {
             es.criosrango.shared.StoreOutletSort.RECENT -> es.criosrango.shared.StoreProductSortOption.RECENT
@@ -436,25 +434,16 @@ private fun OutletControlledProductGrid(
         activeFilterChips = androidActiveFilterChips(state.selectedSizes, state.selectedColors, state.selectedBrands, true),
         isInitialLoading = state.sortedProducts.isEmpty() && paging.isInitialLoading,
         isLoadingMore = state.sortedProducts.isNotEmpty() && paging.isAppending,
-        isEmpty = state.sortedProducts.isEmpty() && !paging.isInitialLoading && paging.initialError == null,
+        isEmpty = state.sortedProducts.isEmpty() && !state.isProbingSelectedBubble &&
+            !paging.isInitialLoading && !paging.hasMore && paging.initialError == null,
         emptyMessage = "No encontramos productos",
         initialErrorMessage = paging.initialError?.let { it.message?.takeIf(String::isNotBlank) ?: "No se han podido cargar los productos." },
         appendErrorMessage = if (paging.appendError != null) "" else null,
         appendRetryLabel = "Reintentar",
-        canLoadMore = paging.hasMore
+        canLoadMore = paging.hasMore,
+        isProbingSelectedBubble = showBubbles && state.isProbingSelectedBubble
     )
 
-    val probingSelectedBubble = showBubbles && state.selectedBubbleKey != null &&
-        state.matchedProducts.isEmpty() && paging.appendError == null &&
-        (paging.isInitialLoading || paging.isAppending || paging.hasMore)
-    if (probingSelectedBubble) {
-        Box(
-            modifier = modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator(modifier = Modifier.size(28.dp))
-        }
-    } else {
     es.criosrango.shared.StoreProductListScreen(
         state = uiState,
         gridState = gridState,
@@ -511,7 +500,6 @@ private fun OutletControlledProductGrid(
             )
         }
     )
-    }
 
     if (filtersOpen) {
         es.criosrango.shared.StoreCatalogFilterDialog(
@@ -629,7 +617,8 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             loading = if (outletController != null && currentIsOutletPath) outletControllerState.paging.isInitialLoading else loading,
             onBack = onCategoriesBack,
             onCategory = { child -> categories.firstOrNull { it.id == child.id }?.let(onOpen) },
-            onFilterClick = { showOutletProductsFromFilters = true },
+            onFilterClick = if (current.id == 445) null else { showOutletProductsFromFilters = true },
+            showFilterButton = current.id != 445,
             onRetry = { loadCategoryTree(current.id) },
             modifier = Modifier.fillMaxSize().padding(padding)
         )

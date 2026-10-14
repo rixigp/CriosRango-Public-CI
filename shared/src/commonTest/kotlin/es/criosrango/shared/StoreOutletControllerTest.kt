@@ -2,6 +2,9 @@ package es.criosrango.shared
 
 import es.criosrango.shared.model.ProductAttribute
 import es.criosrango.shared.model.AttributeTerm
+import es.criosrango.shared.model.OutletAvailability
+import es.criosrango.shared.model.OutletAvailabilityBucket
+import es.criosrango.shared.model.OutletAvailabilityCount
 import es.criosrango.shared.model.ProductTag
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
@@ -37,6 +40,12 @@ class StoreOutletControllerTest {
         50 to StoreCategory(id = 50, parent = 51),
         51 to StoreCategory(id = 51, parent = 50)
     )
+
+    private fun availability(outletId: Int = 446, categoryId: Int = 430, count: Int = 1, schemaVersion: Int = 1) =
+        OutletAvailability(schemaVersion = schemaVersion, outlets = listOf(
+            OutletAvailabilityBucket(outletCategoryId = outletId,
+                counts = listOf(OutletAvailabilityCount(categoryId = categoryId, count = count)))
+        ))
 
     @Test fun matching_supports_direct_ancestor_original_ids_and_any_bubble_id() {
         val cats = categories()
@@ -90,6 +99,7 @@ class StoreOutletControllerTest {
         val second = StoreProduct(id = 1, name = "A", categories = listOf(StoreCategory(id = 430)), attributes = listOf(ProductAttribute(name = "Color", terms = listOf(AttributeTerm(name = "azul")))), tags = listOf(ProductTag(name = "Marca")))
         val controller = StoreOutletController(controllerScope(), StoreOutletDataSource { _, _, _ -> CatalogPage(listOf(first, second), false) })
         controller.updateCategories(listOf(StoreCategory(id = 430, parent = 0)))
+        controller.updateAvailability(availability())
         controller.selectCategory(446)
         advanceUntilIdle()
         assertEquals(listOf(2, 1), controller.state.value.sortedProducts.map { it.id })
@@ -155,6 +165,7 @@ class StoreOutletControllerTest {
             calls += page
             CatalogPage(emptyList(), hasMore = page == 1)
         })
+        controller.updateAvailability(availability())
         controller.selectCategory(446)
         advanceUntilIdle()
         controller.selectBubble("abrigos y cazadoras")
@@ -218,6 +229,69 @@ class StoreOutletControllerTest {
         advanceUntilIdle()
         assertEquals(447, controller.state.value.activeCategoryId)
         assertEquals(listOf(447), controller.state.value.paging.items.map { it.id })
+    }
+
+
+    @Test fun missing_availability_fails_closed_for_named_bubbles() = runTest {
+        val controller = StoreOutletController(controllerScope(), StoreOutletDataSource { _, _, _ -> CatalogPage(emptyList(), false) })
+        controller.selectCategory(446)
+        advanceUntilIdle()
+        assertTrue(controller.state.value.visibleBubbles.isEmpty())
+    }
+
+    @Test fun unsupported_availability_schema_fails_closed_for_named_bubbles() = runTest {
+        val controller = StoreOutletController(controllerScope(), StoreOutletDataSource { _, _, _ -> CatalogPage(emptyList(), false) })
+        controller.updateAvailability(availability(schemaVersion = 2))
+        controller.selectCategory(446)
+        advanceUntilIdle()
+        assertTrue(controller.state.value.visibleBubbles.isEmpty())
+    }
+
+    @Test fun positive_availability_shows_bubble_and_zero_count_hides_it() = runTest {
+        val controller = StoreOutletController(controllerScope(), StoreOutletDataSource { _, _, _ -> CatalogPage(emptyList(), false) })
+        controller.updateAvailability(availability(count = 1))
+        controller.selectCategory(446)
+        advanceUntilIdle()
+        assertTrue(controller.state.value.visibleBubbles.any { it.key == "abrigos y cazadoras" })
+        controller.updateAvailability(availability(count = 0))
+        assertFalse(controller.state.value.visibleBubbles.any { it.key == "abrigos y cazadoras" })
+    }
+
+    @Test fun unavailable_bubble_selection_is_ignored_without_probe_or_query_change() = runTest {
+        val calls = mutableListOf<Int>()
+        val controller = StoreOutletController(controllerScope(), StoreOutletDataSource { _, page, _ ->
+            calls += page
+            CatalogPage(emptyList(), hasMore = true)
+        })
+        controller.selectCategory(446)
+        advanceUntilIdle()
+        val queryBefore = controller.state.value.queryKey
+        controller.selectBubble("abrigos y cazadoras")
+        advanceUntilIdle()
+        assertEquals(null, controller.state.value.selectedBubbleKey)
+        assertEquals(queryBefore, controller.state.value.queryKey)
+        assertEquals(listOf(1), calls)
+        assertFalse(controller.state.value.isProbingSelectedBubble)
+    }
+
+    @Test fun bubble_selection_does_not_change_common_screen_title_but_category_selection_does() = runTest {
+        val controller = StoreOutletController(controllerScope(), StoreOutletDataSource { _, _, _ -> CatalogPage(emptyList(), false) })
+        controller.updateCategories(listOf(
+            StoreCategory(id = 446, parent = 445, name = "Niño invierno"),
+            StoreCategory(id = 447, parent = 445, name = "Niño verano")
+        ))
+        controller.updateAvailability(OutletAvailability(schemaVersion = 1, outlets = listOf(
+            OutletAvailabilityBucket(446, listOf(OutletAvailabilityCount(430, 1))),
+            OutletAvailabilityBucket(447, listOf(OutletAvailabilityCount(431, 1)))
+        )))
+        controller.selectCategory(446)
+        advanceUntilIdle()
+        assertEquals("Niño invierno", controller.state.value.screenTitle)
+        controller.selectBubble("abrigos y cazadoras")
+        assertEquals("Niño invierno", controller.state.value.screenTitle)
+        controller.selectCategory(447)
+        advanceUntilIdle()
+        assertEquals("Niño verano", controller.state.value.screenTitle)
     }
 
 }

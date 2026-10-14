@@ -27,6 +27,7 @@ enum class StoreOutletSort { RECENT, PRICE_ASC, PRICE_DESC, NAME_ASC }
 
 data class StoreOutletState(
     val activeCategoryId: Int? = null,
+    val screenTitle: String = "Outlet",
     val query: StoreOutletQuery? = null,
     val queryKey: StoreOutletQueryKey? = null,
     val selectedBubbleKey: String? = null,
@@ -48,9 +49,13 @@ data class StoreOutletState(
 ) {
     val activeFilterCount: Int get() = selectedSizes.size + selectedColors.size + selectedBrands.size
     val isBubbleProbeRequired: Boolean
-        get() = selectedBubbleKey != null && matchedProducts.isEmpty() &&
-            paging.currentPage > 0 && !paging.isInitialLoading && !paging.isAppending &&
+        get() = selectedBubbleKey != null && visibleBubbles.any { it.key == selectedBubbleKey } &&
+            matchedProducts.isEmpty() && paging.currentPage > 0 && !paging.isInitialLoading && !paging.isAppending &&
             paging.initialError == null && paging.appendError == null && paging.hasMore
+    val isProbingSelectedBubble: Boolean
+        get() = selectedBubbleKey != null && visibleBubbles.any { it.key == selectedBubbleKey } &&
+            matchedProducts.isEmpty() && paging.appendError == null && paging.hasMore &&
+            (paging.isInitialLoading || paging.isAppending || isBubbleProbeRequired)
 }
 
 sealed interface StoreOutletIntent {
@@ -158,7 +163,8 @@ class StoreOutletController(
 
     fun selectBubble(key: String?) {
         val current = _state.value
-        val validKey = key?.takeIf { candidate -> current.visibleBubbles.any { it.key == candidate } }
+        if (key != null && current.visibleBubbles.none { it.key == key }) return
+        val validKey = key
         if (validKey == current.selectedBubbleKey) return
         lastProbeToken = null
         _state.value = current.copy(selectedBubbleKey = validKey)
@@ -254,7 +260,7 @@ class StoreOutletController(
         val activeCategoryId = categoryId ?: return emptyList()
         val bubbles = fixedOutletBubbles(activeCategoryId)
         val snapshot = availability
-        if (snapshot?.schemaVersion != 1) return bubbles
+        if (snapshot?.schemaVersion != 1) return emptyList()
         return bubbles.filter { bubble ->
             bubble.categoryIds.any { categoryIdForBubble ->
                 snapshot.countFor(activeCategoryId, categoryIdForBubble) > 0
@@ -301,7 +307,10 @@ class StoreOutletController(
             StoreOutletSort.PRICE_DESC -> filtered.sortedByDescending { it.prices.price.toLongOrNull() ?: Long.MIN_VALUE }
             StoreOutletSort.NAME_ASC -> filtered.sortedBy { it.name.lowercase() }
         }
+        val displayTitle = categoryId?.let { categoriesById[it] }
+            ?.let(::storeCategoryDisplayName) ?: "Outlet"
         val next = old.copy(
+            screenTitle = displayTitle,
             selectedBubbleKey = selectedKey,
             visibleBubbles = visible,
             paging = paging,

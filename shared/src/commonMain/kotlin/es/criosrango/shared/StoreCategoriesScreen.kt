@@ -41,7 +41,8 @@ fun StoreCategoriesScreen(categories: List<StoreCategory>, loading: Boolean, err
                     columnSpacing = 12.dp,
                     rowSpacing = 12.dp,
                     imagePadding = 1.dp,
-                    imageToLabelSpacing = 6.dp
+                    imageToLabelSpacing = 6.dp,
+                    imageScale = 1.16f
                 )
             }
         }

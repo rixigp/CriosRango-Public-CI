@@ -102,6 +102,7 @@ fun StoreProductListScreen(
         }
 
         when {
+            state.isProbingSelectedBubble -> StoreProductGridSkeleton(Modifier.weight(1f))
             state.isInitialLoading -> StoreProductGridSkeleton(Modifier.weight(1f))
             state.initialErrorMessage != null -> Box(
                 Modifier.fillMaxWidth().weight(1f).padding(24.dp),

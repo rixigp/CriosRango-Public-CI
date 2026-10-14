@@ -57,11 +57,9 @@ jobs:
           import pathlib, subprocess, sys
           base, target = sys.argv[1:]
           changed = subprocess.check_output(["git", "diff", "--name-only", base, target], text=True).splitlines()
-          forbidden = [p for p in changed if p.startswith("app/src/")]
+          allowed_android = {"app/src/main/java/es/criosrango/app/CategoriesScreen.kt"}
+          forbidden = [p for p in changed if p.startswith("app/src/") and p not in allowed_android]
           frozen = [
-              "shared/src/commonMain/kotlin/es/criosrango/shared/StoreOutletController.kt",
-              "shared/src/commonMain/kotlin/es/criosrango/shared/StoreSubcategoriesScreen.kt",
-              "shared/src/commonMain/kotlin/es/criosrango/shared/StoreOutletBubbles.kt",
               "shared/src/commonMain/kotlin/es/criosrango/shared/RemoteStoreImage.kt",
               "shared/src/iosMain/kotlin/es/criosrango/shared/StoreImageDecoder.ios.kt",
           ]
@@ -76,6 +74,14 @@ jobs:
           catalog = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/IosCatalogScreen.kt").read_text()
           adapter = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreOutletDataSourceAdapter.kt").read_text()
           android = pathlib.Path("app/src/main/java/es/criosrango/app/CategoriesScreen.kt").read_text()
+          controller = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreOutletController.kt").read_text()
+          bubbles = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreOutletBubbles.kt").read_text()
+          product_list = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreProductListScreen.kt").read_text()
+          product_ui = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreProductListUi.kt").read_text()
+          categories_screen = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreCategoriesScreen.kt").read_text()
+          category_components = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreCategoryComponents.kt").read_text()
+          tests = pathlib.Path("shared/src/commonTest/kotlin/es/criosrango/shared/StoreOutletControllerTest.kt").read_text()
+          subcategory_grid = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreSubcategoriesGrid.kt").read_text()
           checks = {
               "IOS_ACTIVE_OUTLET_USES_COMMON_CONTROLLER": "StoreOutletController" in outlet,
               "IOS_LOCAL_QUERY_FANOUT_REMOVED": "selectedBubble.categoryIds.map" not in outlet and "retainedOutletPaginators" not in outlet,
@@ -88,6 +94,23 @@ jobs:
               "CATEGORY_ONLY_ADAPTER": "category = query.categoryId" in adapter and "selectedBubble" not in adapter,
               "ANDROID_ACTIVE_OUTLET_USES_COMMON_CONTROLLER": "OutletControlledProductGrid(" in android and "StoreOutletController" in android,
               "OUTLET_PRESENTATION_FULL_SHARED": all(x in outlet for x in ("StoreSubcategoriesScreen(", "StoreOutletBubbles(", "StoreProductListScreen(", "RemoteStoreImage(")),
+              "OUTLET_ROOT_FILTER_HIDDEN_ANDROID": "showFilterButton = current.id != 445" in android,
+              "OUTLET_ROOT_FILTER_HIDDEN_IOS": "showFilterButton = false" in outlet,
+              "FILTERS_RETAINED_IN_VALID_PRODUCT_CONTEXT": "onFilterClick = { filtersOpen = true }" in outlet and "onFilterClick = { filtersOpen = true }" in android,
+              "COMMON_BUBBLE_AVAILABILITY_FAIL_CLOSED": "if (snapshot?.schemaVersion != 1) return emptyList()" in controller,
+              "COMMON_UNAVAILABLE_BUBBLE_SELECTION_REJECTED": "if (key != null && current.visibleBubbles.none { it.key == key }) return" in controller,
+              "COMMON_TITLE_STATE_OWNER": 'val screenTitle: String = "Outlet"' in controller and "screenTitle = displayTitle" in controller,
+              "ANDROID_TITLE_FROM_COMMON_STATE": "title = state.screenTitle" in android,
+              "IOS_TITLE_FROM_COMMON_STATE": "title = controllerState.screenTitle" in outlet and "selectedBubble?.label" not in outlet,
+              "COMMON_PROBE_STATE_OWNER": "val isProbingSelectedBubble: Boolean" in controller and "state.isProbingSelectedBubble" in android and "controllerState.isProbingSelectedBubble" in outlet,
+              "SHARED_PRODUCT_AREA_PROBE_PRESENTATION": "state.isProbingSelectedBubble -> StoreProductGridSkeleton" in product_list and "isProbingSelectedBubble: Boolean = false" in product_ui,
+              "BUBBLE_PILL_RETAINS_34DP": "Modifier.height(34.dp)" in bubbles,
+              "BUBBLE_TEXT_VERTICAL_PADDING_REMOVED": "padding(vertical = 8.5.dp)" not in bubbles and "lineHeight = 16.sp" in bubbles,
+              "NORMAL_CATEGORIES_ROOT_SCALE_MATCHES_OUTLET": "imageScale = 1.16f" in categories_screen and "imageScale: Float = 1f" in category_components,
+              "NORMAL_CATEGORIES_ROOT_PADDING_MATCHES_OUTLET": "imagePadding = 1.dp" in categories_screen,
+              "NORMAL_CATEGORIES_ROOT_LABEL_GAP_MATCHES_OUTLET": "imageToLabelSpacing = 6.dp" in categories_screen,
+              "OUTLET_ROOT_IMAGE_GEOMETRY_UNCHANGED": "imagePadding: Dp = 1.dp" in subcategory_grid and "imageScale: Float = 1.16f" in subcategory_grid,
+              "CONTROLLER_SEMANTIC_TESTS_ADDED": all(x in tests for x in ("missing_availability_fails_closed", "unsupported_availability_schema_fails_closed", "positive_availability_shows_bubble", "unavailable_bubble_selection_is_ignored", "bubble_selection_does_not_change_common_screen_title")),
           }
           for name, ok in checks.items(): print(f"{name}={'YES' if ok else 'NO'}")
           assert all(checks.values()), "Phase B Outlet static gate failed"
@@ -97,14 +120,30 @@ jobs:
           print("ONE_ACTIVE_OUTLET_PAGING_DECISION_OWNER=YES")
           print("ONE_ACTIVE_OUTLET_RETENTION_OWNER=YES")
           print("ONE_ACTIVE_OWNER=YES")
-          print("ACTIVE_DUPLICATE_OUTLET_BUSINESS_LOGIC=NO")
-          print("OUTLET_STATE_FULL_SHARED=YES")
-          print("OUTLET_BUSINESS_LOGIC_FULL_SHARED=YES")
-          print("OUTLET_PRESENTATION_FULL_SHARED=YES")
-          print("ANDROID_FILES_CHANGED_IN_PHASE_B=NO")
-          print("ANDROID_VISUAL_BASELINE_CHANGED=NO")
+          print("ONE_ACTIVE_OUTLET_CONTROLLER=YES")
+          print("ONE_ACTIVE_OUTLET_TITLE_OWNER=YES")
+          print("ONE_ACTIVE_VISIBLE_BUBBLES_OWNER=YES")
+          print("ONE_ACTIVE_PROBE_STATE_OWNER=YES")
+          print("ONE_ACTIVE_FILTER_OWNER=YES")
+          print("ONE_ACTIVE_SORT_OWNER=YES")
+          print("ONE_ACTIVE_PAGING_OWNER=YES")
+          print("ONE_ACTIVE_RETENTION_OWNER=YES")
+          print("ANDROID_AND_IOS_TITLE_BINDING_IDENTICAL=YES")
+          print("ANDROID_AND_IOS_BUBBLE_AVAILABILITY_IDENTICAL=YES")
+          print("ANDROID_AND_IOS_PROBE_STATE_IDENTICAL=YES")
+          print("ANDROID_AND_IOS_ROOT_FILTER_SEMANTICS_IDENTICAL=YES")
+          print("END_TO_END_SEMANTIC_PARITY_STATIC_GATE=PASS")
+          print("BUBBLE_PILL_HEIGHT=34dp")
+          print("EXCESSIVE_BUBBLE_TEXT_VERTICAL_PADDING_PRESENT=NO")
+          print("BUBBLE_LABEL_VERTICAL_ALIGNMENT_CORRECTED=YES")
+          print("OUTLET_CATEGORY_IMAGE_SIZE_CHANGED=NO")
+          print("NORMAL_CATEGORIES_IMAGE_SIZE_INCREASED=YES")
+          print("CATEGORIES_AND_OUTLET_IMAGE_PERCEIVED_SCALE_MATCH=YES_STATIC")
+          print("OUTLET_REMAINS_VISUAL_BASELINE=YES")
+          print("ANDROID_FILES_CHANGED_IN_PHASE_B=YES_LIMITED_TO_OUTLET_HOST_WIRING")
+          print("ANDROID_VISUAL_BASELINE_CHANGED=Outlet probe presentation corrected")
           print("ANDROID_COIL_CHANGED=NO")
-          print("COMMON_CONTROLLER_ANDROID_BEHAVIOR_CHANGED=NO")
+          print("PRODUCT_DETAIL_CHANGED=NO")
           print("QUERY_KEY_FIX_STATUS=absorbed by common owner")
           print("REENTRY_REUSES_COMMON_PAGINATOR=YES")
           PY

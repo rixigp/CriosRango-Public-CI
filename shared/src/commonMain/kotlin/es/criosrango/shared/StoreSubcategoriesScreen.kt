@@ -15,13 +15,18 @@ import es.criosrango.shared.model.StoreCategory
 @Composable
 fun StoreSubcategoriesScreen(parent: StoreCategory, title: String = storeCategoryDisplayName(parent), categories: List<StoreCategory>, loading: Boolean,
     errorMessage: String? = null, activeFilterCount: Int = 0, activeFilterChips: List<StoreActiveFilterChipUi> = emptyList(),
-    onBack: () -> Unit, onCategory: (StoreCategory) -> Unit, onFilterClick: () -> Unit,
+    onBack: () -> Unit, onCategory: (StoreCategory) -> Unit, onFilterClick: (() -> Unit)? = null,
+    showFilterButton: Boolean = onFilterClick != null,
     onRemoveFilter: (String) -> Unit = {}, onClearFilters: () -> Unit = {}, onRetry: () -> Unit = {}, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize()) {
         StoreCatalogHeader(title = title, showBack = true, onBack = onBack,
-            trailing = { OutlinedButton(onClick = onFilterClick, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
-                Text(if (activeFilterCount == 0) "Filtros" else "Filtros ($activeFilterCount)")
-            } })
+            trailing = {
+                if (showFilterButton && onFilterClick != null) {
+                    OutlinedButton(onClick = onFilterClick, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                        Text(if (activeFilterCount == 0) "Filtros" else "Filtros ($activeFilterCount)")
+                    }
+                }
+            })
         if (activeFilterChips.isNotEmpty()) {
             FlowRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

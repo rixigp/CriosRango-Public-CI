@@ -451,7 +451,7 @@ internal fun IosOutletScreen(
             errorMessage = if (categoriesLoading) null else categoriesError ?: "No se han podido cargar las categorías.",
             onBack = onBack,
             onCategory = {},
-            onFilterClick = {},
+            showFilterButton = false,
             onRetry = onRetry,
             modifier = Modifier.fillMaxSize().padding(padding)
         )
@@ -466,7 +466,7 @@ internal fun IosOutletScreen(
             errorMessage = "Outlet no disponible.",
             onBack = onBack,
             onCategory = {},
-            onFilterClick = {},
+            showFilterButton = false,
             onRetry = onRetry,
             modifier = Modifier.fillMaxSize().padding(padding)
         )
@@ -501,18 +501,13 @@ internal fun IosOutletScreen(
                 controller.selectCategory(category.id)
                 showOutletChooser = false
             },
-            onFilterClick = {
-                controller.selectCategory(outlet.id)
-                showOutletChooser = false
-            },
+            showFilterButton = false,
             modifier = Modifier.fillMaxSize().padding(padding)
         )
         return
     }
 
     val activeCategoryId = controllerState.activeCategoryId ?: outlet.id
-    val activeCategory = categories.firstOrNull { it.id == activeCategoryId } ?: outlet
-    val selectedBubble = controllerState.visibleBubbles.firstOrNull { it.key == controllerState.selectedBubbleKey }
     val showBubbles = activeCategoryId != outlet.id
     val gridState = rememberLazyGridState()
     val paging = controllerState.paging
@@ -538,7 +533,7 @@ internal fun IosOutletScreen(
         controllerState.selectedBrands.sorted().forEach { add(StoreActiveFilterChipUi("brand:$it", it)) }
     }
     val listState = StoreProductListUiState(
-        title = selectedBubble?.label ?: (if (activeCategoryId == outlet.id) "Outlet" else activeCategory.name),
+        title = controllerState.screenTitle,
         items = controllerState.sortedProducts.map { product ->
             StoreProductItemUi(
                 id = product.id,
@@ -561,27 +556,16 @@ internal fun IosOutletScreen(
         activeFilterChips = activeChips,
         isInitialLoading = paging.isInitialLoading,
         isLoadingMore = paging.isAppending,
-        isEmpty = controllerState.sortedProducts.isEmpty() && !paging.hasMore,
+        isEmpty = controllerState.sortedProducts.isEmpty() && !controllerState.isProbingSelectedBubble && !paging.hasMore,
         emptyMessage = if (controllerState.selectedSizes.isNotEmpty() || controllerState.selectedColors.isNotEmpty() || controllerState.selectedBrands.isNotEmpty()) "No hay productos con estos filtros." else "No hay productos.",
         initialErrorMessage = paging.initialError?.message ?: if (paging.initialError != null) "No se han podido cargar los productos." else null,
         appendErrorMessage = paging.appendError?.message ?: if (paging.appendError != null) "No se han podido cargar más productos." else null,
         appendRetryLabel = "Reintentar",
-        canLoadMore = paging.hasMore
+        canLoadMore = paging.hasMore,
+        isProbingSelectedBubble = showBubbles && controllerState.isProbingSelectedBubble
     )
 
-    val probingSelectedBubble = showBubbles && selectedBubble != null &&
-        controllerState.matchedProducts.isEmpty() && paging.appendError == null &&
-        (paging.isInitialLoading || paging.isAppending || paging.hasMore)
-
-    if (probingSelectedBubble) {
-        Box(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator(modifier = Modifier.size(28.dp))
-        }
-    } else {
-        StoreProductListScreen(
+    StoreProductListScreen(
             state = listState,
             gridState = gridState,
             modifier = Modifier.fillMaxSize().padding(padding),
@@ -636,7 +620,6 @@ internal fun IosOutletScreen(
                 )
             }
         )
-    }
 
     if (filtersOpen) {
         StoreCatalogFilterDialog(

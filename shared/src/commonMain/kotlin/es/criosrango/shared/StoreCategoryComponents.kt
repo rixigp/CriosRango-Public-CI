@@ -130,7 +130,8 @@ fun StoreCategoriesGrid(
     columnSpacing: Dp = 12.dp,
     rowSpacing: Dp = 16.dp,
     imagePadding: Dp = 6.dp,
-    imageToLabelSpacing: Dp = 8.dp
+    imageToLabelSpacing: Dp = 8.dp,
+    imageScale: Float = 1f
 ) {
     val visible = categories.filter {
         it.parent == 0 && !it.name.equals("Outlet", ignoreCase = true) &&
@@ -155,7 +156,8 @@ fun StoreCategoriesGrid(
                                 category = row[index],
                                 onClick = { onCategory(row[index]) },
                                 imagePadding = imagePadding,
-                                imageToLabelSpacing = imageToLabelSpacing
+                                imageToLabelSpacing = imageToLabelSpacing,
+                                imageScale = imageScale
                             )
                         }
                     }
