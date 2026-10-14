@@ -501,7 +501,13 @@ internal fun IosOutletScreen(
                 controller.selectCategory(category.id)
                 showOutletChooser = false
             },
-            showFilterButton = false,
+            onFilterClick = {
+                val rootScope = StoreRootFilterScope.OUTLET
+                controller.selectCategory(rootScope.categoryQueryId!!)
+                showOutletChooser = false
+                filtersOpen = true
+            },
+            showFilterButton = true,
             modifier = Modifier.fillMaxSize().padding(padding)
         )
         return
@@ -644,7 +650,7 @@ internal fun IosOutletScreen(
 }
 
 @Composable
-private fun IosPagedProductScreen(
+internal fun IosPagedProductScreen(
     title: String,
     padding: PaddingValues,
     cartStore: StoreCartStore,
@@ -657,11 +663,12 @@ private fun IosPagedProductScreen(
     emptyActionLabel: String? = null,
     onEmptyAction: (() -> Unit)? = null,
     headerContent: (@Composable ColumnScope.() -> Unit)? = null,
-    enableProductControls: Boolean = false
+    enableProductControls: Boolean = false,
+    initialFiltersOpen: Boolean = false
 ) {
     val scope=rememberCoroutineScope(); val paginator=remember(queryKey){CatalogPaginatorStore<StoreProduct>(scope, pageSize = if (queryKey.startsWith("novedades:")) 24 else CatalogPaginator.PAGE_SIZE) { it.id }}; val state by paginator.state.collectAsState(); val grid=rememberLazyGridState()
     var sortMode by rememberSaveable(queryKey) { mutableStateOf(IosCatalogSortModeState.RECENT) }
-    var filtersOpen by rememberSaveable(queryKey) { mutableStateOf(false) }
+    var filtersOpen by rememberSaveable(queryKey) { mutableStateOf(initialFiltersOpen) }
     var selectedSizes by rememberSaveable(queryKey) { mutableStateOf(setOf<String>()) }
     var selectedColors by rememberSaveable(queryKey) { mutableStateOf(setOf<String>()) }
     var selectedBrands by rememberSaveable(queryKey) { mutableStateOf(setOf<String>()) }

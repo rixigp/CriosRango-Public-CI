@@ -12,9 +12,13 @@ import es.criosrango.shared.model.StoreCategory
 /** Single root-category presentation owner. Data loading and navigation remain host-owned. */
 @Composable
 fun StoreCategoriesScreen(categories: List<StoreCategory>, loading: Boolean, errorMessage: String? = null,
-    onBack: () -> Unit, onCategory: (StoreCategory) -> Unit, onRetry: (() -> Unit)? = null, showEmptyRetry: Boolean = true, modifier: Modifier = Modifier) {
+    onBack: () -> Unit, onCategory: (StoreCategory) -> Unit, onRetry: (() -> Unit)? = null,
+    onRootFilter: ((StoreRootFilterScope) -> Unit)? = null,
+    showEmptyRetry: Boolean = true, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize()) {
-        StoreCatalogHeader(title = "Categorías", showBack = true, onBack = onBack)
+        StoreCatalogHeader(title = "Categorías", showBack = true, onBack = onBack, trailing = {
+            onRootFilter?.let { callback -> StoreRootFilterButton(onClick = { callback(StoreRootFilterScope.CATALOG) }) }
+        })
         when {
             errorMessage != null -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {

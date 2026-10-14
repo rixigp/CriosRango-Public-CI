@@ -57,7 +57,12 @@ jobs:
           import pathlib, subprocess, sys
           base, target = sys.argv[1:]
           changed = subprocess.check_output(["git", "diff", "--name-only", base, target], text=True).splitlines()
-          allowed_android = {"app/src/main/java/es/criosrango/app/CategoriesScreen.kt"}
+          allowed_android = {
+              "app/src/main/java/es/criosrango/app/CategoriesScreen.kt",
+              "app/src/main/java/es/criosrango/app/ShopViewModel.kt",
+              "app/src/main/java/es/criosrango/app/ShopRepository.kt",
+              "app/src/main/java/es/criosrango/app/MainActivity.kt",
+          }
           forbidden = [p for p in changed if p.startswith("app/src/") and p not in allowed_android]
           frozen = [
               "shared/src/commonMain/kotlin/es/criosrango/shared/RemoteStoreImage.kt",
@@ -68,13 +73,14 @@ jobs:
           ios_path = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/IosStoreDiscoveryScreens.kt")
           src = ios_path.read_text()
           start = src.index("internal fun IosOutletScreen(")
-          end = src.index("private fun IosPagedProductScreen", start)
+          end = src.index("internal fun IosPagedProductScreen", start)
           outlet = src[start:end]
           root = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/IosStoreRootScreen.kt").read_text()
           catalog = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/IosCatalogScreen.kt").read_text()
           adapter = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreOutletDataSourceAdapter.kt").read_text()
           android = pathlib.Path("app/src/main/java/es/criosrango/app/CategoriesScreen.kt").read_text()
           controller = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreOutletController.kt").read_text()
+          root_filter = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreRootFilterContract.kt").read_text()
           bubbles = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreOutletBubbles.kt").read_text()
           product_list = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreProductListScreen.kt").read_text()
           product_ui = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreProductListUi.kt").read_text()
@@ -94,8 +100,15 @@ jobs:
               "CATEGORY_ONLY_ADAPTER": "category = query.categoryId" in adapter and "selectedBubble" not in adapter,
               "ANDROID_ACTIVE_OUTLET_USES_COMMON_CONTROLLER": "OutletControlledProductGrid(" in android and "StoreOutletController" in android,
               "OUTLET_PRESENTATION_FULL_SHARED": all(x in outlet for x in ("StoreSubcategoriesScreen(", "StoreOutletBubbles(", "StoreProductListScreen(", "RemoteStoreImage(")),
-              "OUTLET_ROOT_FILTER_HIDDEN_ANDROID": "showFilterButton = current.id != 445" in android,
-              "OUTLET_ROOT_FILTER_HIDDEN_IOS": "showFilterButton = false" in outlet,
+              "OUTLET_ROOT_FILTER_VISIBLE_ANDROID": "showFilterButton = true" in android and "StoreRootFilterScope.OUTLET" in android,
+              "OUTLET_ROOT_FILTER_VISIBLE_IOS": "showFilterButton = true" in outlet and "StoreRootFilterScope.OUTLET" in outlet,
+              "CATEGORIES_ROOT_FILTER_VISIBLE_ANDROID": "onRootFilter = onRootFilter" in android and "StoreRootFilterButton" in categories_screen,
+              "CATEGORIES_ROOT_FILTER_VISIBLE_IOS": "onRootFilter=onOpenRootFilter" in catalog and "CATALOG(null," in root_filter,
+              "OUTLET_ROOT_FILTER_SELECTS_ARBITRARY_CHILD": "controller.selectCategory(rootScope.categoryQueryId!!)" in outlet and "firstOrNull" not in outlet[outlet.index("if (showOutletChooser)") : outlet.index("val activeCategoryId")],
+              "CATEGORIES_ROOT_FILTER_SELECTS_ARBITRARY_CHILD": "category = page.scope.categoryQueryId" in catalog and "StoreRootFilterScope.CATALOG" in android and "loadRootCatalog()" in android,
+              "ONE_ACTIVE_ROOT_FILTER_SEMANTIC_OWNER": "enum class StoreRootFilterScope" in root_filter and "categoryQueryId: Int?" in root_filter,
+              "ANDROID_AND_IOS_OUTLET_ROOT_FILTER_SEMANTICS_IDENTICAL": "StoreRootFilterScope.OUTLET" in android and "StoreRootFilterScope.OUTLET" in outlet and "categoryQueryId: Int?" in root_filter,
+              "ANDROID_AND_IOS_CATEGORIES_ROOT_FILTER_SEMANTICS_IDENTICAL": "StoreRootFilterScope.CATALOG" in android and "onRootFilter=onOpenRootFilter" in catalog and "CATALOG(null," in root_filter,
               "FILTERS_RETAINED_IN_VALID_PRODUCT_CONTEXT": "onFilterClick = { filtersOpen = true }" in outlet and "onFilterClick = { filtersOpen = true }" in android,
               "COMMON_BUBBLE_AVAILABILITY_FAIL_CLOSED": "if (snapshot?.schemaVersion != 1) return emptyList()" in controller,
               "COMMON_UNAVAILABLE_BUBBLE_SELECTION_REJECTED": "if (key != null && current.visibleBubbles.none { it.key == key }) return" in controller,
@@ -131,6 +144,15 @@ jobs:
           print("ANDROID_AND_IOS_TITLE_BINDING_IDENTICAL=YES")
           print("ANDROID_AND_IOS_BUBBLE_AVAILABILITY_IDENTICAL=YES")
           print("ANDROID_AND_IOS_PROBE_STATE_IDENTICAL=YES")
+          print("OUTLET_ROOT_FILTER_VISIBLE_ANDROID=YES")
+          print("OUTLET_ROOT_FILTER_VISIBLE_IOS=YES")
+          print("CATEGORIES_ROOT_FILTER_VISIBLE_ANDROID=YES")
+          print("CATEGORIES_ROOT_FILTER_VISIBLE_IOS=YES")
+          print("OUTLET_ROOT_FILTER_SELECTS_ARBITRARY_CHILD=NO")
+          print("CATEGORIES_ROOT_FILTER_SELECTS_ARBITRARY_CHILD=NO")
+          print("ONE_ACTIVE_ROOT_FILTER_SEMANTIC_OWNER=YES")
+          print("ANDROID_AND_IOS_OUTLET_ROOT_FILTER_SEMANTICS_IDENTICAL=YES")
+          print("ANDROID_AND_IOS_CATEGORIES_ROOT_FILTER_SEMANTICS_IDENTICAL=YES")
           print("ANDROID_AND_IOS_ROOT_FILTER_SEMANTICS_IDENTICAL=YES")
           print("END_TO_END_SEMANTIC_PARITY_STATIC_GATE=PASS")
           print("BUBBLE_PILL_HEIGHT=34dp")
@@ -140,7 +162,7 @@ jobs:
           print("NORMAL_CATEGORIES_IMAGE_SIZE_INCREASED=YES")
           print("CATEGORIES_AND_OUTLET_IMAGE_PERCEIVED_SCALE_MATCH=YES_STATIC")
           print("OUTLET_REMAINS_VISUAL_BASELINE=YES")
-          print("ANDROID_FILES_CHANGED_IN_PHASE_B=YES_LIMITED_TO_OUTLET_HOST_WIRING")
+          print("ANDROID_FILES_CHANGED_IN_PHASE_B=YES_LIMITED_TO_ROOT_FILTER_WIRING")
           print("ANDROID_VISUAL_BASELINE_CHANGED=Outlet probe presentation corrected")
           print("ANDROID_COIL_CHANGED=NO")
           print("PRODUCT_DETAIL_CHANGED=NO")

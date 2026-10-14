@@ -54,6 +54,7 @@ internal fun IosCatalogScreen(
     cartStore: StoreCartStore,
     outletController: StoreOutletController,
     onOpenCategory: (StoreCategory) -> Unit,
+    onOpenRootFilter: (StoreRootFilterScope) -> Unit,
     onOpenProduct: (StoreProduct) -> Unit,
     onBack: () -> Unit,
     onShareProductText: (String) -> Unit,
@@ -65,7 +66,13 @@ internal fun IosCatalogScreen(
     onRetryCategorySnapshot: () -> Unit
 ) {
     when (page) {
-        IosCatalogPage.Root -> IosCategoryRoot(padding, onOpenCategory, onBack, categorySnapshot.orEmpty(), categorySnapshotLoading, categorySnapshotError, onRetryCategorySnapshot)
+        IosCatalogPage.Root -> IosCategoryRoot(padding, onOpenCategory, onOpenRootFilter, onBack, categorySnapshot.orEmpty(), categorySnapshotLoading, categorySnapshotError, onRetryCategorySnapshot)
+        is IosCatalogPage.RootFilter -> IosPagedProductScreen(
+            title = page.scope.title, padding = padding, cartStore = cartStore,
+            onProduct = onOpenProduct, onBack = onBack,
+            load = { perPage, pageNumber -> storeApi.products(perPage = perPage, page = pageNumber, category = page.scope.categoryQueryId) },
+            queryKey = page.scope.queryKey, enableProductControls = true, initialFiltersOpen = true
+        )
         is IosCatalogPage.Category -> IosCategoryPage(
             storeApi, padding, page.category, onOpenCategory, onOpenProduct, onBack, cartStore,
             catalogRestoration, categorySnapshot, categorySnapshotLoading, categorySnapshotError, onRetryCategorySnapshot
@@ -111,6 +118,7 @@ internal fun IosCatalogScreen(
 internal fun IosCategoryRoot(
     padding: PaddingValues,
     onOpenCategory: (StoreCategory) -> Unit,
+    onOpenRootFilter: (StoreRootFilterScope) -> Unit,
     onBack: () -> Unit,
     categories: List<StoreCategory>,
     loading: Boolean,
@@ -118,7 +126,7 @@ internal fun IosCategoryRoot(
     onRetry: () -> Unit
 ) {
     StoreCategoriesScreen(categories=categories, loading=loading, errorMessage=error, onBack=onBack,
-        onCategory=onOpenCategory, onRetry=onRetry, modifier=Modifier.fillMaxSize().padding(padding))
+        onCategory=onOpenCategory, onRootFilter=onOpenRootFilter, onRetry=onRetry, modifier=Modifier.fillMaxSize().padding(padding))
 }
 
 @Composable

@@ -117,6 +117,7 @@ internal sealed class IosCatalogPage {
     data object Brands : IosCatalogPage()
     data object Outlet : IosCatalogPage()
     data object Root : IosCatalogPage()
+    data class RootFilter(val scope: StoreRootFilterScope) : IosCatalogPage()
     data class Category(val category: StoreCategory) : IosCatalogPage()
     data class Product(val product: StoreProduct) : IosCatalogPage()
 }
@@ -294,6 +295,7 @@ fun CriosRangoIOSRootScreen(
                     cartStore = cartStore,
                     outletController = outletController,
                     onOpenCategory = { openCatalog(IosCatalogPage.Category(it)) },
+                    onOpenRootFilter = { scope -> openCatalog(IosCatalogPage.RootFilter(scope)) },
                     onOpenProduct = { openCatalog(IosCatalogPage.Product(it)) },
                     onBack = {
                         if (section == IosRootSection.OUTLET && catalogPage == IosCatalogPage.Outlet) {

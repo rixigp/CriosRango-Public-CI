@@ -23,6 +23,7 @@ import es.criosrango.shared.CatalogPaginator
 import es.criosrango.shared.CatalogPagingState
 import es.criosrango.shared.StoreOutletController
 import es.criosrango.shared.StoreOutletDataSource
+import es.criosrango.shared.StoreRootFilterScope
 
 internal suspend fun clearPendingAfterPaidCartCleanup(clearCart: suspend () -> Boolean, clearPending: () -> Boolean): Boolean {
     if (!clearCart()) return false
@@ -88,6 +89,8 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private val _activeCategoryProducts = MutableStateFlow<List<StoreProduct>>(emptyList())
     val activeCategoryProducts: StateFlow<List<StoreProduct>> = _activeCategoryProducts.asStateFlow()
     private val categoryPaginators = mutableMapOf<Int, CatalogPaginator<StoreProduct>>()
+    private val rootCatalogPaginator = CatalogPaginator(identity = { it.id })
+    private var rootCatalogActive = false
     private val _categoryPagingState = MutableStateFlow(CatalogPagingState<StoreProduct>())
     val categoryPagingState: StateFlow<CatalogPagingState<StoreProduct>> = _categoryPagingState.asStateFlow()
     private var categoryStateSyncJob: Job? = null
@@ -220,7 +223,53 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         updateCategoryProducts(update.categoryId, CategoryProductsState(update.products.toList(), current?.loading == true, true, null, current?.requestVersion ?: 0))
     }
 
+    fun loadRootCatalog() {
+        rootCatalogActive = true
+        val requestVersion = ++productsRequestVersion
+        _activeCategoryId.value = null
+        categoryStateSyncJob?.cancel()
+        val currentState = rootCatalogPaginator.state.value
+        _categoryPagingState.value = currentState
+        _activeCategoryProducts.value = currentState.items
+        categoryCatalogLoadStatus.value = CategoryLoadStatus(null, if (currentState.currentPage > 0) CategoryLoadState.LOADED_WITH_RESULTS else CategoryLoadState.LOADING)
+        categoryStateSyncJob = viewModelScope.launch {
+            rootCatalogPaginator.state.collect { state ->
+                if (requestVersion != productsRequestVersion || !rootCatalogActive) return@collect
+                _categoryPagingState.value = state
+                _activeCategoryProducts.value = state.items
+                _isLoading.value = state.isInitialLoading
+                categoryCatalogLoadStatus.value = CategoryLoadStatus(null, when {
+                    state.initialError != null -> CategoryLoadState.ERROR
+                    state.isInitialLoading -> CategoryLoadState.LOADING
+                    state.items.isEmpty() -> CategoryLoadState.LOADED_EMPTY
+                    else -> CategoryLoadState.LOADED_WITH_RESULTS
+                })
+                if (state.initialError != null) _error.value = (state.initialError as? Exception)?.toStoreUiError() ?: StoreUiError(StoreErrorType.UNEXPECTED)
+                if (state.appendError != null) _error.value = (state.appendError as? Exception)?.toStoreUiError() ?: StoreUiError(StoreErrorType.UNEXPECTED)
+            }
+        }
+        if (currentState.currentPage > 0 || currentState.isInitialLoading) {
+            _isLoading.value = currentState.isInitialLoading
+            return
+        }
+        _isLoading.value = true
+        _error.value = null
+        viewModelScope.launch {
+            rootCatalogPaginator.start(StoreRootFilterScope.CATALOG.queryKey) { page, perPage ->
+                val items = repository.productsPage(StoreRootFilterScope.CATALOG.categoryQueryId, page, perPage)
+                CatalogPage(items = items, hasMore = items.size >= perPage)
+            }
+            if (requestVersion == productsRequestVersion && rootCatalogActive) {
+                val state = rootCatalogPaginator.state.value
+                _categoryPagingState.value = state
+                _activeCategoryProducts.value = state.items
+                _isLoading.value = state.isInitialLoading
+            }
+        }
+    }
+
     fun loadCategory(categoryId: Int) {
+        rootCatalogActive = false
         lastCatalogOperation = CatalogOperation.Category(categoryId)
         CategoryLoadTelemetry.tap(categoryId)
         val requestVersion = ++productsRequestVersion
@@ -277,6 +326,22 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     }
 
     fun loadNextCategoryPage() {
+        if (rootCatalogActive) {
+            val state = rootCatalogPaginator.state.value
+            if (state.isAppending || !state.hasMore || state.currentPage <= 0) return
+            viewModelScope.launch {
+                rootCatalogPaginator.loadNext { page, perPage ->
+                    val items = repository.productsPage(StoreRootFilterScope.CATALOG.categoryQueryId, page, perPage)
+                    CatalogPage(items = items, hasMore = items.size >= perPage)
+                }
+                if (rootCatalogActive) {
+                    val next = rootCatalogPaginator.state.value
+                    _categoryPagingState.value = next
+                    _activeCategoryProducts.value = next.items
+                }
+            }
+            return
+        }
         val categoryId = _activeCategoryId.value ?: return
         val paginator = categoryPaginators[categoryId] ?: return
         val state = paginator.state.value

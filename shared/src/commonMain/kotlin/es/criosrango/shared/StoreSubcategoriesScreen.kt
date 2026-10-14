@@ -3,7 +3,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -22,9 +21,7 @@ fun StoreSubcategoriesScreen(parent: StoreCategory, title: String = storeCategor
         StoreCatalogHeader(title = title, showBack = true, onBack = onBack,
             trailing = {
                 if (showFilterButton && onFilterClick != null) {
-                    OutlinedButton(onClick = onFilterClick, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
-                        Text(if (activeFilterCount == 0) "Filtros" else "Filtros ($activeFilterCount)")
-                    }
+StoreRootFilterButton(onClick = onFilterClick, label = if (activeFilterCount == 0) "Filtros" else "Filtros ($activeFilterCount)")
                 }
             })
         if (activeFilterChips.isNotEmpty()) {
