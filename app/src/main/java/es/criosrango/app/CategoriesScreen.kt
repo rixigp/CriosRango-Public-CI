@@ -204,7 +204,7 @@ internal fun OutletCatalogStateAdapter(
             headerContent = headerContent,
             // Outlet's final dialog is always the shared owner. The normal
             // Catalog keeps its existing defaults and presentation.
-            sharedFilterDialog = isOutletPath || current == null,
+            sharedFilterDialog = true,
             useOutletFilterKey = isOutletPath,
             useSharedProductListHeaderContent = isOutletPath,
             onRetryInitial = onRetryInitial
@@ -397,7 +397,9 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
         isCategoryDescendantOf(current.id, 445, categories.associateBy { it.id })
 
     val onCategoriesBack: () -> Unit = {
-        if (path.size == 1 && onSingleLevelBack != null) {
+        if (showOutletProductsFromFilters) {
+            showOutletProductsFromFilters = false
+        } else if (path.size == 1 && onSingleLevelBack != null) {
             onSingleLevelBack()
         } else if (path.isNotEmpty()) {
             path.removeAt(path.lastIndex)
@@ -442,7 +444,7 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             onBack = onCategoriesBack,
             onCategory = { child -> categories.firstOrNull { it.id == child.id }?.let(onOpen) },
             onFilterClick = { showOutletProductsFromFilters = true },
-            onRetry = { current.id.let(loadCategoryTree) },
+            onRetry = { loadCategoryTree(current.id) },
             modifier = Modifier.fillMaxSize().padding(padding)
         )
     } else if (children.isNotEmpty() && !showOutletProductsFromFilters) {
