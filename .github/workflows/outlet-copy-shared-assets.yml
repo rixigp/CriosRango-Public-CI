@@ -1,0 +1,85 @@
+name: Temporary Outlet shared asset copy
+
+on:
+  push:
+    branches:
+      - outlet-kmp-convergence
+    paths:
+      - ".github/workflows/outlet-copy-shared-assets.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  copy-assets:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout temp branch
+        uses: actions/checkout@v7
+        with:
+          ref: outlet-kmp-convergence
+          fetch-depth: 0
+
+      - name: Copy exact Outlet assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SRC="app/src/main/res/drawable-nodpi"
+          DST="shared/src/commonMain/composeResources/drawable"
+
+          mkdir -p "$DST"
+
+          files=(
+            outlet_hombre_invierno.png
+            outlet_hombre_verano.png
+            outlet_mujer_invierno.png
+            outlet_mujer_verano.png
+            outlet_nina_invierno.png
+            outlet_nina_verano.png
+            outlet_nino_invierno.png
+            outlet_nino_verano.png
+          )
+
+          for file in "${files[@]}"; do
+            test -f "$SRC/$file"
+            cp "$SRC/$file" "$DST/$file"
+            cmp "$SRC/$file" "$DST/$file"
+          done
+
+          sha256sum "$DST"/outlet_*.png
+
+      - name: Verify expected source hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd shared/src/commonMain/composeResources/drawable
+
+          echo "c9ab65ec98705bdab51e9c04b8cbdd920e4e9c8ffdda6abf319e1ef56611c87c  outlet_hombre_invierno.png" | sha256sum -c -
+          echo "3c0c8fb0b3dfffc78333c3904f30ee451daa4caa2183c8de805c60b870762f8c  outlet_hombre_verano.png" | sha256sum -c -
+          echo "24bae9fba5632e8840c831cd5745f2f3f063baa3b8d74492c76867986d259671  outlet_mujer_invierno.png" | sha256sum -c -
+          echo "0b855bd484c07598d29e3dc2c386bf813521085f7aaf904c11def69e08ca7d17  outlet_mujer_verano.png" | sha256sum -c -
+          echo "28882dd89b17d02838af0c3f8552b412ea5839dc7ff6d69b2d17c5f455ee1822  outlet_nina_invierno.png" | sha256sum -c -
+          echo "8e3ff05ca2cbcbc4d9ec98a858d429ac9e5420441ab52e8f5e2312c0301093ae  outlet_nina_verano.png" | sha256sum -c -
+          echo "5228950e3a8908558c9a8cb9a05c684e13efa9b1b1b2bb62083274952ab38bc8  outlet_nino_invierno.png" | sha256sum -c -
+          echo "4057feda0b68fc4b071a529c4dbb982dbf5f2e41bf6138be5045a9be94b026f9  outlet_nino_verano.png" | sha256sum -c -
+
+      - name: Commit binary assets to temp branch
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add shared/src/commonMain/composeResources/drawable/outlet_*.png
+
+          if git diff --cached --quiet; then
+            echo "Assets already present."
+            exit 0
+          fi
+
+          git commit -m "chore(kmp): stage outlet shared assets"
+          git push origin HEAD:outlet-kmp-convergence
