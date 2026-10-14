@@ -37,6 +37,8 @@ jobs:
           echo "CHECKOUT_SHA=$CHECKOUT_SHA"
           echo "validation_target_sha=$VALIDATION_TARGET_SHA" >> "$GITHUB_OUTPUT"
           echo "checkout_sha=$CHECKOUT_SHA" >> "$GITHUB_OUTPUT"
+          test "$VALIDATION_TARGET_SHA" = "ae02986985195c8616c36b68011e828591b4e304"
+          test "$CHECKOUT_SHA" = "ae02986985195c8616c36b68011e828591b4e304"
           test "$VALIDATION_TARGET_SHA" = "$CHECKOUT_SHA" || {
             echo "::error::Pinned checkout does not match validation target"
             exit 1
@@ -57,105 +59,156 @@ jobs:
           printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
           test -s app/google-services.json
 
-      - name: Discover and run common/KMP tests
+      - name: Prepare permanent debug keystore
+        id: signing
+        env:
+          CRIOSRANGO_DEBUG_KEYSTORE_BASE64: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_BASE64 }}
+          CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD }}
+          CRIOSRANGO_DEBUG_KEY_ALIAS: ${{ secrets.CRIOSRANGO_DEBUG_KEY_ALIAS }}
+          CRIOSRANGO_DEBUG_KEY_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CRIOSRANGO_DEBUG_KEYSTORE_BASE64"
+          test -n "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD"
+          test -n "$CRIOSRANGO_DEBUG_KEY_ALIAS"
+          test -n "$CRIOSRANGO_DEBUG_KEY_PASSWORD"
+          printf '%s' "$CRIOSRANGO_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/criosrango-debug.jks"
+          chmod 600 "$RUNNER_TEMP/criosrango-debug.jks"
+          {
+            echo "CRIOSRANGO_DEBUG_KEYSTORE_FILE=$RUNNER_TEMP/criosrango-debug.jks"
+            echo "CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD=$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD"
+            echo "CRIOSRANGO_DEBUG_KEY_ALIAS=$CRIOSRANGO_DEBUG_KEY_ALIAS"
+            echo "CRIOSRANGO_DEBUG_KEY_PASSWORD=$CRIOSRANGO_DEBUG_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+          echo "DEBUG_KEYSTORE_CONFIGURED=YES"
+          echo "DEBUG_SIGNING_CREDENTIALS_CONFIGURED=YES"
+          echo "DEBUG_KEYSTORE_CONFIGURED=YES" >> "$GITHUB_OUTPUT"
+          echo "DEBUG_SIGNING_CREDENTIALS_CONFIGURED=YES" >> "$GITHUB_OUTPUT"
+
+      - name: Verify permanent signing certificate
+        env:
+          CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          STOREPASS="$(printf '%s' "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD" | tr -d '\r\n')"
+          keytool -list -keystore "$RUNNER_TEMP/criosrango-debug.jks" -storepass "$STOREPASS" -alias "criosrango-development"
+
+      - name: Run common/KMP tests and preserve failure evidence
         id: common-tests
         shell: bash
         run: |
           set -uo pipefail
-          TASKS_FILE="$RUNNER_TEMP/shared-tasks.txt"
-          ./gradlew :shared:tasks --all --console=plain > "$TASKS_FILE" 2>&1
-          TASKS_STATUS=$?
-          cat "$TASKS_FILE"
-          if [ "$TASKS_STATUS" -ne 0 ]; then
-            echo "COMMON_TEST_COMMAND=./gradlew :shared:tasks --all --console=plain"
-            echo "COMMON_TESTS_STATUS=NOT_EXECUTED"
-            echo "COMMON_TESTS_EXECUTED_COUNT=0"
-            echo "COMMON_TESTS_FAILED_COUNT=0"
-            {
-              echo "command=./gradlew :shared:tasks --all --console=plain"
-              echo "status=NOT_EXECUTED"
-              echo "executed=0"
-              echo "failed=0"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Prefer the Android host test task because this runner has no Xcode;
-          # it compiles and executes commonTest sources without attempting iOS tests.
-          if grep -Eq '^[[:space:]]*testDebugUnitTest([[:space:]]+-|[[:space:]]*$)' "$TASKS_FILE"; then
-            TASK=":shared:testDebugUnitTest"
-          elif grep -Eq '^[[:space:]]*testReleaseUnitTest([[:space:]]+-|[[:space:]]*$)' "$TASKS_FILE"; then
-            TASK=":shared:testReleaseUnitTest"
-          else
-            echo "::error::No executable Android host unit-test task found in :shared:tasks --all"
-            echo "COMMON_TEST_COMMAND=./gradlew :shared:tasks --all --console=plain"
-            echo "COMMON_TESTS_STATUS=NOT_EXECUTED"
-            echo "COMMON_TESTS_EXECUTED_COUNT=0"
-            echo "COMMON_TESTS_FAILED_COUNT=0"
-            {
-              echo "command=./gradlew :shared:tasks --all --console=plain"
-              echo "status=NOT_EXECUTED"
-              echo "executed=0"
-              echo "failed=0"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
+          TASK=":shared:testDebugUnitTest"
           echo "COMMON_TEST_COMMAND=./gradlew $TASK --warning-mode all --stacktrace"
           set +e
           ./gradlew "$TASK" --warning-mode all --stacktrace 2>&1 | tee "$RUNNER_TEMP/common-tests.log"
           TEST_STATUS=${PIPESTATUS[0]}
           set -e
 
-          REPORT_ROOT="shared/build/test-results"
-          if [ -d "$REPORT_ROOT" ]; then
-            python3 - "$REPORT_ROOT" <<'PY' > "$RUNNER_TEMP/common-test-counts.txt"
-          import pathlib, sys, xml.etree.ElementTree as ET
-          root = pathlib.Path(sys.argv[1])
+          python3 - "$TEST_STATUS" <<'PY' > "$RUNNER_TEMP/common-test-summary.txt"
+          import pathlib, re, sys, xml.etree.ElementTree as ET
+          status = int(sys.argv[1])
+          repo = pathlib.Path(".")
+          test_file = repo / "shared/src/commonTest/kotlin/es/criosrango/shared/StoreOutletControllerTest.kt"
+          source = test_file.read_text(errors="replace").splitlines() if test_file.exists() else []
+          xml_files = sorted(p for p in repo.rglob("*.xml") if "build/test-results/" in p.as_posix())
+          print("JUNIT_XML_FILES=")
+          for p in xml_files:
+              print(f"  {p}")
           executed = failed = 0
-          for path in root.rglob("*.xml"):
+          failure_rows = []
+          for path in xml_files:
               try:
-                  doc = ET.parse(path).getroot()
+                  root = ET.parse(path).getroot()
               except (ET.ParseError, OSError):
                   continue
-              for case in doc.iter("testcase"):
-                  classname = case.attrib.get("classname", "")
+              for case in root.iter("testcase"):
+                  cname = case.attrib.get("classname", "")
                   name = case.attrib.get("name", "")
-                  if "StoreOutletControllerTest" not in classname and "StoreOutletControllerTest" not in name:
+                  if "StoreOutletControllerTest" not in cname and "StoreOutletControllerTest" not in name:
                       continue
                   executed += 1
-                  failed += sum(1 for child in case if child.tag in ("failure", "error"))
-          print(executed)
-          print(failed)
+                  nodes = [n for n in case if n.tag in ("failure", "error")]
+                  failed += len(nodes)
+                  for node in nodes:
+                      message = node.attrib.get("message", "").strip()
+                      stack = (node.text or "").strip()
+                      first = next((line.strip() for line in stack.splitlines()
+                                    if "StoreOutletControllerTest.kt:" in line), "")
+                      if not first:
+                          first = next((line.strip() for line in stack.splitlines()
+                                        if line.strip() and not line.lstrip().startswith("at org.junit")), "")
+                      expected = actual = "NOT_PRESENT_IN_XML"
+                      m = re.search(r"expected:<(.+?)> but was:<(.+?)>", message, re.S)
+                      if m:
+                          expected, actual = m.group(1), m.group(2)
+                      elif stack:
+                          m = re.search(r"expected:<(.+?)> but was:<(.+?)>", stack, re.S)
+                          if m:
+                              expected, actual = m.group(1), m.group(2)
+                      print("")
+                      print(f"TEST_NAME={name}")
+                      print(f"TEST_CLASS={cname}")
+                      print(f"ASSERTION_MESSAGE={message or 'NOT_PRESENT_IN_XML'}")
+                      print(f"EXPECTED={expected}")
+                      print(f"ACTUAL={actual}")
+                      print(f"STACKTRACE_FIRST_RELEVANT_LINE={first or 'NOT_PRESENT_IN_XML'}")
+                      # Resolve the test method, assertion and its preceding setup/action sequence.
+                      method_name = name.split("(")[0]
+                      method_line = next((i for i,line in enumerate(source)
+                                          if re.search(r"fun\s+" + re.escape(method_name) + r"\s*\(", line)), None)
+                      line_match = re.search(r"StoreOutletControllerTest\.kt:(\d+)", first)
+                      target_line = int(line_match.group(1)) if line_match else None
+                      if target_line and 1 <= target_line <= len(source):
+                          lo, hi = max(1,target_line-2), min(len(source),target_line+2)
+                          print("ASSERTION_SOURCE_CONTEXT=" + " | ".join(f"{i}:{source[i-1].strip()}" for i in range(lo,hi+1)))
+                      else:
+                          print("ASSERTION_SOURCE_CONTEXT=LINE_NOT_RESOLVED_FROM_XML")
+                      if method_line is not None:
+                          end = next((i for i in range(method_line+1,len(source))
+                                      if source[i].strip().startswith("@Test fun ")), len(source))
+                          body = source[method_line:end]
+                          assertion_index = None
+                          if target_line:
+                              assertion_index = next((i for i,line in enumerate(source[method_line:end],method_line)
+                                                      if i+1 == target_line), None)
+                          if assertion_index is None:
+                              assertion_index = next((i for i,line in enumerate(body,method_line)
+                                                      if "assert" in line), method_line)
+                          setup = [f"{i+1}:{source[i].strip()}" for i in range(method_line, min(assertion_index, end))
+                                   if source[i].strip() and not source[i].strip().startswith("@Test")]
+                          assertion = source[assertion_index].strip() if assertion_index < len(source) else "NOT_RESOLVED"
+                          print(f"ASSERTION_EXPRESSION={assertion}")
+                          print("TEST_SETUP=" + (" | ".join(setup) if setup else "SEE_SOURCE_CONTEXT"))
+                          print("CONTROLLER_ACTIONS_BEFORE_ASSERTION=" + (" | ".join(x for x in setup if any(k in x for k in ("controller.", "advanceUntilIdle", "runCurrent", "gate.complete"))) or "NONE_RESOLVED"))
+                      else:
+                          print("ASSERTION_EXPRESSION=NOT_RESOLVED_FROM_TEST_METHOD_NAME")
+                          print("TEST_SETUP=INSPECT_SOURCE_CONTEXT")
+                          print("CONTROLLER_ACTIONS_BEFORE_ASSERTION=INSPECT_SOURCE_CONTEXT")
+          print("")
+          print(f"COMMON_TESTS_EXECUTED_COUNT={executed}")
+          print(f"COMMON_TESTS_FAILED_COUNT={failed}")
+          if status == 0 and executed > 0 and failed == 0:
+              result = "PASS"
+          elif executed > 0 and failed > 0:
+              result = "FAIL"
+          else:
+              result = "NOT_EXECUTED" if executed == 0 else "FAIL"
+          print(f"COMMON_TESTS_STATUS={result}")
           PY
-            EXECUTED="$(sed -n '1p' "$RUNNER_TEMP/common-test-counts.txt")"
-            FAILED="$(sed -n '2p' "$RUNNER_TEMP/common-test-counts.txt")"
-          else
-            EXECUTED=0
-            FAILED=0
-          fi
-
-          if [ "$TEST_STATUS" -eq 0 ] && [ "$EXECUTED" -gt 0 ] && [ "$FAILED" -eq 0 ]; then
-            STATUS=PASS
-          elif [ "$TEST_STATUS" -ne 0 ] && [ "$EXECUTED" -gt 0 ]; then
-            STATUS=FAIL
-          elif [ "$TEST_STATUS" -eq 0 ] && [ "$EXECUTED" -eq 0 ]; then
-            STATUS=NOT_EXECUTED
-          else
-            STATUS=FAIL
-          fi
-
-          echo "COMMON_TEST_COMMAND=./gradlew $TASK --warning-mode all --stacktrace"
-          echo "COMMON_TESTS_STATUS=$STATUS"
-          echo "COMMON_TESTS_EXECUTED_COUNT=$EXECUTED"
-          echo "COMMON_TESTS_FAILED_COUNT=$FAILED"
-          {
-            echo "command=./gradlew $TASK --warning-mode all --stacktrace"
-            echo "status=$STATUS"
-            echo "executed=$EXECUTED"
-            echo "failed=$FAILED"
-            echo "task=$TASK"
-          } >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/common-test-summary.txt"
+          EXECUTED="$(sed -n 's/^COMMON_TESTS_EXECUTED_COUNT=//p' "$RUNNER_TEMP/common-test-summary.txt" | tail -1)"
+          FAILED="$(sed -n 's/^COMMON_TESTS_FAILED_COUNT=//p' "$RUNNER_TEMP/common-test-summary.txt" | tail -1)"
+          STATUS="$(sed -n 's/^COMMON_TESTS_STATUS=//p' "$RUNNER_TEMP/common-test-summary.txt" | tail -1)"
+          echo "command=./gradlew $TASK --warning-mode all --stacktrace" >> "$GITHUB_OUTPUT"
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "executed=$EXECUTED" >> "$GITHUB_OUTPUT"
+          echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+          echo "task=$TASK" >> "$GITHUB_OUTPUT"
+          # Deliberately do not fail this step: the Android compile and artifact upload must run too.
+          exit 0
 
       - name: Compile Android debug application
         id: android-compile
@@ -163,6 +216,7 @@ jobs:
         run: |
           set -uo pipefail
           echo "ANDROID_COMPILE_COMMAND=./gradlew :app:assembleDebug --warning-mode all --stacktrace"
+          echo "ANDROID_COMPILE_REACHED=YES"
           set +e
           ./gradlew :app:assembleDebug --warning-mode all --stacktrace 2>&1 | tee "$RUNNER_TEMP/android-compile.log"
           BUILD_STATUS=${PIPESTATUS[0]}
@@ -173,25 +227,27 @@ jobs:
             FILE=""
             LINE=""
             COLUMN=""
+            KOTLIN_REACHED=YES
           else
             STATUS=FAIL
-            MATCH="$(grep -m1 -E '(^e: file://|\.kt:[0-9]+:[0-9]+: error:|\.java:[0-9]+: error:|Execution failed for task|Could not resolve all files)' "$RUNNER_TEMP/android-compile.log" || true)"
-            ERROR="${MATCH:-Gradle command failed; inspect the complete step log for the first actionable cause}"
+            MATCH="$(grep -m1 -E '(^e: file://|\.kt:[0-9]+:[0-9]+: error:|\.java:[0-9]+: error:|Execution failed for task|Could not resolve all files|Android debug tasks require)' "$RUNNER_TEMP/android-compile.log" || true)"
+            ERROR="${MATCH:-Gradle command failed; inspect complete step log for causal error}"
             FILE=""
             LINE=""
             COLUMN=""
+            KOTLIN_REACHED=NO
+            if grep -Eq '(^> Task :app:compileDebugKotlin|^> Task :shared:compileDebugKotlin|^e: file://|\.kt:[0-9]+:[0-9]+: error:)' "$RUNNER_TEMP/android-compile.log"; then
+              KOTLIN_REACHED=YES
+            fi
             if [[ "$MATCH" =~ file://([^:]+):[[:space:]]*\(([0-9]+),[[:space:]]*([0-9]+)\) ]]; then
-              FILE="${BASH_REMATCH[1]}"
-              LINE="${BASH_REMATCH[2]}"
-              COLUMN="${BASH_REMATCH[3]}"
-            elif [[ "$MATCH" =~ ([^[:space:]]+\.(kt|java))[:space:]:?([0-9]+):([0-9]+) ]]; then
-              FILE="${BASH_REMATCH[1]}"
-              LINE="${BASH_REMATCH[3]}"
-              COLUMN="${BASH_REMATCH[4]}"
+              FILE="${BASH_REMATCH[1]}"; LINE="${BASH_REMATCH[2]}"; COLUMN="${BASH_REMATCH[3]}"
+            elif [[ "$MATCH" =~ ([^[:space:]]+\.(kt|java))[[:space:]]*:?[[:space:]]*([0-9]+):([0-9]+) ]]; then
+              FILE="${BASH_REMATCH[1]}"; LINE="${BASH_REMATCH[3]}"; COLUMN="${BASH_REMATCH[4]}"
             fi
           fi
+          echo "ANDROID_KOTLIN_COMPILE_REACHED=$KOTLIN_REACHED"
           echo "ANDROID_COMPILE_STATUS=$STATUS"
-          echo "FIRST_REAL_ERROR=$ERROR"
+          echo "FIRST_REAL_ANDROID_ERROR=$ERROR"
           echo "FILE=$FILE"
           echo "LINE=$LINE"
           echo "COLUMN=$COLUMN"
@@ -201,8 +257,20 @@ jobs:
             echo "file=$FILE"
             echo "line=$LINE"
             echo "column=$COLUMN"
+            echo "kotlin_reached=$KOTLIN_REACHED"
           } >> "$GITHUB_OUTPUT"
           exit 0
+
+      - name: Upload JUnit XML and HTML reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: outlet-phase-a-validation-reports
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            shared/build/test-results/**/*.xml
+            shared/build/reports/tests/**
 
       - name: Emit validation summary and enforce gate
         if: always()
@@ -214,10 +282,10 @@ jobs:
           COMMON_EXECUTED: ${{ steps.common-tests.outputs.executed }}
           COMMON_FAILED: ${{ steps.common-tests.outputs.failed }}
           ANDROID_STATUS: ${{ steps.android-compile.outputs.status }}
-          FIRST_ERROR: ${{ steps.android-compile.outputs.error }}
-          ERROR_FILE: ${{ steps.android-compile.outputs.file }}
-          ERROR_LINE: ${{ steps.android-compile.outputs.line }}
-          ERROR_COLUMN: ${{ steps.android-compile.outputs.column }}
+          ANDROID_ERROR: ${{ steps.android-compile.outputs.error }}
+          ANDROID_KOTLIN_REACHED: ${{ steps.android-compile.outputs.kotlin_reached }}
+          DEBUG_KEYSTORE_CONFIGURED: ${{ steps.signing.outputs.DEBUG_KEYSTORE_CONFIGURED }}
+          DEBUG_SIGNING_CREDENTIALS_CONFIGURED: ${{ steps.signing.outputs.DEBUG_SIGNING_CREDENTIALS_CONFIGURED }}
         run: |
           {
             echo "### Outlet Full Shared Phase A validation"
@@ -229,17 +297,20 @@ jobs:
             echo "- COMMON_TESTS_STATUS=${COMMON_STATUS:-NOT_EXECUTED}"
             echo "- COMMON_TESTS_EXECUTED_COUNT=${COMMON_EXECUTED:-0}"
             echo "- COMMON_TESTS_FAILED_COUNT=${COMMON_FAILED:-0}"
+            echo "- DEBUG_KEYSTORE_CONFIGURED=${DEBUG_KEYSTORE_CONFIGURED:-NO}"
+            echo "- DEBUG_SIGNING_CREDENTIALS_CONFIGURED=${DEBUG_SIGNING_CREDENTIALS_CONFIGURED:-NO}"
             echo "- ANDROID_COMPILE_STATUS=${ANDROID_STATUS:-NOT_EXECUTED}"
-            echo "- FIRST_REAL_ERROR=${FIRST_ERROR:-NONE}"
-            echo "- FILE=${ERROR_FILE:-}"
-            echo "- LINE=${ERROR_LINE:-}"
-            echo "- COLUMN=${ERROR_COLUMN:-}"
+            echo "- ANDROID_KOTLIN_COMPILE_REACHED=${ANDROID_KOTLIN_REACHED:-NO}"
+            echo "- FIRST_REAL_ANDROID_ERROR=${ANDROID_ERROR:-NONE}"
             echo "- IOS_WORKFLOW_LAUNCHED=NO"
           } >> "$GITHUB_STEP_SUMMARY"
           test "$CHECKOUT_SHA" = "$VALIDATION_TARGET_SHA"
           test "$COMMON_STATUS" = "PASS"
           test "$ANDROID_STATUS" = "PASS"
 
-      - name: Cleanup temporary Google Services configuration
+      - name: Cleanup temporary Google Services and signing files
         if: always()
-        run: rm -f app/google-services.json
+        shell: bash
+        run: |
+          rm -f app/google-services.json
+          rm -f "$RUNNER_TEMP/criosrango-debug.jks"
