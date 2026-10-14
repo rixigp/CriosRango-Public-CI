@@ -541,7 +541,7 @@ internal fun IosOutletScreen(
     val paginator = retainedOutletPaginators.getOrPut(queryKey) {
         CatalogPaginatorStore<StoreProduct>(outletScope, identity = { it.id })
     }
-    val pagingState by paginator.state.collectAsState()
+    val pagingState by key(queryKey) { paginator.state.collectAsState() }
     val savedScroll = retainedCategoryState.scrollPositions[queryKey] ?: (0 to 0)
     val gridState = rememberLazyGridState(
         initialFirstVisibleItemIndex = savedScroll.first,
