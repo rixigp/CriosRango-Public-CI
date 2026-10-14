@@ -555,6 +555,7 @@ internal fun IosOutletScreen(
         // Re-entering a previously loaded query must reuse its retained pages.
         val retained = paginator.state.value
         if (retained.currentPage == 0 && retained.items.isEmpty() &&
+            !retained.isInitialLoading &&
             (selectedOutletCategory != null || showAllOutletProducts)
         ) {
             paginator.start(queryKey, loadPage)
