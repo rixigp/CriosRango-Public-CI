@@ -75,7 +75,7 @@ private fun StoreCatalogFilterChoices(title: String, values: List<String>, selec
 }
 
 /** Accent-insensitive matching used by the legacy Outlet filters on Android. */
-internal fun outletCatalogFilterKey(value: String): String {
+fun outletCatalogFilterKey(value: String): String {
     val unaccented = buildString {
         value.lowercase().trim().forEach { character ->
             when (character) {
