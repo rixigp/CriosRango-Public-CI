@@ -447,27 +447,30 @@ internal fun IosOutletScreen(
 
     val outletChildren = categories.filter { it.parent == outlet.id }.distinctBy { it.id }
     var selectedOutletCategory by remember(outlet.id) { mutableStateOf<StoreCategory?>(null) }
-    if (selectedOutletCategory == null) {
+    var showAllOutletProducts by remember(outlet.id) { mutableStateOf(false) }
+    if (selectedOutletCategory == null && !showAllOutletProducts) {
         StoreSubcategoriesScreen(
             parent = outlet,
             categories = outletChildren,
             loading = false,
             onBack = onBack,
             onCategory = { selectedOutletCategory = it },
-            onFilterClick = {},
+            onFilterClick = { showAllOutletProducts = true },
             modifier = Modifier.fillMaxSize().padding(padding)
         )
         return
     }
-    val activeOutletCategory = selectedOutletCategory ?: return
-    val bubbles = remember(activeOutletCategory.id) { fixedOutletBubbles(activeOutletCategory.id) }
-    var selectedBubbleKey by rememberSaveable(activeOutletCategory.id) { mutableStateOf<String?>(null) }
+    val activeCategoryId = selectedOutletCategory?.id ?: outlet.id
+    val bubbles = remember(activeCategoryId) {
+        selectedOutletCategory?.let { fixedOutletBubbles(it.id) }.orEmpty()
+    }
+    var selectedBubbleKey by rememberSaveable(activeCategoryId) { mutableStateOf<String?>(null) }
     var availability by remember(outlet.id) { mutableStateOf<OutletAvailability?>(null) }
     var availabilityError by remember(outlet.id) { mutableStateOf<String?>(null) }
-    var filtersOpen by rememberSaveable(activeOutletCategory.id, selectedBubbleKey) { mutableStateOf(false) }
-        var selectedSizes by rememberSaveable(activeOutletCategory.id, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
-    var selectedColors by rememberSaveable(activeOutletCategory.id, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
-    var selectedBrands by rememberSaveable(activeOutletCategory.id, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
+    var filtersOpen by rememberSaveable(activeCategoryId, selectedBubbleKey) { mutableStateOf(false) }
+        var selectedSizes by rememberSaveable(activeCategoryId, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
+    var selectedColors by rememberSaveable(activeCategoryId, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
+    var selectedBrands by rememberSaveable(activeCategoryId, selectedBubbleKey) { mutableStateOf(emptySet<String>()) }
 
     LaunchedEffect(outlet.id) {
         runCatching { storeApi.outletAvailability() }
@@ -475,7 +478,7 @@ internal fun IosOutletScreen(
             .onFailure { availabilityError = it.message ?: "No se ha podido cargar la disponibilidad." }
     }
     val visibleBubbles = if (availability == null) bubbles else bubbles.filter { bubble ->
-        bubble.categoryIds.any { availability!!.countFor(activeOutletCategory.id, it) > 0 }
+        bubble.categoryIds.any { availability!!.countFor(activeCategoryId, it) > 0 }
     }
     LaunchedEffect(visibleBubbles, selectedBubbleKey) {
         if (selectedBubbleKey != null && visibleBubbles.none { it.key == selectedBubbleKey }) {
@@ -483,7 +486,7 @@ internal fun IosOutletScreen(
         }
     }
     val selectedBubble = selectedBubbleKey?.let { key -> visibleBubbles.firstOrNull { it.key == key } }
-    val queryKey = "outlet:" + activeOutletCategory.id + ":" + (selectedBubble?.key ?: "all")
+    val queryKey = "outlet:" + activeCategoryId + ":" + (selectedBubble?.key ?: "all")
     val scope = rememberCoroutineScope()
     val paginator = remember(queryKey) {
         CatalogPaginatorStore<StoreProduct>(scope, identity = { it.id })
@@ -493,7 +496,7 @@ internal fun IosOutletScreen(
 
     val loadPage: suspend (Int, Int) -> CatalogPage<StoreProduct> = { page, perPage ->
         val loaded = if (selectedBubble == null) {
-            storeApi.products(perPage, page, category = activeOutletCategory.id)
+            storeApi.products(perPage, page, category = activeCategoryId)
         } else {
             coroutineScope {
                 selectedBubble.categoryIds.map { categoryId ->
@@ -504,7 +507,7 @@ internal fun IosOutletScreen(
         CatalogPage(loaded, loaded.size >= perPage)
     }
 
-    var selectedSort by rememberSaveable(activeOutletCategory.id, selectedBubbleKey) {
+    var selectedSort by rememberSaveable(activeCategoryId, selectedBubbleKey) {
         mutableStateOf(StoreProductSortOption.RECENT)
     }
     LaunchedEffect(queryKey) { paginator.start(queryKey, loadPage) }
@@ -562,7 +565,7 @@ internal fun IosOutletScreen(
     }
 
     val listState = StoreProductListUiState(
-        title = selectedBubble?.label ?: activeOutletCategory.name,
+        title = selectedBubble?.label ?: (selectedOutletCategory?.name ?: "Outlet"),
         items = sortedItems.map { product ->
             StoreProductItemUi(
                 id = product.id,
@@ -592,7 +595,7 @@ internal fun IosOutletScreen(
         state = listState,
         gridState = gridState,
         modifier = Modifier.fillMaxSize().padding(padding),
-        onBack = { if (selectedBubbleKey != null) selectedBubbleKey = null else selectedOutletCategory = null },
+        onBack = { if (selectedBubbleKey != null) selectedBubbleKey = null else if (selectedOutletCategory != null) selectedOutletCategory = null else showAllOutletProducts = false },
         onProductSelected = { id -> sortedItems.firstOrNull { it.id == id }?.let(onProduct) },
         onSortSelected = { selectedSort = it },
         onFilterClick = { filtersOpen = true },
@@ -607,11 +610,13 @@ internal fun IosOutletScreen(
         onRetryInitial = { paginator.start(queryKey, loadPage) },
         onRetryAppend = { paginator.loadNext(loadPage) },
         headerContent = {
-            StoreOutletBubbles(
-                bubbles = visibleBubbles,
-                selectedKey = selectedBubbleKey,
-                onSelected = { selectedBubbleKey = it }
-            )
+            if (selectedOutletCategory != null) {
+                StoreOutletBubbles(
+                    bubbles = visibleBubbles,
+                    selectedKey = selectedBubbleKey,
+                    onSelected = { selectedBubbleKey = it }
+                )
+            }
             availabilityError?.let { Text(it, modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)) }
         },
         imageContent = { item, imageModifier ->
