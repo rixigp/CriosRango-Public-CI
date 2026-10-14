@@ -77,16 +77,12 @@ import compose.icons.tablericons.Hanger
 import compose.icons.tablericons.Shirt
 import compose.icons.tablericons.Tag
 import es.criosrango.shared.model.countFor
+import es.criosrango.shared.OutletBubbleDefinition
+import es.criosrango.shared.fixedOutletBubbles
+import es.criosrango.shared.outletBubbleDisplayLabel
+import es.criosrango.shared.StoreOutletBubbles
 
 // OUTLET_CATEGORY_BUBBLES_START
-
-internal fun outletBubbleKey(value: String): String =
-    java.text.Normalizer
-        .normalize(
-            value.lowercase().trim(),
-            java.text.Normalizer.Form.NFD
-        )
-        .replace("\\p{Mn}+".toRegex(), "")
 
 internal fun productBelongsToCategory(
     product: StoreProduct,
@@ -160,80 +156,6 @@ internal fun productBelongsToOutletOriginCategory(
         false
     }
 }
-
-internal data class OutletBubbleDefinition(
-    val key: String,
-    val label: String,
-    val categoryIds: Set<Int>
-)
-
-private fun outletBubbleDisplayLabel(label: String): String =
-    when (label) {
-        "Abrigos y cazadoras" -> "Abrigos"
-        "Camisas y camisetas" -> "Camisas"
-        "Chaquetas y chalecos" -> "Chaquetas"
-        "Jerséis" -> "Jerséis"
-        "Pantalones y faldas" -> "Pantalones"
-        "Ropa de fiesta" -> "Fiesta"
-        "Vestidos, conjuntos y monos casual" -> "Vestidos y conjuntos"
-        "Americanas y trajes" -> "Americanas"
-        "Camisetas y polos" -> "Camisetas"
-        "Complementos y baño" -> "Complementos"
-        "Jerseis y Chaquetas" -> "Jerséis"
-        "Pantalones y bermudas" -> "Pantalones"
-        "Ropa de baño" -> "Baño"
-        "Ropa de sport" -> "Sport"
-        "Ropa de vestir" -> "Vestir"
-        else -> label
-    }
-
-private fun outletBubble(
-    label: String,
-    vararg categoryIds: Int
-): OutletBubbleDefinition =
-    OutletBubbleDefinition(
-        key = outletBubbleKey(label),
-        label = label,
-        categoryIds = categoryIds.toSet()
-    )
-
-internal fun fixedOutletBubbles(outletCategoryId: Int): List<OutletBubbleDefinition> =
-    when (outletCategoryId) {
-        446, 475 -> listOf(
-            outletBubble("Abrigos y cazadoras", 430),
-            outletBubble("Americanas y trajes", 320),
-            outletBubble("Camisas", 318),
-            outletBubble("Camisetas y polos", 319),
-            outletBubble("Complementos y baño", 317),
-            outletBubble("Jerseis y Chaquetas", 459),
-            outletBubble("Pantalones y bermudas", 321),
-            outletBubble("Sudaderas", 471)
-        )
-        447, 476 -> listOf(
-            outletBubble("Abrigos y cazadoras", 431),
-            outletBubble("Camisas y camisetas", 324),
-            outletBubble("Chaquetas y chalecos", 326),
-            outletBubble("Complementos", 468),
-            outletBubble("Jerséis", 461),
-            outletBubble("Pantalones y faldas", 325),
-            outletBubble("Ropa de fiesta", 323),
-            outletBubble("Vestidos, conjuntos y monos casual", 322)
-        )
-        449, 478 -> listOf(
-            outletBubble("Abrigos y cazadoras", 433, 428),
-            outletBubble("Calzado", 421),
-            outletBubble("Ropa de baño", 80, 286),
-            outletBubble("Ropa de sport", 313, 289),
-            outletBubble("Ropa de vestir", 316, 311)
-        )
-        448, 477 -> listOf(
-            outletBubble("Abrigos y cazadoras", 434, 429),
-            outletBubble("Ropa de baño", 78, 287),
-            outletBubble("Ropa de sport", 314, 290),
-            outletBubble("Ropa de vestir", 315, 312)
-        )
-        else -> emptyList()
-    }
 
 internal fun productBelongsToOutletBubble(
     product: StoreProduct,
@@ -420,40 +342,17 @@ internal fun OutletAwareCatalogGrid(
                 ),
                 headerTitle = headerTitle,
                 headerOnBack = headerOnBack,
-                headerContent = if (bubbles.isNotEmpty()) {
-                    {
-                        Row(
-                            Modifier.fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = CatalogHeaderGeometry.horizontalPadding, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(7.dp)
-                        ) {
-                            val allSelected = selectedBubbleKey == null
-                            Surface(
-                                Modifier.height(34.dp).clickable { selectedBubbleKey = null },
-                                shape = RoundedCornerShape(17.dp),
-                                color = if (allSelected) Color(0xFF163B35) else Color(0xFFF1EDEF)
-                            ) {
-                                Box(Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-                                    Text("Todas", color = if (allSelected) Color.White else Color(0xFF3F3A3D), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Clip)
-                                }
-                            }
-                            visibleBubbles.forEach { bubble ->
-                                val selected = selectedBubbleKey == bubble.key
-                                Surface(
-                                    Modifier.height(34.dp).clickable { selectedBubbleKey = bubble.key },
-                                    shape = RoundedCornerShape(17.dp),
-                                    color = if (selected) Color(0xFF163B35) else Color(0xFFF1EDEF)
-                                ) {
-                                    Box(Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-                                        Text(outletBubbleDisplayLabel(bubble.label), color = if (selected) Color.White else Color(0xFF3F3A3D), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Clip)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else null,
-                sharedFilterDialog = false
+                headerContent = {
+                    StoreOutletBubbles(
+                        bubbles = visibleBubbles,
+                        selectedKey = selectedBubbleKey,
+                        onSelected = { selectedBubbleKey = it }
+                    )
+                },
+                sharedFilterDialog = true,
+                useOutletFilterKey = true,
+                useSharedProductListHeaderContent = true
+
             )
         }
     }
@@ -928,7 +827,9 @@ internal fun CatalogFilteredProductGrid(
     headerContent: (@Composable ColumnScope.() -> Unit)? = null,
     compactHeaderSpacing: Boolean = false,
     sharedFilterDialog: Boolean = true,
-    onRetryInitial: (() -> Unit)? = null
+    onRetryInitial: (() -> Unit)? = null,
+    useOutletFilterKey: Boolean = false,
+    useSharedProductListHeaderContent: Boolean = false
 ) {
     var filtersOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var sortMode by androidx.compose.runtime.saveable.rememberSaveable {
@@ -938,7 +839,7 @@ internal fun CatalogFilteredProductGrid(
     var selectedColors by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(setOf<String>()) }
     var selectedBrands by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(setOf<String>()) }
 
-    val filterKey = if (sharedFilterDialog) ::catalogFilterKey else ::outletCatalogFilterKey
+    val filterKey = if (useOutletFilterKey || !sharedFilterDialog) ::outletCatalogFilterKey else ::catalogFilterKey
 
     val sizes = products.flatMap { it.filterValues("Tallas") }
         .distinct().sorted()
@@ -1003,7 +904,7 @@ internal fun CatalogFilteredProductGrid(
         }
     }
 
-    val sharedProductList = headerTitle != null && headerOnBack != null && headerContent == null
+    val sharedProductList = headerTitle != null && headerOnBack != null && (headerContent == null || useSharedProductListHeaderContent)
     val categoryStatus by categoryCatalogLoadStatus.collectAsStateWithLifecycle()
     val sharedGridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     val sharedResetKey = if (pagingState != null) {
@@ -1088,6 +989,7 @@ internal fun CatalogFilteredProductGrid(
             },
             onRetryInitial = { onRetryInitial?.invoke() },
             onRetryAppend = { onLoadNextPage?.invoke() },
+            headerContent = headerContent ?: {},
             imageContent = { item, imageModifier ->
                 val product = filtered.firstOrNull { it.id == item.id }
                 val image = product?.images?.firstOrNull()
@@ -1300,7 +1202,7 @@ internal fun CategoryParentWithFilters(
         }
     }
 
-    if (parentCategory != null && !isOutletParent) {
+    if (parentCategory != null) {
         if (active == 0) {
             es.criosrango.shared.StoreSubcategoriesScreen(
                 parent = es.criosrango.shared.model.StoreCategory(
@@ -1493,7 +1395,7 @@ internal fun CategoryParentWithFilters(
     }
 
     if (open) {
-        if (parentCategory != null && !isOutletParent) {
+        if (parentCategory != null) {
             es.criosrango.shared.StoreCatalogFilterDialog(
                 sizes = allSizes.sortedWith(compareBy({ productSizeSortKey(it) }, { it })),
                 colors = allColors, brands = allBrands,
@@ -1521,6 +1423,11 @@ internal fun CategoryParentWithFilters(
                 },
                 confirmButton = { TextButton(onClick = { open = false }) { Text("Aplicar") } },
                 dismissButton = { TextButton(onClick = { sizes = emptySet(); colors = emptySet(); brands = emptySet() }) { Text("Limpiar") } }
+            )
+        }
+    }
+}
+) } }
             )
         }
     }

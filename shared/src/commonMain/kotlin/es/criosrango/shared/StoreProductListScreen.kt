@@ -40,7 +40,8 @@ fun StoreProductListScreen(
     onClearFilters: () -> Unit,
     onRetryInitial: () -> Unit,
     onRetryAppend: () -> Unit,
-    imageContent: @Composable BoxWithConstraintsScope.(StoreProductItemUi, Modifier) -> Unit
+    imageContent: @Composable BoxWithConstraintsScope.(StoreProductItemUi, Modifier) -> Unit,
+    headerContent: @Composable ColumnScope.() -> Unit = {}
 ) {
     Column(modifier) {
         StoreCatalogHeader(
@@ -56,6 +57,8 @@ fun StoreProductListScreen(
                 }
             }
         )
+
+        headerContent(this)
 
         if (state.activeFilterChips.isNotEmpty()) {
             FlowRow(
