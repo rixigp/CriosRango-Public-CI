@@ -235,7 +235,6 @@ fun StoreProductCard(
         ) {
             Text(
                 item.nameText,
-                style = MaterialTheme.typography.bodyLarge,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Start,
