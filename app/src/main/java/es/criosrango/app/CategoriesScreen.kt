@@ -1018,12 +1018,16 @@ internal fun CatalogFilteredProductGrid(
             onRetryInitial = { onRetryInitial?.invoke() },
             onRetryAppend = { onLoadNextPage?.invoke() },
             headerContent = headerContent ?: {},
+            outletPresentation = useOutletFilterKey,
             imageContent = { item, imageModifier ->
                 val product = filtered.firstOrNull { it.id == item.id }
                 val image = product?.images?.firstOrNull()
                 val targetWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) {
                     maxWidth.roundToPx()
                 }
+                val outletImageModifier = if (useOutletFilterKey) {
+                    imageModifier.padding(1.dp).graphicsLayer { scaleX = 1.16f; scaleY = 1.16f }
+                } else imageModifier
                 CatalogImage(
                     product?.let {
                         selectResponsiveImageUrl(
@@ -1034,8 +1038,8 @@ internal fun CatalogFilteredProductGrid(
                         )
                     },
                     item.nameText,
-                    imageModifier,
-                    androidx.compose.ui.layout.ContentScale.Crop,
+                    outletImageModifier,
+                    if (useOutletFilterKey) androidx.compose.ui.layout.ContentScale.Fit else androidx.compose.ui.layout.ContentScale.Crop,
                     onSuccess = {
                         categoryStatus.categoryId?.let { categoryId ->
                             CategoryLoadTelemetry.firstImage(categoryId, item.id)

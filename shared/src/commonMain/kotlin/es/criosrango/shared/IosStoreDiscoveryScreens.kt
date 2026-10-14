@@ -668,8 +668,13 @@ internal fun IosOutletScreen(
         },
         imageContent = { item, imageModifier ->
             val product = sortedItems.firstOrNull { it.id == item.id }
-            RemoteStoreImage(product?.images?.firstOrNull()?.src.orEmpty(), item.nameText, imageModifier, androidx.compose.ui.layout.ContentScale.Crop)
-        }
+            val outletImageModifier = imageModifier.padding(1.dp).graphicsLayer {
+                scaleX = 1.16f
+                scaleY = 1.16f
+            }
+            RemoteStoreImage(product?.images?.firstOrNull()?.src.orEmpty(), item.nameText, outletImageModifier, androidx.compose.ui.layout.ContentScale.Fit)
+        },
+        outletPresentation = true
     )
 
     if (filtersOpen) {
