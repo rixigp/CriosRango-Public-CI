@@ -1,6 +1,14 @@
 package es.criosrango.shared
 
 import es.criosrango.shared.generated.resources.Res
+import es.criosrango.shared.generated.resources.outlet_hombre_invierno
+import es.criosrango.shared.generated.resources.outlet_hombre_verano
+import es.criosrango.shared.generated.resources.outlet_mujer_invierno
+import es.criosrango.shared.generated.resources.outlet_mujer_verano
+import es.criosrango.shared.generated.resources.outlet_nina_invierno
+import es.criosrango.shared.generated.resources.outlet_nina_verano
+import es.criosrango.shared.generated.resources.outlet_nino_invierno
+import es.criosrango.shared.generated.resources.outlet_nino_verano
 import es.criosrango.shared.generated.resources.subcat_bebe_nina_abrigos_cazadoras
 import es.criosrango.shared.generated.resources.subcat_bebe_nina_ropa_bano
 import es.criosrango.shared.generated.resources.subcat_bebe_nina_ropa_sport
@@ -94,7 +102,23 @@ internal val STORE_SUBCATEGORY_ASSETS: List<StoreSubcategoryAsset> = listOf(
     StoreSubcategoryAsset("mujer", "ropa de fiesta", Res.drawable.subcat_mujer_ropa_fiesta),
     StoreSubcategoryAsset("mujer", "vestidos conjuntos monos", Res.drawable.subcat_mujer_vestidos_conjuntos_monos),
     StoreSubcategoryAsset("ropa de fiesta", "conjuntos y monos", Res.drawable.subcat_mujer_fiesta_conjuntos_monos),
-    StoreSubcategoryAsset("ropa de fiesta", "vestidos de fiesta", Res.drawable.subcat_mujer_fiesta_vestidos)
+    StoreSubcategoryAsset("ropa de fiesta", "vestidos de fiesta", Res.drawable.subcat_mujer_fiesta_vestidos),
+    StoreSubcategoryAsset("outlet hombre", "invierno", Res.drawable.outlet_hombre_invierno),
+    StoreSubcategoryAsset("outlet hombre", "verano", Res.drawable.outlet_hombre_verano),
+    StoreSubcategoryAsset("outlet mujer", "invierno", Res.drawable.outlet_mujer_invierno),
+    StoreSubcategoryAsset("outlet mujer", "verano", Res.drawable.outlet_mujer_verano),
+    StoreSubcategoryAsset("outlet nina", "invierno", Res.drawable.outlet_nina_invierno),
+    StoreSubcategoryAsset("outlet nina", "verano", Res.drawable.outlet_nina_verano),
+    StoreSubcategoryAsset("outlet nino", "invierno", Res.drawable.outlet_nino_invierno),
+    StoreSubcategoryAsset("outlet nino", "verano", Res.drawable.outlet_nino_verano),
+    StoreSubcategoryAsset("outlet", "hombre invierno", Res.drawable.outlet_hombre_invierno),
+    StoreSubcategoryAsset("outlet", "hombre verano", Res.drawable.outlet_hombre_verano),
+    StoreSubcategoryAsset("outlet", "mujer invierno", Res.drawable.outlet_mujer_invierno),
+    StoreSubcategoryAsset("outlet", "mujer verano", Res.drawable.outlet_mujer_verano),
+    StoreSubcategoryAsset("outlet", "nina invierno", Res.drawable.outlet_nina_invierno),
+    StoreSubcategoryAsset("outlet", "nina verano", Res.drawable.outlet_nina_verano),
+    StoreSubcategoryAsset("outlet", "nino invierno", Res.drawable.outlet_nino_invierno),
+    StoreSubcategoryAsset("outlet", "nino verano", Res.drawable.outlet_nino_verano),
 )
 
 private fun normalizeAndroidCategoryName(value: String): String =
