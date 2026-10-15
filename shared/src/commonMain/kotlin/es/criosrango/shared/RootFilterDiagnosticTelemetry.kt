@@ -81,6 +81,11 @@ object RootFilterDiagnosticTelemetry {
         )
     }
 
+    fun apiRequestStarted(url: String) {
+        val host = runCatching { url.substringAfter("://").substringBefore("/").substringBefore("?") }.getOrDefault("unavailable")
+        mutable.value = mutable.value.copy(requestUrl = url, requestHost = host, httpStatus = "pending")
+    }
+
     fun apiResponse(url: String, status: Int) {
         val host = runCatching { url.substringAfter("://").substringBefore("/").substringBefore("?") }.getOrDefault("unavailable")
         mutable.value = mutable.value.copy(requestUrl = url, requestHost = host, httpStatus = status.toString())
