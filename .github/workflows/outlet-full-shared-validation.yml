@@ -143,7 +143,36 @@ jobs:
               "OUTLET_STALE_FACET_REJECTION": "facetGenerations[dimension] == generation" in controller and "facetKey(dimension, currentQuery) == key" in controller,
               "LOCAL_OUTLET_FILTERING_REMOVED": "fun matches(" not in controller and "productBelongsToOutletBubble" not in controller,
               "LOCAL_OUTLET_SORTING_REMOVED": ".sortedBy" not in controller and ".sortedByDescending" not in controller,
-              "ANDROID_OUTLET_FILTER_UI_CONTROLLER_OWNED": "onFilterClick = controller::openFilters" in outlet_android and "state.filterDialogVisible" in outlet_android and "selectedSizes = state.draftSizes" in outlet_android,
+              "ANDROID_OUTLET_FILTER_BUTTON_DELEGATES_TO_CONTROLLER": "outletController.openFilters()" in android_src and "onFilterClick = {" in android_src,
+              "ANDROID_OUTLET_FILTER_RENDERER_EXISTS": "private fun OutletControllerFilterDialog(" in android_src and "OutletControllerFilterDialog(controller, outletControllerState)" in android_src,
+              "ANDROID_OUTLET_FILTER_RENDERER_USES_SAME_CONTROLLER_STATE": all(x in android_src[android_src.index("private fun OutletControllerFilterDialog("):android_src.index("@Composable", android_src.index("private fun OutletControllerFilterDialog(") + 1)] for x in (
+                  "controller: es.criosrango.shared.StoreOutletController",
+                  "state: es.criosrango.shared.StoreOutletState",
+                  "state.filterDialogVisible", "selectedSizes = state.draftSizes",
+                  "selectedColors = state.draftColors", "selectedBrands = state.draftBrands"
+              )) and "OutletControllerFilterDialog(controller, outletControllerState)" in android_src,
+              "ANDROID_OUTLET_FILTER_CANCEL_DISMISS_CONTROLLER_OWNED": all(x in android_src[android_src.index("private fun OutletControllerFilterDialog("):android_src.index("@Composable", android_src.index("private fun OutletControllerFilterDialog(") + 1)] for x in (
+                  "onDismissRequest = controller::cancelFilters",
+                  "onDismiss = controller::cancelFilters",
+                  "onCancel = controller::cancelFilters"
+              )),
+              "ANDROID_OUTLET_FILTER_APPLY_CONTROLLER_OWNED": "if (controller.applyFilters()) onFiltersApplied()" in android_src,
+              "ANDROID_OUTLET_SUBCATEGORY_FILTER_OPEN_DOES_NOT_SHOW_RESULTS": (
+                  "else if (children.isNotEmpty() && currentIsOutletPath && !showOutletProductsFromFilters && current != null)"
+                  in android_src
+                  and "outletController.openFilters()" in android_src[
+                      android_src.index("else if (children.isNotEmpty() && currentIsOutletPath && !showOutletProductsFromFilters && current != null)"):
+                      android_src.index("} else if (children.isNotEmpty() && !showOutletProductsFromFilters)")
+                  ]
+                  and "showOutletProductsFromFilters = true" not in android_src[
+                      android_src.index("else if (children.isNotEmpty() && currentIsOutletPath && !showOutletProductsFromFilters && current != null)"):
+                      android_src.index("} else if (children.isNotEmpty() && !showOutletProductsFromFilters)")
+                  ]
+              ),
+              "ANDROID_OUTLET_RESULTS_TRANSITION_ONLY_AFTER_APPLY_TRUE": (
+                  "if (controller.applyFilters()) onFiltersApplied()" in android_src
+                  and "OutletControllerFilterDialog(controller, outletControllerState) {\n            showOutletProductsFromFilters = true\n        }" in android_src
+              ),
               "IOS_OUTLET_FILTER_UI_CONTROLLER_OWNED": "onFilterClick = controller::openFilters" in outlet_ios and "controllerState.filterDialogVisible" in outlet_ios and "selectedSizes = controllerState.draftSizes" in outlet_ios,
               "ANDROID_OUTLET_SHARED_TRANSPORT": "storeOutletDataSource(sharedCatalogClient)" in main_activity and "StoreOutletController(viewModelScope, outletDataSource)" in shop_vm,
               "IOS_OUTLET_SHARED_TRANSPORT": "StoreOutletController(outletControllerScope, storeOutletDataSource(storeApi))" in root,
