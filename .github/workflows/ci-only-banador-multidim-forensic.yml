@@ -1,0 +1,80 @@
+name: CI-only Bañador Size-Color Query Forensic
+
+on:
+  push:
+    branches: [live-filter-forensic-ci-only]
+    paths: [.github/workflows/ci-only-banador-multidim-forensic.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  read-only-query:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe same-variation dimensions with GET only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p forensic
+          cat > probe.py <<'PY'
+          import json, urllib.parse, urllib.request, urllib.error
+          from pathlib import Path
+          base="https://criosrango.es/wp-json/wc/store/v1"
+          out=Path("forensic"); report=[]
+          def get(name,path,params):
+              url=base+path+"?"+urllib.parse.urlencode(params,doseq=True)
+              req=urllib.request.Request(url,headers={"User-Agent":"CriosRango-read-only-multidim-forensic/1.0","Accept":"application/json"},method="GET")
+              try:
+                  with urllib.request.urlopen(req,timeout=35) as r:
+                      status=r.status; body=r.read(); headers={k.lower():v for k,v in r.headers.items()}
+              except urllib.error.HTTPError as e:
+                  status=e.code; body=e.read(); headers={k.lower():v for k,v in e.headers.items()}
+              try: data=json.loads(body.decode("utf-8"))
+              except Exception: data={"raw":body.decode("utf-8","replace")}
+              (out/(name+".json")).write_text(json.dumps({"url":url,"status":status,"headers":headers,"data":data},ensure_ascii=False,indent=2))
+              report.append(name+"_HTTP_STATUS="+str(status))
+              if isinstance(data,list):
+                  report.append(name+"_TOTAL="+str(headers.get("x-wp-total","UNAVAILABLE")))
+                  report.append(name+"_PRODUCT_IDS="+json.dumps([p.get("id") for p in data]))
+                  report.append(name+"_RETURNS_BANADOR_39291="+("YES" if any(p.get("id")==39291 for p in data) else "NO"))
+              elif isinstance(data,dict):
+                  report.append(name+"_ATTRIBUTE_COUNTS="+json.dumps(data.get("attribute_counts"),ensure_ascii=False))
+              return status,data,headers
+          pair=[
+            ("category","445"),
+            ("attributes[0][attribute]","pa_tallas"),("attributes[0][term_id]","342"),
+            ("attributes[1][attribute]","pa_color"),("attributes[1][term_id]","353"),
+            ("per_page","12"),("page","1")
+          ]
+          get("outlet_3xl_azul_products","/products",pair)
+          get("outlet_3xl_azul_products_instock","/products",pair+[("stock_status","instock")])
+          facet=[
+            ("category","445"),
+            ("calculate_attribute_counts[0][taxonomy]","pa_tallas"),
+            ("calculate_attribute_counts[0][query_type]","or"),
+            ("attributes[0][attribute]","pa_color"),("attributes[0][term_id]","353")
+          ]
+          _,f,_=get("outlet_size_facet_given_azul","/products/collection-data",facet)
+          _,fs,_=get("outlet_size_facet_given_azul_instock","/products/collection-data",facet+[("stock_status","instock")])
+          def count(data):
+              if not isinstance(data,dict): return None
+              return next((x.get("count") for x in data.get("attribute_counts",[]) if x.get("term")==342),None)
+          report.append("OUTLET_3XL_FACET_COUNT_GIVEN_AZUL="+str(count(f)))
+          report.append("OUTLET_3XL_FACET_COUNT_GIVEN_AZUL_INSTOCK="+str(count(fs)))
+          report.append("BANADOR_PARENT_ID=39291")
+          report.append("BANADOR_HAS_NO_3XL_VARIATION_STUB; ONLY_VARIATION_ID=39295_SIZE=XXL_COLOR=AZUL")
+          (out/"report.txt").write_text("\n".join(report)+"\n")
+          print("\n".join(report))
+          PY
+          python3 probe.py
+      - name: Upload raw multidimension evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: banador-multidimension-forensic
+          path: forensic/
+          if-no-files-found: warn
+          retention-days: 14
