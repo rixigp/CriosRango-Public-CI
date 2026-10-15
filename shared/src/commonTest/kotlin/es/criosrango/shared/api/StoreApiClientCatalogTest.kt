@@ -12,6 +12,7 @@ import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import es.criosrango.shared.model.countFor
 import es.criosrango.shared.StoreOutletQuery
@@ -21,35 +22,125 @@ import es.criosrango.shared.model.StoreProduct
 class StoreApiClientCatalogTest {
 
     @Test
-    fun outletDataSourceUsesOnlyCategoryPageAndPerPage() = runTest {
-        var requestPath = ""
-        var requestParameters: io.ktor.http.Parameters? = null
-        val engine = MockEngine { request ->
-            requestPath = request.url.encodedPath
-            requestParameters = request.url.parameters
+    fun outletDataSourceUsesFilterApiThenSingleOrderedHydrationBatch() = runTest {
+        var storeRequestPath = ""
+        var storeRequestParameters: io.ktor.http.Parameters? = null
+        val storeClient = HttpClient(MockEngine { request ->
+            storeRequestPath = request.url.encodedPath
+            storeRequestParameters = request.url.parameters
             respond(
-                "[]",
+                """[{"id":11,"name":"Eleven"},{"id":10,"name":"Ten"}]""",
                 headers = headersOf(HttpHeaders.ContentType, "application/json")
             )
+        }) {
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
-        val client = HttpClient(engine) {
-            install(ContentNegotiation) {
-                json(Json { ignoreUnknownKeys = true })
-            }
+        var filterParameters: io.ktor.http.Parameters? = null
+        val filterHttp = HttpClient(MockEngine { request ->
+            filterParameters = request.url.parameters
+            respond(
+                """{"schema_version":1,"page":1,"per_page":12,"total":2,"has_more":false,"product_ids":[10,11],"facets":{}}""",
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        }) {
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         }
+        val filterApi = StoreFilterApiClient(endpoint = "https://example.test/query", client = filterHttp)
         try {
-            val source = storeOutletDataSource(StoreApiClient(client = client))
-            val result = source.loadPage(StoreOutletQuery(categoryId = 446), page = 3, perPage = 24)
+            val source = storeOutletDataSource(StoreApiClient(client = storeClient), filterApi)
+            val result = source.loadPage(
+                StoreOutletQuery(
+                    categoryId = 477,
+                    originCategoryIds = listOf(287, 78, 78),
+                    sizeIds = listOf(342),
+                    colorIds = listOf(353),
+                    brandIds = listOf(777),
+                    sort = es.criosrango.shared.StoreOutletSort.PRICE_ASC
+                ),
+                page = 1,
+                perPage = 12
+            )
 
-            assertEquals(emptyList<StoreProduct>(), result.items)
+            assertEquals("outlet", filterParameters!!["scope"])
+            assertEquals("477", filterParameters!!["outlet_category_id"])
+            assertEquals("78,287", filterParameters!!["origin_category_ids"])
+            assertEquals("342", filterParameters!!["size_ids"])
+            assertEquals("353", filterParameters!!["color_ids"])
+            assertEquals("777", filterParameters!!["brand_ids"])
+            assertEquals("price_asc", filterParameters!!["sort"])
+            assertEquals("/wp-json/wc/store/v1/products", storeRequestPath)
+            assertEquals("10,11", storeRequestParameters!!["include"])
+            assertEquals("include", storeRequestParameters!!["orderby"])
+            assertEquals("2", storeRequestParameters!!["per_page"])
+            assertEquals(listOf(10, 11), result.items.map { it.id })
             assertEquals(false, result.hasMore)
-            assertEquals("/wp-json/wc/store/v1/products", requestPath)
-            assertEquals(setOf("per_page", "page", "category"), requestParameters!!.names())
-            assertEquals("24", requestParameters!!["per_page"])
-            assertEquals("3", requestParameters!!["page"])
-            assertEquals("446", requestParameters!!["category"])
+            assertEquals(2, result.totalItems)
         } finally {
-            client.close()
+            storeClient.close()
+            filterApi.close()
+        }
+    }
+
+    @Test
+    fun outletDataSourceSkipsStoreHydrationWhenFilterApiReturnsNoIds() = runTest {
+        var storeRequests = 0
+        val storeClient = HttpClient(MockEngine {
+            storeRequests++
+            respond("[]", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+        }) {
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val filterHttp = HttpClient(MockEngine {
+            respond(
+                """{"schema_version":1,"page":1,"per_page":12,"total":0,"has_more":false,"product_ids":[],"facets":{}}""",
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        }) {
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val filterApi = StoreFilterApiClient(endpoint = "https://example.test/query", client = filterHttp)
+        try {
+            val source = storeOutletDataSource(StoreApiClient(client = storeClient), filterApi)
+            val result = source.loadPage(StoreOutletQuery(categoryId = 477), page = 1, perPage = 12)
+            assertEquals(emptyList<StoreProduct>(), result.items)
+            assertEquals(0, storeRequests)
+            assertEquals(0, result.totalItems)
+            assertEquals(false, result.hasMore)
+        } finally {
+            storeClient.close()
+            filterApi.close()
+        }
+    }
+
+    @Test
+    fun outletDataSourceFailsClosedWhenStoreHydrationOmitsBackendId() = runTest {
+        val storeClient = HttpClient(MockEngine {
+            respond(
+                """[{"id":10,"name":"Ten"}]""",
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        }) {
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val filterHttp = HttpClient(MockEngine {
+            respond(
+                """{"schema_version":1,"page":1,"per_page":12,"total":2,"has_more":false,"product_ids":[10,11],"facets":{}}""",
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        }) {
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        val filterApi = StoreFilterApiClient(endpoint = "https://example.test/query", client = filterHttp)
+        try {
+            val source = storeOutletDataSource(StoreApiClient(client = storeClient), filterApi)
+            val error = runCatching {
+                source.loadPage(StoreOutletQuery(categoryId = 477), page = 1, perPage = 12)
+            }.exceptionOrNull()
+            assertIs<StoreProductBatchConsistencyException>(error)
+            assertTrue(error.message.orEmpty().contains("11"))
+        } finally {
+            storeClient.close()
+            filterApi.close()
         }
     }
 

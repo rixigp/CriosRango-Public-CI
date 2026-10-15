@@ -435,7 +435,6 @@ internal fun IosOutletScreen(
     padding: PaddingValues,
     cartStore: StoreCartStore,
     controller: StoreOutletController,
-    onOpenRootFilter: () -> Unit = {},
     categories: List<StoreCategory>?,
     categoriesLoading: Boolean,
     categoriesError: String?,
@@ -477,7 +476,6 @@ internal fun IosOutletScreen(
     val outletChildren = categories.filter { it.parent == outlet.id }.distinctBy { it.id }
     val controllerState by controller.state.collectAsState()
     var showOutletChooser by remember(outlet.id) { mutableStateOf(true) }
-    var filtersOpen by remember(outlet.id) { mutableStateOf(false) }
     var availabilityError by remember(outlet.id) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(controller, categories) {
@@ -502,7 +500,11 @@ internal fun IosOutletScreen(
                 controller.selectCategory(category.id)
                 showOutletChooser = false
             },
-            onFilterClick = onOpenRootFilter,
+            onFilterClick = {
+                controller.selectCategory(outlet.id)
+                showOutletChooser = false
+                controller.openFilters()
+            },
             showFilterButton = true,
             modifier = Modifier.fillMaxSize().padding(padding)
         )
@@ -589,7 +591,7 @@ internal fun IosOutletScreen(
                     StoreProductSortOption.NAME_ASC -> StoreOutletSort.NAME_ASC
                 })
             },
-            onFilterClick = { filtersOpen = true },
+            onFilterClick = controller::openFilters,
             onRemoveFilter = { id ->
                 when {
                     id.startsWith("size:") -> controller.selectSizes(controllerState.selectedSizes - id.removePrefix("size:"))
@@ -623,25 +625,43 @@ internal fun IosOutletScreen(
             }
         )
 
-    if (filtersOpen) {
-        StoreCatalogFilterDialog(
-            sizes = controllerState.sizes,
-            colors = controllerState.colors,
-            brands = controllerState.brands,
-            selectedSizes = controllerState.selectedSizes,
-            selectedColors = controllerState.selectedColors,
-            selectedBrands = controllerState.selectedBrands,
-            enabledSizes = controllerState.enabledSizes,
-            enabledColors = controllerState.enabledColors,
-            enabledBrands = controllerState.enabledBrands,
-            showBrands = true,
-            onSizesChanged = controller::selectSizes,
-            onColorsChanged = controller::selectColors,
-            onBrandsChanged = controller::selectBrands,
-            onApply = { filtersOpen = false },
-            onClear = controller::clearFilters,
-            onDismiss = { filtersOpen = false }
-        )
+    if (controllerState.filterDialogVisible) {
+        when (val optionsState = controllerState.filterOptionsState) {
+            StoreFilterOptionsState.Idle, StoreFilterOptionsState.Loading -> AlertDialog(
+                onDismissRequest = controller::cancelFilters,
+                title = { Text("Filtros") },
+                text = { Text("Cargando opciones de filtros…") },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = controller::cancelFilters) { Text("Cancelar") } }
+            )
+            is StoreFilterOptionsState.Error -> AlertDialog(
+                onDismissRequest = controller::cancelFilters,
+                title = { Text("No se han podido cargar los filtros") },
+                text = { Text(optionsState.message) },
+                confirmButton = { TextButton(onClick = controller::retryFilterOptions) { Text("Reintentar") } },
+                dismissButton = { TextButton(onClick = controller::cancelFilters) { Text("Cancelar") } }
+            )
+            is StoreFilterOptionsState.Ready -> StoreCatalogFilterDialog(
+                sizes = controllerState.sizes,
+                colors = controllerState.colors,
+                brands = controllerState.brands,
+                selectedSizes = controllerState.draftSizes,
+                selectedColors = controllerState.draftColors,
+                selectedBrands = controllerState.draftBrands,
+                enabledSizes = controllerState.enabledSizes,
+                enabledColors = controllerState.enabledColors,
+                enabledBrands = controllerState.enabledBrands,
+                showBrands = true,
+                onDimensionSelected = controller::selectFacetDimension,
+                onSizesChanged = controller::changeDraftSizes,
+                onColorsChanged = controller::changeDraftColors,
+                onBrandsChanged = controller::changeDraftBrands,
+                onApply = { controller.applyFilters() },
+                onClear = controller::clearDraftFilters,
+                onDismiss = controller::cancelFilters,
+                onCancel = controller::cancelFilters
+            )
+        }
     }
 }
 

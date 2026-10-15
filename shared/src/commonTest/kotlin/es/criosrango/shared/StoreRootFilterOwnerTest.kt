@@ -96,7 +96,7 @@ class StoreRootFilterOwnerTest {
         assertEquals(0, products)
 
         val reopenedReady = observeOptionsState(owner) { it is StoreFilterOptionsState.Ready }
-        owner.open(StoreRootFilterScope.OUTLET)
+        owner.open(StoreRootFilterScope.CATALOG)
         assertIs<StoreFilterOptionsState.Ready>(reopenedReady.await())
         assertEquals(1, attrs); assertEquals(1, sizeTerms); assertEquals(1, colorTerms); assertEquals(1, tags)
         owner.apply()
@@ -141,7 +141,7 @@ class StoreRootFilterOwnerTest {
         val owner = StoreRootFilterOwner(api, ownerScope(), testFilterApi())
 
         val initialError = observeOptionsState(owner) { it is StoreFilterOptionsState.Error }
-        owner.open(StoreRootFilterScope.OUTLET)
+        owner.open(StoreRootFilterScope.CATALOG)
         val error = assertIs<StoreFilterOptionsState.Error>(initialError.await())
         assertTrue(error.message.contains("Size"))
         assertTrue(error.message.contains("atributos recibidos"))
@@ -154,7 +154,7 @@ class StoreRootFilterOwnerTest {
         assertTrue(ready.options.colors.isEmpty().not())
         assertEquals(12, ready.options.brands.single().id)
         assertEquals(2, requests) // first attempt + retry; the handler serves updated valid metadata on retry.
-        assertEquals(StoreRootFilterScope.OUTLET, owner.state.value.scope)
+        assertEquals(StoreRootFilterScope.CATALOG, owner.state.value.scope)
         assertFalse(owner.state.value.resultsVisible)
         assertEquals(0, products)
         api.close()
@@ -306,6 +306,9 @@ class StoreRootFilterOwnerTest {
         fixture.owner.changeColors(setOf("Azul"))
         fixture.owner.changeBrands(setOf("Marca"))
         assertTrue(fixture.owner.apply())
+        advanceUntilIdle()
+        fixture.filterRequests.clear()
+        fixture.productRequests.clear()
     }
 
     private fun RootPageFixture.catalogRequests() = filterRequests.filter { it["facet"] == null }

@@ -50,20 +50,17 @@ internal val categoryCatalogLoadStatus = MutableStateFlow(CategoryLoadStatus())
 
 data class CategoryProductsState(val products: List<StoreProduct> = emptyList(), val loading: Boolean = false, val loaded: Boolean = false, val error: StoreUiError? = null, val requestVersion: Int = 0)
 
-class ShopViewModel(private val repository: StoreRepository, val cartStore: CartStore, val deliveryAddressStore: DeliveryAddressStore, private val pendingCardPaymentStore: PendingCardPaymentStore) : ViewModel() {
-    private val outletAndroidProducts = mutableMapOf<Int, StoreProduct>()
-    val outletController = StoreOutletController(viewModelScope, StoreOutletDataSource { query, page, perPage ->
-        val androidItems = repository.productsByCategoryPage(
-            categoryId = query.categoryId,
-            page = page,
-            perPage = perPage
-        )
-        androidItems.forEach { outletAndroidProducts[it.id] = it }
-        val items = androidItems.map(StoreProduct::toSharedOutletProduct)
-        CatalogPage(items = items, hasMore = items.size >= perPage)
-    })
+class ShopViewModel(
+    private val repository: StoreRepository,
+    val cartStore: CartStore,
+    val deliveryAddressStore: DeliveryAddressStore,
+    private val pendingCardPaymentStore: PendingCardPaymentStore,
+    outletDataSource: StoreOutletDataSource = StoreOutletDataSource { _, _, _ -> CatalogPage(emptyList(), false) }
+) : ViewModel() {
+    val outletController = StoreOutletController(viewModelScope, outletDataSource)
 
-    fun outletProduct(productId: Int): StoreProduct? = outletAndroidProducts[productId]
+    fun outletProduct(productId: Int): StoreProduct? =
+        outletController.state.value.paging.items.firstOrNull { it.id == productId }?.toAndroid()
     private val _checkout = MutableStateFlow<CheckoutResponse?>(null)
     val checkout: StateFlow<CheckoutResponse?> = _checkout.asStateFlow()
     private val _checkoutError = MutableStateFlow<String?>(null)
@@ -792,8 +789,15 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private fun clearCheckoutForNewGeneration() { _checkout.value = null; _checkoutError.value = null; _paymentRedirect.value = null; _bizumOrderId.value = null }
     fun openCartLine(item: CartLine) { viewModelScope.launch { val productId = item.parentProductId ?: item.id; _isLoading.value = true; _selectedVariation.value = null; _selectedProduct.value = runCatching { repository.productWithVariationAvailability(productId) }.getOrNull(); _isLoading.value = false } }
     fun clearError() { _error.value = null }
-    class Factory(private val repository: StoreRepository, private val cartStore: CartStore, private val deliveryAddressStore: DeliveryAddressStore, private val pendingCardPaymentStore: PendingCardPaymentStore) : ViewModelProvider.Factory {
+    class Factory(
+        private val repository: StoreRepository,
+        private val cartStore: CartStore,
+        private val deliveryAddressStore: DeliveryAddressStore,
+        private val pendingCardPaymentStore: PendingCardPaymentStore,
+        private val outletDataSource: StoreOutletDataSource
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T = ShopViewModel(repository, cartStore, deliveryAddressStore, pendingCardPaymentStore) as T
+        override fun <T : ViewModel> create(modelClass: Class<T>): T =
+            ShopViewModel(repository, cartStore, deliveryAddressStore, pendingCardPaymentStore, outletDataSource) as T
     }
 }

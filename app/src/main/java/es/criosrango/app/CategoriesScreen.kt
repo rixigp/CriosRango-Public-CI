@@ -407,7 +407,9 @@ private fun OutletControlledProductGrid(
 ) {
     val state by controller.state.collectAsStateWithLifecycle()
     val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
-    var filtersOpen by remember { mutableStateOf(initialFiltersOpen) }
+    LaunchedEffect(initialFiltersOpen, controller) {
+        if (initialFiltersOpen && !controller.state.value.filterDialogVisible) controller.openFilters()
+    }
     val resetKey = listOf(
         state.activeCategoryId, state.selectedBubbleKey, state.selectedSort,
         state.selectedSizes, state.selectedColors, state.selectedBrands
@@ -465,7 +467,7 @@ private fun OutletControlledProductGrid(
                 es.criosrango.shared.StoreProductSortOption.NAME_ASC -> es.criosrango.shared.StoreOutletSort.NAME_ASC
             })
         },
-        onFilterClick = { filtersOpen = true },
+        onFilterClick = controller::openFilters,
         onRemoveFilter = { id ->
             when {
                 id.startsWith("size:") -> controller.selectSizes(state.selectedSizes - id.removePrefix("size:"))
@@ -505,25 +507,44 @@ private fun OutletControlledProductGrid(
         }
     )
 
-    if (filtersOpen) {
-        es.criosrango.shared.StoreCatalogFilterDialog(
-            sizes = state.sizes.sortedWith(compareBy({ productSizeSortKey(it) }, { it })),
-            colors = state.colors,
-            brands = state.brands,
-            selectedSizes = state.selectedSizes,
-            selectedColors = state.selectedColors,
-            selectedBrands = state.selectedBrands,
-            enabledSizes = state.enabledSizes,
-            enabledColors = state.enabledColors,
-            enabledBrands = state.enabledBrands,
-            showBrands = true,
-            onSizesChanged = controller::selectSizes,
-            onColorsChanged = controller::selectColors,
-            onBrandsChanged = controller::selectBrands,
-            onApply = { filtersOpen = false },
-            onClear = controller::clearFilters,
-            onDismiss = { filtersOpen = false }
-        )
+    if (state.filterDialogVisible) {
+        when (val optionsState = state.filterOptionsState) {
+            es.criosrango.shared.StoreFilterOptionsState.Idle,
+            es.criosrango.shared.StoreFilterOptionsState.Loading -> androidx.compose.material3.AlertDialog(
+                onDismissRequest = controller::cancelFilters,
+                title = { Text("Filtros") },
+                text = { Text("Cargando opciones de filtros…") },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = controller::cancelFilters) { Text("Cancelar") } }
+            )
+            is es.criosrango.shared.StoreFilterOptionsState.Error -> androidx.compose.material3.AlertDialog(
+                onDismissRequest = controller::cancelFilters,
+                title = { Text("No se han podido cargar los filtros") },
+                text = { Text(optionsState.message) },
+                confirmButton = { TextButton(onClick = controller::retryFilterOptions) { Text("Reintentar") } },
+                dismissButton = { TextButton(onClick = controller::cancelFilters) { Text("Cancelar") } }
+            )
+            is es.criosrango.shared.StoreFilterOptionsState.Ready -> es.criosrango.shared.StoreCatalogFilterDialog(
+                sizes = state.sizes.sortedWith(compareBy({ productSizeSortKey(it) }, { it })),
+                colors = state.colors,
+                brands = state.brands,
+                selectedSizes = state.draftSizes,
+                selectedColors = state.draftColors,
+                selectedBrands = state.draftBrands,
+                enabledSizes = state.enabledSizes,
+                enabledColors = state.enabledColors,
+                enabledBrands = state.enabledBrands,
+                showBrands = true,
+                onDimensionSelected = controller::selectFacetDimension,
+                onSizesChanged = controller::changeDraftSizes,
+                onColorsChanged = controller::changeDraftColors,
+                onBrandsChanged = controller::changeDraftBrands,
+                onApply = { controller.applyFilters() },
+                onClear = controller::clearDraftFilters,
+                onDismiss = controller::cancelFilters,
+                onCancel = controller::cancelFilters
+            )
+        }
     }
 }
 
@@ -601,7 +622,7 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             else loadCategoryTree(currentId)
         }
     }
-    if (rootFilterState.resultsVisible && rootFilterOwner != null) {
+    if (rootFilterState.resultsVisible && rootFilterState.scope == es.criosrango.shared.StoreRootFilterScope.CATALOG && rootFilterOwner != null) {
         es.criosrango.shared.StoreRootFilterResultsScreen(rootFilterOwner, padding) { product -> onProduct(product.toAndroid()) }
     } else if (path.isEmpty() && !showCatalogProductsFromFilters) {
         CategoryList(
@@ -636,7 +657,13 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             loading = if (outletController != null && currentIsOutletPath) outletControllerState.paging.isInitialLoading else loading,
             onBack = onCategoriesBack,
             onCategory = { child -> categories.firstOrNull { it.id == child.id }?.let(onOpen) },
-            onFilterClick = { rootFilterOwner?.open(es.criosrango.shared.StoreRootFilterScope.OUTLET) },
+            onFilterClick = {
+                if (outletController != null) {
+                    outletController.selectCategory(current.id)
+                    showOutletProductsFromFilters = true
+                    outletController.openFilters()
+                }
+            },
             showFilterButton = true,
             onRetry = { loadCategoryTree(current.id) },
             modifier = Modifier.fillMaxSize().padding(padding)
@@ -681,7 +708,7 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
                     it.id != 445 && !isCategoryDescendantOf(it.id, 445, categories.associateBy { category -> category.id })
                 }?.let { category -> { loadCategory(category.id) } },
                 initialFiltersOpen = showOutletProductsFromFilters &&
-                    current?.id == es.criosrango.shared.StoreRootFilterScope.OUTLET.categoryQueryId
+                    current?.id == 445
             )
         }
     }

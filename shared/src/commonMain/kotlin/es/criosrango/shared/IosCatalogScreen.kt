@@ -67,7 +67,7 @@ internal fun IosCatalogScreen(
     onRetryCategorySnapshot: () -> Unit
 ) {
     val rootFilterState by rootFilterOwner.state.collectAsState()
-    if (rootFilterState.resultsVisible && ((page == IosCatalogPage.Root && rootFilterState.scope == StoreRootFilterScope.CATALOG) || (page == IosCatalogPage.Outlet && rootFilterState.scope == StoreRootFilterScope.OUTLET))) {
+    if (rootFilterState.resultsVisible && page == IosCatalogPage.Root && rootFilterState.scope == StoreRootFilterScope.CATALOG) {
         StoreRootFilterResultsScreen(rootFilterOwner, padding, onOpenProduct)
     } else when (page) {
         IosCatalogPage.Root -> IosCategoryRoot(padding, onOpenCategory, onOpenRootFilter, onBack, categorySnapshot.orEmpty(), categorySnapshotLoading, categorySnapshotError, onRetryCategorySnapshot)
@@ -107,7 +107,6 @@ internal fun IosCatalogScreen(
                 padding = padding,
                 cartStore = cartStore,
                 controller = outletController,
-                onOpenRootFilter = { rootFilterOwner.open(StoreRootFilterScope.OUTLET) },
                 categories = categories,
                 categoriesLoading = loading,
                 categoriesError = loadError,
