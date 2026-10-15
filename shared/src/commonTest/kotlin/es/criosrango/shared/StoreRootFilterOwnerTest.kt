@@ -274,6 +274,12 @@ class StoreRootFilterOwnerTest {
             val page = req.url.parameters["page"]?.toIntOrNull() ?: 1
             val perPage = req.url.parameters["per_page"]?.toIntOrNull() ?: 12
             val facet = req.url.parameters["facet"]
+            val ids = when {
+                facet != null -> emptyList()
+                page == 1 -> (1001..1012).toList()
+                page == 2 -> listOf(2001)
+                else -> emptyList()
+            }
             filterRequests += mapOf(
                 "scope" to req.url.parameters["scope"],
                 "page" to req.url.parameters["page"],
@@ -282,14 +288,9 @@ class StoreRootFilterOwnerTest {
                 "facet" to facet,
                 "size_ids" to req.url.parameters["size_ids"],
                 "color_ids" to req.url.parameters["color_ids"],
-                "brand_ids" to req.url.parameters["brand_ids"]
+                "brand_ids" to req.url.parameters["brand_ids"],
+                "generated_product_ids_count" to ids.size.toString()
             )
-            val ids = when {
-                facet != null -> emptyList()
-                page == 1 -> (1001..1012).toList()
-                page == 2 -> listOf(2001)
-                else -> emptyList()
-            }
             val total = if (facet == null) 13 else 0
             val hasMore = facet == null && page == 1
             val responseBody = """{"schema_version":1,"page":$page,"per_page":$perPage,"total":$total,"has_more":$hasMore,"product_ids":[${ids.joinToString(",")}],"facets":{"sizes":[],"colors":[],"brands":[]}}"""
@@ -311,6 +312,19 @@ class StoreRootFilterOwnerTest {
         owner.changeBrands(setOf("Marca"))
         assertTrue(owner.apply())
 
+        // Metadata must be Ready before pagination begins. The await above is state-driven
+        // (observeOptionsState/StateFlow), not a timing delay.
+        advanceUntilIdle()
+        val beforeStart = owner.state.value
+        val optionsStateBeforeStart = beforeStart.optionsState
+        assertIs<StoreFilterOptionsState.Ready>(
+            optionsStateBeforeStart,
+            "optionsState=$optionsStateBeforeStart; scope=${beforeStart.scope}; " +
+                "appliedSizes=${beforeStart.appliedSizes}; appliedColors=${beforeStart.appliedColors}; " +
+                "appliedBrands=${beforeStart.appliedBrands}; fullState=$beforeStart"
+        )
+        assertEquals(StoreRootFilterScope.CATALOG, beforeStart.scope)
+
         val paginator = CatalogPaginatorStore<StoreProduct>(this) { it.id }
         suspend fun loadCatalogPage(page: Int, perPage: Int): CatalogPage<StoreProduct> =
             owner.loadRootPage(page, perPage, StoreProductSortOption.RECENT)
@@ -318,18 +332,39 @@ class StoreRootFilterOwnerTest {
         paginator.start(owner.queryKey(), ::loadCatalogPage)
         advanceUntilIdle()
 
-        assertEquals(1, productRequests.size)
-        assertEquals((1001..1012).toList(), paginator.state.value.items.map { it.id })
-        assertEquals(true, paginator.state.value.hasMore)
-        assertEquals(13, paginator.state.value.totalItems)
-        assertEquals(listOf(1), filterRequests.filter { it["facet"] == null }.map { it["page"]?.toInt() })
-        val catalogFirstQuery = filterRequests.last { it["facet"] == null }
-        assertEquals("catalog", catalogFirstQuery["scope"])
+        val page1State = paginator.state.value
+        if (page1State.initialError != null) {
+            val failure = page1State.initialError!!
+            error(
+                "Page 1 initial load failed: ${failure::class.simpleName}: ${failure.message}; " +
+                    "filterRequests=$filterRequests; productRequests=$productRequests; " +
+                    "items.size=${page1State.items.size}; currentPage=${page1State.currentPage}; " +
+                    "hasMore=${page1State.hasMore}; isInitialLoading=${page1State.isInitialLoading}"
+            )
+        }
+
+        val catalogPage1Requests = filterRequests.filter { it["facet"] == null }
+        assertEquals(1, catalogPage1Requests.size, "Expected one non-facet Filter API request; captured=$filterRequests")
+        val catalogFirstQuery = catalogPage1Requests.single()
+        assertEquals("1", catalogFirstQuery["page"], "Filter request capture=$filterRequests")
         assertEquals("12", catalogFirstQuery["per_page"])
+        assertEquals("catalog", catalogFirstQuery["scope"])
         assertEquals("newest", catalogFirstQuery["sort"])
+        assertEquals(null, catalogFirstQuery["facet"])
         assertEquals("342", catalogFirstQuery["size_ids"])
         assertEquals("353", catalogFirstQuery["color_ids"])
         assertEquals("777", catalogFirstQuery["brand_ids"])
+        assertEquals("12", catalogFirstQuery["generated_product_ids_count"])
+        assertEquals((1001..1012).toList(), (1001..1012).toList(), "Fixture page-1 generated IDs must be [1001..1012]")
+
+        assertEquals(1, productRequests.size, "Filter request succeeded but Store API batch capture differs; filterRequests=$filterRequests")
+        assertEquals((1001..1012).toList(), page1State.items.map { it.id })
+        assertEquals(12, page1State.items.size)
+        assertEquals(1, page1State.currentPage)
+        assertEquals(true, page1State.hasMore)
+        assertEquals(13, page1State.totalItems)
+        assertEquals(null, page1State.initialError)
+        assertEquals(false, page1State.isInitialLoading)
 
         val catalogBatch = productRequests.single()
         assertEquals((1001..1012).joinToString(","), catalogBatch["include"])
@@ -346,15 +381,26 @@ class StoreRootFilterOwnerTest {
         paginator.loadNext(::loadCatalogPage)
         advanceUntilIdle()
 
-        assertEquals(2, productRequests.size)
-        assertEquals(13, paginator.state.value.items.size)
-        assertEquals((1001..1012).toList() + 2001, paginator.state.value.items.map { it.id })
-        assertEquals(2, paginator.state.value.currentPage)
-        assertEquals(false, paginator.state.value.hasMore)
-        assertEquals(false, paginator.state.value.isAppending)
-        assertEquals(null, paginator.state.value.appendError)
+        val page2State = paginator.state.value
+        if (page2State.appendError != null) {
+            val failure = page2State.appendError!!
+            error(
+                "Page 2 append failed: ${failure::class.simpleName}: ${failure.message}; " +
+                    "isAppending=${page2State.isAppending}; currentPage=${page2State.currentPage}; " +
+                    "hasMore=${page2State.hasMore}; filterRequests=$filterRequests; productRequests=$productRequests"
+            )
+        }
+        assertEquals(false, page2State.isAppending, "PAGINATOR_STATE=$page2State; filterRequests=$filterRequests; productRequests=$productRequests")
+        assertEquals(2, page2State.currentPage, "PAGINATOR_STATE=$page2State")
+        assertEquals(false, page2State.hasMore, "PAGINATOR_STATE=$page2State")
+        assertEquals(null, page2State.appendError, "PAGINATOR_STATE=$page2State")
+        assertEquals(2, filterRequests.count { it["facet"] == null }, "Filter requests=$filterRequests")
         assertEquals(listOf("1", "2"), filterRequests.filter { it["facet"] == null }.map { it["page"] })
         assertEquals(listOf("12", "12"), filterRequests.filter { it["facet"] == null }.map { it["per_page"] })
+        assertEquals("1", filterRequests.last { it["facet"] == null }["generated_product_ids_count"])
+        assertEquals(2, productRequests.size, "Filter requests=$filterRequests; productRequests=$productRequests")
+        assertEquals(13, page2State.items.size, "PAGINATOR_STATE=$page2State")
+        assertEquals((1001..1012).toList() + 2001, page2State.items.map { it.id })
         assertEquals("2001", productRequests[1]["include"])
         assertEquals("include", productRequests[1]["orderby"])
         assertEquals("1", productRequests[1]["per_page"])
