@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import es.criosrango.shared.api.StoreApiClient
+import es.criosrango.shared.api.StoreFilterApiClient
 import es.criosrango.shared.model.StoreGlobalAttributeTerm
 import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.model.StoreProductAttributeFilter
@@ -50,7 +51,7 @@ data class StoreRootFilterState(
     val hasAppliedFilters get() = appliedSizes.isNotEmpty() || appliedColors.isNotEmpty() || appliedBrands.isNotEmpty()
 }
 
-class StoreRootFilterOwner(private val api: StoreApiClient, private val scope: CoroutineScope) {
+class StoreRootFilterOwner(private val api: StoreApiClient, private val scope: CoroutineScope, private val filterApi: StoreFilterApiClient = StoreFilterApiClient()) {
     private val mutableState = MutableStateFlow(StoreRootFilterState())
     val state: StateFlow<StoreRootFilterState> = mutableState.asStateFlow()
     private var cachedOptions: StoreFilterOptions? = null
@@ -139,7 +140,29 @@ class StoreRootFilterOwner(private val api: StoreApiClient, private val scope: C
         val s = mutableState.value
         return api.products(perPage = perPage, page = page, category = s.scope?.categoryQueryId, attributeFilters = queryAttributeFilters(), tagIds = queryTagIds())
     }
-    fun queryKey(): String { val s = mutableState.value; return "root-filter:${s.scope?.name}:${s.appliedSizes.sorted()}:${s.appliedColors.sorted()}:${s.appliedBrands.sorted()}" }
+    suspend fun loadRootPage(page: Int, perPage: Int, sort: StoreProductSortOption): CatalogPage<StoreProduct> {
+        require(page >= 1 && perPage == CatalogPaginator.PAGE_SIZE) { "Root filter pages must use the canonical page size." }
+        val s = mutableState.value
+        val options = (s.optionsState as? StoreFilterOptionsState.Ready)?.options ?: throw IllegalStateException("Filter metadata is not ready.")
+        val response = filterApi.query(
+            scope = when (s.scope) {
+                StoreRootFilterScope.OUTLET -> "outlet"
+                StoreRootFilterScope.CATALOG -> "catalog"
+                null -> throw IllegalStateException("Root filter scope is missing.")
+            },
+            sizeIds = options.sizes.filter { it.name in s.appliedSizes }.map { it.id }.distinct(),
+            colorIds = options.colors.filter { it.name in s.appliedColors }.map { it.id }.distinct(),
+            brandIds = options.brands.filter { it.name in s.appliedBrands }.map { it.id }.distinct(),
+            page = page, perPage = perPage, sort = sort.toBackendSort()
+        )
+        val products = if (response.productIds.isEmpty()) emptyList() else api.productsByIds(response.productIds)
+        return CatalogPage(products, response.hasMore, response.total)
+    }
+
+    fun queryKey(sort: StoreProductSortOption = StoreProductSortOption.RECENT): String {
+        val s = mutableState.value
+        return "root-filter:${s.scope?.name}:${s.appliedSizes.sorted()}:${s.appliedColors.sorted()}:${s.appliedBrands.sorted()}:sort=${sort.toBackendSort()}"
+    }
     private fun canonical(v: String) = v.lowercase().trim().replace("á","a").replace("é","e").replace("í","i").replace("ó","o").replace("ú","u").replace("à","a").replace("è","e").replace("ì","i").replace("ò","o").replace("ù","u")
     private fun StoreGlobalAttributeTerm.toOption(taxonomy: String) =
         StoreFilterOption(
@@ -174,7 +197,8 @@ fun StoreRootFilterResultsScreen(owner: StoreRootFilterOwner, padding: PaddingVa
     val s by owner.state.collectAsState()
     val rootScope = s.scope ?: return
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
-    val paginator = remember(owner.queryKey()) { CatalogPaginatorStore<StoreProduct>(coroutineScope, pageSize = CatalogPaginator.PAGE_SIZE) { it.id } }
+    val paginatorQueryKey = owner.queryKey(sort)
+    val paginator = remember(paginatorQueryKey) { CatalogPaginatorStore<StoreProduct>(coroutineScope, pageSize = CatalogPaginator.PAGE_SIZE) { it.id } }
     val pageState by paginator.state.collectAsState()
     val grid = rememberLazyGridState()
     var sort by remember(owner.queryKey()) { mutableStateOf(StoreProductSortOption.RECENT) }
@@ -183,12 +207,7 @@ fun StoreRootFilterResultsScreen(owner: StoreRootFilterOwner, padding: PaddingVa
         s.appliedColors.sorted().forEach { add(StoreActiveFilterChipUi("color:$it", it)) }
         s.appliedBrands.sorted().forEach { add(StoreActiveFilterChipUi("brand:$it", it)) }
     }
-    val displayed = when (sort) {
-        StoreProductSortOption.RECENT -> pageState.items
-        StoreProductSortOption.PRICE_ASC -> pageState.items.sortedBy { it.prices.price.toLongOrNull() ?: Long.MAX_VALUE }
-        StoreProductSortOption.PRICE_DESC -> pageState.items.sortedByDescending { it.prices.price.toLongOrNull() ?: Long.MIN_VALUE }
-        StoreProductSortOption.NAME_ASC -> pageState.items.sortedBy { it.name.lowercase() }
-    }
+    val displayed = pageState.items
     val listState = StoreProductListUiState(
         title = rootScope.title,
         items = displayed.map { p -> StoreProductItemUi(p.id, normalizeWooPlainText(p.name), p.images.firstOrNull()?.src,
@@ -203,11 +222,11 @@ fun StoreRootFilterResultsScreen(owner: StoreRootFilterOwner, padding: PaddingVa
         initialErrorMessage = pageState.initialError?.message, appendErrorMessage = pageState.appendError?.message,
         appendRetryLabel = "Reintentar", canLoadMore = pageState.hasMore
     )
-    LaunchedEffect(owner.queryKey()) { paginator.start(owner.queryKey()) { p, n -> val items = owner.loadProducts(p, n); CatalogPage(items, items.size >= n) } }
+    LaunchedEffect(paginatorQueryKey) { paginator.start(paginatorQueryKey) { p, n -> owner.loadRootPage(p, n, sort) } }
     LaunchedEffect(grid, pageState.items.size, pageState.hasMore, pageState.isInitialLoading, pageState.isAppending) {
         androidx.compose.runtime.snapshotFlow { grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }.collect { last ->
             if (pageState.hasMore && !pageState.isInitialLoading && !pageState.isAppending && last >= pageState.items.size - CatalogPaginator.PREFETCH_DISTANCE) {
-                paginator.loadNext { p, n -> val items = owner.loadProducts(p, n); CatalogPage(items, items.size >= n) }
+                paginator.loadNext { p, n -> owner.loadRootPage(p, n, sort) }
             }
         }
     }
@@ -223,8 +242,8 @@ fun StoreRootFilterResultsScreen(owner: StoreRootFilterOwner, padding: PaddingVa
             id.startsWith("brand:") -> owner.removeAppliedBrand(id.removePrefix("brand:"))
         } },
         onClearFilters = owner::clearApplied,
-        onRetryInitial = { paginator.start(owner.queryKey()) { p, n -> val items = owner.loadProducts(p, n); CatalogPage(items, items.size >= n) } },
-        onRetryAppend = { paginator.loadNext { p, n -> val items = owner.loadProducts(p, n); CatalogPage(items, items.size >= n) } },
+        onRetryInitial = { paginator.start(paginatorQueryKey) { p, n -> owner.loadRootPage(p, n, sort) } },
+        onRetryAppend = { paginator.loadNext { p, n -> owner.loadRootPage(p, n, sort) } },
         imageContent = { item, imageModifier ->
             val product = pageState.items.firstOrNull { it.id == item.id }
             RemoteStoreImage(product?.images?.firstOrNull()?.src.orEmpty(), item.nameText, imageModifier, androidx.compose.ui.layout.ContentScale.Crop)

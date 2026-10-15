@@ -85,6 +85,8 @@ class StoreApiException(
     val updatedCart: StoreCart? = null
 ) : Exception(message)
 
+class StoreProductBatchConsistencyException(message: String) : IllegalStateException(message)
+
 class StoreApiClient(
     private val baseUrl: String = "https://criosrango.es/wp-json/wc/store/v1/",
     private val client: HttpClient = createStoreHttpClient(),
@@ -305,6 +307,18 @@ class StoreApiClient(
                 parameter("attributes[$index][term_id]", filter.termIds.joinToString(","))
             }
         }.body()
+
+    suspend fun productsByIds(ids: List<Int>): List<StoreProduct> {
+        if (ids.isEmpty()) return emptyList()
+        val requested = ids.distinct()
+        val returned: List<StoreProduct> = client.get("${baseUrl}products") {
+            parameter("include", requested.joinToString(",")); parameter("orderby", "include"); parameter("per_page", requested.size)
+        }.body()
+        val byId = returned.associateBy { it.id }
+        val missing = requested.filterNot { byId.containsKey(it) }
+        if (missing.isNotEmpty()) throw StoreProductBatchConsistencyException("Store API batch omitted backend-selected product IDs: ${missing.joinToString(",")}")
+        return requested.map { byId.getValue(it) }
+    }
 
     suspend fun globalAttributes(perPage: Int = 100): List<StoreGlobalAttribute> =
         client.get("${baseUrl}products/attributes") { parameter("per_page", perPage) }.body()

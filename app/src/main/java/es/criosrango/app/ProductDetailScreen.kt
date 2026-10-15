@@ -1,6 +1,7 @@
 package es.criosrango.app
 
 import es.criosrango.shared.StoreProductDetailScreen
+import es.criosrango.shared.isVariationAvailableForPurchase
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.filled.LocalOffer
@@ -328,7 +329,7 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
     val currentCombinationAdded =
         alreadyAdded ||
         lastAddedSelectionKey == currentSelectionKey
-    val canAdd = current != null && current.isInStock && current.isPurchasable == true &&
+    val canAdd = current != null && isVariationAvailableForPurchase(current.isInStock, current.isPurchasable) &&
         (product.type == "simple" || matching != null)
 
     val addCurrentProductToCart: () -> Unit = {
