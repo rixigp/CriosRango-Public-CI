@@ -512,8 +512,7 @@ private fun OutletControlledProductGrid(
 @Composable
 private fun OutletControllerFilterDialog(
     controller: es.criosrango.shared.StoreOutletController,
-    state: es.criosrango.shared.StoreOutletState,
-    onFiltersApplied: () -> Unit
+    state: es.criosrango.shared.StoreOutletState
 ) {
     if (!state.filterDialogVisible) return
 
@@ -548,9 +547,7 @@ private fun OutletControllerFilterDialog(
             onSizesChanged = controller::changeDraftSizes,
             onColorsChanged = controller::changeDraftColors,
             onBrandsChanged = controller::changeDraftBrands,
-            onApply = {
-                if (controller.applyFilters()) onFiltersApplied()
-            },
+            onApply = { controller.applyFilters() },
             onClear = controller::clearDraftFilters,
             onDismiss = controller::cancelFilters,
             onCancel = controller::cancelFilters
@@ -595,7 +592,6 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
         } else {
             rawChildren
         }
-    var showOutletProductsFromFilters by remember(currentId) { mutableStateOf(false) }
     var showCatalogProductsFromFilters by remember { mutableStateOf(false) }
     val currentIsOutletPath = current != null &&
         isCategoryDescendantOf(current.id, 445, categories.associateBy { it.id })
@@ -603,8 +599,6 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
     val onCategoriesBack: () -> Unit = {
         if (showCatalogProductsFromFilters) {
             showCatalogProductsFromFilters = false
-        } else if (showOutletProductsFromFilters) {
-            showOutletProductsFromFilters = false
         } else if (path.size == 1 && onSingleLevelBack != null) {
             onSingleLevelBack()
         } else if (path.isNotEmpty()) {
@@ -654,7 +648,7 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
                 initialFiltersOpen = true
             )
         }
-    } else if (children.isNotEmpty() && currentIsOutletPath && !showOutletProductsFromFilters && current != null) {
+    } else if (children.isNotEmpty() && currentIsOutletPath && outletControllerState.activeFilterCount == 0 && current != null) {
         es.criosrango.shared.StoreSubcategoriesScreen(
             parent = es.criosrango.shared.model.StoreCategory(
                 id = current.id, parent = current.parent, name = current.name, slug = current.slug, count = current.count
@@ -677,7 +671,7 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             onRetry = { loadCategoryTree(current.id) },
             modifier = Modifier.fillMaxSize().padding(padding)
         )
-    } else if (children.isNotEmpty() && !showOutletProductsFromFilters) {
+    } else if (children.isNotEmpty() && !currentIsOutletPath) {
         CategoryParentWithFilters(
             title = current?.let { approvedCategoryName(it) } ?: "Categorías",
             children = children,
@@ -709,23 +703,16 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
                 controller = if (currentIsOutletPath) outletController else null,
                 productLookup = if (currentIsOutletPath) outletProductLookup else null,
                 onRetryInitial = if (currentIsOutletPath && current != null) {
-                    {
-                        if (children.isNotEmpty() && showOutletProductsFromFilters) loadCategoryTree(current.id)
-                        else loadCategory(current.id)
-                    }
+                    { loadCategory(current.id) }
                 } else current?.takeIf {
                     it.id != 445 && !isCategoryDescendantOf(it.id, 445, categories.associateBy { category -> category.id })
-                }?.let { category -> { loadCategory(category.id) } },
-                initialFiltersOpen = showOutletProductsFromFilters &&
-                    current?.id == 445
+                }?.let { category -> { loadCategory(category.id) } }
             )
         }
     }
     rootFilterOwner?.let { es.criosrango.shared.StoreRootFilterDialog(it) }
     outletController?.let { controller ->
-        OutletControllerFilterDialog(controller, outletControllerState) {
-            showOutletProductsFromFilters = true
-        }
+        OutletControllerFilterDialog(controller, outletControllerState)
     }
 }
 
