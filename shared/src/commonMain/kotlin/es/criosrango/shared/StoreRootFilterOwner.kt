@@ -135,7 +135,7 @@ class StoreRootFilterOwner(private val api: StoreApiClient, private val scope: C
     }
     fun queryTagIds(): List<Int> = (mutableState.value.optionsState as? StoreFilterOptionsState.Ready)?.options?.brands.orEmpty()
         .filter { it.name in mutableState.value.appliedBrands }.map { it.id }.distinct()
-    suspend fun loadProducts(perPage: Int, page: Int): List<StoreProduct> {
+    suspend fun loadProducts(page: Int, perPage: Int): List<StoreProduct> {
         val s = mutableState.value
         return api.products(perPage = perPage, page = page, category = s.scope?.categoryQueryId, attributeFilters = queryAttributeFilters(), tagIds = queryTagIds())
     }

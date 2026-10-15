@@ -1,6 +1,7 @@
 package es.criosrango.shared
 
 import es.criosrango.shared.api.StoreApiClient
+import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.model.StoreProductAttributeFilter
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -15,6 +16,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.flow.first
@@ -210,6 +212,103 @@ class StoreRootFilterOwnerTest {
         )
         assertEquals(listOf(12, 13), owner.queryTagIds())
         assertEquals(0, products)
+        api.close()
+    }
+
+
+    @Test fun root_filter_pagination_preserves_page_size_filter_ids_and_scope() = runTest {
+        val productRequests = mutableListOf<Map<String, String?>>()
+        val client = HttpClient(MockEngine { req ->
+            when {
+                req.url.encodedPath.endsWith("/products/attributes") ->
+                    respond("""[{"id":17,"name":"Tallas","taxonomy":"pa_tallas"},{"id":29,"name":"Color","taxonomy":"pa_color"}]""", HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
+                req.url.encodedPath.endsWith("/products/attributes/17/terms") ->
+                    respond("""[{"id":342,"name":"3XL","slug":"3xl","count":29}]""", HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
+                req.url.encodedPath.endsWith("/products/attributes/29/terms") ->
+                    respond("""[{"id":353,"name":"Azul","slug":"azul","count":3}]""", HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
+                req.url.encodedPath.endsWith("/products/tags") ->
+                    respond("""[{"id":777,"name":"Marca","slug":"marca","count":1}]""", HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
+                req.url.encodedPath.endsWith("/products") -> {
+                    productRequests += mapOf(
+                        "page" to req.url.parameters["page"],
+                        "per_page" to req.url.parameters["per_page"],
+                        "category" to req.url.parameters["category"],
+                        "size_taxonomy" to req.url.parameters["attributes[0][attribute]"],
+                        "size_ids" to req.url.parameters["attributes[0][term_id]"],
+                        "color_taxonomy" to req.url.parameters["attributes[1][attribute]"],
+                        "color_ids" to req.url.parameters["attributes[1][term_id]"],
+                        "tag_ids" to req.url.parameters["tag"]
+                    )
+                    respond("[]", HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
+                }
+                else -> respond("[]", HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
+            }
+        }) {
+            install(ContentNegotiation) {
+                json(Json { ignoreUnknownKeys = true; coerceInputValues = true })
+            }
+        }
+        val api = StoreApiClient(client = client)
+        val owner = StoreRootFilterOwner(api, ownerScope())
+        val ready = observeOptionsState(owner) { it is StoreFilterOptionsState.Ready }
+        owner.open(StoreRootFilterScope.CATALOG)
+        assertIs<StoreFilterOptionsState.Ready>(ready.await())
+
+        owner.changeSizes(setOf("3XL"))
+        owner.changeColors(setOf("Azul"))
+        owner.changeBrands(setOf("Marca"))
+        assertTrue(owner.apply())
+
+        val paginator = CatalogPaginatorStore<StoreProduct>(this) { it.id }
+        suspend fun loadCatalogPage(page: Int, perPage: Int): CatalogPage<StoreProduct> {
+            val items = owner.loadProducts(page, perPage)
+            return CatalogPage(items, hasMore = page == 1)
+        }
+        paginator.start(owner.queryKey(), ::loadCatalogPage)
+        advanceUntilIdle()
+        assertEquals(1, productRequests.size)
+        paginator.loadNext(::loadCatalogPage)
+        advanceUntilIdle()
+
+        assertEquals(2, productRequests.size)
+        val catalogFirst = productRequests[0]
+        assertEquals("1", catalogFirst["page"])
+        assertEquals("12", catalogFirst["per_page"])
+        assertEquals(null, catalogFirst["category"])
+        assertEquals("pa_tallas", catalogFirst["size_taxonomy"])
+        assertEquals("342", catalogFirst["size_ids"])
+        assertEquals("pa_color", catalogFirst["color_taxonomy"])
+        assertEquals("353", catalogFirst["color_ids"])
+        assertEquals("777", catalogFirst["tag_ids"])
+
+        val catalogSecond = productRequests[1]
+        assertEquals("2", catalogSecond["page"])
+        assertEquals("12", catalogSecond["per_page"])
+        assertEquals(null, catalogSecond["category"])
+        assertEquals("342", catalogSecond["size_ids"])
+        assertEquals("353", catalogSecond["color_ids"])
+        assertEquals("777", catalogSecond["tag_ids"])
+
+        owner.open(StoreRootFilterScope.OUTLET)
+        owner.changeSizes(setOf("3XL"))
+        owner.changeColors(setOf("Azul"))
+        owner.changeBrands(setOf("Marca"))
+        assertTrue(owner.apply())
+        paginator.start(owner.queryKey()) { page, perPage ->
+            CatalogPage(owner.loadProducts(page, perPage), hasMore = false)
+        }
+        advanceUntilIdle()
+
+        assertEquals(3, productRequests.size)
+        val outletFirst = productRequests[2]
+        assertEquals("1", outletFirst["page"])
+        assertEquals("12", outletFirst["per_page"])
+        assertEquals("445", outletFirst["category"])
+        assertEquals("pa_tallas", outletFirst["size_taxonomy"])
+        assertEquals("342", outletFirst["size_ids"])
+        assertEquals("pa_color", outletFirst["color_taxonomy"])
+        assertEquals("353", outletFirst["color_ids"])
+        assertEquals("777", outletFirst["tag_ids"])
         api.close()
     }
 
