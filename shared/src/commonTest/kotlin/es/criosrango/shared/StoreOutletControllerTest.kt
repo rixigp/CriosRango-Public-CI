@@ -146,13 +146,16 @@ class StoreOutletControllerTest {
     }
 
     @Test fun near_end_prefetch_appends_exactly_one_next_page() = runTest {
-        val source = RecordingSource(options()) { _, page, _ ->
-            CatalogPage(
-                items = (1..12).map { StoreProduct(id = (page - 1) * 12 + it) },
-                hasMore = page == 1,
-                totalItems = 24
-            )
-        }
+        val source = RecordingSource(
+            options(),
+            pageResponse = { _, page, _ ->
+                CatalogPage(
+                    items = (1..12).map { StoreProduct(id = (page - 1) * 12 + it) },
+                    hasMore = page == 1,
+                    totalItems = 24
+                )
+            }
+        )
         val controller = StoreOutletController(controllerScope(), source)
         controller.selectCategory(446)
         advanceUntilIdle()
