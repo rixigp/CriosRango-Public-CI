@@ -137,7 +137,24 @@ class StoreRootFilterOwner(private val api: StoreApiClient, private val scope: C
         .filter { it.name in mutableState.value.appliedBrands }.map { it.id }.distinct()
     suspend fun loadProducts(perPage: Int, page: Int): List<StoreProduct> {
         val s = mutableState.value
-        return api.products(perPage = perPage, page = page, category = s.scope?.categoryQueryId, attributeFilters = queryAttributeFilters(), tagIds = queryTagIds())
+        val attributes = queryAttributeFilters()
+        val tagIds = queryTagIds()
+        RootFilterDiagnosticTelemetry.ownerRequest(
+            scope = s.scope?.name ?: "UNSET",
+            queryKey = queryKey(),
+            sizeNames = s.appliedSizes,
+            sizeOptions = (s.optionsState as? StoreFilterOptionsState.Ready)?.options?.sizes.orEmpty(),
+            colorNames = s.appliedColors,
+            colorOptions = (s.optionsState as? StoreFilterOptionsState.Ready)?.options?.colors.orEmpty(),
+            brandNames = s.appliedBrands,
+            brandOptions = (s.optionsState as? StoreFilterOptionsState.Ready)?.options?.brands.orEmpty(),
+            page = page,
+            perPage = perPage,
+            category = s.scope?.categoryQueryId,
+            attributes = attributes,
+            tagIds = tagIds
+        )
+        return api.products(perPage = perPage, page = page, category = s.scope?.categoryQueryId, attributeFilters = attributes, tagIds = tagIds)
     }
     fun queryKey(): String { val s = mutableState.value; return "root-filter:${s.scope?.name}:${s.appliedSizes.sorted()}:${s.appliedColors.sorted()}:${s.appliedBrands.sorted()}" }
     private fun canonical(v: String) = v.lowercase().trim().replace("á","a").replace("é","e").replace("í","i").replace("ó","o").replace("ú","u").replace("à","a").replace("è","e").replace("ì","i").replace("ò","o").replace("ù","u")
