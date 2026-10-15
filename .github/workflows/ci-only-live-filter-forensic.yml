@@ -77,7 +77,7 @@ jobs:
           if color: _,ct,_=request("color_terms",f"/products/attributes/{color['id']}/terms",[("per_page","100")])
           st=st if isinstance(st,list) else []; ct=ct if isinstance(ct,list) else []
           def matches(terms,label): return [x for x in terms if norm(x.get("name"))==norm(label) or norm(x.get("slug"))==norm(label)]
-          one=matches(st,"1M"); xxxl=matches(st,"XXXL"); azul=matches(ct,"Azul")
+          one=matches(st,"1M"); xxxl=matches(st,"XXXL")+[x for x in matches(st,"3XL") if x not in matches(st,"XXXL")]; azul=matches(ct,"Azul")
           for label,records,prefix in [("1M",one,"SIZE_1M"),("XXXL",xxxl,"SIZE_XXXL"),("AZUL",azul,"COLOR_AZUL")]:
               report += [f"{prefix}_RECORDS={json.dumps(records,ensure_ascii=False)}",f"{prefix}_TERM_IDS={json.dumps([x.get('id') for x in records])}",f"{prefix}_SLUGS={json.dumps([x.get('slug') for x in records],ensure_ascii=False)}"]
           def attr_params(attr_index,tax,ids,encoding="array"):
@@ -91,7 +91,7 @@ jobs:
           ids1=[x["id"] for x in one]; idx=[x["id"] for x in xxxl]; ida=[x["id"] for x in azul]
           if size and color and ids1 and ida:
               baseq=attr_params(0,size["taxonomy"],ids1)+attr_params(1,color["taxonomy"],ida)
-              for label,rel in [("omitted",None),("and","and"),("in","in")]:
+              for label,rel in [("omitted",None),("and","and"),("or","or"),("in","in")]:
                   p=[("per_page","100")]+baseq
                   if rel: p.append(("attribute_relation",rel))
                   _,data,n=product_query("relation_"+label,p)
@@ -111,8 +111,10 @@ jobs:
           variations=[]
           for parent in found.values():
               parent_id=parent.get("id")
-              for vid in parent.get("variations",[]) or []:
-                  status,v,_=request("variation_"+str(vid),f"/products/{vid}")
+              for variation_stub in parent.get("variations",[]) or []:
+                  vid=variation_stub.get("id") if isinstance(variation_stub,dict) else variation_stub
+              if not vid: continue
+              status,v,_=request("variation_"+str(vid),f"/products/{vid}")
                   if isinstance(v,list): v=v[0] if v else {}
                   if not isinstance(v,dict): v={}
                   variations.append({"parent_id":parent_id,"requested_id":vid,"http_status":status,"record":v})
@@ -135,11 +137,11 @@ jobs:
                   report.append(f"XXXL_TERM_{tid}_RETURNS_JERSEY={'YES' if isinstance(individual,list) and any(x.get('id') in found for x in individual) else 'NO' if isinstance(individual,list) else 'UNVERIFIED'}")
           # Native facets; store each full response. Use array-form parameters for count taxonomies and selected filters.
           if size and color:
-              facetbase=[("calculate_attribute_counts[]",size["taxonomy"]),("calculate_attribute_counts[]",color["taxonomy"]),("calculate_taxonomy_counts[]","product_tag")]
+              facetbase=[("calculate_attribute_counts[0][taxonomy]",size["taxonomy"]),("calculate_attribute_counts[0][query_type]","or"),("calculate_attribute_counts[1][taxonomy]",color["taxonomy"]),("calculate_attribute_counts[1][query_type]","or"),("calculate_taxonomy_counts","product_tag")]
               _,basefac,_=request("collection_data_facets","/products/collection-data",facetbase)
               _,colfac,_=request("color_counts_given_1m","/products/collection-data",facetbase+attr_params(0,size["taxonomy"],ids1))
               _,sizefac,_=request("size_counts_given_azul","/products/collection-data",facetbase+attr_params(0,color["taxonomy"],ida))
-              _,xxfac,_=request("collection_data_xxxl","/products/collection-data",[("calculate_attribute_counts[]",size["taxonomy"])]+attr_params(0,size["taxonomy"],idx))
+              _,xxfac,_=request("collection_data_xxxl","/products/collection-data",[("calculate_attribute_counts[0][taxonomy]",size["taxonomy"]),("calculate_attribute_counts[0][query_type]","or")]+attr_params(0,size["taxonomy"],idx))
               report += [f"COLLECTION_DATA_BASE_STATUS={(OUT/'collection_data_facets.http-status').read_text()}",f"COLOR_COUNTS_GIVEN_1M_STATUS={(OUT/'color_counts_given_1m.http-status').read_text()}",f"SIZE_COUNTS_GIVEN_AZUL_STATUS={(OUT/'size_counts_given_azul.http-status').read_text()}",f"COLLECTION_DATA_XXXL_STATUS={(OUT/'collection_data_xxxl.http-status').read_text()}"]
               for name,data in [("BASE",basefac),("COLOR_GIVEN_1M",colfac),("SIZE_GIVEN_AZUL",sizefac),("XXXL",xxfac)]:
                   report.append("COLLECTION_DATA_"+name+"_BODY="+json.dumps(data,ensure_ascii=False)[:6000])
