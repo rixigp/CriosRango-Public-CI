@@ -76,9 +76,6 @@ import compose.icons.tablericons.Bed
 import compose.icons.tablericons.Hanger
 import compose.icons.tablericons.Shirt
 import compose.icons.tablericons.Tag
-import es.criosrango.shared.model.countFor
-import es.criosrango.shared.OutletBubbleDefinition
-import es.criosrango.shared.fixedOutletBubbles
 import es.criosrango.shared.outletBubbleDisplayLabel
 import es.criosrango.shared.StoreOutletBubbles
 import es.criosrango.shared.outletCatalogFilterKey
@@ -127,50 +124,6 @@ internal fun isCategoryDescendantOf(
     return false
 }
 
-internal fun productBelongsToOutletOriginCategory(
-    product: StoreProduct,
-    categoryId: Int,
-    categoriesById: Map<Int, ProductCategory>
-): Boolean {
-
-    val assignedCategoryIds =
-        product.categories.map { it.id } + product.originalCategoryIds
-
-    return assignedCategoryIds.any { assignedId ->
-
-        var currentId = assignedId
-        val visited = mutableSetOf<Int>()
-
-        while (
-            currentId != 0 &&
-            visited.add(currentId)
-        ) {
-            if (currentId == categoryId) {
-                return@any true
-            }
-
-            currentId =
-                categoriesById[currentId]?.parent
-                    ?: 0
-        }
-
-        false
-    }
-}
-
-internal fun productBelongsToOutletBubble(
-    product: StoreProduct,
-    bubble: OutletBubbleDefinition,
-    categoriesById: Map<Int, ProductCategory>
-): Boolean =
-    bubble.categoryIds.any { categoryId ->
-        productBelongsToOutletOriginCategory(
-            product = product,
-            categoryId = categoryId,
-            categoriesById = categoriesById
-        )
-    }
-
 @Composable
 internal fun OutletCatalogStateAdapter(
     current: ProductCategory?,
@@ -191,14 +144,51 @@ internal fun OutletCatalogStateAdapter(
     productLookup: ((Int) -> StoreProduct?)? = null,
     initialFiltersOpen: Boolean = false
 ) {
+    val categoriesById = remember(allCategories) { allCategories.associateBy { it.id } }
+    val isOutletPath = current != null &&
+        isCategoryDescendantOf(current.id, 445, categoriesById)
 
+    if (isOutletPath) {
+        val outletController = checkNotNull(controller) {
+            "Outlet wiring error: StoreOutletController is required for Outlet category ${current!!.id}."
+        }
+        val category = checkNotNull(current)
+        val availability by availabilityStore.snapshot.collectAsStateWithLifecycle()
+        LaunchedEffect(allCategories) {
+            outletController.updateCategories(allCategories.map { item ->
+                es.criosrango.shared.model.StoreCategory(
+                    id = item.id, parent = item.parent, name = item.name,
+                    slug = item.slug, count = item.count
+                )
+            })
+        }
+        LaunchedEffect(availability) { outletController.updateAvailability(availability) }
+        LaunchedEffect(category.id, allCategories) {
+            if (outletController.state.value.activeCategoryId != category.id) {
+                outletController.selectCategory(category.id)
+            }
+        }
+        LaunchedEffect(category.id) { runCatching { availabilityStore.refresh() } }
+        OutletControlledProductGrid(
+            controller = outletController,
+            modifier = modifier,
+            onBack = headerOnBack ?: {},
+            onProduct = onProduct,
+            showBubbles = category.parent == 445,
+            productLookup = productLookup ?: { id -> null },
+            initialFiltersOpen = initialFiltersOpen
+        )
+        return
+    }
+
+    // Preserve the pre-existing controller path for any explicitly wired non-Outlet caller.
     if (controller != null && current != null) {
         val availability by availabilityStore.snapshot.collectAsStateWithLifecycle()
         LaunchedEffect(allCategories) {
-            controller.updateCategories(allCategories.map { category ->
+            controller.updateCategories(allCategories.map { item ->
                 es.criosrango.shared.model.StoreCategory(
-                    id = category.id, parent = category.parent, name = category.name,
-                    slug = category.slug, count = category.count
+                    id = item.id, parent = item.parent, name = item.name,
+                    slug = item.slug, count = item.count
                 )
             })
         }
@@ -219,180 +209,22 @@ internal fun OutletCatalogStateAdapter(
         return
     }
 
-    // Solo las categorías finales dentro de Outlet.
-    if (current?.parent != 445) {
-        val isOutletPath = current != null &&
-            isCategoryDescendantOf(current.id, 445, allCategories.associateBy { it.id })
-        CatalogFilteredProductGrid(
-            products = products,
-            modifier = modifier,
-            onProduct = onProduct,
-            pagingState = pagingState,
-            onLoadNextPage = onLoadNextPage,
-            pagingKey = pagingKey,
-            headerTitle = headerTitle,
-            headerOnBack = headerOnBack,
-            headerContent = headerContent,
-            // Outlet's final dialog is always the shared owner. The normal
-            // Catalog keeps its existing defaults and presentation.
-            sharedFilterDialog = true,
-            useOutletFilterKey = isOutletPath,
-            useSharedProductListHeaderContent = isOutletPath,
-            onRetryInitial = onRetryInitial,
-            initialFiltersOpen = initialFiltersOpen
-        )
-        return
-    }
-
-    val categoriesById =
-        remember(allCategories) {
-            allCategories.associateBy { it.id }
-        }
-
-    // Las burbujas son definiciones fijas de Kotlin. Su visibilidad procede
-    // únicamente del snapshot persistido/dinámico de disponibilidad.
-    val bubbles =
-        remember(current.id) {
-            fixedOutletBubbles(current.id)
-        }
-
-    val availability by availabilityStore.snapshot.collectAsStateWithLifecycle()
-
-    LaunchedEffect(current.id) {
-        runCatching {
-            availabilityStore.refresh()
-        }
-    }
-
-    val hasValidAvailabilitySnapshot =
-        availability?.schemaVersion == 1
-
-    val visibleBubbles =
-        remember(bubbles, availability) {
-            if (!hasValidAvailabilitySnapshot) {
-                bubbles
-            } else {
-                bubbles.filter { bubble ->
-                    bubble.categoryIds.any { categoryId ->
-                        availability?.countFor(current.id, categoryId)?.let { it > 0 } == true
-                    }
-                }
-            }
-        }
-
-    var selectedBubbleKey by androidx.compose.runtime.saveable.rememberSaveable(current.id) {
-        mutableStateOf<String?>(null)
-    }
-
-    LaunchedEffect(selectedBubbleKey, visibleBubbles) {
-        if (
-            selectedBubbleKey != null &&
-            visibleBubbles.none { it.key == selectedBubbleKey }
-        ) {
-            selectedBubbleKey = null
-        }
-    }
-
-    val selectedBubble =
-        remember(visibleBubbles, selectedBubbleKey) {
-            visibleBubbles.firstOrNull { bubble ->
-                bubble.key == selectedBubbleKey
-            }
-        }
-
-    val visibleProducts =
-        remember(
-            products,
-            selectedBubble,
-            categoriesById
-        ) {
-            if (selectedBubble == null) {
-                products
-            } else {
-                products.filter { product ->
-                    productBelongsToOutletBubble(
-                        product = product,
-                        bubble = selectedBubble,
-                        categoriesById = categoriesById
-                    )
-                }
-            }
-        }
-
-    // Si la burbuja seleccionada no tiene coincidencias en las páginas ya cargadas,
-    // seguimos usando el paginador A2 existente hasta encontrar la primera o agotar
-    // la categoría. No se cambia CategoryProductsPageDataSource ni su page/perPage.
-    val shouldProbeMorePages =
-        selectedBubble != null &&
-            visibleProducts.isEmpty() &&
-            pagingState != null &&
-            !pagingState.isInitialLoading &&
-            !pagingState.isAppending &&
-            pagingState.appendError == null &&
-            pagingState.hasMore &&
-            onLoadNextPage != null
-
-    LaunchedEffect(
-        current.id,
-        selectedBubbleKey,
-        products.size,
-        pagingState?.currentPage,
-        pagingState?.hasMore,
-        pagingState?.isAppending,
-        pagingState?.appendError
-    ) {
-        if (shouldProbeMorePages) {
-            onLoadNextPage?.invoke()
-        }
-    }
-
-    Column(modifier) {
-        val probingSelectedBubble =
-            selectedBubble != null &&
-                visibleProducts.isEmpty() &&
-                pagingState?.appendError == null &&
-                (pagingState?.isInitialLoading == true ||
-                    pagingState?.isAppending == true ||
-                    pagingState?.hasMore == true)
-
-        if (probingSelectedBubble) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(28.dp)
-                )
-            }
-        } else {
-            CatalogFilteredProductGrid(
-                products = visibleProducts,
-                modifier = Modifier.weight(1f),
-                onProduct = onProduct,
-                pagingState = pagingState,
-                onLoadNextPage = onLoadNextPage,
-                pagingKey = listOf(
-                    pagingKey,
-                    selectedBubbleKey
-                ),
-                headerTitle = headerTitle,
-                headerOnBack = headerOnBack,
-                headerContent = {
-                    StoreOutletBubbles(
-                        bubbles = visibleBubbles,
-                        selectedKey = selectedBubbleKey,
-                        onSelected = { selectedBubbleKey = it }
-                    )
-                },
-                sharedFilterDialog = true,
-                useOutletFilterKey = true,
-                useSharedProductListHeaderContent = true
-
-            )
-        }
-    }
+    // Non-Outlet categories retain the existing Catalog filtering and pagination path.
+    CatalogFilteredProductGrid(
+        products = products,
+        modifier = modifier,
+        onProduct = onProduct,
+        pagingState = pagingState,
+        onLoadNextPage = onLoadNextPage,
+        pagingKey = pagingKey,
+        headerTitle = headerTitle,
+        headerOnBack = headerOnBack,
+        headerContent = headerContent,
+        compactHeaderSpacing = compactHeaderSpacing,
+        sharedFilterDialog = true,
+        onRetryInitial = onRetryInitial,
+        initialFiltersOpen = initialFiltersOpen
+    )
 }
 
 @Composable
