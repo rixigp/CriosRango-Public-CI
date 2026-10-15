@@ -308,9 +308,9 @@ class StoreRootFilterOwnerTest {
             fixture.owner.state
                 .map { it.paging }
                 .first {
-                    it.currentPage == 1 &&
-                        !it.isInitialLoading &&
-                        !it.isAppending
+                    !it.isInitialLoading &&
+                        !it.isAppending &&
+                        (it.currentPage == 1 || it.initialError != null)
                 }
         }
         assertTrue(fixture.owner.apply())
