@@ -75,6 +75,9 @@ jobs:
           ios_start = ios_src.index("internal fun IosOutletScreen(")
           ios_end = ios_src.index("internal fun IosPagedProductScreen", ios_start)
           outlet_ios = ios_src[ios_start:ios_end]
+          chooser_filter_start = outlet_ios.index("onFilterClick = {", outlet_ios.index("if (showOutletChooser) {"))
+          chooser_filter_end = outlet_ios.index("},", chooser_filter_start)
+          chooser_filter = outlet_ios[chooser_filter_start:chooser_filter_end]
 
           android_path = pathlib.Path("app/src/main/java/es/criosrango/app/CategoriesScreen.kt")
           android_src = android_path.read_text()
@@ -179,9 +182,8 @@ jobs:
               ),
               "IOS_OUTLET_FILTER_UI_CONTROLLER_OWNED": "onFilterClick = controller::openFilters" in outlet_ios and "controllerState.filterDialogVisible" in outlet_ios and "selectedSizes = controllerState.draftSizes" in outlet_ios,
               "IOS_OUTLET_FILTER_OPEN_DOES_NOT_NAVIGATE": (
-                  "if (showOutletChooser) {" in outlet_ios
-                  and "controller.openFilters()" in outlet_ios[outlet_ios.index("if (showOutletChooser) {"):outlet_ios.index("val activeCategoryId", outlet_ios.index("if (showOutletChooser) {"))]
-                  and "onShowOutletChooserChange(false)" not in outlet_ios[outlet_ios.index("if (showOutletChooser) {"):outlet_ios.index("val activeCategoryId", outlet_ios.index("if (showOutletChooser) {"))]
+                  "controller.openFilters()" in chooser_filter
+                  and "onShowOutletChooserChange(false)" not in chooser_filter
               ),
               "IOS_OUTLET_FILTER_DIALOG_SINGLE_HOST": (
                   outlet_ios.count("if (controllerState.filterDialogVisible)") == 1
