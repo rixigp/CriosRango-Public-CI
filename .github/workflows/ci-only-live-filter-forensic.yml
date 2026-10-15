@@ -172,6 +172,30 @@ jobs:
               report += [f"COLLECTION_DATA_BASE_STATUS={(OUT/'collection_data_facets.http-status').read_text()}",f"COLOR_COUNTS_GIVEN_1M_STATUS={(OUT/'color_counts_given_1m.http-status').read_text()}",f"SIZE_COUNTS_GIVEN_AZUL_STATUS={(OUT/'size_counts_given_azul.http-status').read_text()}",f"COLLECTION_DATA_XXXL_STATUS={(OUT/'collection_data_xxxl.http-status').read_text()}"]
               for name,data in [("BASE",basefac),("COLOR_GIVEN_1M",colfac),("SIZE_GIVEN_AZUL",sizefac),("XXXL",xxfac)]:
                   report.append("COLLECTION_DATA_"+name+"_BODY="+json.dumps(data,ensure_ascii=False)[:6000])
+          # Outlet-only scope validation for future native facet work. GET requests only.
+          outlet_product_status, outlet_products, outlet_total = product_query("outlet_445_products", [("per_page","1"),("page","1"),("category","445")])
+          outlet_facet_params = [
+              ("calculate_attribute_counts[0][taxonomy]", size["taxonomy"] if size else "pa_tallas"),
+              ("calculate_attribute_counts[0][query_type]", "or"),
+              ("calculate_attribute_counts[1][taxonomy]", color["taxonomy"] if color else "pa_color"),
+              ("calculate_attribute_counts[1][query_type]", "or"),
+              ("calculate_taxonomy_counts", "product_tag"),
+              ("category", "445")
+          ]
+          outlet_collection_status, outlet_collection, _ = request("outlet_445_collection_data", "/products/collection-data", outlet_facet_params)
+          def outlet_count_availability(key):
+              if not isinstance(outlet_collection, dict): return "NO"
+              records = outlet_collection.get(key)
+              return "YES" if isinstance(records, list) and len(records) > 0 else "NO"
+          report += [
+              f"OUTLET_445_PRODUCT_QUERY_STATUS={outlet_product_status}",
+              f"OUTLET_445_PRODUCT_QUERY_TOTAL={outlet_total}",
+              f"OUTLET_445_COLLECTION_DATA_STATUS={outlet_collection_status}",
+              f"OUTLET_445_SIZE_COUNTS_AVAILABLE={outlet_count_availability('attribute_counts')}",
+              f"OUTLET_445_COLOR_COUNTS_AVAILABLE={outlet_count_availability('attribute_counts')}",
+              f"OUTLET_445_BRAND_COUNTS_AVAILABLE={outlet_count_availability('taxonomy_counts')}",
+              "OUTLET_445_FACET_NOTE=attribute_counts contains combined size/color term counts; inspect raw collection-data response to verify taxonomy partitioning."
+          ]
           report += ["RAW_RESPONSES=forensic/*.json, *.body, *.headers, *.error.txt", "NOTE=HTTP 000 denotes connection/DNS/TLS failure, not application failure."]
           (OUT/"report.txt").write_text("\n".join(report)+"\n")
           print("\n".join(report))
