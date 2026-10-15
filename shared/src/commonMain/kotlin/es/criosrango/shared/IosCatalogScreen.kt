@@ -67,6 +67,9 @@ internal fun IosCatalogScreen(
     onRetryCategorySnapshot: () -> Unit
 ) {
     val rootFilterState by rootFilterOwner.state.collectAsState()
+    // This state is owned above the page switch so Outlet → Product → Outlet restores presentation.
+    var showOutletChooser by remember(outletController) { mutableStateOf(true) }
+    val outletGridState = rememberLazyGridState()
     if (rootFilterState.resultsVisible && page == IosCatalogPage.Root && rootFilterState.scope == StoreRootFilterScope.CATALOG) {
         StoreRootFilterResultsScreen(rootFilterOwner, padding, onOpenProduct)
     } else when (page) {
@@ -107,6 +110,9 @@ internal fun IosCatalogScreen(
                 padding = padding,
                 cartStore = cartStore,
                 controller = outletController,
+                showOutletChooser = showOutletChooser,
+                onShowOutletChooserChange = { showOutletChooser = it },
+                gridState = outletGridState,
                 categories = categories,
                 categoriesLoading = loading,
                 categoriesError = loadError,

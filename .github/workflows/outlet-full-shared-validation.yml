@@ -178,6 +178,33 @@ jobs:
                   and "showOutletProductsFromFilters" not in android_src
               ),
               "IOS_OUTLET_FILTER_UI_CONTROLLER_OWNED": "onFilterClick = controller::openFilters" in outlet_ios and "controllerState.filterDialogVisible" in outlet_ios and "selectedSizes = controllerState.draftSizes" in outlet_ios,
+              "IOS_OUTLET_FILTER_OPEN_DOES_NOT_NAVIGATE": (
+                  "if (showOutletChooser) {" in outlet_ios
+                  and "controller.openFilters()" in outlet_ios[outlet_ios.index("if (showOutletChooser) {"):outlet_ios.index("val activeCategoryId", outlet_ios.index("if (showOutletChooser) {"))]
+                  and "onShowOutletChooserChange(false)" not in outlet_ios[outlet_ios.index("if (showOutletChooser) {"):outlet_ios.index("val activeCategoryId", outlet_ios.index("if (showOutletChooser) {"))]
+              ),
+              "IOS_OUTLET_FILTER_DIALOG_SINGLE_HOST": (
+                  outlet_ios.count("if (controllerState.filterDialogVisible)") == 1
+                  and outlet_ios.index("if (controllerState.filterDialogVisible)") > outlet_ios.index("StoreProductListScreen(")
+              ),
+              "IOS_OUTLET_FILTER_CANCEL_PRESERVES_CHOOSER": (
+                  "onDismissRequest = controller::cancelFilters" in outlet_ios
+                  and "onDismiss = controller::cancelFilters" in outlet_ios
+                  and "onCancel = controller::cancelFilters" in outlet_ios
+                  and "controller::cancelFilters" in outlet_ios
+              ),
+              "IOS_OUTLET_CLEAR_LAST_ROOT_FILTER_RETURNS_CHOOSER": (
+                  "LaunchedEffect(controllerState.activeCategoryId, controllerState.activeFilterCount, outlet.id)" in outlet_ios
+                  and "onShowOutletChooserChange(isRootCategory && controllerState.activeFilterCount == 0)" in outlet_ios
+                  and "onClearFilters = controller::clearFilters" in outlet_ios
+              ),
+              "IOS_OUTLET_PRESENTATION_STATE_SURVIVES_PRODUCT_DETAIL": (
+                  "var showOutletChooser by remember(outletController)" in catalog
+                  and "showOutletChooser = showOutletChooser" in catalog
+                  and "gridState = outletGridState" in catalog
+                  and "var showOutletChooser by remember(outlet.id)" not in outlet_ios
+                  and "val gridState = rememberLazyGridState()" not in outlet_ios
+              ),
               "ANDROID_OUTLET_SHARED_TRANSPORT": "storeOutletDataSource(sharedCatalogClient)" in main_activity and "StoreOutletController(viewModelScope, outletDataSource)" in shop_vm,
               "IOS_OUTLET_SHARED_TRANSPORT": "StoreOutletController(outletControllerScope, storeOutletDataSource(storeApi))" in root,
               "ANDROID_OUTLET_NO_ROOT_FILTER_OWNER": "StoreRootFilterScope.OUTLET" not in outlet_android and "rootFilterOwner" not in outlet_android,

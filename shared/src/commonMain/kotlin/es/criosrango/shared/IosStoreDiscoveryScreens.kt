@@ -435,6 +435,9 @@ internal fun IosOutletScreen(
     padding: PaddingValues,
     cartStore: StoreCartStore,
     controller: StoreOutletController,
+    showOutletChooser: Boolean,
+    onShowOutletChooserChange: (Boolean) -> Unit,
+    gridState: LazyGridState,
     categories: List<StoreCategory>?,
     categoriesLoading: Boolean,
     categoriesError: String?,
@@ -475,8 +478,13 @@ internal fun IosOutletScreen(
 
     val outletChildren = categories.filter { it.parent == outlet.id }.distinctBy { it.id }
     val controllerState by controller.state.collectAsState()
-    var showOutletChooser by remember(outlet.id) { mutableStateOf(true) }
     var availabilityError by remember(outlet.id) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(controllerState.activeCategoryId, controllerState.activeFilterCount, outlet.id) {
+        val activeCategoryId = controllerState.activeCategoryId
+        val isRootCategory = activeCategoryId == null || activeCategoryId == outlet.id
+        onShowOutletChooserChange(isRootCategory && controllerState.activeFilterCount == 0)
+    }
 
     LaunchedEffect(controller, categories) {
         controller.updateCategories(categories)
@@ -498,132 +506,130 @@ internal fun IosOutletScreen(
             onBack = onBack,
             onCategory = { category ->
                 controller.selectCategory(category.id)
-                showOutletChooser = false
+                onShowOutletChooserChange(false)
             },
             onFilterClick = {
                 controller.selectCategory(outlet.id)
-                showOutletChooser = false
                 controller.openFilters()
             },
             showFilterButton = true,
             modifier = Modifier.fillMaxSize().padding(padding)
         )
-        return
-    }
-
-    val activeCategoryId = controllerState.activeCategoryId ?: outlet.id
-    val showBubbles = activeCategoryId != outlet.id
-    val gridState = rememberLazyGridState()
-    val paging = controllerState.paging
-
-    LaunchedEffect(gridState, controller, controllerState.activeCategoryId) {
-        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
-            .collect { lastVisible -> controller.onVisibleRangeChanged(lastVisible) }
-    }
-    LaunchedEffect(
-        controllerState.activeCategoryId,
-        controllerState.selectedBubbleKey,
-        controllerState.selectedSort,
-        controllerState.selectedSizes,
-        controllerState.selectedColors,
-        controllerState.selectedBrands
-    ) {
-        if (controllerState.sortedProducts.isNotEmpty()) gridState.scrollToItem(0)
-    }
-
-    val activeChips = buildList {
-        controllerState.selectedSizes.sorted().forEach { add(StoreActiveFilterChipUi("size:$it", "Talla $it")) }
-        controllerState.selectedColors.sorted().forEach { add(StoreActiveFilterChipUi("color:$it", it)) }
-        controllerState.selectedBrands.sorted().forEach { add(StoreActiveFilterChipUi("brand:$it", it)) }
-    }
-    val listState = StoreProductListUiState(
-        title = controllerState.screenTitle,
-        items = controllerState.sortedProducts.map { product ->
-            StoreProductItemUi(
-                id = product.id,
-                nameText = normalizeWooPlainText(product.name),
-                imageIdentity = product.images.firstOrNull()?.src,
-                displayPriceText = formatStorePrice(product.prices.price, product.prices.currencyMinorUnit, product.prices.currencySymbol),
-                regularPriceText = formatStorePrice(product.prices.regularPrice, product.prices.currencyMinorUnit, product.prices.currencySymbol),
-                showPrice = product.prices.price.toLongOrNull()?.let { it > 0L } == true,
-                isOnSale = product.onSale
-            )
-        },
-        selectedSort = when (controllerState.selectedSort) {
-            StoreOutletSort.RECENT -> StoreProductSortOption.RECENT
-            StoreOutletSort.PRICE_ASC -> StoreProductSortOption.PRICE_ASC
-            StoreOutletSort.PRICE_DESC -> StoreProductSortOption.PRICE_DESC
-            StoreOutletSort.NAME_ASC -> StoreProductSortOption.NAME_ASC
-        },
-        availableSortOptions = StoreProductSortOption.values().toList(),
-        activeFilterCount = controllerState.activeFilterCount,
-        activeFilterChips = activeChips,
-        isInitialLoading = paging.isInitialLoading,
-        isLoadingMore = paging.isAppending,
-        isEmpty = controllerState.sortedProducts.isEmpty() && !controllerState.isProbingSelectedBubble && !paging.hasMore,
-        emptyMessage = if (controllerState.selectedSizes.isNotEmpty() || controllerState.selectedColors.isNotEmpty() || controllerState.selectedBrands.isNotEmpty()) "No hay productos con estos filtros." else "No hay productos.",
-        initialErrorMessage = paging.initialError?.message ?: if (paging.initialError != null) "No se han podido cargar los productos." else null,
-        appendErrorMessage = paging.appendError?.message ?: if (paging.appendError != null) "No se han podido cargar más productos." else null,
-        appendRetryLabel = "Reintentar",
-        canLoadMore = paging.hasMore,
-        isProbingSelectedBubble = showBubbles && controllerState.isProbingSelectedBubble
-    )
-
-    StoreProductListScreen(
-            state = listState,
-            gridState = gridState,
-            modifier = Modifier.fillMaxSize().padding(padding),
-            onBack = {
-                if (showBubbles && controllerState.selectedBubbleKey != null) {
-                    controller.selectBubble(null)
-                } else {
-                    showOutletChooser = true
-                }
+    } else {
+        val activeCategoryId = controllerState.activeCategoryId ?: outlet.id
+        val showBubbles = activeCategoryId != outlet.id
+        val paging = controllerState.paging
+    
+        LaunchedEffect(gridState, controller, controllerState.activeCategoryId) {
+            snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+                .collect { lastVisible -> controller.onVisibleRangeChanged(lastVisible) }
+        }
+        LaunchedEffect(
+            controllerState.activeCategoryId,
+            controllerState.selectedBubbleKey,
+            controllerState.selectedSort,
+            controllerState.selectedSizes,
+            controllerState.selectedColors,
+            controllerState.selectedBrands
+        ) {
+            if (controllerState.sortedProducts.isNotEmpty()) gridState.scrollToItem(0)
+        }
+    
+        val activeChips = buildList {
+            controllerState.selectedSizes.sorted().forEach { add(StoreActiveFilterChipUi("size:$it", "Talla $it")) }
+            controllerState.selectedColors.sorted().forEach { add(StoreActiveFilterChipUi("color:$it", it)) }
+            controllerState.selectedBrands.sorted().forEach { add(StoreActiveFilterChipUi("brand:$it", it)) }
+        }
+        val listState = StoreProductListUiState(
+            title = controllerState.screenTitle,
+            items = controllerState.sortedProducts.map { product ->
+                StoreProductItemUi(
+                    id = product.id,
+                    nameText = normalizeWooPlainText(product.name),
+                    imageIdentity = product.images.firstOrNull()?.src,
+                    displayPriceText = formatStorePrice(product.prices.price, product.prices.currencyMinorUnit, product.prices.currencySymbol),
+                    regularPriceText = formatStorePrice(product.prices.regularPrice, product.prices.currencyMinorUnit, product.prices.currencySymbol),
+                    showPrice = product.prices.price.toLongOrNull()?.let { it > 0L } == true,
+                    isOnSale = product.onSale
+                )
             },
-            onProductSelected = { id ->
-                controllerState.sortedProducts.firstOrNull { it.id == id }?.let(onProduct)
+            selectedSort = when (controllerState.selectedSort) {
+                StoreOutletSort.RECENT -> StoreProductSortOption.RECENT
+                StoreOutletSort.PRICE_ASC -> StoreProductSortOption.PRICE_ASC
+                StoreOutletSort.PRICE_DESC -> StoreProductSortOption.PRICE_DESC
+                StoreOutletSort.NAME_ASC -> StoreProductSortOption.NAME_ASC
             },
-            onSortSelected = { option ->
-                controller.selectSort(when (option) {
-                    StoreProductSortOption.RECENT -> StoreOutletSort.RECENT
-                    StoreProductSortOption.PRICE_ASC -> StoreOutletSort.PRICE_ASC
-                    StoreProductSortOption.PRICE_DESC -> StoreOutletSort.PRICE_DESC
-                    StoreProductSortOption.NAME_ASC -> StoreOutletSort.NAME_ASC
-                })
-            },
-            onFilterClick = controller::openFilters,
-            onRemoveFilter = { id ->
-                when {
-                    id.startsWith("size:") -> controller.selectSizes(controllerState.selectedSizes - id.removePrefix("size:"))
-                    id.startsWith("color:") -> controller.selectColors(controllerState.selectedColors - id.removePrefix("color:"))
-                    id.startsWith("brand:") -> controller.selectBrands(controllerState.selectedBrands - id.removePrefix("brand:"))
-                }
-            },
-            onClearFilters = controller::clearFilters,
-            onRetryInitial = controller::retryInitial,
-            onRetryAppend = controller::retryAppend,
-            headerContent = {
-                if (showBubbles) {
-                    StoreOutletBubbles(
-                        bubbles = controllerState.visibleBubbles,
-                        selectedKey = controllerState.selectedBubbleKey,
-                        onSelected = controller::selectBubble
+            availableSortOptions = StoreProductSortOption.values().toList(),
+            activeFilterCount = controllerState.activeFilterCount,
+            activeFilterChips = activeChips,
+            isInitialLoading = paging.isInitialLoading,
+            isLoadingMore = paging.isAppending,
+            isEmpty = controllerState.sortedProducts.isEmpty() && !controllerState.isProbingSelectedBubble && !paging.hasMore,
+            emptyMessage = if (controllerState.selectedSizes.isNotEmpty() || controllerState.selectedColors.isNotEmpty() || controllerState.selectedBrands.isNotEmpty()) "No hay productos con estos filtros." else "No hay productos.",
+            initialErrorMessage = paging.initialError?.message ?: if (paging.initialError != null) "No se han podido cargar los productos." else null,
+            appendErrorMessage = paging.appendError?.message ?: if (paging.appendError != null) "No se han podido cargar más productos." else null,
+            appendRetryLabel = "Reintentar",
+            canLoadMore = paging.hasMore,
+            isProbingSelectedBubble = showBubbles && controllerState.isProbingSelectedBubble
+        )
+    
+        StoreProductListScreen(
+                state = listState,
+                gridState = gridState,
+                modifier = Modifier.fillMaxSize().padding(padding),
+                onBack = {
+                    if (showBubbles && controllerState.selectedBubbleKey != null) {
+                        controller.selectBubble(null)
+                    } else {
+                        controller.selectCategory(outlet.id)
+                        onShowOutletChooserChange(true)
+                    }
+                },
+                onProductSelected = { id ->
+                    controllerState.sortedProducts.firstOrNull { it.id == id }?.let(onProduct)
+                },
+                onSortSelected = { option ->
+                    controller.selectSort(when (option) {
+                        StoreProductSortOption.RECENT -> StoreOutletSort.RECENT
+                        StoreProductSortOption.PRICE_ASC -> StoreOutletSort.PRICE_ASC
+                        StoreProductSortOption.PRICE_DESC -> StoreOutletSort.PRICE_DESC
+                        StoreProductSortOption.NAME_ASC -> StoreOutletSort.NAME_ASC
+                    })
+                },
+                onFilterClick = controller::openFilters,
+                onRemoveFilter = { id ->
+                    when {
+                        id.startsWith("size:") -> controller.selectSizes(controllerState.selectedSizes - id.removePrefix("size:"))
+                        id.startsWith("color:") -> controller.selectColors(controllerState.selectedColors - id.removePrefix("color:"))
+                        id.startsWith("brand:") -> controller.selectBrands(controllerState.selectedBrands - id.removePrefix("brand:"))
+                    }
+                },
+                onClearFilters = controller::clearFilters,
+                onRetryInitial = controller::retryInitial,
+                onRetryAppend = controller::retryAppend,
+                headerContent = {
+                    if (showBubbles) {
+                        StoreOutletBubbles(
+                            bubbles = controllerState.visibleBubbles,
+                            selectedKey = controllerState.selectedBubbleKey,
+                            onSelected = controller::selectBubble
+                        )
+                    }
+                    availabilityError?.let {
+                        Text(it, modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp))
+                    }
+                },
+                imageContent = { item, imageModifier ->
+                    val product = controllerState.sortedProducts.firstOrNull { it.id == item.id }
+                    RemoteStoreImage(
+                        product?.images?.firstOrNull()?.src.orEmpty(),
+                        item.nameText,
+                        imageModifier,
+                        androidx.compose.ui.layout.ContentScale.Crop
                     )
                 }
-                availabilityError?.let {
-                    Text(it, modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp))
-                }
-            },
-            imageContent = { item, imageModifier ->
-                val product = controllerState.sortedProducts.firstOrNull { it.id == item.id }
-                RemoteStoreImage(
-                    product?.images?.firstOrNull()?.src.orEmpty(),
-                    item.nameText,
-                    imageModifier,
-                    androidx.compose.ui.layout.ContentScale.Crop
-                )
-            }
-        )
+            )
+    }
 
     if (controllerState.filterDialogVisible) {
         when (val optionsState = controllerState.filterOptionsState) {
