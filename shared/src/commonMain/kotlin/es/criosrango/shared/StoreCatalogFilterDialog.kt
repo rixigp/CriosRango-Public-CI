@@ -44,6 +44,7 @@ fun StoreCatalogFilterDialog(
     selectedSizes: Set<String>, selectedColors: Set<String>, selectedBrands: Set<String>,
     enabledSizes: Set<String>, enabledColors: Set<String>, enabledBrands: Set<String>,
     showBrands: Boolean = true,
+    onDimensionSelected: (String) -> Unit = {},
     onSizesChanged: (Set<String>) -> Unit, onColorsChanged: (Set<String>) -> Unit,
     onBrandsChanged: (Set<String>) -> Unit, onApply: () -> Unit,
     onClear: () -> Unit, onDismiss: () -> Unit, onCancel: (() -> Unit)? = null
@@ -75,7 +76,7 @@ fun StoreCatalogFilterDialog(
                 ) {
                     FilterChip(
                         selected = activeTab == "Talla",
-                        onClick = { activeDimension = "Talla" },
+                        onClick = { activeDimension = "Talla"; onDimensionSelected("sizes") },
                         modifier = Modifier.weight(1f),
                         colors = chipColors,
                         label = {
@@ -88,7 +89,7 @@ fun StoreCatalogFilterDialog(
                     )
                     FilterChip(
                         selected = activeTab == "Color",
-                        onClick = { activeDimension = "Color" },
+                        onClick = { activeDimension = "Color"; onDimensionSelected("colors") },
                         modifier = Modifier.weight(1f),
                         colors = chipColors,
                         label = {
@@ -102,7 +103,7 @@ fun StoreCatalogFilterDialog(
                     if (showBrandTab) {
                         FilterChip(
                             selected = activeTab == "Marca",
-                            onClick = { activeDimension = "Marca" },
+                            onClick = { activeDimension = "Marca"; onDimensionSelected("brands") },
                             modifier = Modifier.weight(1f),
                             colors = chipColors,
                             label = {

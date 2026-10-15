@@ -1,6 +1,7 @@
 package es.criosrango.shared
 
 import es.criosrango.shared.api.StoreApiClient
+import es.criosrango.shared.api.StoreFilterApiClient
 import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.model.StoreProductAttributeFilter
 import io.ktor.client.HttpClient
@@ -39,6 +40,19 @@ class StoreRootFilterOwnerTest {
                 StandardTestDispatcher(testScheduler)
         )
 
+    private fun testFilterApi(): StoreFilterApiClient {
+        val http = HttpClient(MockEngine {
+            respond(
+                """{"schema_version":1,"page":1,"per_page":12,"total":0,"has_more":false,"product_ids":[],"facets":{"sizes":[],"colors":[],"brands":[]}}""",
+                HttpStatusCode.OK,
+                headersOf("Content-Type", "application/json")
+            )
+        }) {
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        return StoreFilterApiClient(endpoint = "https://example.test/query", client = http)
+    }
+
     private fun TestScope.observeOptionsState(
         owner: StoreRootFilterOwner,
         predicate: (StoreFilterOptionsState) -> Boolean
@@ -66,7 +80,7 @@ class StoreRootFilterOwnerTest {
             }
         }
         val api = StoreApiClient(client = client)
-        val owner = StoreRootFilterOwner(api, ownerScope())
+        val owner = StoreRootFilterOwner(api, ownerScope(), testFilterApi())
 
         val initialReady = observeOptionsState(owner) { it is StoreFilterOptionsState.Ready }
         owner.open(StoreRootFilterScope.CATALOG)
@@ -124,7 +138,7 @@ class StoreRootFilterOwnerTest {
             }
         }
         val api = StoreApiClient(client = client)
-        val owner = StoreRootFilterOwner(api, ownerScope())
+        val owner = StoreRootFilterOwner(api, ownerScope(), testFilterApi())
 
         val initialError = observeOptionsState(owner) { it is StoreFilterOptionsState.Error }
         owner.open(StoreRootFilterScope.OUTLET)
@@ -182,7 +196,7 @@ class StoreRootFilterOwnerTest {
             }
         }
         val api = StoreApiClient(client = client)
-        val owner = StoreRootFilterOwner(api, ownerScope())
+        val owner = StoreRootFilterOwner(api, ownerScope(), testFilterApi())
         val readyState = observeOptionsState(owner) { it is StoreFilterOptionsState.Ready }
         owner.open(StoreRootFilterScope.CATALOG)
         val options = assertIs<StoreFilterOptionsState.Ready>(readyState.await()).options
@@ -258,7 +272,7 @@ class StoreRootFilterOwnerTest {
             }
         }
         val api = StoreApiClient(client = client)
-        val owner = StoreRootFilterOwner(api, ownerScope())
+        val owner = StoreRootFilterOwner(api, ownerScope(), testFilterApi())
         val ready = observeOptionsState(owner) { it is StoreFilterOptionsState.Ready }
         owner.open(StoreRootFilterScope.CATALOG)
         assertIs<StoreFilterOptionsState.Ready>(ready.await())

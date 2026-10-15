@@ -45,7 +45,9 @@ data class StoreRootFilterState(
     val optionsState: StoreFilterOptionsState = StoreFilterOptionsState.Idle,
     val draftSizes: Set<String> = emptySet(), val draftColors: Set<String> = emptySet(), val draftBrands: Set<String> = emptySet(),
     val appliedSizes: Set<String> = emptySet(), val appliedColors: Set<String> = emptySet(), val appliedBrands: Set<String> = emptySet(),
-    val resultsVisible: Boolean = false
+    val resultsVisible: Boolean = false,
+    val facetCounts: Map<String, Map<Int, Int>> = emptyMap(),
+    val loadedFacetKeys: Map<String, String> = emptyMap()
 ) {
     val hasDraftFilters get() = draftSizes.isNotEmpty() || draftColors.isNotEmpty() || draftBrands.isNotEmpty()
     val hasAppliedFilters get() = appliedSizes.isNotEmpty() || appliedColors.isNotEmpty() || appliedBrands.isNotEmpty()
@@ -56,18 +58,74 @@ class StoreRootFilterOwner(private val api: StoreApiClient, private val scope: C
     val state: StateFlow<StoreRootFilterState> = mutableState.asStateFlow()
     private var cachedOptions: StoreFilterOptions? = null
     private var loading = false
+    private var activeFacetDimension = "sizes"
+    private val facetGenerations = mutableMapOf<String, Int>()
+    private val facetCache = mutableMapOf<String, Map<Int, Int>>()
+    private fun facetKey(dimension: String, s: StoreRootFilterState): String {
+        val options = (s.optionsState as? StoreFilterOptionsState.Ready)?.options
+        fun ids(names: Set<String>, values: List<StoreFilterOption>) = values.filter { it.name in names }.map { it.id }.distinct().sorted()
+        val sizes = ids(s.draftSizes, options?.sizes.orEmpty())
+        val colors = ids(s.draftColors, options?.colors.orEmpty())
+        val brands = ids(s.draftBrands, options?.brands.orEmpty())
+        return when (dimension) {
+            "sizes" -> listOf("sizes", s.scope?.name, colors.joinToString(","), brands.joinToString(",")).joinToString("|")
+            "colors" -> listOf("colors", s.scope?.name, sizes.joinToString(","), brands.joinToString(",")).joinToString("|")
+            else -> listOf("brands", s.scope?.name, sizes.joinToString(","), colors.joinToString(",")).joinToString("|")
+        }
+    }
+    private fun requestFacet(dimension: String) {
+        val before = mutableState.value
+        val options = (before.optionsState as? StoreFilterOptionsState.Ready)?.options ?: return
+        val key = facetKey(dimension, before)
+        facetCache[key]?.let { counts ->
+            mutableState.value = before.copy(facetCounts = before.facetCounts + (dimension to counts), loadedFacetKeys = before.loadedFacetKeys + (dimension to key))
+            return
+        }
+        val generation = (facetGenerations[dimension] ?: 0) + 1
+        facetGenerations[dimension] = generation
+        scope.launch {
+            try {
+                val response = filterApi.query(
+                    scope = if (before.scope == StoreRootFilterScope.OUTLET) "outlet" else "catalog",
+                    sizeIds = options.sizes.filter { it.name in before.draftSizes }.map { it.id }.distinct().sorted(),
+                    colorIds = options.colors.filter { it.name in before.draftColors }.map { it.id }.distinct().sorted(),
+                    brandIds = options.brands.filter { it.name in before.draftBrands }.map { it.id }.distinct().sorted(),
+                    page = 1, perPage = CatalogPaginator.PAGE_SIZE, facet = dimension
+                )
+                val counts = response.facets[dimension].orEmpty().associate { it.termId to it.count }
+                val current = mutableState.value
+                if (facetGenerations[dimension] == generation && facetKey(dimension, current) == key) {
+                    facetCache[key] = counts
+                    mutableState.value = current.copy(facetCounts = current.facetCounts + (dimension to counts), loadedFacetKeys = current.loadedFacetKeys + (dimension to key))
+                }
+            } catch (_: Exception) {
+                // A failed facet remains retryable; never fall back to product requests.
+            }
+        }
+    }
+    private fun invalidateFacets(vararg dimensions: String) {
+        val current = mutableState.value
+        val loaded = current.loadedFacetKeys.toMutableMap()
+        dimensions.forEach { d -> facetGenerations[d] = (facetGenerations[d] ?: 0) + 1; loaded.remove(d) }
+        mutableState.value = current.copy(loadedFacetKeys = loaded)
+        if (activeFacetDimension in dimensions) requestFacet(activeFacetDimension)
+    }
     fun open(scope: StoreRootFilterScope) {
         val old = mutableState.value
         val sameScope = old.scope == scope
         val appliedSizes = if (sameScope) old.appliedSizes else emptySet()
         val appliedColors = if (sameScope) old.appliedColors else emptySet()
         val appliedBrands = if (sameScope) old.appliedBrands else emptySet()
+        activeFacetDimension = "sizes"
         mutableState.value = old.copy(scope = scope, dialogVisible = true, resultsVisible = false,
             draftSizes = appliedSizes, draftColors = appliedColors, draftBrands = appliedBrands,
-            appliedSizes = appliedSizes, appliedColors = appliedColors, appliedBrands = appliedBrands)
+            appliedSizes = appliedSizes, appliedColors = appliedColors, appliedBrands = appliedBrands,
+            facetCounts = if (sameScope) old.facetCounts else emptyMap(),
+            loadedFacetKeys = if (sameScope) old.loadedFacetKeys else emptyMap())
         val cached = cachedOptions
         if (cached != null) {
             mutableState.value = mutableState.value.copy(optionsState = StoreFilterOptionsState.Ready(cached))
+            requestFacet(activeFacetDimension)
         } else if (!loading) {
             loadOptions()
         }
@@ -100,14 +158,16 @@ class StoreRootFilterOwner(private val api: StoreApiClient, private val scope: C
                 val options = StoreFilterOptions(sizes, colors, brands)
                 cachedOptions = options
                 mutableState.value = mutableState.value.copy(optionsState = StoreFilterOptionsState.Ready(options))
+                if (mutableState.value.dialogVisible) requestFacet(activeFacetDimension)
             } catch (e: Exception) {
                 mutableState.value = mutableState.value.copy(optionsState = StoreFilterOptionsState.Error(e.message ?: "No se han podido cargar los filtros."))
             } finally { loading = false }
         }
     }
-    fun changeSizes(v: Set<String>) { mutableState.value = mutableState.value.copy(draftSizes = v) }
-    fun changeColors(v: Set<String>) { mutableState.value = mutableState.value.copy(draftColors = v) }
-    fun changeBrands(v: Set<String>) { mutableState.value = mutableState.value.copy(draftBrands = v) }
+    fun selectFacetDimension(dimension: String) { activeFacetDimension = dimension; requestFacet(dimension) }
+    fun changeSizes(v: Set<String>) { mutableState.value = mutableState.value.copy(draftSizes = v); invalidateFacets("colors", "brands") }
+    fun changeColors(v: Set<String>) { mutableState.value = mutableState.value.copy(draftColors = v); invalidateFacets("sizes", "brands") }
+    fun changeBrands(v: Set<String>) { mutableState.value = mutableState.value.copy(draftBrands = v); invalidateFacets("sizes", "colors") }
     fun apply(): Boolean {
         val s = mutableState.value
         if (!s.hasDraftFilters) {
@@ -118,7 +178,10 @@ class StoreRootFilterOwner(private val api: StoreApiClient, private val scope: C
         return true
     }
     fun cancel() { val s = mutableState.value; mutableState.value = s.copy(dialogVisible = false, draftSizes = s.appliedSizes, draftColors = s.appliedColors, draftBrands = s.appliedBrands) }
-    fun clearDraft() { mutableState.value = mutableState.value.copy(draftSizes = emptySet(), draftColors = emptySet(), draftBrands = emptySet()) }
+    fun clearDraft() {
+        mutableState.value = mutableState.value.copy(draftSizes = emptySet(), draftColors = emptySet(), draftBrands = emptySet())
+        invalidateFacets("sizes", "colors", "brands")
+    }
     fun removeAppliedSize(v: String) = updateApplied { it.copy(appliedSizes = it.appliedSizes - v, draftSizes = it.draftSizes - v) }
     fun removeAppliedColor(v: String) = updateApplied { it.copy(appliedColors = it.appliedColors - v, draftColors = it.draftColors - v) }
     fun removeAppliedBrand(v: String) = updateApplied { it.copy(appliedBrands = it.appliedBrands - v, draftBrands = it.draftBrands - v) }
@@ -184,7 +247,10 @@ fun StoreRootFilterDialog(owner: StoreRootFilterOwner) {
         is StoreFilterOptionsState.Ready -> StoreCatalogFilterDialog(
             sizes = o.options.sizes.map { it.name }, colors = o.options.colors.map { it.name }, brands = o.options.brands.map { it.name },
             selectedSizes = s.draftSizes, selectedColors = s.draftColors, selectedBrands = s.draftBrands,
-            enabledSizes = o.options.sizes.map { it.name }.toSet(), enabledColors = o.options.colors.map { it.name }.toSet(), enabledBrands = o.options.brands.map { it.name }.toSet(),
+            enabledSizes = o.options.sizes.filter { (!s.loadedFacetKeys.containsKey("sizes") || (s.facetCounts["sizes"]?.get(it.id) ?: 0) > 0) || it.name in s.draftSizes }.map { it.name }.toSet(),
+            enabledColors = o.options.colors.filter { (!s.loadedFacetKeys.containsKey("colors") || (s.facetCounts["colors"]?.get(it.id) ?: 0) > 0) || it.name in s.draftColors }.map { it.name }.toSet(),
+            enabledBrands = o.options.brands.filter { (!s.loadedFacetKeys.containsKey("brands") || (s.facetCounts["brands"]?.get(it.id) ?: 0) > 0) || it.name in s.draftBrands }.map { it.name }.toSet(),
+            onDimensionSelected = owner::selectFacetDimension,
             onSizesChanged = owner::changeSizes, onColorsChanged = owner::changeColors, onBrandsChanged = owner::changeBrands,
             onApply = { owner.apply() }, onClear = owner::clearDraft, onDismiss = owner::cancel, onCancel = owner::cancel
         )
@@ -197,11 +263,11 @@ fun StoreRootFilterResultsScreen(owner: StoreRootFilterOwner, padding: PaddingVa
     val s by owner.state.collectAsState()
     val rootScope = s.scope ?: return
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+    var sort by remember(owner.queryKey()) { mutableStateOf(StoreProductSortOption.RECENT) }
     val paginatorQueryKey = owner.queryKey(sort)
     val paginator = remember(paginatorQueryKey) { CatalogPaginatorStore<StoreProduct>(coroutineScope, pageSize = CatalogPaginator.PAGE_SIZE) { it.id } }
     val pageState by paginator.state.collectAsState()
     val grid = rememberLazyGridState()
-    var sort by remember(owner.queryKey()) { mutableStateOf(StoreProductSortOption.RECENT) }
     val activeChips = buildList {
         s.appliedSizes.sorted().forEach { add(StoreActiveFilterChipUi("size:$it", "Talla $it")) }
         s.appliedColors.sorted().forEach { add(StoreActiveFilterChipUi("color:$it", it)) }
