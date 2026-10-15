@@ -89,7 +89,7 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private val _activeCategoryProducts = MutableStateFlow<List<StoreProduct>>(emptyList())
     val activeCategoryProducts: StateFlow<List<StoreProduct>> = _activeCategoryProducts.asStateFlow()
     private val categoryPaginators = mutableMapOf<Int, CatalogPaginator<StoreProduct>>()
-    private val rootCatalogPaginator = CatalogPaginator(identity = { it.id })
+    private val rootCatalogPaginator = CatalogPaginator<StoreProduct>(identity = { it.id })
     private var rootCatalogActive = false
     private val _categoryPagingState = MutableStateFlow(CatalogPagingState<StoreProduct>())
     val categoryPagingState: StateFlow<CatalogPagingState<StoreProduct>> = _categoryPagingState.asStateFlow()

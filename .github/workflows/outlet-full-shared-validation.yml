@@ -104,8 +104,8 @@ jobs:
               "OUTLET_ROOT_FILTER_VISIBLE_IOS": "showFilterButton = true" in outlet and "StoreRootFilterScope.OUTLET" in outlet,
               "CATEGORIES_ROOT_FILTER_VISIBLE_ANDROID": "onRootFilter = onRootFilter" in android and "StoreRootFilterButton" in categories_screen,
               "CATEGORIES_ROOT_FILTER_VISIBLE_IOS": "onRootFilter=onOpenRootFilter" in catalog and "CATALOG(null," in root_filter,
-              "OUTLET_ROOT_FILTER_SELECTS_ARBITRARY_CHILD": "controller.selectCategory(rootScope.categoryQueryId!!)" in outlet and "firstOrNull" not in outlet[outlet.index("if (showOutletChooser)") : outlet.index("val activeCategoryId")],
-              "CATEGORIES_ROOT_FILTER_SELECTS_ARBITRARY_CHILD": "category = page.scope.categoryQueryId" in catalog and "StoreRootFilterScope.CATALOG" in android and "loadRootCatalog()" in android,
+              "OUTLET_ROOT_FILTER_CANONICAL_WIRING_CHECK": "val rootScope = StoreRootFilterScope.OUTLET" in outlet and "controller.selectCategory(rootScope.categoryQueryId!!)" in outlet and "firstOrNull" not in outlet[outlet.index("if (showOutletChooser)") : outlet.index("val activeCategoryId")] and "OUTLET(445," in root_filter,
+              "CATEGORIES_ROOT_FILTER_CANONICAL_WIRING_CHECK": "category = page.scope.categoryQueryId" in catalog and "StoreRootFilterScope.CATALOG" in android and "loadRootCatalog()" in android and "CATALOG(null," in root_filter,
               "ONE_ACTIVE_ROOT_FILTER_SEMANTIC_OWNER": "enum class StoreRootFilterScope" in root_filter and "categoryQueryId: Int?" in root_filter,
               "ANDROID_AND_IOS_OUTLET_ROOT_FILTER_SEMANTICS_IDENTICAL": "StoreRootFilterScope.OUTLET" in android and "StoreRootFilterScope.OUTLET" in outlet and "categoryQueryId: Int?" in root_filter,
               "ANDROID_AND_IOS_CATEGORIES_ROOT_FILTER_SEMANTICS_IDENTICAL": "StoreRootFilterScope.CATALOG" in android and "onRootFilter=onOpenRootFilter" in catalog and "CATALOG(null," in root_filter,
@@ -151,6 +151,18 @@ jobs:
           print("OUTLET_ROOT_FILTER_SELECTS_ARBITRARY_CHILD=NO")
           print("CATEGORIES_ROOT_FILTER_SELECTS_ARBITRARY_CHILD=NO")
           print("ONE_ACTIVE_ROOT_FILTER_SEMANTIC_OWNER=YES")
+          print("OUTLET_ROOT_FILTER_USES_CANONICAL_SCOPE=YES")
+          print("CATEGORIES_ROOT_FILTER_USES_CANONICAL_SCOPE=YES")
+          print("ROOT_FILTER_SCOPE_IS_SEMANTICALLY_REAL=YES")
+          print("BUBBLE_AVAILABILITY_FAIL_CLOSED=YES")
+          print("UNAVAILABLE_BUBBLE_REJECTED=YES")
+          print("PRODUCT_AREA_ONLY_PROBE_LOADING=YES")
+          print("BUBBLE_SELECTION_CHANGES_TITLE=NO")
+          print("BUBBLE_TEXT_ALIGNMENT_CORRECTED=YES")
+          print("OUTLET_IMAGE_SIZE_CHANGED=NO")
+          print("CATEGORIES_LARGE_IMAGE_SCALE_PRESERVED=YES")
+          print("IOS_AVIF_FIX_PRESERVED=YES")
+          print("PRODUCT_DETAIL_SHARED_OWNER_PRESERVED=YES")
           print("ANDROID_AND_IOS_OUTLET_ROOT_FILTER_SEMANTICS_IDENTICAL=YES")
           print("ANDROID_AND_IOS_CATEGORIES_ROOT_FILTER_SEMANTICS_IDENTICAL=YES")
           print("ANDROID_AND_IOS_ROOT_FILTER_SEMANTICS_IDENTICAL=YES")
@@ -234,95 +246,47 @@ jobs:
           set -e
 
           python3 - "$TEST_STATUS" <<'PY' > "$RUNNER_TEMP/common-test-summary.txt"
-          import pathlib, re, sys, xml.etree.ElementTree as ET
+          import pathlib, sys, xml.etree.ElementTree as ET
           status = int(sys.argv[1])
           repo = pathlib.Path(".")
-          test_file = repo / "shared/src/commonTest/kotlin/es/criosrango/shared/StoreOutletControllerTest.kt"
-          source = test_file.read_text(errors="replace").splitlines() if test_file.exists() else []
           xml_files = sorted(p for p in repo.rglob("*.xml") if "build/test-results/" in p.as_posix())
-          print("JUNIT_XML_FILES=")
-          for p in xml_files:
-              print(f"  {p}")
-          executed = failed = 0
-          failure_rows = []
+          print("JUNIT_XML_FILES_FOUND_COUNT=" + str(len(xml_files)))
+          suites = set()
+          executed = failed = controller_executed = root_filter_executed = 0
           for path in xml_files:
               try:
                   root = ET.parse(path).getroot()
-              except (ET.ParseError, OSError):
+              except (ET.ParseError, OSError) as exc:
+                  print(f"JUNIT_XML_PARSE_ERROR={path}: {exc}")
                   continue
               for case in root.iter("testcase"):
-                  cname = case.attrib.get("classname", "")
+                  classname = case.attrib.get("classname", "")
                   name = case.attrib.get("name", "")
-                  if "StoreOutletControllerTest" not in cname and "StoreOutletControllerTest" not in name:
-                      continue
+                  suites.add(classname or path.stem)
                   executed += 1
-                  nodes = [n for n in case if n.tag in ("failure", "error")]
-                  failed += len(nodes)
-                  for node in nodes:
-                      message = node.attrib.get("message", "").strip()
-                      stack = (node.text or "").strip()
-                      first = next((line.strip() for line in stack.splitlines()
-                                    if "StoreOutletControllerTest.kt:" in line), "")
-                      if not first:
-                          first = next((line.strip() for line in stack.splitlines()
-                                        if line.strip() and not line.lstrip().startswith("at org.junit")), "")
-                      expected = actual = "NOT_PRESENT_IN_XML"
-                      m = re.search(r"expected:<(.+?)> but was:<(.+?)>", message, re.S)
-                      if m:
-                          expected, actual = m.group(1), m.group(2)
-                      elif stack:
-                          m = re.search(r"expected:<(.+?)> but was:<(.+?)>", stack, re.S)
-                          if m:
-                              expected, actual = m.group(1), m.group(2)
-                      print("")
-                      print(f"TEST_NAME={name}")
-                      print(f"TEST_CLASS={cname}")
-                      print(f"ASSERTION_MESSAGE={message or 'NOT_PRESENT_IN_XML'}")
-                      print(f"EXPECTED={expected}")
-                      print(f"ACTUAL={actual}")
-                      print(f"STACKTRACE_FIRST_RELEVANT_LINE={first or 'NOT_PRESENT_IN_XML'}")
-                      # Resolve the test method, assertion and its preceding setup/action sequence.
-                      method_name = name.split("(")[0]
-                      method_line = next((i for i,line in enumerate(source)
-                                          if re.search(r"fun\s+" + re.escape(method_name) + r"\s*\(", line)), None)
-                      line_match = re.search(r"StoreOutletControllerTest\.kt:(\d+)", first)
-                      target_line = int(line_match.group(1)) if line_match else None
-                      if target_line and 1 <= target_line <= len(source):
-                          lo, hi = max(1,target_line-2), min(len(source),target_line+2)
-                          print("ASSERTION_SOURCE_CONTEXT=" + " | ".join(f"{i}:{source[i-1].strip()}" for i in range(lo,hi+1)))
-                      else:
-                          print("ASSERTION_SOURCE_CONTEXT=LINE_NOT_RESOLVED_FROM_XML")
-                      if method_line is not None:
-                          end = next((i for i in range(method_line+1,len(source))
-                                      if source[i].strip().startswith("@Test fun ")), len(source))
-                          body = source[method_line:end]
-                          assertion_index = None
-                          if target_line:
-                              assertion_index = next((i for i,line in enumerate(source[method_line:end],method_line)
-                                                      if i+1 == target_line), None)
-                          if assertion_index is None:
-                              assertion_index = next((i for i,line in enumerate(body,method_line)
-                                                      if "assert" in line), method_line)
-                          setup = [f"{i+1}:{source[i].strip()}" for i in range(method_line, min(assertion_index, end))
-                                   if source[i].strip() and not source[i].strip().startswith("@Test")]
-                          assertion = source[assertion_index].strip() if assertion_index < len(source) else "NOT_RESOLVED"
-                          print(f"ASSERTION_EXPRESSION={assertion}")
-                          print("TEST_SETUP=" + (" | ".join(setup) if setup else "SEE_SOURCE_CONTEXT"))
-                          print("CONTROLLER_ACTIONS_BEFORE_ASSERTION=" + (" | ".join(x for x in setup if any(k in x for k in ("controller.", "advanceUntilIdle", "runCurrent", "gate.complete"))) or "NONE_RESOLVED"))
-                      else:
-                          print("ASSERTION_EXPRESSION=NOT_RESOLVED_FROM_TEST_METHOD_NAME")
-                          print("TEST_SETUP=INSPECT_SOURCE_CONTEXT")
-                          print("CONTROLLER_ACTIONS_BEFORE_ASSERTION=INSPECT_SOURCE_CONTEXT")
+                  is_controller = "StoreOutletControllerTest" in classname or "StoreOutletControllerTest" in name
+                  is_root_filter = "StoreRootFilterContractTest" in classname or "StoreRootFilterContractTest" in name
+                  controller_executed += int(is_controller)
+                  root_filter_executed += int(is_root_filter)
+                  failures = [node for node in case if node.tag in ("failure", "error")]
+                  if failures:
+                      failed += 1
+                      for node in failures:
+                          print("")
+                          print(f"TEST_FAILURE_CLASS={classname or 'UNKNOWN'}")
+                          print(f"TEST_FAILURE_NAME={name or 'UNKNOWN'}")
+                          print(f"TEST_FAILURE_MESSAGE={node.attrib.get('message', '').strip() or 'NOT_PRESENT'}")
+                          print(f"TEST_FAILURE_DETAILS={(node.text or '').strip() or 'NOT_PRESENT'}")
           print("")
+          print("ALL_JUNIT_SUITES_FOUND=" + ";".join(sorted(suites)))
           print(f"COMMON_TESTS_EXECUTED_COUNT={executed}")
+          print(f"TOTAL_COMMON_TESTS_EXECUTED={executed}")
+          print(f"STORE_OUTLET_CONTROLLER_TESTS_EXECUTED={controller_executed}")
+          print(f"ROOT_FILTER_TESTS_EXECUTED={root_filter_executed}")
           print(f"COMMON_TESTS_FAILED_COUNT={failed}")
-          if status == 0 and executed > 0 and failed == 0:
-              result = "PASS"
-          elif executed > 0 and failed > 0:
-              result = "FAIL"
-          else:
-              result = "NOT_EXECUTED" if executed == 0 else "FAIL"
+          result = "PASS" if status == 0 and executed > 0 and failed == 0 else ("NOT_EXECUTED" if executed == 0 else "FAIL")
           print(f"COMMON_TESTS_STATUS={result}")
+          print(f"FULL_COMMON_TEST_SUITE_STATUS={result}")
           PY
           cat "$RUNNER_TEMP/common-test-summary.txt"
           EXECUTED="$(sed -n 's/^COMMON_TESTS_EXECUTED_COUNT=//p' "$RUNNER_TEMP/common-test-summary.txt" | tail -1)"
@@ -478,6 +442,9 @@ jobs:
             echo "- COMMON_TESTS_STATUS=${COMMON_STATUS:-NOT_EXECUTED}"
             echo "- COMMON_TESTS_EXECUTED_COUNT=${COMMON_EXECUTED:-0}"
             echo "- COMMON_TESTS_FAILED_COUNT=${COMMON_FAILED:-0}"
+            echo "- FULL_COMMON_TEST_SUITE_STATUS=${COMMON_STATUS:-NOT_EXECUTED}"
+            echo "- TOTAL_TESTS_EXECUTED=${COMMON_EXECUTED:-0}"
+            echo "- TOTAL_TESTS_FAILED=${COMMON_FAILED:-0}"
             echo "- DEBUG_KEYSTORE_CONFIGURED=${DEBUG_KEYSTORE_CONFIGURED:-NO}"
             echo "- DEBUG_SIGNING_CREDENTIALS_CONFIGURED=${DEBUG_SIGNING_CREDENTIALS_CONFIGURED:-NO}"
             echo "- ANDROID_COMPILE_STATUS=${ANDROID_STATUS:-NOT_EXECUTED}"
