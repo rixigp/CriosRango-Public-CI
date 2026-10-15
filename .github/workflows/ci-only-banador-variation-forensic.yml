@@ -30,7 +30,7 @@ jobs:
           git rev-parse HEAD | tee ../forensic/source/checkout.sha
           {
             echo "=== isAvailableForPurchase declarations and call sites ==="
-            rg -n -C 8 'isAvailableForPurchase|productWithVariationAvailability|ProductDetailVariationSnapshot|productDetailAttributeOptionState' app shared || true
+            grep -R -n -E -C 8 'isAvailableForPurchase|productWithVariationAvailability|ProductDetailVariationSnapshot|productDetailAttributeOptionState' app shared || true
             echo
             echo "=== shared Product Detail screen owners/call sites ==="
             rg -n -C 3 'StoreProductDetailScreen\(|ProductDetail\(|productWithVariationAvailability\(' app/src shared/src || true
@@ -45,12 +45,12 @@ jobs:
           set -euo pipefail
           mkdir -p forensic/live
           cat > forensic_probe.py <<'PY'
-          import json, math, os, re, urllib.parse, urllib.request, urllib.error
+          import json, math, os, re, html, unicodedata, urllib.parse, urllib.request, urllib.error
           from pathlib import Path
           OUT=Path("forensic/live"); OUT.mkdir(parents=True,exist_ok=True)
           BASE="https://criosrango.es/wp-json/wc/store/v1"
           REPORT=[]
-          def norm(x): return re.sub(r"[^a-z0-9]", "", str(x or "").lower())
+          def norm(x):\n              s=html.unescape(str(x or ""))\n              s=unicodedata.normalize("NFKD",s).encode("ascii","ignore").decode("ascii")\n              return re.sub(r"[^a-z0-9]", "", s.lower())
           def save(name, value):
               (OUT/(name+".json")).write_text(json.dumps(value,ensure_ascii=False,indent=2))
           def get(name,path,params=None,timeout=35):
