@@ -260,13 +260,31 @@ class StoreRootFilterOwnerTest {
         assertTrue(owner.apply())
 
         val paginator = CatalogPaginatorStore<StoreProduct>(this) { it.id }
+        var loaderEntryCount = 0
         suspend fun loadCatalogPage(page: Int, perPage: Int): CatalogPage<StoreProduct> {
+            loaderEntryCount++
             val items = owner.loadProducts(page, perPage)
             return CatalogPage(items, hasMore = page == 1)
         }
         paginator.start(owner.queryKey(), ::loadCatalogPage)
         advanceUntilIdle()
-        assertEquals(1, productRequests.size)
+        assertEquals(
+            "LOADER_ENTRY_COUNT=$loaderEntryCount; " +
+                "PAGINATOR_INITIAL_ERROR=${paginator.state.value.initialError?.let { it::class.simpleName + ": " + it.message }}; " +
+                "PAGINATOR_ITEMS=${paginator.state.value.items.size}; " +
+                "PAGINATOR_HAS_MORE=${paginator.state.value.hasMore}; " +
+                "PAGINATOR_IS_INITIAL_LOADING=${paginator.state.value.isInitialLoading}; " +
+                "OWNER_QUERY_KEY=${owner.queryKey()}; " +
+                "OWNER_STATE=${owner.state.value}; " +
+                "OWNER_APPLIED_SIZES=${owner.state.value.appliedSizes}; " +
+                "OWNER_APPLIED_COLORS=${owner.state.value.appliedColors}; " +
+                "OWNER_APPLIED_BRANDS=${owner.state.value.appliedBrands}; " +
+                "RESOLVED_SIZE_IDS=${owner.queryAttributeFilters().firstOrNull { it.taxonomy == "pa_tallas" }?.termIds}; " +
+                "RESOLVED_COLOR_IDS=${owner.queryAttributeFilters().firstOrNull { it.taxonomy == "pa_color" }?.termIds}; " +
+                "RESOLVED_BRAND_IDS=${owner.queryTagIds()}",
+            1,
+            productRequests.size
+        )
         paginator.loadNext(::loadCatalogPage)
         advanceUntilIdle()
 
