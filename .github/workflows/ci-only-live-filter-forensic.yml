@@ -136,6 +136,32 @@ jobs:
               for tid in idx:
                   _,individual,ni=product_query("xxxl_term_"+str(tid),[("per_page","100")]+attr_params(0,size["taxonomy"],[tid],"array"))
                   report.append(f"XXXL_TERM_{tid}_RETURNS_JERSEY={'YES' if isinstance(individual,list) and any(x.get('id') in found for x in individual) else 'NO' if isinstance(individual,list) else 'UNVERIFIED'}")
+          # Check the app's normal 24-item page boundary for the XXXL result.
+          if size and idx:
+              for page in (1,2):
+                  _,pdata,pcount=product_query("xxxl_app_page_"+str(page),[("per_page","24"),("page",str(page))]+attr_params(0,size["taxonomy"],idx,"comma"))
+                  report.append("APP_XXXL_PAGE_"+str(page)+"_RETURNS_JERSEY="+("YES" if isinstance(pdata,list) and any(x.get("slug")=="jersey-4243-tricot-ruiz" for x in pdata) else "NO" if isinstance(pdata,list) else "UNVERIFIED"))
+          # Find and test a real duplicate normalized label if one exists in global terms.
+          groups={}
+          for terms,tax in ((st,size["taxonomy"] if size else ""),(ct,color["taxonomy"] if color else "")):
+              for term in terms:
+                  groups.setdefault((tax,norm(term.get("name"))),[]).append(term)
+          duplicates=[(key,records) for key,records in groups.items() if key[1] and len(records)>1]
+          if duplicates:
+              (tax,label),records=duplicates[0]
+              mids=[x["id"] for x in records]
+              report.append("MULTI_ID_TEST_LABEL="+str(records[0].get("name")))
+              report.append("MULTI_ID_TERM_IDS="+json.dumps(mids))
+              _,mcomma,mct=product_query("multi_id_app_comma",[("per_page","100")]+attr_params(0,tax,mids,"comma"))
+              _,marray,mat=product_query("multi_id_canonical_array",[("per_page","100")]+attr_params(0,tax,mids,"array"))
+              report.append("CURRENT_APP_ENCODING_TOTAL="+str(mct))
+              report.append("CANONICAL_ARRAY_ENCODING_TOTAL="+str(mat))
+              report.append("CURRENT_COMMA_ENCODING_EQUIVALENT_TO_ARRAY="+("YES" if mct==mat and isinstance(mcomma,list) and isinstance(marray,list) and {x.get("id") for x in mcomma}=={x.get("id") for x in marray} else "NO"))
+              for mid in mids:
+                  _,ind,nt=product_query("multi_id_term_"+str(mid),[("per_page","100")]+attr_params(0,tax,[mid],"array"))
+                  report.append("MULTI_ID_TERM_"+str(mid)+"_TOTAL="+str(nt))
+          else:
+              report.append("MULTI_ID_TEST=NO_DUPLICATE_NORMALIZED_LABEL_FOUND_IN_GLOBAL_TERMS")
           # Native facets; store each full response. Use array-form parameters for count taxonomies and selected filters.
           if size and color:
               facetbase=[("calculate_attribute_counts[0][taxonomy]",size["taxonomy"]),("calculate_attribute_counts[0][query_type]","or"),("calculate_attribute_counts[1][taxonomy]",color["taxonomy"]),("calculate_attribute_counts[1][query_type]","or"),("calculate_taxonomy_counts","product_tag")]
