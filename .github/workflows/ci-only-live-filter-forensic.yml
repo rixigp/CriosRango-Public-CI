@@ -196,6 +196,38 @@ jobs:
               f"OUTLET_445_BRAND_COUNTS_AVAILABLE={outlet_count_availability('taxonomy_counts')}",
               "OUTLET_445_FACET_NOTE=attribute_counts contains combined size/color term counts; inspect raw collection-data response to verify taxonomy partitioning."
           ]
+          # Match the actual shared root-results runtime page size (CatalogPaginator.PAGE_SIZE=12).
+          if size and color and ids1 and ida:
+              _, root_pair_p1, root_pair_total = product_query("runtime_1m_azul_page_1", [("per_page","12"),("page","1")]+attr_params(0,size["taxonomy"],ids1)+attr_params(1,color["taxonomy"],ida))
+              pair_ids = [p.get("id") for p in root_pair_p1] if isinstance(root_pair_p1,list) else []
+              report += [f"RUNTIME_1M_AZUL_PAGE1_TOTAL={root_pair_total}", f"RUNTIME_1M_AZUL_PAGE1_PRODUCT_IDS={json.dumps(pair_ids)}"]
+          if size and idx:
+              for page in (1,2,3):
+                  _, runtime_page, runtime_total = product_query("runtime_3xl_page_"+str(page), [("per_page","12"),("page",str(page))]+attr_params(0,size["taxonomy"],idx,"comma"))
+                  found_positions = [i+1 for i,p in enumerate(runtime_page) if isinstance(p,dict) and p.get("id")==57523] if isinstance(runtime_page,list) else []
+                  report += [f"RUNTIME_3XL_PAGE_{page}_TOTAL={runtime_total}", f"RUNTIME_3XL_PAGE_{page}_RETURNS_JERSEY={'YES' if found_positions else 'NO' if isinstance(runtime_page,list) else 'UNVERIFIED'}", f"RUNTIME_3XL_PAGE_{page}_JERSEY_POSITION={found_positions[0] if found_positions else 'NONE'}"]
+          # Verify each Outlet facet independently so taxonomy availability is unambiguous.
+          outlet_size_status, outlet_size_data, _ = request("outlet_445_size_facets", "/products/collection-data", [
+              ("category","445"),("calculate_attribute_counts[0][taxonomy]",size["taxonomy"] if size else "pa_tallas"),("calculate_attribute_counts[0][query_type]","or")])
+          outlet_color_status, outlet_color_data, _ = request("outlet_445_color_facets", "/products/collection-data", [
+              ("category","445"),("calculate_attribute_counts[0][taxonomy]",color["taxonomy"] if color else "pa_color"),("calculate_attribute_counts[0][query_type]","or")])
+          outlet_brand_status, outlet_brand_data, _ = request("outlet_445_brand_facets", "/products/collection-data", [
+              ("category","445"),("calculate_taxonomy_counts","product_tag")])
+          def facet_has_terms(data):
+              return isinstance(data,dict) and isinstance(data.get("attribute_counts"),list) and len(data["attribute_counts"]) > 0
+          def taxonomy_has_terms(data):
+              return isinstance(data,dict) and isinstance(data.get("taxonomy_counts"),list) and len(data["taxonomy_counts"]) > 0
+          report += [
+              f"OUTLET_445_SIZE_FACET_STATUS={outlet_size_status}",
+              f"OUTLET_445_SIZE_COUNTS_AVAILABLE={'YES' if facet_has_terms(outlet_size_data) else 'NO'}",
+              f"OUTLET_445_SIZE_TERM_COUNT={len(outlet_size_data.get('attribute_counts',[])) if isinstance(outlet_size_data,dict) and isinstance(outlet_size_data.get('attribute_counts'),list) else 0}",
+              f"OUTLET_445_COLOR_FACET_STATUS={outlet_color_status}",
+              f"OUTLET_445_COLOR_COUNTS_AVAILABLE={'YES' if facet_has_terms(outlet_color_data) else 'NO'}",
+              f"OUTLET_445_COLOR_TERM_COUNT={len(outlet_color_data.get('attribute_counts',[])) if isinstance(outlet_color_data,dict) and isinstance(outlet_color_data.get('attribute_counts'),list) else 0}",
+              f"OUTLET_445_BRAND_FACET_STATUS={outlet_brand_status}",
+              f"OUTLET_445_BRAND_COUNTS_AVAILABLE={'YES' if taxonomy_has_terms(outlet_brand_data) else 'NO'}",
+              f"OUTLET_445_BRAND_TERM_COUNT={len(outlet_brand_data.get('taxonomy_counts',[])) if isinstance(outlet_brand_data,dict) and isinstance(outlet_brand_data.get('taxonomy_counts'),list) else 0}"
+          ]
           report += ["RAW_RESPONSES=forensic/*.json, *.body, *.headers, *.error.txt", "NOTE=HTTP 000 denotes connection/DNS/TLS failure, not application failure."]
           (OUT/"report.txt").write_text("\n".join(report)+"\n")
           print("\n".join(report))
