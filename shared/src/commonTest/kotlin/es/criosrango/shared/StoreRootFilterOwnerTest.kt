@@ -240,7 +240,7 @@ class StoreRootFilterOwnerTest {
         fun close() { api.close(); filterApi.close() }
     }
 
-    private fun rootPageFixture(
+    private fun TestScope.rootPageFixture(
         pageIds: (Int) -> List<Int> = { page -> when (page) { 1 -> (1001..1012).toList(); 2 -> listOf(2001); else -> emptyList() } },
         storeResponseIds: (List<Int>) -> List<Int> = { it.reversed() },
         totalForPage: (Int) -> Int = { if (it == 1 || it == 2) 13 else 0 },
