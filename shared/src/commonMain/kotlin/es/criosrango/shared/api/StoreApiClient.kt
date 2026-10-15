@@ -18,6 +18,7 @@ import es.criosrango.shared.model.StoreGlobalAttribute
 import es.criosrango.shared.model.StoreGlobalAttributeTerm
 import es.criosrango.shared.model.StoreGlobalTag
 import es.criosrango.shared.model.StoreProduct
+import es.criosrango.shared.model.StoreProductAttributeFilter
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get

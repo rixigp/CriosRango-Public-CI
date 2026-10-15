@@ -64,8 +64,12 @@ class StoreRootFilterOwner(private val api: StoreApiClient, private val scope: C
         mutableState.value = old.copy(scope = scope, dialogVisible = true, resultsVisible = false,
             draftSizes = appliedSizes, draftColors = appliedColors, draftBrands = appliedBrands,
             appliedSizes = appliedSizes, appliedColors = appliedColors, appliedBrands = appliedBrands)
-        cachedOptions?.let { mutableState.value = mutableState.value.copy(optionsState = StoreFilterOptionsState.Ready(it)) }
-            ?: if (!loading) loadOptions()
+        val cached = cachedOptions
+        if (cached != null) {
+            mutableState.value = mutableState.value.copy(optionsState = StoreFilterOptionsState.Ready(cached))
+        } else if (!loading) {
+            loadOptions()
+        }
     }
     fun retry() { if (cachedOptions == null && !loading) loadOptions() }
     private fun loadOptions() {
