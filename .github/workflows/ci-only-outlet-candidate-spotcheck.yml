@@ -1,0 +1,67 @@
+name: CI-only Outlet Candidate Variation Spot Check
+
+on:
+  push:
+    branches: [live-filter-forensic-ci-only]
+    paths: [.github/workflows/ci-only-outlet-candidate-spotcheck.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  spotcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read candidate variation states with GET only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p forensic
+          cat > probe.py <<'PY'
+          import concurrent.futures,json,urllib.request,urllib.error
+          from pathlib import Path
+          base="https://criosrango.es/wp-json/wc/store/v1/products/"
+          out=Path("forensic"); report=[]
+          candidates={
+            46553:{"name":"Camiseta SUMEN Tem Formula","variations":[46554,46555,46556,46557]},
+            46547:{"name":"Camiseta SAYDE Tem Formula","variations":[46548,46549,46550,46551]}
+          }
+          def get(vid):
+              req=urllib.request.Request(base+str(vid),headers={"User-Agent":"CriosRango-read-only-variation-spotcheck/1.0","Accept":"application/json"},method="GET")
+              try:
+                  with urllib.request.urlopen(req,timeout=12) as r: status=r.status; data=json.loads(r.read().decode("utf-8"))
+              except Exception as e: return {"id":vid,"status":0,"error":type(e).__name__+":"+str(e)}
+              attrs=data.get("attributes") or []
+              size=next((a.get("value") for a in attrs if a.get("name")=="Tallas"),None)
+              color=next((a.get("value") for a in attrs if a.get("name")=="Color"),None)
+              return {"id":vid,"status":status,"size":size,"color":color,"is_in_stock":data.get("is_in_stock"),"is_purchasable":data.get("is_purchasable"),"stock_status":data.get("stock_status"),"is_on_backorder":data.get("is_on_backorder"),"available_for_product_detail_rule":data.get("is_in_stock") is True and data.get("is_purchasable") is True}
+          ids=[i for c in candidates.values() for i in c["variations"]]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool: results=list(pool.map(get,ids))
+          byid={x["id"]:x for x in results}
+          save={"candidates":candidates,"variations":results}
+          (out/"spotcheck.json").write_text(json.dumps(save,ensure_ascii=False,indent=2))
+          strict=[]
+          for pid,c in candidates.items():
+              vs=[byid[i] for i in c["variations"]]
+              valid3=any(v.get("size")=="3xl" and v.get("available_for_product_detail_rule") for v in vs)
+              unavailable_other=any(v.get("size")!="3xl" and v.get("status")==200 and not v.get("available_for_product_detail_rule") for v in vs)
+              if valid3 and unavailable_other: strict.append(pid)
+              report.append("CANDIDATE_"+str(pid)+"_VARIATIONS="+json.dumps(vs,ensure_ascii=False))
+              report.append("CANDIDATE_"+str(pid)+"_VALID_3XL="+("YES" if valid3 else "NO_OR_UNPROVEN"))
+              report.append("CANDIDATE_"+str(pid)+"_OTHER_SIZE_UNAVAILABLE="+("YES" if unavailable_other else "NO_OR_UNPROVEN"))
+          report.append("STRICT_CONTROL_PRODUCT_ID="+(str(strict[0]) if strict else "NOT_FOUND_IN_SPOTCHECK"))
+          report.append("METHOD=READ_ONLY_GET_ONLY")
+          (out/"report.txt").write_text("\n".join(report)+"\n")
+          print("\n".join(report))
+          PY
+          python3 probe.py
+      - name: Upload candidate spot-check
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: outlet-candidate-variation-spotcheck
+          path: forensic/
+          if-no-files-found: warn
+          retention-days: 14
