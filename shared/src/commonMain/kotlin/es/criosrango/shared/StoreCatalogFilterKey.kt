@@ -74,7 +74,7 @@ fun normalizeFilterMetadataDisplayName(value: String): String =
 
 /** Removes exact duplicate display labels while preserving first-seen order and case distinctions. */
 fun distinctFilterMetadataDisplayNames(values: List<String>): List<String> =
-    values.map(::normalizeFilterMetadataDisplayName).distinct()
+    values.map { it.replace(Regex("\\s+"), " ").trim() }.distinct()
 
 /** Filters already-loaded brand labels locally; this helper never performs API work. */
 fun filterBrandDisplayNames(values: List<String>, query: String): List<String> {
