@@ -43,8 +43,8 @@ jobs:
             REQUESTED_TARGET_SHA="$DISPATCH_TARGET_SHA"
           elif [[ "$WORKFLOW_EVENT" == "push" ]]; then
             [[ "$BRANCH_NAME" == "outlet-full-shared-convergence" ]] || { echo "::error::Automatic physical build is restricted to the Outlet working branch"; exit 1; }
-            [[ "$HEAD_COMMIT_MESSAGE" == "CI_ONLY_OUTLET_PHYSICAL_TESTFLIGHT_TARGET_FD08BEB97781C27E04E6724FFE2B8F011858414F" ]] || { echo "::error::Push is not the explicitly authorized CI-only physical trigger"; exit 1; }
-            REQUESTED_TARGET_SHA="fd08beb97781c27e04e6724ffe2b8f011858414f"
+            [[ "$HEAD_COMMIT_MESSAGE" == "CI_ONLY_OUTLET_PHYSICAL_TESTFLIGHT_TARGET_E9631D1D89831E46E6FC0B9F1BE73AD2F320F560" ]] || { echo "::error::Push is not the explicitly authorized CI-only physical trigger"; exit 1; }
+            REQUESTED_TARGET_SHA="e9631d1d89831e46e6fc0b9f1be73ad2f320f560"
           else
             echo "::error::Unsupported event"; exit 1
           fi
@@ -106,8 +106,8 @@ jobs:
           if [[ "$WORKFLOW_EVENT" == "workflow_dispatch" ]]; then
             [[ "$BRANCH_NAME" == "main" || "$BRANCH_NAME" == "compose-multiplatform-convergence" ]] || { echo "::error::Manual dispatch is only authorized on main or the convergence pilot branch"; exit 1; }
           else
-            [[ "$BRANCH_NAME" == "outlet-full-shared-convergence" && "$HEAD_COMMIT_MESSAGE" == "CI_ONLY_OUTLET_PHYSICAL_TESTFLIGHT_TARGET_FD08BEB97781C27E04E6724FFE2B8F011858414F" ]] || { echo "::error::Push-triggered physical build is restricted to the explicit CI-only Outlet trigger"; exit 1; }
-            [[ "$REQUESTED_TARGET_SHA" == "fd08beb97781c27e04e6724ffe2b8f011858414f" ]] || { echo "::error::CI-only Outlet trigger target is frozen"; exit 1; }
+            [[ "$BRANCH_NAME" == "outlet-full-shared-convergence" && "$HEAD_COMMIT_MESSAGE" == "CI_ONLY_OUTLET_PHYSICAL_TESTFLIGHT_TARGET_E9631D1D89831E46E6FC0B9F1BE73AD2F320F560" ]] || { echo "::error::Push-triggered physical build is restricted to the explicit CI-only Outlet trigger"; exit 1; }
+            [[ "$REQUESTED_TARGET_SHA" == "e9631d1d89831e46e6fc0b9f1be73ad2f320f560" ]] || { echo "::error::CI-only Outlet trigger target is frozen"; exit 1; }
           fi
           VERSION="$(grep -m1 'MARKETING_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
           BASE_BUILD="$(grep -m1 'CURRENT_PROJECT_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*CURRENT_PROJECT_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
