@@ -3,6 +3,7 @@ package es.criosrango.shared
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class RootFacetKeyTest {
@@ -17,9 +18,16 @@ class RootFacetKeyTest {
             RootFacetKey.create(StoreRootFilterScope.CATALOG, RootFacetDimension.COLORS, listOf(2), listOf(3), listOf(4)),
             RootFacetKey.create(StoreRootFilterScope.CATALOG, RootFacetDimension.COLORS, listOf(2, 2), listOf(88), listOf(4))
         )
+        val brandKey = RootFacetKey.create(
+            StoreRootFilterScope.OUTLET, RootFacetDimension.BRANDS, listOf(2), listOf(3), listOf(4)
+        )
         assertEquals(
-            RootFacetKey.create(StoreRootFilterScope.OUTLET, RootFacetDimension.BRANDS, listOf(2), listOf(3), listOf(4)),
-            RootFacetKey.create(StoreRootFilterScope.OUTLET, RootFacetDimension.BRANDS, listOf(2), listOf(3, 77), listOf(90))
+            brandKey,
+            RootFacetKey.create(StoreRootFilterScope.OUTLET, RootFacetDimension.BRANDS, listOf(2), listOf(3), listOf(90))
+        )
+        assertNotEquals(
+            brandKey,
+            RootFacetKey.create(StoreRootFilterScope.OUTLET, RootFacetDimension.BRANDS, listOf(2, 5), listOf(3), listOf(4))
         )
     }
     @Test fun latest_draft_request_wins_even_when_old_response_finishes_later() {

@@ -232,6 +232,7 @@ class StoreRootFilterOwnerTest {
 
     @Test fun root_filter_pagination_preserves_page_size_filter_ids_and_scope() = runTest {
         val productRequests = mutableListOf<Map<String, String?>>()
+        val filterRequests = mutableListOf<Map<String, String?>>()
         val client = HttpClient(MockEngine { req ->
             when {
                 req.url.encodedPath.endsWith("/products/attributes") ->
@@ -243,9 +244,12 @@ class StoreRootFilterOwnerTest {
                 req.url.encodedPath.endsWith("/products/tags") ->
                     respond("""[{"id":777,"name":"Marca","slug":"marca","count":1}]""", HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
                 req.url.encodedPath.endsWith("/products") -> {
+                    val include = req.url.parameters["include"]
                     productRequests += mapOf(
-                        "page" to req.url.parameters["page"],
+                        "include" to include,
+                        "orderby" to req.url.parameters["orderby"],
                         "per_page" to req.url.parameters["per_page"],
+                        "page" to req.url.parameters["page"],
                         "category" to req.url.parameters["category"],
                         "size_taxonomy" to req.url.parameters["attributes[0][attribute]"],
                         "size_ids" to req.url.parameters["attributes[0][term_id]"],
@@ -253,13 +257,8 @@ class StoreRootFilterOwnerTest {
                         "color_ids" to req.url.parameters["attributes[1][term_id]"],
                         "tag_ids" to req.url.parameters["tag"]
                     )
-                    val requestedPage = req.url.parameters["page"]?.toIntOrNull() ?: 1
-                    val syntheticIds = when (requestedPage) {
-                        1 -> (1001..1012).toList()
-                        2 -> listOf(2001)
-                        else -> emptyList()
-                    }
-                    val responseBody = syntheticIds.joinToString(prefix = "[", postfix = "]") { id ->
+                    val requestedIds = include.orEmpty().split(",").filter { it.isNotBlank() }.mapNotNull { it.toIntOrNull() }
+                    val responseBody = requestedIds.reversed().joinToString(prefix = "[", postfix = "]") { id ->
                         """{"id":$id,"name":"Synthetic product $id"}"""
                     }
                     respond(responseBody, HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
@@ -271,8 +270,38 @@ class StoreRootFilterOwnerTest {
                 json(Json { ignoreUnknownKeys = true; coerceInputValues = true })
             }
         }
+        val filterClient = HttpClient(MockEngine { req ->
+            val page = req.url.parameters["page"]?.toIntOrNull() ?: 1
+            val perPage = req.url.parameters["per_page"]?.toIntOrNull() ?: 12
+            val facet = req.url.parameters["facet"]
+            filterRequests += mapOf(
+                "scope" to req.url.parameters["scope"],
+                "page" to req.url.parameters["page"],
+                "per_page" to req.url.parameters["per_page"],
+                "sort" to req.url.parameters["sort"],
+                "facet" to facet,
+                "size_ids" to req.url.parameters["size_ids"],
+                "color_ids" to req.url.parameters["color_ids"],
+                "brand_ids" to req.url.parameters["brand_ids"]
+            )
+            val ids = when {
+                facet != null -> emptyList()
+                page == 1 -> (1001..1012).toList()
+                page == 2 -> listOf(2001)
+                else -> emptyList()
+            }
+            val total = if (facet == null) 13 else 0
+            val hasMore = facet == null && page == 1
+            val responseBody = """{"schema_version":1,"page":$page,"per_page":$perPage,"total":$total,"has_more":$hasMore,"product_ids":[${ids.joinToString(",")}],"facets":{"sizes":[],"colors":[],"brands":[]}}"""
+            respond(responseBody, HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
+        }) {
+            install(ContentNegotiation) {
+                json(Json { ignoreUnknownKeys = true; coerceInputValues = true })
+            }
+        }
         val api = StoreApiClient(client = client)
-        val owner = StoreRootFilterOwner(api, ownerScope(), testFilterApi())
+        val filterApi = StoreFilterApiClient(endpoint = "https://example.test/query", client = filterClient)
+        val owner = StoreRootFilterOwner(api, ownerScope(), filterApi)
         val ready = observeOptionsState(owner) { it is StoreFilterOptionsState.Ready }
         owner.open(StoreRootFilterScope.CATALOG)
         assertIs<StoreFilterOptionsState.Ready>(ready.await())
@@ -283,103 +312,75 @@ class StoreRootFilterOwnerTest {
         assertTrue(owner.apply())
 
         val paginator = CatalogPaginatorStore<StoreProduct>(this) { it.id }
-        var loaderEntryCount = 0
-        suspend fun loadCatalogPage(page: Int, perPage: Int): CatalogPage<StoreProduct> {
-            loaderEntryCount++
-            val items = owner.loadProducts(page, perPage)
-            return CatalogPage(items = items, hasMore = items.size >= perPage)
-        }
+        suspend fun loadCatalogPage(page: Int, perPage: Int): CatalogPage<StoreProduct> =
+            owner.loadRootPage(page, perPage, StoreProductSortOption.RECENT)
+
         paginator.start(owner.queryKey(), ::loadCatalogPage)
         advanceUntilIdle()
-        val diagnosticMessage = buildString {
-            append("LOADER_ENTRY_COUNT=$loaderEntryCount; ")
-            append("PAGINATOR_INITIAL_ERROR=${paginator.state.value.initialError?.let { it::class.simpleName + ": " + it.message }}; ")
-            append("PAGINATOR_ITEMS=${paginator.state.value.items.size}; ")
-            append("PAGINATOR_HAS_MORE=${paginator.state.value.hasMore}; ")
-            append("PAGINATOR_IS_INITIAL_LOADING=${paginator.state.value.isInitialLoading}; ")
-            append("OWNER_QUERY_KEY=${owner.queryKey()}; ")
-            append("OWNER_STATE=${owner.state.value}; ")
-            append("OWNER_APPLIED_SIZES=${owner.state.value.appliedSizes}; ")
-            append("OWNER_APPLIED_COLORS=${owner.state.value.appliedColors}; ")
-            append("OWNER_APPLIED_BRANDS=${owner.state.value.appliedBrands}; ")
-            append("RESOLVED_SIZE_IDS=${owner.queryAttributeFilters().firstOrNull { it.taxonomy == "pa_tallas" }?.termIds}; ")
-            append("RESOLVED_COLOR_IDS=${owner.queryAttributeFilters().firstOrNull { it.taxonomy == "pa_color" }?.termIds}; ")
-            append("RESOLVED_BRAND_IDS=${owner.queryTagIds()}; ")
-            append("PRODUCT_REQUEST_CAPTURE_COUNT=${productRequests.size}")
-        }
-        assertEquals(
-            expected = 1,
-            actual = productRequests.size,
-            message = diagnosticMessage
-        )
-        assertEquals(expected = 12, actual = paginator.state.value.items.size, message = diagnosticMessage)
-        assertEquals(expected = true, actual = paginator.state.value.hasMore, message = diagnosticMessage)
+
+        assertEquals(1, productRequests.size)
+        assertEquals((1001..1012).toList(), paginator.state.value.items.map { it.id })
+        assertEquals(true, paginator.state.value.hasMore)
+        assertEquals(13, paginator.state.value.totalItems)
+        assertEquals(listOf(1), filterRequests.filter { it["facet"] == null }.map { it["page"]?.toInt() })
+        val catalogFirstQuery = filterRequests.last { it["facet"] == null }
+        assertEquals("catalog", catalogFirstQuery["scope"])
+        assertEquals("12", catalogFirstQuery["per_page"])
+        assertEquals("newest", catalogFirstQuery["sort"])
+        assertEquals("342", catalogFirstQuery["size_ids"])
+        assertEquals("353", catalogFirstQuery["color_ids"])
+        assertEquals("777", catalogFirstQuery["brand_ids"])
+
+        val catalogBatch = productRequests.single()
+        assertEquals((1001..1012).joinToString(","), catalogBatch["include"])
+        assertEquals("include", catalogBatch["orderby"])
+        assertEquals("12", catalogBatch["per_page"])
+        assertEquals(null, catalogBatch["page"])
+        assertEquals(null, catalogBatch["category"])
+        assertEquals(null, catalogBatch["size_taxonomy"])
+        assertEquals(null, catalogBatch["size_ids"])
+        assertEquals(null, catalogBatch["color_taxonomy"])
+        assertEquals(null, catalogBatch["color_ids"])
+        assertEquals(null, catalogBatch["tag_ids"])
 
         paginator.loadNext(::loadCatalogPage)
         advanceUntilIdle()
 
-        val page2DiagnosticMessage = buildString {
-            append("LOADER_ENTRY_COUNT_TOTAL=$loaderEntryCount; ")
-            append("PAGINATOR_ITEMS_AFTER_PAGE2=${paginator.state.value.items.size}; ")
-            append("PAGINATOR_CURRENT_PAGE_AFTER_PAGE2=${paginator.state.value.currentPage}; ")
-            append("PAGINATOR_HAS_MORE_AFTER_PAGE2=${paginator.state.value.hasMore}; ")
-            append("PAGINATOR_IS_APPENDING_AFTER_PAGE2=${paginator.state.value.isAppending}; ")
-            append("PAGINATOR_APPEND_ERROR=${paginator.state.value.appendError?.let { it::class.simpleName + ": " + it.message }}; ")
-            append("PRODUCT_REQUEST_CAPTURE_COUNT=${productRequests.size}; ")
-            append("CAPTURED_REQUEST_PAGES=${productRequests.map { it["page"] }}; ")
-            append("CAPTURED_REQUEST_PER_PAGE_VALUES=${productRequests.map { it["per_page"] }}; ")
-            append("OWNER_QUERY_KEY=${owner.queryKey()}")
-        }
-        assertEquals(
-            expected = 2,
-            actual = productRequests.size,
-            message = page2DiagnosticMessage
-        )
-        assertEquals(expected = 2, actual = loaderEntryCount, message = page2DiagnosticMessage)
-        assertEquals(expected = 13, actual = paginator.state.value.items.size, message = page2DiagnosticMessage)
-        assertEquals(expected = 2, actual = paginator.state.value.currentPage, message = page2DiagnosticMessage)
-        assertEquals(expected = false, actual = paginator.state.value.hasMore, message = page2DiagnosticMessage)
-        assertEquals(expected = false, actual = paginator.state.value.isAppending, message = page2DiagnosticMessage)
-
-        val catalogFirst = productRequests[0]
-        assertEquals("1", catalogFirst["page"])
-        assertEquals("12", catalogFirst["per_page"])
-        assertEquals(null, catalogFirst["category"])
-        assertEquals("pa_tallas", catalogFirst["size_taxonomy"])
-        assertEquals("342", catalogFirst["size_ids"])
-        assertEquals("pa_color", catalogFirst["color_taxonomy"])
-        assertEquals("353", catalogFirst["color_ids"])
-        assertEquals("777", catalogFirst["tag_ids"])
-
-        val catalogSecond = productRequests[1]
-        assertEquals("2", catalogSecond["page"])
-        assertEquals("12", catalogSecond["per_page"])
-        assertEquals(null, catalogSecond["category"])
-        assertEquals("342", catalogSecond["size_ids"])
-        assertEquals("353", catalogSecond["color_ids"])
-        assertEquals("777", catalogSecond["tag_ids"])
+        assertEquals(2, productRequests.size)
+        assertEquals(13, paginator.state.value.items.size)
+        assertEquals((1001..1012).toList() + 2001, paginator.state.value.items.map { it.id })
+        assertEquals(2, paginator.state.value.currentPage)
+        assertEquals(false, paginator.state.value.hasMore)
+        assertEquals(false, paginator.state.value.isAppending)
+        assertEquals(null, paginator.state.value.appendError)
+        assertEquals(listOf("1", "2"), filterRequests.filter { it["facet"] == null }.map { it["page"] })
+        assertEquals(listOf("12", "12"), filterRequests.filter { it["facet"] == null }.map { it["per_page"] })
+        assertEquals("2001", productRequests[1]["include"])
+        assertEquals("include", productRequests[1]["orderby"])
+        assertEquals("1", productRequests[1]["per_page"])
 
         owner.open(StoreRootFilterScope.OUTLET)
+        advanceUntilIdle()
+        assertIs<StoreFilterOptionsState.Ready>(owner.state.value.optionsState)
         owner.changeSizes(setOf("3XL"))
         owner.changeColors(setOf("Azul"))
         owner.changeBrands(setOf("Marca"))
         assertTrue(owner.apply())
         paginator.start(owner.queryKey()) { page, perPage ->
-            CatalogPage(owner.loadProducts(page, perPage), hasMore = false)
+            owner.loadRootPage(page, perPage, StoreProductSortOption.RECENT)
         }
         advanceUntilIdle()
 
+        val outletQuery = filterRequests.last { it["facet"] == null }
+        assertEquals("outlet", outletQuery["scope"])
+        assertEquals("1", outletQuery["page"])
+        assertEquals("342", outletQuery["size_ids"])
+        assertEquals("353", outletQuery["color_ids"])
+        assertEquals("777", outletQuery["brand_ids"])
         assertEquals(3, productRequests.size)
-        val outletFirst = productRequests[2]
-        assertEquals("1", outletFirst["page"])
-        assertEquals("12", outletFirst["per_page"])
-        assertEquals("445", outletFirst["category"])
-        assertEquals("pa_tallas", outletFirst["size_taxonomy"])
-        assertEquals("342", outletFirst["size_ids"])
-        assertEquals("pa_color", outletFirst["color_taxonomy"])
-        assertEquals("353", outletFirst["color_ids"])
-        assertEquals("777", outletFirst["tag_ids"])
+        assertEquals((1001..1012).joinToString(","), productRequests[2]["include"])
         api.close()
+        filterApi.close()
     }
 
 }
