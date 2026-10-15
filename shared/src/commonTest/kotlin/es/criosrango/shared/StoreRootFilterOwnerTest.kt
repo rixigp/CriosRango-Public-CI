@@ -8,18 +8,46 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
-import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class StoreRootFilterOwnerTest {
+    /**
+     * Keep owner jobs on the test scheduler and under backgroundScope so their
+     * lifecycle is owned by runTest and cancelled deterministically at teardown.
+     */
+    private fun TestScope.ownerScope(): CoroutineScope =
+        CoroutineScope(
+            SupervisorJob(backgroundScope.coroutineContext[Job]) +
+                StandardTestDispatcher(testScheduler)
+        )
+
+    private fun TestScope.observeOptionsState(
+        owner: StoreRootFilterOwner,
+        predicate: (StoreFilterOptionsState) -> Boolean
+    ) = async(start = CoroutineStart.UNDISPATCHED) {
+        withTimeout(5_000L) {
+            owner.state.map { it.optionsState }.first(predicate)
+        }
+    }
+
     @Test fun metadata_is_global_cached_and_root_draft_never_requests_products() = runTest {
         var products = 0; var attrs = 0; var sizeTerms = 0; var colorTerms = 0; var tags = 0
         val client = HttpClient(MockEngine { req ->
@@ -40,19 +68,24 @@ class StoreRootFilterOwnerTest {
             }
         }
         val api = StoreApiClient(client = client)
-        val owner = StoreRootFilterOwner(api, CoroutineScope(StandardTestDispatcher(testScheduler)))
+        val owner = StoreRootFilterOwner(api, ownerScope())
+
+        val initialReady = observeOptionsState(owner) { it is StoreFilterOptionsState.Ready }
         owner.open(StoreRootFilterScope.CATALOG)
-        advanceUntilIdle()
+        val options = assertIs<StoreFilterOptionsState.Ready>(initialReady.await()).options
         assertEquals(0, products)
-        val options = (owner.state.value.optionsState as StoreFilterOptionsState.Ready).options
         assertEquals(4, options.sizes.single().id); assertEquals("pa_tallas", options.sizes.single().taxonomy)
         assertEquals("m", options.sizes.single().slug)
         assertEquals(9, options.colors.single().id); assertEquals(12, options.brands.single().id)
+
         owner.changeSizes(setOf("M")); owner.changeColors(setOf("Negro")); owner.changeBrands(setOf("Marca"))
         assertEquals(0, products)
         owner.cancel()
         assertEquals(0, products)
+
+        val reopenedReady = observeOptionsState(owner) { it is StoreFilterOptionsState.Ready }
         owner.open(StoreRootFilterScope.OUTLET)
+        assertIs<StoreFilterOptionsState.Ready>(reopenedReady.await())
         assertEquals(1, attrs); assertEquals(1, sizeTerms); assertEquals(1, colorTerms); assertEquals(1, tags)
         owner.apply()
         assertFalse(owner.state.value.resultsVisible); assertEquals(0, products)
@@ -71,6 +104,7 @@ class StoreRootFilterOwnerTest {
 
     @Test fun missing_global_attribute_reports_the_actual_metadata_names_and_can_retry() = runTest {
         var requests = 0
+        var products = 0
         val client = HttpClient(MockEngine { req ->
             when {
                 req.url.encodedPath.endsWith("/products/attributes") -> {
@@ -80,6 +114,7 @@ class StoreRootFilterOwnerTest {
                 req.url.encodedPath.endsWith("/products/attributes/17/terms") -> respond("[]", HttpStatusCode.OK, headersOf("Content-Type","application/json"))
                 req.url.encodedPath.endsWith("/products/attributes/29/terms") -> respond("[]", HttpStatusCode.OK, headersOf("Content-Type","application/json"))
                 req.url.encodedPath.endsWith("/products/tags") -> respond("[]", HttpStatusCode.OK, headersOf("Content-Type","application/json"))
+                req.url.encodedPath.endsWith("/products") -> { products++; respond("[]", HttpStatusCode.OK, headersOf("Content-Type","application/json")) }
                 else -> respond("[]", HttpStatusCode.OK, headersOf("Content-Type","application/json"))
             }
         }) {
@@ -91,16 +126,22 @@ class StoreRootFilterOwnerTest {
             }
         }
         val api = StoreApiClient(client = client)
-        val owner = StoreRootFilterOwner(api, CoroutineScope(StandardTestDispatcher(testScheduler)))
+        val owner = StoreRootFilterOwner(api, ownerScope())
+
+        val initialError = observeOptionsState(owner) { it is StoreFilterOptionsState.Error }
         owner.open(StoreRootFilterScope.OUTLET)
-        advanceUntilIdle()
-        val error = owner.state.value.optionsState as StoreFilterOptionsState.Error
+        val error = assertIs<StoreFilterOptionsState.Error>(initialError.await())
         assertTrue(error.message.contains("Size"))
         assertFalse(owner.state.value.resultsVisible)
+
+        val retriedReady = observeOptionsState(owner) { it is StoreFilterOptionsState.Ready }
         owner.retry()
-        advanceUntilIdle()
-        assertTrue(owner.state.value.optionsState is StoreFilterOptionsState.Ready)
+        val ready = assertIs<StoreFilterOptionsState.Ready>(retriedReady.await())
+        assertTrue(ready.options.sizes.isEmpty().not())
+        assertTrue(ready.options.colors.isEmpty().not())
         assertEquals(StoreRootFilterScope.OUTLET, owner.state.value.scope)
+        assertFalse(owner.state.value.resultsVisible)
+        assertEquals(0, products)
         api.close()
     }
 }
