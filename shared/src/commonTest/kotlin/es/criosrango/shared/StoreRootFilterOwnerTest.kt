@@ -17,7 +17,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.flow.first
@@ -305,8 +304,18 @@ class StoreRootFilterOwnerTest {
         fixture.owner.changeSizes(setOf("3XL"))
         fixture.owner.changeColors(setOf("Azul"))
         fixture.owner.changeBrands(setOf("Marca"))
+        val firstPageReady = async(start = CoroutineStart.UNDISPATCHED) {
+            fixture.owner.state
+                .map { it.paging }
+                .first {
+                    it.currentPage == 1 &&
+                        !it.isInitialLoading &&
+                        !it.isAppending
+                }
+        }
         assertTrue(fixture.owner.apply())
-        advanceUntilIdle()
+        firstPageReady.await()
+
         fixture.filterRequests.clear()
         fixture.productRequests.clear()
     }
