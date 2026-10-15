@@ -260,7 +260,7 @@ fun outletCatalogFilterKey(value: String): String {
                 'ŵ' -> append('w')
                 'ý', 'ÿ', 'ŷ' -> append('y')
                 'ź', 'ż', 'ž' -> append('z')
-                in '\\u0300'..'\\u036F' -> Unit
+                in '\u0300'..'\u036F' -> Unit
                 else -> append(character)
             }
         }
