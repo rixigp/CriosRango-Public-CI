@@ -1,0 +1,158 @@
+name: CI-only Live WooCommerce Filter Forensic
+
+on:
+  push:
+    branches: [live-filter-forensic-ci-only]
+    paths: [.github/workflows/ci-only-live-filter-forensic.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-filter-forensic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout frozen application candidate
+        uses: actions/checkout@v4
+        with:
+          ref: b9dc0a8bb3776634c81f73152ddc0e1b43a1a251
+          path: frozen-app
+      - name: Probe production Store API with GET only
+        shell: bash
+        run: |
+          mkdir -p forensic
+          cat > forensic_probe.py <<'PY'
+          import json, os, re, ssl, urllib.error, urllib.parse, urllib.request
+          from pathlib import Path
+          OUT=Path("forensic"); OUT.mkdir(exist_ok=True)
+          BASE="https://www.criosrango.es/wp-json/wc/store/v1"
+          report=["FROZEN_APPLICATION_SHA=b9dc0a8bb3776634c81f73152ddc0e1b43a1a251","METHOD=GET_ONLY"]
+          def norm(x): return re.sub(r"[^a-z0-9]", "", str(x or "").lower())
+          def request(name, path, params=None):
+              url=BASE+path
+              if params:
+                  url += ("&" if "?" in url else "?")+urllib.parse.urlencode(params, doseq=True)
+              (OUT/(name+".url")).write_text(url)
+              req=urllib.request.Request(url, headers={"User-Agent":"CriosRango-read-only-filter-forensic/1.0","Accept":"application/json"}, method="GET")
+              status=0; raw=b""; err=""
+              try:
+                  with urllib.request.urlopen(req, timeout=35) as r:
+                      status=r.status; raw=r.read()
+                      headers="".join(f"{k}: {v}\n" for k,v in r.headers.items())
+              except urllib.error.HTTPError as e:
+                  status=e.code; raw=e.read(); headers="".join(f"{k}: {v}\n" for k,v in e.headers.items()); err=f"HTTPError {e.code}"
+              except Exception as e:
+                  headers=""; err=f"{type(e).__name__}: {e}"
+              (OUT/(name+".http-status")).write_text(str(status))
+              (OUT/(name+".headers")).write_text(headers)
+              (OUT/(name+".body")).write_bytes(raw)
+              (OUT/(name+".error.txt")).write_text(err)
+              try: data=json.loads(raw.decode("utf-8"))
+              except Exception: data=None
+              if data is not None: (OUT/(name+".json")).write_text(json.dumps(data,ensure_ascii=False,indent=2))
+              report.append(f"{name}: HTTP_STATUS={status or '000'} ERROR={err or 'NONE'} URL={url}")
+              return status,data,raw
+          def total(name,data):
+              try: return int((OUT/(name+".headers")).read_text().lower().split("x-wp-total:",1)[1].splitlines()[0].strip())
+              except Exception: return len(data) if isinstance(data,list) else "UNAVAILABLE"
+          def product_query(name, params):
+              status,data,_=request(name,"/products",params)
+              n=total(name,data)
+              report.append(f"{name}_TOTAL={n}")
+              return status,data,n
+          s_attr, attrs,_=request("attributes","/products/attributes",[("per_page","100")])
+          t_status,tags,_=request("tags","/products/tags",[("per_page","100")])
+          c_status,collection,_=request("collection_data_base","/products/collection-data")
+          report += [f"ATTRIBUTES_HTTP_STATUS={s_attr}",f"TAGS_HTTP_STATUS={t_status}",f"COLLECTION_DATA_HTTP_STATUS={c_status}"]
+          size=color=None; st=[]; ct=[]
+          if s_attr==200 and isinstance(attrs,list):
+              for a in attrs:
+                  n=norm(a.get("name"))
+                  if size is None and n in ("talla","tallas","size","sizes"): size=a
+                  if color is None and n in ("color","colores","colour"): color=a
+          report += [f"SIZE_ATTRIBUTE_ID={size.get('id') if size else 'UNRESOLVED'}",f"SIZE_ATTRIBUTE_NAME={size.get('name') if size else 'UNRESOLVED'}",f"SIZE_ATTRIBUTE_TAXONOMY={size.get('taxonomy') if size else 'UNRESOLVED'}",f"COLOR_ATTRIBUTE_ID={color.get('id') if color else 'UNRESOLVED'}",f"COLOR_ATTRIBUTE_NAME={color.get('name') if color else 'UNRESOLVED'}",f"COLOR_ATTRIBUTE_TAXONOMY={color.get('taxonomy') if color else 'UNRESOLVED'}"]
+          if size: _,st,_=request("size_terms",f"/products/attributes/{size['id']}/terms",[("per_page","100")])
+          if color: _,ct,_=request("color_terms",f"/products/attributes/{color['id']}/terms",[("per_page","100")])
+          st=st if isinstance(st,list) else []; ct=ct if isinstance(ct,list) else []
+          def matches(terms,label): return [x for x in terms if norm(x.get("name"))==norm(label) or norm(x.get("slug"))==norm(label)]
+          one=matches(st,"1M"); xxxl=matches(st,"XXXL"); azul=matches(ct,"Azul")
+          for label,records,prefix in [("1M",one,"SIZE_1M"),("XXXL",xxxl,"SIZE_XXXL"),("AZUL",azul,"COLOR_AZUL")]:
+              report += [f"{prefix}_RECORDS={json.dumps(records,ensure_ascii=False)}",f"{prefix}_TERM_IDS={json.dumps([x.get('id') for x in records])}",f"{prefix}_SLUGS={json.dumps([x.get('slug') for x in records],ensure_ascii=False)}"]
+          def attr_params(attr_index,tax,ids,encoding="array"):
+              p=[(f"attributes[{attr_index}][attribute]",tax)]
+              if encoding=="comma": p.append((f"attributes[{attr_index}][term_id]",",".join(map(str,ids))))
+              elif encoding=="array":
+                  p.extend((f"attributes[{attr_index}][term_id][]",str(i)) for i in ids)
+              else:
+                  if ids: p.append((f"attributes[{attr_index}][term_id]",str(ids[0])))
+              return p
+          ids1=[x["id"] for x in one]; idx=[x["id"] for x in xxxl]; ida=[x["id"] for x in azul]
+          if size and color and ids1 and ida:
+              baseq=attr_params(0,size["taxonomy"],ids1)+attr_params(1,color["taxonomy"],ida)
+              for label,rel in [("omitted",None),("and","and"),("in","in")]:
+                  p=[("per_page","100")]+baseq
+                  if rel: p.append(("attribute_relation",rel))
+                  _,data,n=product_query("relation_"+label,p)
+                  report.append(f"QUERY_{label.upper()}_HTTP_STATUS={(OUT/('relation_'+label+'.http-status')).read_text()}")
+              report.append("DEPLOYED_DEFAULT_ATTRIBUTE_RELATION=COMPARE saved relation_omitted/and/in totals and bodies")
+          else: report.append("RELATION_PROBE=SKIPPED; missing live taxonomy or terms")
+          _,r4243,_=product_query("search_4243",[("per_page","100"),("search","4243")])
+          _,rtricot,_=product_query("search_tricot_ruiz",[("per_page","100"),("search","Tricot Ruiz")])
+          found={}
+          for arr in (r4243,rtricot):
+              if isinstance(arr,list):
+                  for p in arr:
+                      if "4243" in norm(p.get("name")) or "tricotruiz" in norm(p.get("name")):
+                          found[p.get("id")]=p
+          (OUT/"jersey_candidates.json").write_text(json.dumps(list(found.values()),ensure_ascii=False,indent=2))
+          report.append("JERSEY_CANDIDATES="+json.dumps([{k:p.get(k) for k in ("id","name","slug","type","sku","attributes","variations")} for p in found.values()],ensure_ascii=False))
+          variations=[]
+          for parent in found.values():
+              parent_id=parent.get("id")
+              for vid in parent.get("variations",[]) or []:
+                  status,v,_=request("variation_"+str(vid),f"/products/{vid}")
+                  if isinstance(v,list): v=v[0] if v else {}
+                  if not isinstance(v,dict): v={}
+                  variations.append({"parent_id":parent_id,"requested_id":vid,"http_status":status,"record":v})
+          (OUT/"jersey_variations.json").write_text(json.dumps(variations,ensure_ascii=False,indent=2))
+          report.append("VARIATION_RECORDS="+json.dumps([{"parent_id":v["parent_id"],"requested_id":v["requested_id"],"http_status":v["http_status"],"record":{k:v["record"].get(k) for k in ("id","name","type","sku","attributes","is_in_stock","is_purchasable","stock_status","prices")}} for v in variations],ensure_ascii=False))
+          xxxl_valid=[]
+          for v in variations:
+              rec=v["record"]
+              if any(norm(a.get("value"))=="xxxl" or norm(a.get("slug"))=="xxxl" for a in (rec.get("attributes") or []) if isinstance(a,dict)):
+                  xxxl_valid.append(v)
+          report.append(f"XXXL_VARIATION_COUNT={len(xxxl_valid)}")
+          report.append("XXXL_VARIATIONS="+json.dumps([{"id":v["requested_id"],"attributes":v["record"].get("attributes"),"is_purchasable":v["record"].get("is_purchasable"),"is_in_stock":v["record"].get("is_in_stock"),"stock_status":v["record"].get("stock_status")} for v in xxxl_valid],ensure_ascii=False))
+          report.append("VALID_PURCHASABLE_XXXL_VARIATION_EXISTS="+("YES" if any(v["record"].get("is_purchasable") is True and v["record"].get("is_in_stock") is True for v in xxxl_valid) else ("NO" if xxxl_valid else "UNVERIFIED")))
+          if size and idx:
+              _,app,napp=product_query("xxxl_app_encoding",[("per_page","100")]+attr_params(0,size["taxonomy"],idx,"comma"))
+              _,can,ncan=product_query("xxxl_canonical_encoding",[("per_page","100")]+attr_params(0,size["taxonomy"],idx,"array"))
+              report += [f"CURRENT_APP_XXXL_TOTAL={napp}",f"CANONICAL_XXXL_TOTAL={ncan}",f"CURRENT_APP_XXXL_RETURNS_JERSEY={'YES' if isinstance(app,list) and any(x.get('id') in found for x in app) else 'NO' if isinstance(app,list) else 'UNVERIFIED'}",f"CANONICAL_XXXL_RETURNS_JERSEY={'YES' if isinstance(can,list) and any(x.get('id') in found for x in can) else 'NO' if isinstance(can,list) else 'UNVERIFIED'}"]
+              for tid in idx:
+                  _,individual,ni=product_query("xxxl_term_"+str(tid),[("per_page","100")]+attr_params(0,size["taxonomy"],[tid],"array"))
+                  report.append(f"XXXL_TERM_{tid}_RETURNS_JERSEY={'YES' if isinstance(individual,list) and any(x.get('id') in found for x in individual) else 'NO' if isinstance(individual,list) else 'UNVERIFIED'}")
+          # Native facets; store each full response. Use array-form parameters for count taxonomies and selected filters.
+          if size and color:
+              facetbase=[("calculate_attribute_counts[]",size["taxonomy"]),("calculate_attribute_counts[]",color["taxonomy"]),("calculate_taxonomy_counts[]","product_tag")]
+              _,basefac,_=request("collection_data_facets","/products/collection-data",facetbase)
+              _,colfac,_=request("color_counts_given_1m","/products/collection-data",facetbase+attr_params(0,size["taxonomy"],ids1))
+              _,sizefac,_=request("size_counts_given_azul","/products/collection-data",facetbase+attr_params(0,color["taxonomy"],ida))
+              _,xxfac,_=request("collection_data_xxxl","/products/collection-data",[("calculate_attribute_counts[]",size["taxonomy"])]+attr_params(0,size["taxonomy"],idx))
+              report += [f"COLLECTION_DATA_BASE_STATUS={(OUT/'collection_data_facets.http-status').read_text()}",f"COLOR_COUNTS_GIVEN_1M_STATUS={(OUT/'color_counts_given_1m.http-status').read_text()}",f"SIZE_COUNTS_GIVEN_AZUL_STATUS={(OUT/'size_counts_given_azul.http-status').read_text()}",f"COLLECTION_DATA_XXXL_STATUS={(OUT/'collection_data_xxxl.http-status').read_text()}"]
+              for name,data in [("BASE",basefac),("COLOR_GIVEN_1M",colfac),("SIZE_GIVEN_AZUL",sizefac),("XXXL",xxfac)]:
+                  report.append("COLLECTION_DATA_"+name+"_BODY="+json.dumps(data,ensure_ascii=False)[:6000])
+          report += ["RAW_RESPONSES=forensic/*.json, *.body, *.headers, *.error.txt", "NOTE=HTTP 000 denotes connection/DNS/TLS failure, not application failure."]
+          (OUT/"report.txt").write_text("\n".join(report)+"\n")
+          print("\n".join(report))
+          PY
+          python3 forensic_probe.py
+      - name: Upload raw live evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-filter-forensic-evidence
+          path: forensic/
+          if-no-files-found: warn
+          retention-days: 14
