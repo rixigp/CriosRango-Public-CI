@@ -15,6 +15,7 @@ on:
     branches:
       - kmp-migration
       - compose-multiplatform-convergence
+      - root-filter-physical-diag-tmp
     paths:
       - "app/**"
       - "shared/**"
