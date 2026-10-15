@@ -5,11 +5,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
@@ -191,7 +193,22 @@ fun StoreRootFilterResultsScreen(owner: StoreRootFilterOwner, padding: PaddingVa
     val s by owner.state.collectAsState()
     val rootScope = s.scope ?: return
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
-    val paginator = remember(owner.queryKey()) { CatalogPaginatorStore<StoreProduct>(coroutineScope, pageSize = CatalogPaginator.PAGE_SIZE) { it.id } }
+    val paginator = remember(owner.queryKey()) {
+        CatalogPaginatorStore<StoreProduct>(
+            coroutineScope,
+            pageSize = CatalogPaginator.PAGE_SIZE,
+            identity = { it.id },
+            onPublish = { _, state ->
+                RootFilterDiagnosticTelemetry.paginatorPublished(
+                    count = state.items.size,
+                    ids = state.items.joinToString(",") { it.id.toString() },
+                    hasMore = state.hasMore,
+                    initialLoading = state.isInitialLoading,
+                    error = state.initialError?.message ?: state.appendError?.message ?: "none"
+                )
+            }
+        )
+    }
     val pageState by paginator.state.collectAsState()
     val grid = rememberLazyGridState()
     var sort by remember(owner.queryKey()) { mutableStateOf(StoreProductSortOption.RECENT) }
@@ -228,8 +245,18 @@ fun StoreRootFilterResultsScreen(owner: StoreRootFilterOwner, padding: PaddingVa
             }
         }
     }
+    androidx.compose.runtime.SideEffect {
+        RootFilterDiagnosticTelemetry.display(
+            count = displayed.size,
+            ids = displayed.joinToString(",") { it.id.toString() },
+            empty = listState.isEmpty
+        )
+    }
+    androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().padding(padding)) {
+        RootFilterDiagnosticPanel()
+        androidx.compose.foundation.layout.Box(Modifier.weight(1f).fillMaxWidth()) {
     StoreProductListScreen(
-        state = listState, gridState = grid, modifier = Modifier.fillMaxSize().padding(padding),
+        state = listState, gridState = grid, modifier = Modifier.fillMaxSize(),
         onBack = owner::backFromResults,
         onProductSelected = { id -> pageState.items.firstOrNull { it.id == id }?.let(onProduct) },
         onSortSelected = { sort = it },
@@ -247,4 +274,29 @@ fun StoreRootFilterResultsScreen(owner: StoreRootFilterOwner, padding: PaddingVa
             RemoteStoreImage(product?.images?.firstOrNull()?.src.orEmpty(), item.nameText, imageModifier, androidx.compose.ui.layout.ContentScale.Crop)
         }
     )
+        }
+    }
+}
+
+@Composable
+private fun RootFilterDiagnosticPanel() {
+    val d by RootFilterDiagnosticTelemetry.state.collectAsState()
+    androidx.compose.foundation.layout.Column(
+        Modifier.fillMaxWidth()
+            .background(androidx.compose.ui.graphics.Color(0xFFEAF0EF))
+            .padding(horizontal = 7.dp, vertical = 5.dp)
+    ) {
+        Text("FILTER DIAG  |  SHA: ${ROOT_FILTER_DIAG_BASE_SHA.take(12)}  |  Build: ${ROOT_FILTER_DIAG_BUILD_ID}")
+        Text("Scope: ${d.scope}  |  Page: ${d.page ?: "—"}/${d.perPage ?: "—"}  |  Category: ${d.category ?: "null"}")
+        Text("Size: ${d.sizeNames} [${d.sizeIds}]  |  Color: ${d.colorNames} [${d.colorIds}]")
+        Text("Brand: ${d.brandNames} [${d.brandIds}]  |  Tags: ${d.tagFilters}")
+        Text("Attrs: ${d.attributeFilters}")
+        Text("HTTP: ${d.httpStatus}  |  Host: ${d.requestHost}")
+        Text("API: ${d.apiCount ?: "—"} [${d.apiIds}]")
+        Text("Paginator: ${d.paginatorCount ?: "—"} [${d.paginatorIds}]  |  More: ${d.hasMore ?: "—"}")
+        Text("Display: ${d.displayCount ?: "—"} [${d.displayIds}]  |  Empty: ${d.empty ?: "—"}")
+        Text("Error: ${d.apiError}; decode: ${d.decodeError}; paginator: ${d.paginatorError}")
+        Text("URL: ${d.requestUrl}", maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        Text("Key: ${d.queryKey}", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+    }
 }
