@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -204,17 +203,20 @@ private fun StoreCatalogFilterChoices(
                 leadingIcon = {
                     if (title.equals("Color", ignoreCase = true)) {
                         productColorSwatchMapping(value)?.let { swatch ->
-                            Box(
-                                modifier = Modifier
-                                    .size(18.dp)
-                                    .background(swatch, RoundedCornerShape(50)),
-                                contentAlignment = Alignment.Center
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .background(swatch, RoundedCornerShape(50))
+                                )
                                 if (value in selected) {
                                     Icon(
                                         Icons.Default.Check,
                                         contentDescription = null,
-                                        modifier = Modifier.fillMaxSize().padding(1.dp),
+                                        modifier = Modifier.size(16.dp),
                                         tint = MaterialTheme.colorScheme.onPrimary
                                     )
                                 }
