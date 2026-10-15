@@ -82,9 +82,20 @@ class StoreRootFilterOwner(private val api: StoreApiClient, private val scope: C
                     ?: throw IllegalStateException("No se encontró el atributo global Tallas; atributos recibidos: ${attrs.map { it.name }}")
                 val colorAttr = attrs.firstOrNull { canonical(it.name) in setOf("color", "colores") }
                     ?: throw IllegalStateException("No se encontró el atributo global Color; atributos recibidos: ${attrs.map { it.name }}")
-                val sizes = sizeAttr?.let { a -> api.globalAttributeTerms(a.id).map { it.toOption(a.taxonomy) } }.orEmpty()
-                val colors = colorAttr?.let { a -> api.globalAttributeTerms(a.id).map { it.toOption(a.taxonomy) } }.orEmpty()
-                val brands = api.productTags().map { StoreFilterOption(it.id, it.name, it.slug, count = it.count) }
+                val sizes = sizeAttr?.let { a ->
+                    api.globalAttributeTerms(a.id).map { it.toOption(a.taxonomy) }
+                }.orEmpty()
+                val colors = colorAttr?.let { a ->
+                    api.globalAttributeTerms(a.id).map { it.toOption(a.taxonomy) }
+                }.orEmpty()
+                val brands = api.productTags().map {
+                    StoreFilterOption(
+                        id = it.id,
+                        name = normalizeFilterMetadataDisplayName(it.name),
+                        slug = it.slug,
+                        count = it.count
+                    )
+                }
                 val options = StoreFilterOptions(sizes, colors, brands)
                 cachedOptions = options
                 mutableState.value = mutableState.value.copy(optionsState = StoreFilterOptionsState.Ready(options))
@@ -130,7 +141,14 @@ class StoreRootFilterOwner(private val api: StoreApiClient, private val scope: C
     }
     fun queryKey(): String { val s = mutableState.value; return "root-filter:${s.scope?.name}:${s.appliedSizes.sorted()}:${s.appliedColors.sorted()}:${s.appliedBrands.sorted()}" }
     private fun canonical(v: String) = v.lowercase().trim().replace("á","a").replace("é","e").replace("í","i").replace("ó","o").replace("ú","u").replace("à","a").replace("è","e").replace("ì","i").replace("ò","o").replace("ù","u")
-    private fun StoreGlobalAttributeTerm.toOption(taxonomy: String) = StoreFilterOption(id, name, slug, taxonomy, count)
+    private fun StoreGlobalAttributeTerm.toOption(taxonomy: String) =
+        StoreFilterOption(
+            id = id,
+            name = normalizeFilterMetadataDisplayName(name),
+            slug = slug,
+            taxonomy = taxonomy,
+            count = count
+        )
 }
 
 @Composable
