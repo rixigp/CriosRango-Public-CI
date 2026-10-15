@@ -113,8 +113,8 @@ jobs:
               parent_id=parent.get("id")
               for variation_stub in parent.get("variations",[]) or []:
                   vid=variation_stub.get("id") if isinstance(variation_stub,dict) else variation_stub
-              if not vid: continue
-              status,v,_=request("variation_"+str(vid),f"/products/{vid}")
+                  if not vid: continue
+                  status,v,_=request("variation_"+str(vid),f"/products/{vid}")
                   if isinstance(v,list): v=v[0] if v else {}
                   if not isinstance(v,dict): v={}
                   variations.append({"parent_id":parent_id,"requested_id":vid,"http_status":status,"record":v})
