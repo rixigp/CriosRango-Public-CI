@@ -23,6 +23,53 @@ jobs:
         shell: bash
         run: |
           mkdir -p forensic
+          cat > host_probe.py <<'PY'
+          import json, urllib.parse, urllib.request, urllib.error
+          from urllib.parse import urlparse
+          BASES = {
+              "NON_WWW": "https://criosrango.es/wp-json/wc/store/v1/products",
+              "WWW": "https://www.criosrango.es/wp-json/wc/store/v1/products",
+          }
+          QUERIES = {
+              "3XL": [("per_page","12"),("page","1"),("attributes[0][attribute]","pa_tallas"),("attributes[0][term_id]","342")],
+              "1M_AZUL": [("per_page","12"),("page","1"),("attributes[0][attribute]","pa_tallas"),("attributes[0][term_id]","101"),("attributes[1][attribute]","pa_color"),("attributes[1][term_id]","353")],
+          }
+          class TrackRedirect(urllib.request.HTTPRedirectHandler):
+              def __init__(self): super().__init__(); self.chain=[]
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  self.chain.append({"status":code,"from":req.full_url,"to":newurl})
+                  return super().redirect_request(req,fp,code,msg,headers,newurl)
+          out=[]
+          for host,base in BASES.items():
+              for case,params in QUERIES.items():
+                  initial=base+"?"+urllib.parse.urlencode(params)
+                  tracker=TrackRedirect(); opener=urllib.request.build_opener(tracker)
+                  status="000"; final="UNAVAILABLE"; body=b""; err="NONE"; headers={}
+                  try:
+                      req=urllib.request.Request(initial,headers={"User-Agent":"CriosRango-read-only-host-forensic/1.0","Accept":"application/json"},method="GET")
+                      with opener.open(req,timeout=12) as resp:
+                          status=resp.status; final=resp.geturl(); body=resp.read(); headers=dict(resp.headers.items())
+                  except urllib.error.HTTPError as e:
+                      status=e.code; final=e.geturl(); body=e.read(); headers=dict(e.headers.items()); err="HTTPError"
+                  except Exception as e:
+                      err=type(e).__name__+": "+str(e)
+                  try: data=json.loads(body.decode("utf-8"))
+                  except Exception: data=None
+                  ids=[p.get("id") for p in data] if isinstance(data,list) else []
+                  total=next((v for k,v in headers.items() if k.lower()=="x-wp-total"),"UNAVAILABLE")
+                  preserved=all(urllib.parse.parse_qs(urlparse(h["to"]).query)==urllib.parse.parse_qs(urlparse(h["from"]).query) for h in tracker.chain)
+                  record={"host":host,"case":case,"initial_url":initial,"status":status,"final_url":final,"redirect_chain":tracker.chain,"total":total,"product_ids":ids,"returns_57523":57523 in ids,"error":err,"redirect_query_preserved":preserved}
+                  out.append(record)
+                  print("HOST_PROBE="+json.dumps(record,separators=(",",":")))
+          by={(r["host"],r["case"]):r for r in out}
+          for case in QUERIES:
+              a,b=by[("NON_WWW",case)],by[("WWW",case)]
+              eq=(a["status"]==b["status"] and a["total"]==b["total"] and a["product_ids"]==b["product_ids"]) if a["status"]!="000" and b["status"]!="000" else "UNVERIFIED"
+              print(case+"_WWW_NON_WWW_EQUIVALENT="+str(eq))
+          print("REDIRECT_PRESERVES_ATTRIBUTE_QUERY_PARAMETERS="+("YES" if all(r["redirect_query_preserved"] for r in out if r["redirect_chain"]) else "NO" if any(not r["redirect_query_preserved"] for r in out) else "NO_REDIRECT_OBSERVED"))
+          PY
+          python host_probe.py
+          exit 0
           cat > forensic_probe.py <<'PY'
           import json, os, re, ssl, urllib.error, urllib.parse, urllib.request
           from pathlib import Path
