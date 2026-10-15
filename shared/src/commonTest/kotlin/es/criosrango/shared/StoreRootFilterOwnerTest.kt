@@ -16,9 +16,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
@@ -43,9 +41,7 @@ class StoreRootFilterOwnerTest {
         owner: StoreRootFilterOwner,
         predicate: (StoreFilterOptionsState) -> Boolean
     ) = async(start = CoroutineStart.UNDISPATCHED) {
-        withTimeout(5_000L) {
-            owner.state.map { it.optionsState }.first(predicate)
-        }
+        owner.state.map { it.optionsState }.first(predicate)
     }
 
     @Test fun metadata_is_global_cached_and_root_draft_never_requests_products() = runTest {
@@ -111,9 +107,9 @@ class StoreRootFilterOwnerTest {
                     requests++
                     respond(if (requests == 1) """[{"id":3,"name":"Size","taxonomy":"pa_size"}]""" else """[{"id":17,"name":"Tallas","taxonomy":"pa_tallas"},{"id":29,"name":"Color","taxonomy":"pa_color"}]""", HttpStatusCode.OK, headersOf("Content-Type","application/json"))
                 }
-                req.url.encodedPath.endsWith("/products/attributes/17/terms") -> respond("[]", HttpStatusCode.OK, headersOf("Content-Type","application/json"))
-                req.url.encodedPath.endsWith("/products/attributes/29/terms") -> respond("[]", HttpStatusCode.OK, headersOf("Content-Type","application/json"))
-                req.url.encodedPath.endsWith("/products/tags") -> respond("[]", HttpStatusCode.OK, headersOf("Content-Type","application/json"))
+                req.url.encodedPath.endsWith("/products/attributes/17/terms") -> respond("""[{"id":4,"name":"M","slug":"m","count":2}]""", HttpStatusCode.OK, headersOf("Content-Type","application/json"))
+                req.url.encodedPath.endsWith("/products/attributes/29/terms") -> respond("""[{"id":9,"name":"Negro","slug":"negro","count":2}]""", HttpStatusCode.OK, headersOf("Content-Type","application/json"))
+                req.url.encodedPath.endsWith("/products/tags") -> respond("""[{"id":12,"name":"Marca","slug":"marca","count":1}]""", HttpStatusCode.OK, headersOf("Content-Type","application/json"))
                 req.url.encodedPath.endsWith("/products") -> { products++; respond("[]", HttpStatusCode.OK, headersOf("Content-Type","application/json")) }
                 else -> respond("[]", HttpStatusCode.OK, headersOf("Content-Type","application/json"))
             }
@@ -132,6 +128,7 @@ class StoreRootFilterOwnerTest {
         owner.open(StoreRootFilterScope.OUTLET)
         val error = assertIs<StoreFilterOptionsState.Error>(initialError.await())
         assertTrue(error.message.contains("Size"))
+        assertTrue(error.message.contains("atributos recibidos"))
         assertFalse(owner.state.value.resultsVisible)
 
         val retriedReady = observeOptionsState(owner) { it is StoreFilterOptionsState.Ready }
@@ -139,6 +136,8 @@ class StoreRootFilterOwnerTest {
         val ready = assertIs<StoreFilterOptionsState.Ready>(retriedReady.await())
         assertTrue(ready.options.sizes.isEmpty().not())
         assertTrue(ready.options.colors.isEmpty().not())
+        assertEquals(12, ready.options.brands.single().id)
+        assertEquals(2, requests) // first attempt + retry; the handler serves updated valid metadata on retry.
         assertEquals(StoreRootFilterScope.OUTLET, owner.state.value.scope)
         assertFalse(owner.state.value.resultsVisible)
         assertEquals(0, products)
