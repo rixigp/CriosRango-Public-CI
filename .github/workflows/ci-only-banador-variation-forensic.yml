@@ -50,7 +50,10 @@ jobs:
           OUT=Path("forensic/live"); OUT.mkdir(parents=True,exist_ok=True)
           BASE="https://criosrango.es/wp-json/wc/store/v1"
           REPORT=[]
-          def norm(x):\n              s=html.unescape(str(x or ""))\n              s=unicodedata.normalize("NFKD",s).encode("ascii","ignore").decode("ascii")\n              return re.sub(r"[^a-z0-9]", "", s.lower())
+          def norm(x):
+              s=html.unescape(str(x or ""))
+              s=unicodedata.normalize("NFKD",s).encode("ascii","ignore").decode("ascii")
+              return re.sub(r"[^a-z0-9]", "", s.lower())
           def save(name, value):
               (OUT/(name+".json")).write_text(json.dumps(value,ensure_ascii=False,indent=2))
           def get(name,path,params=None,timeout=35):
