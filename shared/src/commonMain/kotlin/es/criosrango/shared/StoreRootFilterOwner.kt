@@ -288,7 +288,7 @@ fun StoreRootFilterResultsScreen(owner: StoreRootFilterOwner, padding: PaddingVa
         initialErrorMessage = pageState.initialError?.message, appendErrorMessage = pageState.appendError?.message,
         appendRetryLabel = "Reintentar", canLoadMore = pageState.hasMore
     )
-    LaunchedEffect(paginatorQueryKey) { paginator.start(paginatorQueryKey) { p, n -> owner.loadRootPage(p, n, sort) } }
+    LaunchedEffect(paginatorQueryKey) { paginator.start(owner.queryKey()) { p, n -> owner.loadRootPage(p, n, sort) } }
     LaunchedEffect(grid, pageState.items.size, pageState.hasMore, pageState.isInitialLoading, pageState.isAppending) {
         androidx.compose.runtime.snapshotFlow { grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }.collect { last ->
             if (pageState.hasMore && !pageState.isInitialLoading && !pageState.isAppending && last >= pageState.items.size - CatalogPaginator.PREFETCH_DISTANCE) {
@@ -308,7 +308,7 @@ fun StoreRootFilterResultsScreen(owner: StoreRootFilterOwner, padding: PaddingVa
             id.startsWith("brand:") -> owner.removeAppliedBrand(id.removePrefix("brand:"))
         } },
         onClearFilters = owner::clearApplied,
-        onRetryInitial = { paginator.start(paginatorQueryKey) { p, n -> owner.loadRootPage(p, n, sort) } },
+        onRetryInitial = { paginator.start(owner.queryKey()) { p, n -> owner.loadRootPage(p, n, sort) } },
         onRetryAppend = { paginator.loadNext { p, n -> owner.loadRootPage(p, n, sort) } },
         imageContent = { item, imageModifier ->
             val product = pageState.items.firstOrNull { it.id == item.id }
