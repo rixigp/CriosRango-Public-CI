@@ -14,6 +14,9 @@ import es.criosrango.shared.model.SelectShippingRateRequest
 import es.criosrango.shared.model.CheckoutResponse
 import es.criosrango.shared.model.CreateOrderRequest
 import es.criosrango.shared.model.StoreCategory
+import es.criosrango.shared.model.StoreGlobalAttribute
+import es.criosrango.shared.model.StoreGlobalAttributeTerm
+import es.criosrango.shared.model.StoreGlobalTag
 import es.criosrango.shared.model.StoreProduct
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -281,7 +284,9 @@ class StoreApiClient(
         order: String? = null,
         after: String? = null,
         featured: Boolean? = null,
-        tag: String? = null
+        tag: String? = null,
+        attributeFilters: List<StoreProductAttributeFilter> = emptyList(),
+        tagIds: List<Int> = emptyList()
     ): List<StoreProduct> =
         client.get("${baseUrl}products") {
             parameter("per_page", perPage)
@@ -293,7 +298,21 @@ class StoreApiClient(
             after?.let { parameter("after", it) }
             featured?.let { parameter("featured", it) }
             tag?.let { parameter("tag", it) }
+            tagIds.takeIf { it.isNotEmpty() }?.let { parameter("tag", it.joinToString(",")) }
+            attributeFilters.forEachIndexed { index, filter ->
+                parameter("attributes[$index][attribute]", filter.taxonomy)
+                parameter("attributes[$index][term_id]", filter.termIds.joinToString(","))
+            }
         }.body()
+
+    suspend fun globalAttributes(perPage: Int = 100): List<StoreGlobalAttribute> =
+        client.get("${baseUrl}products/attributes") { parameter("per_page", perPage) }.body()
+
+    suspend fun globalAttributeTerms(attributeId: Int, perPage: Int = 100): List<StoreGlobalAttributeTerm> =
+        client.get("${baseUrl}products/attributes/$attributeId/terms") { parameter("per_page", perPage) }.body()
+
+    suspend fun productTags(perPage: Int = 100): List<StoreGlobalTag> =
+        client.get("${baseUrl}products/tags") { parameter("per_page", perPage) }.body()
 
     suspend fun categories(perPage: Int = 100): List<StoreCategory> =
         client.get("${baseUrl}products/categories") { parameter("per_page", perPage) }.body()

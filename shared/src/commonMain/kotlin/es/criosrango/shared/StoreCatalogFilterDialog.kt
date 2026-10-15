@@ -30,7 +30,7 @@ fun StoreCatalogFilterDialog(
     showBrands: Boolean = true,
     onSizesChanged: (Set<String>) -> Unit, onColorsChanged: (Set<String>) -> Unit,
     onBrandsChanged: (Set<String>) -> Unit, onApply: () -> Unit,
-    onClear: () -> Unit, onDismiss: () -> Unit
+    onClear: () -> Unit, onDismiss: () -> Unit, onCancel: (() -> Unit)? = null
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -47,7 +47,12 @@ fun StoreCatalogFilterDialog(
             }
         },
         confirmButton = { TextButton(onClick = onApply) { Text("Aplicar") } },
-        dismissButton = { TextButton(onClick = onClear) { Text("Limpiar") } }
+        dismissButton = {
+            androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onClear) { Text("Limpiar") }
+                if (onCancel != null) TextButton(onClick = onCancel) { Text("Cancelar") }
+            }
+        }
     )
 }
 @OptIn(ExperimentalLayoutApi::class)

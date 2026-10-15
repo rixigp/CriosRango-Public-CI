@@ -435,6 +435,7 @@ internal fun IosOutletScreen(
     padding: PaddingValues,
     cartStore: StoreCartStore,
     controller: StoreOutletController,
+    onOpenRootFilter: () -> Unit = {},
     categories: List<StoreCategory>?,
     categoriesLoading: Boolean,
     categoriesError: String?,
@@ -501,12 +502,7 @@ internal fun IosOutletScreen(
                 controller.selectCategory(category.id)
                 showOutletChooser = false
             },
-            onFilterClick = {
-                val rootScope = StoreRootFilterScope.OUTLET
-                controller.selectCategory(rootScope.categoryQueryId!!)
-                showOutletChooser = false
-                filtersOpen = true
-            },
+            onFilterClick = onOpenRootFilter,
             showFilterButton = true,
             modifier = Modifier.fillMaxSize().padding(padding)
         )
