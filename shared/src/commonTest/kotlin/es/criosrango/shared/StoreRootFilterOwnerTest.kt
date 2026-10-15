@@ -192,6 +192,8 @@ class StoreRootFilterOwnerTest {
         assertEquals(listOf(9, 10), options.colors.map { it.id })
         assertEquals(listOf("V&L", "V&L"), options.brands.map { it.name })
         assertEquals(listOf(12, 13), options.brands.map { it.id })
+        assertEquals(listOf("V&L"), filterBrandDisplayNames(options.brands.map { it.name }, "v&l"))
+        assertEquals(0, products) // local search over loaded metadata never requests products
         assertEquals(listOf("v-l", "v-l-legacy"), options.brands.map { it.slug })
 
         owner.changeSizes(setOf("42"))
