@@ -27,7 +27,7 @@ jobs:
           import json, os, re, ssl, urllib.error, urllib.parse, urllib.request
           from pathlib import Path
           OUT=Path("forensic"); OUT.mkdir(exist_ok=True)
-          BASE="https://www.criosrango.es/wp-json/wc/store/v1"
+          BASE="https://criosrango.es/wp-json/wc/store/v1"
           report=["FROZEN_APPLICATION_SHA=b9dc0a8bb3776634c81f73152ddc0e1b43a1a251","METHOD=GET_ONLY"]
           def norm(x): return re.sub(r"[^a-z0-9]", "", str(x or "").lower())
           def request(name, path, params=None):
