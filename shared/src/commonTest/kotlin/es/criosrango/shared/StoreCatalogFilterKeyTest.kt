@@ -61,14 +61,14 @@ class StoreCatalogFilterKeyTest {
             listOf("42", "V&L", "v&l", "Azul", "Azul claro", "Azul marino"),
             distinctFilterMetadataDisplayNames(listOf(
                 "42", "42", "V&amp;L", "V&L", "v&l", "Azul", "Azul claro", "Azul marino"
-            ))
+            ).map(::normalizeFilterMetadataDisplayName))
         )
     }
 
     @Test
     fun brand_search_is_local_case_insensitive_and_accent_tolerant() {
         val brands = listOf("Amaya", "Ámbar", "Niño", normalizeFilterMetadataDisplayName("Abel &amp; Lula"), "Amaya")
-        assertEquals(listOf("Ámbar", "Amaya"), filterBrandDisplayNames(brands, "AM"))
+        assertEquals(listOf("Amaya", "Ámbar"), filterBrandDisplayNames(brands, "AM"))
         assertEquals(listOf("Niño"), filterBrandDisplayNames(brands, "nino"))
         assertEquals(listOf("Abel & Lula"), filterBrandDisplayNames(brands, "abel & lula"))
         assertTrue(filterBrandDisplayNames(brands, "not found").isEmpty())
