@@ -50,7 +50,7 @@ fun StoreCatalogFilterDialog(
 ) {
     var activeDimension by remember { mutableStateOf("Talla") }
     var brandQuery by remember { mutableStateOf("") }
-    val showBrandTab = showBrands && brands.isNotEmpty()
+    val showBrandTab = showBrands
     val activeTab = if (activeDimension == "Marca" && !showBrandTab) "Talla" else activeDimension
     val chipColors = FilterChipDefaults.filterChipColors(
         selectedContainerColor = MaterialTheme.colorScheme.primary,
