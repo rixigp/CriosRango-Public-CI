@@ -110,6 +110,7 @@ jobs:
           report.append("JERSEY_CANDIDATES="+json.dumps([{k:p.get(k) for k in ("id","name","slug","type","sku","attributes","variations")} for p in found.values()],ensure_ascii=False))
           variations=[]
           for parent in found.values():
+              if parent.get("slug") != "jersey-4243-tricot-ruiz": continue
               parent_id=parent.get("id")
               for variation_stub in parent.get("variations",[]) or []:
                   vid=variation_stub.get("id") if isinstance(variation_stub,dict) else variation_stub
