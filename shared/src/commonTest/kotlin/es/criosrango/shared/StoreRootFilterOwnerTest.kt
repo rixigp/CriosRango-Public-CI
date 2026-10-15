@@ -143,4 +143,72 @@ class StoreRootFilterOwnerTest {
         assertEquals(0, products)
         api.close()
     }
+
+    @Test fun duplicate_decoded_labels_keep_all_canonical_ids_for_queries() = runTest {
+        var products = 0
+        val client = HttpClient(MockEngine { req ->
+            when {
+                req.url.encodedPath.endsWith("/products/attributes") ->
+                    respond(
+                        """[{"id":17,"name":"Tallas","taxonomy":"pa_tallas"},{"id":29,"name":"Color","taxonomy":"pa_color"}]""",
+                        HttpStatusCode.OK, headersOf("Content-Type", "application/json")
+                    )
+                req.url.encodedPath.endsWith("/products/attributes/17/terms") ->
+                    respond(
+                        """[{"id":4,"name":"42","slug":"42","count":2},{"id":5,"name":"42","slug":"42-legacy","count":1}]""",
+                        HttpStatusCode.OK, headersOf("Content-Type", "application/json")
+                    )
+                req.url.encodedPath.endsWith("/products/attributes/29/terms") ->
+                    respond(
+                        """[{"id":9,"name":"Azul","slug":"azul","count":2},{"id":10,"name":"Azul","slug":"azul-legacy","count":1}]""",
+                        HttpStatusCode.OK, headersOf("Content-Type", "application/json")
+                    )
+                req.url.encodedPath.endsWith("/products/tags") ->
+                    respond(
+                        """[{"id":12,"name":"V&amp;L","slug":"v-l","count":2},{"id":13,"name":"V&L","slug":"v-l-legacy","count":1}]""",
+                        HttpStatusCode.OK, headersOf("Content-Type", "application/json")
+                    )
+                req.url.encodedPath.endsWith("/products") -> {
+                    products++
+                    respond("[]", HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
+                }
+                else -> respond("[]", HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
+            }
+        }) {
+            install(ContentNegotiation) {
+                json(Json { ignoreUnknownKeys = true; coerceInputValues = true })
+            }
+        }
+        val api = StoreApiClient(client = client)
+        val owner = StoreRootFilterOwner(api, ownerScope())
+        val readyState = observeOptionsState(owner) { it is StoreFilterOptionsState.Ready }
+        owner.open(StoreRootFilterScope.CATALOG)
+        val options = assertIs<StoreFilterOptionsState.Ready>(readyState.await()).options
+
+        assertEquals(listOf("42", "42"), options.sizes.map { it.name })
+        assertEquals(listOf(4, 5), options.sizes.map { it.id })
+        assertEquals(listOf("42", "42-legacy"), options.sizes.map { it.slug })
+        assertEquals(listOf("Azul", "Azul"), options.colors.map { it.name })
+        assertEquals(listOf(9, 10), options.colors.map { it.id })
+        assertEquals(listOf("V&L", "V&L"), options.brands.map { it.name })
+        assertEquals(listOf(12, 13), options.brands.map { it.id })
+        assertEquals(listOf("v-l", "v-l-legacy"), options.brands.map { it.slug })
+
+        owner.changeSizes(setOf("42"))
+        owner.changeColors(setOf("Azul"))
+        owner.changeBrands(setOf("V&L"))
+        assertEquals(0, products)
+        assertTrue(owner.apply())
+        assertEquals(
+            listOf(
+                StoreProductAttributeFilter("pa_tallas", listOf(4, 5)),
+                StoreProductAttributeFilter("pa_color", listOf(9, 10))
+            ),
+            owner.queryAttributeFilters()
+        )
+        assertEquals(listOf(12, 13), owner.queryTagIds())
+        assertEquals(0, products)
+        api.close()
+    }
+
 }
