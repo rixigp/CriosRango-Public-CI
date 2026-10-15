@@ -31,7 +31,8 @@ data class CatalogPagingState<T>(
  */
 class CatalogPaginator<T>(
     private val pageSize: Int = PAGE_SIZE,
-    private val identity: (T) -> Any
+    private val identity: (T) -> Any,
+    private val onPublish: ((String?, CatalogPagingState<T>) -> Unit)? = null
 ) {
     init {
         require(pageSize > 0)
@@ -57,6 +58,7 @@ class CatalogPaginator<T>(
             activeQueryKey = queryKey
             requestInFlight = true
             _state.value = CatalogPagingState(isInitialLoading = true)
+            onPublish?.invoke(queryKey, _state.value)
             generation
         }
 
@@ -73,6 +75,7 @@ class CatalogPaginator<T>(
                     totalItems = page.totalItems
                 )
                 requestInFlight = false
+                onPublish?.invoke(queryKey, _state.value)
             }
         } catch (error: Throwable) {
             mutex.withLock {
@@ -82,6 +85,7 @@ class CatalogPaginator<T>(
                     initialError = error
                 )
                 requestInFlight = false
+                onPublish?.invoke(queryKey, _state.value)
             }
         }
     }
@@ -100,6 +104,7 @@ class CatalogPaginator<T>(
 
             requestInFlight = true
             _state.value = current.copy(isAppending = true, appendError = null)
+            onPublish?.invoke(activeQueryKey, _state.value)
             Triple(generation, activeQueryKey, current.currentPage + 1)
         }
 
@@ -118,6 +123,7 @@ class CatalogPaginator<T>(
                     totalItems = page.totalItems ?: current.totalItems
                 )
                 requestInFlight = false
+                onPublish?.invoke(queryKey, _state.value)
             }
         } catch (error: Throwable) {
             mutex.withLock {
@@ -127,6 +133,7 @@ class CatalogPaginator<T>(
                     appendError = error
                 )
                 requestInFlight = false
+                onPublish?.invoke(queryKey, _state.value)
             }
         }
     }
