@@ -239,7 +239,16 @@ class StoreRootFilterOwnerTest {
                         "color_ids" to req.url.parameters["attributes[1][term_id]"],
                         "tag_ids" to req.url.parameters["tag"]
                     )
-                    respond("[]", HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
+                    val requestedPage = req.url.parameters["page"]?.toIntOrNull() ?: 1
+                    val syntheticIds = when (requestedPage) {
+                        1 -> (1001..1012).toList()
+                        2 -> listOf(2001)
+                        else -> emptyList()
+                    }
+                    val responseBody = syntheticIds.joinToString(prefix = "[", postfix = "]") { id ->
+                        """{"id":$id,"name":"Synthetic product $id"}"""
+                    }
+                    respond(responseBody, HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
                 }
                 else -> respond("[]", HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
             }
@@ -264,7 +273,7 @@ class StoreRootFilterOwnerTest {
         suspend fun loadCatalogPage(page: Int, perPage: Int): CatalogPage<StoreProduct> {
             loaderEntryCount++
             val items = owner.loadProducts(page, perPage)
-            return CatalogPage(items, hasMore = page == 1)
+            return CatalogPage(items = items, hasMore = items.size >= perPage)
         }
         paginator.start(owner.queryKey(), ::loadCatalogPage)
         advanceUntilIdle()
@@ -289,10 +298,35 @@ class StoreRootFilterOwnerTest {
             actual = productRequests.size,
             message = diagnosticMessage
         )
+        assertEquals(expected = 12, actual = paginator.state.value.items.size, message = diagnosticMessage)
+        assertEquals(expected = true, actual = paginator.state.value.hasMore, message = diagnosticMessage)
+
         paginator.loadNext(::loadCatalogPage)
         advanceUntilIdle()
 
-        assertEquals(2, productRequests.size)
+        val page2DiagnosticMessage = buildString {
+            append("LOADER_ENTRY_COUNT_TOTAL=$loaderEntryCount; ")
+            append("PAGINATOR_ITEMS_AFTER_PAGE2=${paginator.state.value.items.size}; ")
+            append("PAGINATOR_CURRENT_PAGE_AFTER_PAGE2=${paginator.state.value.currentPage}; ")
+            append("PAGINATOR_HAS_MORE_AFTER_PAGE2=${paginator.state.value.hasMore}; ")
+            append("PAGINATOR_IS_APPENDING_AFTER_PAGE2=${paginator.state.value.isAppending}; ")
+            append("PAGINATOR_APPEND_ERROR=${paginator.state.value.appendError?.let { it::class.simpleName + ": " + it.message }}; ")
+            append("PRODUCT_REQUEST_CAPTURE_COUNT=${productRequests.size}; ")
+            append("CAPTURED_REQUEST_PAGES=${productRequests.map { it["page"] }}; ")
+            append("CAPTURED_REQUEST_PER_PAGE_VALUES=${productRequests.map { it["per_page"] }}; ")
+            append("OWNER_QUERY_KEY=${owner.queryKey()}")
+        }
+        assertEquals(
+            expected = 2,
+            actual = productRequests.size,
+            message = page2DiagnosticMessage
+        )
+        assertEquals(expected = 2, actual = loaderEntryCount, message = page2DiagnosticMessage)
+        assertEquals(expected = 13, actual = paginator.state.value.items.size, message = page2DiagnosticMessage)
+        assertEquals(expected = 2, actual = paginator.state.value.currentPage, message = page2DiagnosticMessage)
+        assertEquals(expected = false, actual = paginator.state.value.hasMore, message = page2DiagnosticMessage)
+        assertEquals(expected = false, actual = paginator.state.value.isAppending, message = page2DiagnosticMessage)
+
         val catalogFirst = productRequests[0]
         assertEquals("1", catalogFirst["page"])
         assertEquals("12", catalogFirst["per_page"])
