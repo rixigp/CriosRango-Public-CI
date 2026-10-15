@@ -49,6 +49,7 @@ import androidx.compose.ui.window.DialogProperties
 @Composable
 internal fun IosCatalogScreen(
     storeApi: es.criosrango.shared.api.StoreApiClient,
+    rootFilterOwner: StoreRootFilterOwner,
     padding: PaddingValues,
     page: IosCatalogPage,
     cartStore: StoreCartStore,
@@ -65,7 +66,10 @@ internal fun IosCatalogScreen(
     categorySnapshotError: String?,
     onRetryCategorySnapshot: () -> Unit
 ) {
-    when (page) {
+    val rootFilterState by rootFilterOwner.state.collectAsState()
+    if (rootFilterState.resultsVisible && ((page == IosCatalogPage.Root && rootFilterState.scope == StoreRootFilterScope.CATALOG) || (page == IosCatalogPage.Outlet && rootFilterState.scope == StoreRootFilterScope.OUTLET))) {
+        StoreRootFilterResultsScreen(rootFilterOwner, padding, onOpenProduct)
+    } else when (page) {
         IosCatalogPage.Root -> IosCategoryRoot(padding, onOpenCategory, onOpenRootFilter, onBack, categorySnapshot.orEmpty(), categorySnapshotLoading, categorySnapshotError, onRetryCategorySnapshot)
         is IosCatalogPage.RootFilter -> IosPagedProductScreen(
             title = page.scope.title, padding = padding, cartStore = cartStore,
@@ -103,6 +107,7 @@ internal fun IosCatalogScreen(
                 padding = padding,
                 cartStore = cartStore,
                 controller = outletController,
+                onOpenRootFilter = { rootFilterOwner.open(StoreRootFilterScope.OUTLET) },
                 categories = categories,
                 categoriesLoading = loading,
                 categoriesError = loadError,
@@ -112,6 +117,7 @@ internal fun IosCatalogScreen(
             )
         }
     }
+    StoreRootFilterDialog(rootFilterOwner)
 }
 
 @Composable

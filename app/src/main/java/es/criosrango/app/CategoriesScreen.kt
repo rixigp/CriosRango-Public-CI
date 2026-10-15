@@ -533,11 +533,13 @@ private fun OutletControlledProductGrid(
 internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<StoreProduct>, path: MutableList<Int>, padding: PaddingValues, loading: Boolean, categoryPagingState: es.criosrango.shared.CatalogPagingState<StoreProduct>, loadNextCategoryPage: () -> Unit, loadCategory: (Int) -> Unit, loadCategoryTree: (Int) -> Unit, loadRootCatalog: () -> Unit = {}, onProduct: (StoreProduct) -> Unit, availabilityStore: OutletAvailabilityStore, onRootBack: (() -> Unit)? = null, onOpen: (ProductCategory) -> Unit,
     outletSeasonFilter: HomeOutletSeason? = null, onSingleLevelBack: (() -> Unit)? = null, onRootRetry: (() -> Unit)? = null,
     outletController: es.criosrango.shared.StoreOutletController? = null,
-    outletProductLookup: ((Int) -> StoreProduct?)? = null) {
+    outletProductLookup: ((Int) -> StoreProduct?)? = null,
+    rootFilterOwner: es.criosrango.shared.StoreRootFilterOwner? = null) {
     val outletStateFlow = remember(outletController) {
         outletController?.state ?: kotlinx.coroutines.flow.MutableStateFlow(es.criosrango.shared.StoreOutletState())
     }
     val outletControllerState by outletStateFlow.collectAsStateWithLifecycle()
+    val rootFilterState by (rootFilterOwner?.state ?: kotlinx.coroutines.flow.MutableStateFlow(es.criosrango.shared.StoreRootFilterState())).collectAsStateWithLifecycle()
     val currentId = path.lastOrNull()
     val current = categories.firstOrNull { it.id == currentId }
     val rawChildren =
@@ -599,16 +601,13 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             else loadCategoryTree(currentId)
         }
     }
-    if (path.isEmpty() && !showCatalogProductsFromFilters) {
+    if (rootFilterState.resultsVisible && rootFilterOwner != null) {
+        es.criosrango.shared.StoreRootFilterResultsScreen(rootFilterOwner, padding, onProduct)
+    } else if (path.isEmpty() && !showCatalogProductsFromFilters) {
         CategoryList(
             categories.filter { it.parent == 0 }, categories, products, padding, loading, onOpen,
             onBack = onCategoriesBack,
-            onRootFilter = { scope ->
-                if (scope == es.criosrango.shared.StoreRootFilterScope.CATALOG) {
-                    showCatalogProductsFromFilters = true
-                    loadRootCatalog()
-                }
-            },
+            onRootFilter = { scope -> rootFilterOwner?.open(scope) },
             onRetry = onRootRetry ?: onCategoriesBack, showEmptyRetry = true
         )
     } else if (path.isEmpty() && showCatalogProductsFromFilters) {
@@ -637,12 +636,7 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             loading = if (outletController != null && currentIsOutletPath) outletControllerState.paging.isInitialLoading else loading,
             onBack = onCategoriesBack,
             onCategory = { child -> categories.firstOrNull { it.id == child.id }?.let(onOpen) },
-            onFilterClick = {
-                if (current.id == es.criosrango.shared.StoreRootFilterScope.OUTLET.categoryQueryId) {
-                    outletController?.selectCategory(es.criosrango.shared.StoreRootFilterScope.OUTLET.categoryQueryId!!)
-                }
-                showOutletProductsFromFilters = true
-            },
+            onFilterClick = { rootFilterOwner?.open(es.criosrango.shared.StoreRootFilterScope.OUTLET) },
             showFilterButton = true,
             onRetry = { loadCategoryTree(current.id) },
             modifier = Modifier.fillMaxSize().padding(padding)
@@ -691,6 +685,7 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
             )
         }
     }
+    rootFilterOwner?.let { es.criosrango.shared.StoreRootFilterDialog(it) }
 }
 
 @Composable

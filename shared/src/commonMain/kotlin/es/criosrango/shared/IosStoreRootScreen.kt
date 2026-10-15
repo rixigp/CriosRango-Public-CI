@@ -146,6 +146,7 @@ fun CriosRangoIOSRootScreen(
     val catalogHistory = remember { mutableStateListOf<IosCatalogPage>() }
     val catalogRestoration = remember { mutableStateMapOf<Long, IosCatalogRestorationState>() }
     val outletControllerScope = rememberCoroutineScope()
+    val rootFilterOwner = remember(storeApi) { StoreRootFilterOwner(storeApi, outletControllerScope) }
     val outletController = remember(storeApi) {
         StoreOutletController(outletControllerScope, storeOutletDataSource(storeApi))
     }
@@ -290,12 +291,13 @@ fun CriosRangoIOSRootScreen(
                 )
                 IosRootSection.OUTLET, IosRootSection.CATEGORIES -> IosCatalogScreen(
                     storeApi = storeApi,
+                    rootFilterOwner = rootFilterOwner,
                     padding = padding,
                     page = catalogPage,
                     cartStore = cartStore,
                     outletController = outletController,
                     onOpenCategory = { openCatalog(IosCatalogPage.Category(it)) },
-                    onOpenRootFilter = { scope -> openCatalog(IosCatalogPage.RootFilter(scope)) },
+                    onOpenRootFilter = { scope -> rootFilterOwner.open(scope) },
                     onOpenProduct = { openCatalog(IosCatalogPage.Product(it)) },
                     onBack = {
                         if (section == IosRootSection.OUTLET && catalogPage == IosCatalogPage.Outlet) {

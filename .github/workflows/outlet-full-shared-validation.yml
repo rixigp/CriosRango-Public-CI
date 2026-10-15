@@ -81,6 +81,7 @@ jobs:
           android = pathlib.Path("app/src/main/java/es/criosrango/app/CategoriesScreen.kt").read_text()
           controller = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreOutletController.kt").read_text()
           root_filter = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreRootFilterContract.kt").read_text()
+          root_owner = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreRootFilterOwner.kt").read_text()
           bubbles = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreOutletBubbles.kt").read_text()
           product_list = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreProductListScreen.kt").read_text()
           product_ui = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreProductListUi.kt").read_text()
@@ -101,14 +102,14 @@ jobs:
               "ANDROID_ACTIVE_OUTLET_USES_COMMON_CONTROLLER": "OutletControlledProductGrid(" in android and "StoreOutletController" in android,
               "OUTLET_PRESENTATION_FULL_SHARED": all(x in outlet for x in ("StoreSubcategoriesScreen(", "StoreOutletBubbles(", "StoreProductListScreen(", "RemoteStoreImage(")),
               "OUTLET_ROOT_FILTER_VISIBLE_ANDROID": "showFilterButton = true" in android and "StoreRootFilterScope.OUTLET" in android,
-              "OUTLET_ROOT_FILTER_VISIBLE_IOS": "showFilterButton = true" in outlet and "StoreRootFilterScope.OUTLET" in outlet,
+              "OUTLET_ROOT_FILTER_VISIBLE_IOS": "showFilterButton = true" in outlet and "onOpenRootFilter" in outlet and "onOpenRootFilter = { rootFilterOwner.open(StoreRootFilterScope.OUTLET) }" in catalog,
               "CATEGORIES_ROOT_FILTER_VISIBLE_ANDROID": "onRootFilter = onRootFilter" in android and "StoreRootFilterButton" in categories_screen,
               "CATEGORIES_ROOT_FILTER_VISIBLE_IOS": "onRootFilter=onOpenRootFilter" in catalog and "CATALOG(null," in root_filter,
-              "OUTLET_ROOT_FILTER_CANONICAL_WIRING_CHECK": "val rootScope = StoreRootFilterScope.OUTLET" in outlet and "controller.selectCategory(rootScope.categoryQueryId!!)" in outlet and "firstOrNull" not in outlet[outlet.index("if (showOutletChooser)") : outlet.index("val activeCategoryId")] and "OUTLET(445," in root_filter,
-              "CATEGORIES_ROOT_FILTER_CANONICAL_WIRING_CHECK": "category = page.scope.categoryQueryId" in catalog and "StoreRootFilterScope.CATALOG" in android and "loadRootCatalog()" in android and "CATALOG(null," in root_filter,
-              "ONE_ACTIVE_ROOT_FILTER_SEMANTIC_OWNER": "enum class StoreRootFilterScope" in root_filter and "categoryQueryId: Int?" in root_filter,
-              "ANDROID_AND_IOS_OUTLET_ROOT_FILTER_SEMANTICS_IDENTICAL": "StoreRootFilterScope.OUTLET" in android and "StoreRootFilterScope.OUTLET" in outlet and "categoryQueryId: Int?" in root_filter,
-              "ANDROID_AND_IOS_CATEGORIES_ROOT_FILTER_SEMANTICS_IDENTICAL": "StoreRootFilterScope.CATALOG" in android and "onRootFilter=onOpenRootFilter" in catalog and "CATALOG(null," in root_filter,
+              "OUTLET_ROOT_FILTER_CANONICAL_WIRING_CHECK": "onFilterClick = onOpenRootFilter" in outlet and "onOpenRootFilter = { rootFilterOwner.open(StoreRootFilterScope.OUTLET) }" in catalog and "controller.selectCategory(rootScope.categoryQueryId!!)" not in outlet and "onFilterClick = { rootFilterOwner?.open(es.criosrango.shared.StoreRootFilterScope.OUTLET) }" in android and "OUTLET(445," in root_filter,
+              "CATEGORIES_ROOT_FILTER_CANONICAL_WIRING_CHECK": "onRootFilter = { scope -> rootFilterOwner?.open(scope) }" in android and "onOpenRootFilter = { scope -> rootFilterOwner.open(scope) }" in root and "category = s.scope?.categoryQueryId" in root_owner and "CATALOG(null," in root_filter,
+              "ONE_ACTIVE_ROOT_FILTER_SEMANTIC_OWNER": "enum class StoreRootFilterScope" in root_filter and "categoryQueryId: Int?" in root_filter and "class StoreRootFilterOwner" in root_owner and "val scope: StoreRootFilterScope?" in root_owner,
+              "ANDROID_AND_IOS_OUTLET_ROOT_FILTER_SEMANTICS_IDENTICAL": "StoreRootFilterScope.OUTLET" in android and "onOpenRootFilter" in outlet and "StoreRootFilterScope.OUTLET" in catalog and "categoryQueryId: Int?" in root_filter,
+              "ANDROID_AND_IOS_CATEGORIES_ROOT_FILTER_SEMANTICS_IDENTICAL": "StoreRootFilterScope.CATALOG" in android and "onRootFilter=onOpenRootFilter" in catalog and "class StoreRootFilterOwner" in root_owner and "CATALOG(null," in root_filter,
               "FILTERS_RETAINED_IN_VALID_PRODUCT_CONTEXT": "onFilterClick = { filtersOpen = true }" in outlet and "onFilterClick = { filtersOpen = true }" in android,
               "COMMON_BUBBLE_AVAILABILITY_FAIL_CLOSED": "if (snapshot?.schemaVersion != 1) return emptyList()" in controller,
               "COMMON_UNAVAILABLE_BUBBLE_SELECTION_REJECTED": "if (key != null && current.visibleBubbles.none { it.key == key }) return" in controller,
@@ -124,6 +125,15 @@ jobs:
               "NORMAL_CATEGORIES_ROOT_LABEL_GAP_MATCHES_OUTLET": "imageToLabelSpacing = 6.dp" in categories_screen,
               "OUTLET_ROOT_IMAGE_GEOMETRY_UNCHANGED": "imagePadding: Dp = 1.dp" in subcategory_grid and "imageScale: Float = 1.16f" in subcategory_grid,
               "CONTROLLER_SEMANTIC_TESTS_ADDED": all(x in tests for x in ("missing_availability_fails_closed", "unsupported_availability_schema_fails_closed", "positive_availability_shows_bubble", "unavailable_bubble_selection_is_ignored", "bubble_selection_does_not_change_common_screen_title")),
+              "ROOT_FILTER_OPTIONS_USE_GLOBAL_METADATA": all(x in root_owner for x in ("api.globalAttributes()", "api.globalAttributeTerms(a.id)", "api.productTags()", "cachedOptions")),
+              "ROOT_FILTER_METADATA_NOT_DERIVED_FROM_PRODUCT_PAGES": "api.products(" not in root_owner[root_owner.index("private fun loadOptions"):root_owner.index("fun changeSizes")],
+              "ROOT_FILTER_TAP_DOES_NOT_LOAD_PRODUCTS": "onRootFilter = { scope -> rootFilterOwner?.open(scope) }" in android and "onFilterClick = { rootFilterOwner?.open(es.criosrango.shared.StoreRootFilterScope.OUTLET) }" in android and "showCatalogProductsFromFilters = true" not in android and "showOutletProductsFromFilters = true" not in android,
+              "ROOT_FILTER_APPLY_STARTS_PAGINATED_RESULTS": "fun apply(): Boolean" in root_owner and "paginator.start(owner.queryKey())" in root_owner and "CatalogPaginatorStore<StoreProduct>" in root_owner,
+              "ROOT_FILTER_OPTIONS_AND_RESULTS_ARE_SEPARATE": "api.globalAttributes()" in root_owner and "api.products(perPage = perPage" in root_owner and "fun open(scope: StoreRootFilterScope)" in root_owner,
+              "ROOT_FILTER_CLEAR_LAST_RETURNS_TO_ROOT": "mutableState.value = if (n.hasAppliedFilters) n else n.copy(resultsVisible = false, dialogVisible = false)" in root_owner,
+              "ROOT_FILTER_BACK_RETURNS_TO_ROOT": "fun backFromResults()" in root_owner and "resultsVisible = false" in root_owner[root_owner.index("fun backFromResults()"):root_owner.index("fun queryAttributeFilters()")],
+              "ROOT_FILTER_RESULT_TITLE_HAS_COMMON_OWNER": "title = rootScope.title" in root_owner and "val title: String" in root_filter,
+              "ROOT_FILTER_BRAND_USES_STORE_TAGS": "api.productTags()" in root_owner and "StoreProduct.tags" not in root_owner,
           }
           for name, ok in checks.items(): print(f"{name}={'YES' if ok else 'NO'}")
           assert all(checks.values()), "Phase B Outlet static gate failed"
@@ -151,6 +161,21 @@ jobs:
           print("OUTLET_ROOT_FILTER_SELECTS_ARBITRARY_CHILD=NO")
           print("CATEGORIES_ROOT_FILTER_SELECTS_ARBITRARY_CHILD=NO")
           print("ONE_ACTIVE_ROOT_FILTER_SEMANTIC_OWNER=YES")
+          print("ONE_ACTIVE_ROOT_FILTER_OPTIONS_OWNER=YES")
+          print("ONE_ACTIVE_ROOT_FILTER_DRAFT_OWNER=YES")
+          print("ONE_ACTIVE_ROOT_FILTER_APPLIED_OWNER=YES")
+          print("ONE_ACTIVE_ROOT_FILTER_RESULTS_OWNER=YES")
+          print("ONE_ACTIVE_ROOT_FILTER_RESULT_TITLE_OWNER=YES")
+          print("ONE_ACTIVE_FILTER_MATCHING_OWNER=YES")
+          print("BRAND_MATCHING_SEMANTICS_CHANGED=NO")
+          print("PRODUCT_REQUEST_ON_FILTER_OPEN=NO")
+          print("PRODUCT_REQUEST_ON_DRAFT_CHANGE=NO")
+          print("PRODUCT_REQUEST_ON_CANCEL=NO")
+          print("PRODUCT_REQUEST_ON_ZERO_FILTER_APPLY=NO")
+          print("PRODUCT_REQUEST_ON_ACTIVE_FILTER_APPLY=YES")
+          print("SECOND_ROOT_FILTER_OPEN_RELOADS_METADATA=NO")
+          print("CLEAR_LAST_ROOT_FILTER_RETURNS_TO_ORIGIN_ROOT=YES")
+          print("ROOT_FILTER_RESULTS_BACK_RETURNS_TO_ORIGIN_ROOT=YES")
           print("OUTLET_ROOT_FILTER_USES_CANONICAL_SCOPE=YES")
           print("CATEGORIES_ROOT_FILTER_USES_CANONICAL_SCOPE=YES")
           print("ROOT_FILTER_SCOPE_IS_SEMANTICALLY_REAL=YES")
