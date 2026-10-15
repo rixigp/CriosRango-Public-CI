@@ -4,6 +4,9 @@ import es.criosrango.shared.model.StoreProductAttributeFilter
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.json.Json
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlin.test.Test
@@ -21,7 +24,14 @@ class StoreRootFilterApiQueryTest {
             sizeTermIds = request.url.parameters["attributes[0][term_id]"]
             tagIds = request.url.parameters["tag"]
             respond("[]", HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
-        })
+        }) {
+            install(ContentNegotiation) {
+                json(Json {
+                    ignoreUnknownKeys = true
+                    coerceInputValues = true
+                })
+            }
+        }
         val api = StoreApiClient(client = http)
         api.products(perPage = 24, page = 2, category = 445,
             attributeFilters = listOf(StoreProductAttributeFilter("pa_tallas", listOf(4, 5))),

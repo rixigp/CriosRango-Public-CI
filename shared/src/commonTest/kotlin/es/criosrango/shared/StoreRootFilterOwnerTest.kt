@@ -5,11 +5,15 @@ import es.criosrango.shared.model.StoreProductAttributeFilter
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -27,10 +31,18 @@ class StoreRootFilterOwnerTest {
                 req.url.encodedPath.endsWith("/products") -> { products++; respond("[]", HttpStatusCode.OK, headersOf("Content-Type","application/json")) }
                 else -> respond("[]", HttpStatusCode.OK, headersOf("Content-Type","application/json"))
             }
-        })
+        }) {
+            install(ContentNegotiation) {
+                json(Json {
+                    ignoreUnknownKeys = true
+                    coerceInputValues = true
+                })
+            }
+        }
         val api = StoreApiClient(client = client)
-        val owner = StoreRootFilterOwner(api, CoroutineScope(Dispatchers.Unconfined))
+        val owner = StoreRootFilterOwner(api, CoroutineScope(StandardTestDispatcher(testScheduler)))
         owner.open(StoreRootFilterScope.CATALOG)
+        advanceUntilIdle()
         assertEquals(0, products)
         val options = (owner.state.value.optionsState as StoreFilterOptionsState.Ready).options
         assertEquals(4, options.sizes.single().id); assertEquals("pa_tallas", options.sizes.single().taxonomy)
@@ -70,14 +82,23 @@ class StoreRootFilterOwnerTest {
                 req.url.encodedPath.endsWith("/products/tags") -> respond("[]", HttpStatusCode.OK, headersOf("Content-Type","application/json"))
                 else -> respond("[]", HttpStatusCode.OK, headersOf("Content-Type","application/json"))
             }
-        })
+        }) {
+            install(ContentNegotiation) {
+                json(Json {
+                    ignoreUnknownKeys = true
+                    coerceInputValues = true
+                })
+            }
+        }
         val api = StoreApiClient(client = client)
-        val owner = StoreRootFilterOwner(api, CoroutineScope(Dispatchers.Unconfined))
+        val owner = StoreRootFilterOwner(api, CoroutineScope(StandardTestDispatcher(testScheduler)))
         owner.open(StoreRootFilterScope.OUTLET)
+        advanceUntilIdle()
         val error = owner.state.value.optionsState as StoreFilterOptionsState.Error
         assertTrue(error.message.contains("Size"))
         assertFalse(owner.state.value.resultsVisible)
         owner.retry()
+        advanceUntilIdle()
         assertTrue(owner.state.value.optionsState is StoreFilterOptionsState.Ready)
         assertEquals(StoreRootFilterScope.OUTLET, owner.state.value.scope)
         api.close()

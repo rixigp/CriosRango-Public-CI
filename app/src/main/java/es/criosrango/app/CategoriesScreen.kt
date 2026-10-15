@@ -602,7 +602,7 @@ internal fun CategoriesScreen(categories: List<ProductCategory>, products: List<
         }
     }
     if (rootFilterState.resultsVisible && rootFilterOwner != null) {
-        es.criosrango.shared.StoreRootFilterResultsScreen(rootFilterOwner, padding, onProduct)
+        es.criosrango.shared.StoreRootFilterResultsScreen(rootFilterOwner, padding) { product -> onProduct(product.toAndroid()) }
     } else if (path.isEmpty() && !showCatalogProductsFromFilters) {
         CategoryList(
             categories.filter { it.parent == 0 }, categories, products, padding, loading, onOpen,
