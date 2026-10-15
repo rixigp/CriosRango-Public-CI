@@ -19,6 +19,7 @@ import es.criosrango.shared.model.StoreGlobalAttributeTerm
 import es.criosrango.shared.model.StoreGlobalTag
 import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.model.StoreProductAttributeFilter
+import es.criosrango.shared.RootFilterDiagnosticTelemetry
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
@@ -288,23 +289,38 @@ class StoreApiClient(
         tag: String? = null,
         attributeFilters: List<StoreProductAttributeFilter> = emptyList(),
         tagIds: List<Int> = emptyList()
-    ): List<StoreProduct> =
-        client.get("${baseUrl}products") {
-            parameter("per_page", perPage)
-            parameter("page", page)
-            search?.let { parameter("search", it) }
-            category?.let { parameter("category", it) }
-            orderBy?.let { parameter("orderby", it) }
-            order?.let { parameter("order", it) }
-            after?.let { parameter("after", it) }
-            featured?.let { parameter("featured", it) }
-            tag?.let { parameter("tag", it) }
-            tagIds.takeIf { it.isNotEmpty() }?.let { parameter("tag", it.joinToString(",")) }
-            attributeFilters.forEachIndexed { index, filter ->
-                parameter("attributes[$index][attribute]", filter.taxonomy)
-                parameter("attributes[$index][term_id]", filter.termIds.joinToString(","))
+    ): List<StoreProduct> {
+        val response = try {
+            client.get("${baseUrl}products") {
+                parameter("per_page", perPage)
+                parameter("page", page)
+                search?.let { parameter("search", it) }
+                category?.let { parameter("category", it) }
+                orderBy?.let { parameter("orderby", it) }
+                order?.let { parameter("order", it) }
+                after?.let { parameter("after", it) }
+                featured?.let { parameter("featured", it) }
+                tag?.let { parameter("tag", it) }
+                tagIds.takeIf { it.isNotEmpty() }?.let { parameter("tag", it.joinToString(",")) }
+                attributeFilters.forEachIndexed { index, filter ->
+                    parameter("attributes[$index][attribute]", filter.taxonomy)
+                    parameter("attributes[$index][term_id]", filter.termIds.joinToString(","))
+                }
             }
-        }.body()
+        } catch (error: Throwable) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            RootFilterDiagnosticTelemetry.apiFailed("request", error)
+            throw error
+        }
+        RootFilterDiagnosticTelemetry.apiResponse(response.call.request.url.toString(), response.status.value)
+        return try {
+            response.body<List<StoreProduct>>().also { RootFilterDiagnosticTelemetry.apiDecoded(it) }
+        } catch (error: Throwable) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            RootFilterDiagnosticTelemetry.apiFailed("decode", error)
+            throw error
+        }
+    }
 
     suspend fun globalAttributes(perPage: Int = 100): List<StoreGlobalAttribute> =
         client.get("${baseUrl}products/attributes") { parameter("per_page", perPage) }.body()
