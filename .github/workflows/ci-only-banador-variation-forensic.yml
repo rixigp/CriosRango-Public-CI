@@ -1,0 +1,263 @@
+name: CI-only Bañador 1214 Variation-Aware Forensic
+
+on:
+  push:
+    branches: [live-filter-forensic-ci-only]
+    paths: [.github/workflows/ci-only-banador-variation-forensic.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-read-only-forensic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact validated application candidate
+        uses: actions/checkout@v4
+        with:
+          ref: 02ed9b3cf199a6cb89875b944b7f9d75aeb84a85
+          path: app-source
+
+      - name: Audit Product Detail availability source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p forensic/source
+          echo "SOURCE_AUDIT_TARGET_SHA=02ed9b3cf199a6cb89875b944b7f9d75aeb84a85" | tee forensic/source/report.txt
+          cd app-source
+          git rev-parse HEAD | tee ../forensic/source/checkout.sha
+          {
+            echo "=== isAvailableForPurchase declarations and call sites ==="
+            rg -n -C 8 'isAvailableForPurchase|productWithVariationAvailability|ProductDetailVariationSnapshot|productDetailAttributeOptionState' app shared || true
+            echo
+            echo "=== shared Product Detail screen owners/call sites ==="
+            rg -n -C 3 'StoreProductDetailScreen\(|ProductDetail\(|productWithVariationAvailability\(' app/src shared/src || true
+          } > ../forensic/source/availability-source.txt
+          cd ..
+          echo "SOURCE_AUDIT_CHECKOUT_SHA=$(cat forensic/source/checkout.sha)" | tee -a forensic/source/report.txt
+          echo "SOURCE_AUDIT_FILE=forensic/source/availability-source.txt" | tee -a forensic/source/report.txt
+
+      - name: Probe live WooCommerce Store API with GET only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p forensic/live
+          cat > forensic_probe.py <<'PY'
+          import json, math, os, re, urllib.parse, urllib.request, urllib.error
+          from pathlib import Path
+          OUT=Path("forensic/live"); OUT.mkdir(parents=True,exist_ok=True)
+          BASE="https://criosrango.es/wp-json/wc/store/v1"
+          REPORT=[]
+          def norm(x): return re.sub(r"[^a-z0-9]", "", str(x or "").lower())
+          def save(name, value):
+              (OUT/(name+".json")).write_text(json.dumps(value,ensure_ascii=False,indent=2))
+          def get(name,path,params=None,timeout=35):
+              url=BASE+path
+              if params:
+                  url += ("&" if "?" in url else "?")+urllib.parse.urlencode(params,doseq=True)
+              req=urllib.request.Request(url,headers={"User-Agent":"CriosRango-CI-read-only-variation-forensic/1.0","Accept":"application/json"},method="GET")
+              status=0; data=None; headers={}; error="NONE"; raw=b""
+              try:
+                  with urllib.request.urlopen(req,timeout=timeout) as r:
+                      status=r.status; raw=r.read(); headers={k.lower():v for k,v in r.headers.items()}
+              except urllib.error.HTTPError as e:
+                  status=e.code; raw=e.read(); headers={k.lower():v for k,v in e.headers.items()}; error="HTTPError"
+              except Exception as e:
+                  error=type(e).__name__+": "+str(e)
+              try: data=json.loads(raw.decode("utf-8"))
+              except Exception: data=None
+              record={"name":name,"url":url,"status":status,"headers":headers,"error":error,"data":data}
+              save(name,record)
+              total=headers.get("x-wp-total")
+              REPORT.append(f"{name}: HTTP={status or '000'} TOTAL={total if total is not None else 'UNAVAILABLE'} ERROR={error} URL={url}")
+              return status,data,headers
+          def total(headers,data):
+              try: return int(headers.get("x-wp-total"))
+              except Exception: return len(data) if isinstance(data,list) else None
+          def query_products(name,params):
+              status,data,headers=get(name,"/products",params)
+              return status,data,total(headers,data),headers
+          def product_record_by_id(pid):
+              return get("product_"+str(pid),"/products/"+str(pid))[0:2]
+          # Resolve canonical global attributes and terms from live metadata.
+          _,attrs,_=get("global_attributes","/products/attributes",[("per_page","100")])
+          attrs=attrs if isinstance(attrs,list) else []
+          size_attr=next((a for a in attrs if norm(a.get("name")) in ("talla","tallas","size","sizes")),None)
+          color_attr=next((a for a in attrs if norm(a.get("name")) in ("color","colores","colour")),None)
+          REPORT.append("SIZE_ATTRIBUTE="+json.dumps(size_attr,ensure_ascii=False))
+          REPORT.append("COLOR_ATTRIBUTE="+json.dumps(color_attr,ensure_ascii=False))
+          def terms_for(label,a):
+              if not a: return []
+              _,terms,_=get(label,"/products/attributes/"+str(a["id"])+"/terms",[("per_page","100")])
+              return terms if isinstance(terms,list) else []
+          sizes=terms_for("size_terms",size_attr); colors=terms_for("color_terms",color_attr)
+          term3=next((t for t in sizes if norm(t.get("name")) in ("3xl","xxxl") or norm(t.get("slug")) in ("3xl","xxxl")),None)
+          termxxl=next((t for t in sizes if norm(t.get("name"))=="xxl" or norm(t.get("slug"))=="xxl"),None)
+          azul=next((t for t in colors if norm(t.get("name"))=="azul" or norm(t.get("slug"))=="azul"),None)
+          REPORT += [f"GLOBAL_3XL_TERM={json.dumps(term3,ensure_ascii=False)}",f"GLOBAL_XXL_TERM={json.dumps(termxxl,ensure_ascii=False)}",f"GLOBAL_AZUL_TERM={json.dumps(azul,ensure_ascii=False)}"]
+          # Exact parent identification by both independent live searches.
+          candidates={}
+          for term in ("1214","Spagnolo"):
+              _,records,_,_=query_products("search_"+norm(term),[("search",term),("per_page","100"),("page","1")])
+              if isinstance(records,list):
+                  for p in records: candidates[p.get("id")]=p
+          def searchable(p):
+              s=norm(p.get("name"))
+              return "banador" in s and "1214" in s and "spagnolo" in s
+          parent=next((p for p in candidates.values() if searchable(p)),None)
+          if parent is None:
+              # Retry broader search to accommodate tokenization in WooCommerce search.
+              for term in ("Bañador 1214","Bañador"):
+                  _,records,_,_=query_products("fallback_search_"+norm(term),[("search",term),("per_page","100"),("page","1")])
+                  if isinstance(records,list):
+                      for p in records: candidates[p.get("id")]=p
+              parent=next((p for p in candidates.values() if searchable(p)),None)
+          save("banador_parent",parent if parent else {"error":"exact product not found in search results","candidates":[{"id":p.get("id"),"name":p.get("name"),"slug":p.get("slug"),"type":p.get("type"),"sku":p.get("sku")} for p in candidates.values()]})
+          if not parent:
+              REPORT.append("PARENT_PRODUCT_ID=UNRESOLVED")
+              (OUT/"report.txt").write_text("\n".join(REPORT)+"\n")
+              print("\n".join(REPORT)); raise SystemExit(0)
+          pid=parent.get("id")
+          REPORT += [f"PARENT_PRODUCT_ID={pid}",f"PRODUCT_NAME={parent.get('name')}",f"PRODUCT_SLUG={parent.get('slug')}",f"PRODUCT_TYPE={parent.get('type')}",f"PRODUCT_SKU={parent.get('sku')}"]
+          def parent_attr_terms(name):
+              found=[]
+              for a in parent.get("attributes",[]) or []:
+                  an=norm(a.get("name")); tax=norm(a.get("taxonomy"))
+                  if (name=="size" and (an in ("talla","tallas","size","sizes") or tax in ("patallas","pasize","pasizes"))) or (name=="color" and (an in ("color","colores","colour") or tax in ("pacolor","pacolores","pacolour"))):
+                      found.append(a)
+              return found
+          size_parent=parent_attr_terms("size"); color_parent=parent_attr_terms("color")
+          parent_size_blob=json.dumps(size_parent,ensure_ascii=False)
+          parent_color_blob=json.dumps(color_parent,ensure_ascii=False)
+          has3=bool(term3 and (str(term3.get("id")) in parent_size_blob or norm(term3.get("name")) in norm(parent_size_blob) or norm(term3.get("slug")) in norm(parent_size_blob)))
+          REPORT += [f"PARENT_COLOR_ATTRIBUTE={parent_color_blob}",f"PARENT_SIZE_ATTRIBUTE={parent_size_blob}",f"PARENT_HAS_3XL={'YES' if has3 else 'NO' if size_parent else 'UNPROVEN'}",f"PARENT_3XL_TERM_ID={term3.get('id') if term3 else 'UNRESOLVED'}",f"PARENT_3XL_SLUG={term3.get('slug') if term3 else 'UNRESOLVED'}"]
+          # Enumerate variation IDs from parent and request each exact variation record.
+          vstubs=parent.get("variations") or []
+          vids=[]
+          for v in vstubs:
+              vid=v.get("id") if isinstance(v,dict) else v
+              if vid and str(vid).isdigit() and int(vid) not in vids: vids.append(int(vid))
+          variations=[]
+          for vid in vids:
+              st,v,_=get("variation_"+str(vid),"/products/"+str(vid))
+              if isinstance(v,list): v=v[0] if v else {}
+              if not isinstance(v,dict): v={}
+              attrs_v=v.get("attributes") or (next((x.get("attributes") for x in vstubs if isinstance(x,dict) and x.get("id")==vid),[]) or [])
+              record={"id":vid,"http_status":st,"attributes":attrs_v,"is_purchasable":v.get("is_purchasable"),"is_in_stock":v.get("is_in_stock"),"stock_status":v.get("stock_status"),"is_on_backorder":v.get("is_on_backorder"),"manage_stock":v.get("manage_stock"),"stock_quantity":v.get("stock_quantity"),"type":v.get("type"),"name":v.get("name")}
+              variations.append(record)
+          save("banador_variations",variations)
+          def val_for(v,needle):
+              for a in v.get("attributes") or []:
+                  if norm(a.get("name")) in (norm(needle), "tallas" if norm(needle)=="talla" else norm(needle)) or norm(a.get("taxonomy"))==norm(needle):
+                      return a.get("value") or a.get("name") or a.get("option") or a.get("slug")
+              return None
+          def av(v):
+              # Product Detail uses candidate.isAvailableForPurchase(); exact declaration is preserved in source artifact.
+              # Mirror only the fields required to report raw facts; do not silently equate stock with purchasability.
+              return v.get("is_purchasable") is True and v.get("is_in_stock") is True
+          for v in variations:
+              v["size_value"]=val_for(v,"Tallas") or val_for(v,"pa_tallas") or val_for(v,"Talla")
+              v["color_value"]=val_for(v,"Color") or val_for(v,"pa_color")
+              v["available_under_observed_detail_fields"]=av(v)
+          save("banador_variation_analysis",variations)
+          REPORT.append("BANADOR_VARIATIONS="+json.dumps(variations,ensure_ascii=False))
+          v3=[v for v in variations if norm(v.get("size_value")) in ("3xl","xxxl")]
+          REPORT.append("BANADOR_3XL_VARIATION_IDS="+json.dumps([v["id"] for v in v3]))
+          REPORT.append("BANADOR_VALID_3XL_VARIATION_EXISTS="+("YES" if any(av(v) for v in v3) else "NO" if v3 and all(v.get("is_purchasable") is not None and v.get("is_in_stock") is not None for v in v3) else "UNPROVEN"))
+          REPORT.append("BANADOR_AVAILABLE_VARIATION_COMBINATIONS="+json.dumps([{"id":v["id"],"size":v.get("size_value"),"color":v.get("color_value")} for v in variations if av(v)],ensure_ascii=False))
+          REPORT.append("BANADOR_VALID_3XL_AZUL_VARIATION_EXISTS="+("YES" if any(av(v) and norm(v.get("size_value")) in ("3xl","xxxl") and norm(v.get("color_value"))=="azul" for v in variations) else "NO" if v3 else "UNPROVEN"))
+          # Run the exact app-style parent query and the same query plus stock_status.
+          if not size_attr or not term3:
+              REPORT.append("PRODUCT_QUERY_TEST=SKIPPED; global size taxonomy/3XL term unresolved")
+          else:
+              tax=size_attr.get("taxonomy") or "pa_tallas"
+              base=[("category","445"),("attributes[0][attribute]",tax),("attributes[0][term_id]",str(term3["id"])),("per_page","12"),("page","1")]
+              status_a,pg1,total_a,h_a=query_products("outlet_3xl_query_a",base)
+              status_b,pg1b,total_b,h_b=query_products("outlet_3xl_query_b_instock",base+[("stock_status","instock")])
+              pages_a=math.ceil(total_a/12) if isinstance(total_a,int) else 1
+              pages_b=math.ceil(total_b/12) if isinstance(total_b,int) else 1
+              found_a=None; found_b=None
+              def locate(pages,prefix,baseq):
+                  found=None
+                  for page in range(1,min(pages,30)+1):
+                      q=[(k,v) for k,v in baseq if k not in ("page","per_page")]+[("per_page","12"),("page",str(page))]
+                      _,items,_,_=query_products(prefix+"_page_"+str(page),q)
+                      if isinstance(items,list):
+                          for i,p in enumerate(items):
+                              if p.get("id")==pid: found={"page":page,"position":i+1,"name":p.get("name"),"id":p.get("id")}
+                  return found
+              found_a=locate(pages_a,"outlet_3xl_a",base)
+              found_b=locate(pages_b,"outlet_3xl_b_instock",base+[("stock_status","instock")])
+              REPORT += [f"CURRENT_OUTLET_3XL_TOTAL={total_a}",f"CURRENT_OUTLET_3XL_RETURNS_BANADOR={'YES' if found_a else 'NO' if status_a==200 else 'UNVERIFIED'}",f"BANADOR_PAGE={found_a.get('page') if found_a else 'NONE'}",f"BANADOR_POSITION={found_a.get('position') if found_a else 'NONE'}",f"OUTLET_3XL_INSTOCK_TOTAL={total_b}",f"WITH_STOCK_STATUS_QUERY_RETURNS_BANADOR={'YES' if found_b else 'NO' if status_b==200 else 'UNVERIFIED'}",f"STOCK_STATUS_FILTER_IS_PARENT_LEVEL_FOR_THIS_CASE={'YES' if not any(av(v) for v in v3) and found_b else 'NO' if not found_b and status_b==200 else 'UNPROVEN'}"]
+          # Find a valid 3XL variation control within Outlet's native 3XL result universe.
+          control=None
+          if size_attr and term3:
+              tax=size_attr.get("taxonomy") or "pa_tallas"
+              _,first,total_c,_=query_products("control_3xl_page_1",[("category","445"),("attributes[0][attribute]",tax),("attributes[0][term_id]",str(term3["id"])),("per_page","12"),("page","1")])
+              pages=math.ceil(total_c/12) if isinstance(total_c,int) else 1
+              seen=set()
+              for page in range(1,min(pages,20)+1):
+                  if page==1: items=first
+                  else: _,items,_,_=query_products("control_3xl_page_"+str(page),[("category","445"),("attributes[0][attribute]",tax),("attributes[0][term_id]",str(term3["id"])),("per_page","12"),("page",str(page))])
+                  for p in (items if isinstance(items,list) else []):
+                      if p.get("id") in seen or p.get("id")==pid: continue
+                      seen.add(p.get("id"))
+                      if p.get("type")!="variable": continue
+                      vv=[]
+                      for stub in p.get("variations") or []:
+                          vid=stub.get("id") if isinstance(stub,dict) else stub
+                          if not vid or not str(vid).isdigit(): continue
+                          _,detail,_=get("control_variation_"+str(vid),"/products/"+str(vid))
+                          if isinstance(detail,list): detail=detail[0] if detail else {}
+                          if not isinstance(detail,dict): detail={}
+                          va=detail.get("attributes") or (stub.get("attributes",[]) if isinstance(stub,dict) else [])
+                          v={"id":int(vid),"attributes":va,"is_purchasable":detail.get("is_purchasable"),"is_in_stock":detail.get("is_in_stock"),"stock_status":detail.get("stock_status")}
+                          v["size_value"]=val_for(v,"Tallas") or val_for(v,"pa_tallas") or val_for(v,"Talla")
+                          v["color_value"]=val_for(v,"Color") or val_for(v,"pa_color")
+                          vv.append(v)
+                      if any(norm(v.get("size_value")) in ("3xl","xxxl") and av(v) for v in vv):
+                          control={"product":{"id":p.get("id"),"name":p.get("name"),"slug":p.get("slug"),"type":p.get("type")},"variations":vv}
+                          break
+                  if control: break
+          save("valid_3xl_control",control or {"error":"no valid 3XL variable product found within scanned pages"})
+          REPORT += [f"CONTROL_PRODUCT_ID={control['product']['id'] if control else 'UNRESOLVED'}",f"CONTROL_PRODUCT_NAME={control['product']['name'] if control else 'UNRESOLVED'}",f"CONTROL_PRODUCT_VALID_3XL_VARIATION={'YES' if control else 'UNPROVEN'}"]
+          if control and size_attr and term3:
+              cbase=[("category","445"),("attributes[0][attribute]",size_attr.get("taxonomy") or "pa_tallas"),("attributes[0][term_id]",str(term3["id"])),("per_page","12"),("page","1")]
+              _,ci,ctotal,ch=query_products("control_query_without_stock",cbase)
+              _,cis,cistotal,ch2=query_products("control_query_with_stock",cbase+[("stock_status","instock")])
+              REPORT.append("CONTROL_QUERY_RETURNS_PRODUCT="+("YES" if isinstance(cis,list) and any(p.get("id")==control["product"]["id"] for p in cis) else "NO" if isinstance(cis,list) else "UNPROVEN"))
+              # Query page one is the direct control membership; total/pages and body are preserved as artifacts.
+          # Native collection-data facet count, base and stock constraint.
+          facet_base=[("category","445"),("calculate_attribute_counts[0][taxonomy]",(size_attr or {}).get("taxonomy","pa_tallas")),("calculate_attribute_counts[0][query_type]","or")]
+          fs,fd,fh=get("outlet_445_collection_data_base","/products/collection-data",facet_base)
+          fss,fds,fhs=get("outlet_445_collection_data_instock","/products/collection-data",facet_base+[("stock_status","instock")])
+          def count_for(data,term):
+              if not isinstance(data,dict) or not term: return None
+              records=data.get("attribute_counts") or []
+              found=[]
+              for r in records:
+                  blob=norm(json.dumps(r,ensure_ascii=False))
+                  if norm(term.get("slug")) in blob or norm(term.get("name")) in blob or str(term.get("id")) in blob:
+                      found.append(r)
+              return found or None
+          REPORT += [f"OUTLET_445_COLLECTION_DATA_STATUS={fs}",f"OUTLET_3XL_FACET_COUNT_BASE={json.dumps(count_for(fd,term3),ensure_ascii=False)}",f"OUTLET_3XL_FACET_COUNT_WITH_STOCK={json.dumps(count_for(fds,term3),ensure_ascii=False)}"]
+          if isinstance(fd,dict) and isinstance(fds,dict) and fs==200 and fss==200:
+              REPORT.append("NATIVE_FACETS_VARIATION_AWARE=UNPROVEN_UNLESS_PRODUCT_MEMBERSHIP_AND_TERM_COUNTS_CAN_BE_JOINED")
+          else:
+              REPORT.append("NATIVE_FACETS_VARIATION_AWARE=UNPROVEN")
+          REPORT.append("METHOD=READ_ONLY_GET_ONLY")
+          (OUT/"report.txt").write_text("\n".join(REPORT)+"\n")
+          print("\n".join(REPORT))
+          PY
+          python3 forensic_probe.py
+
+      - name: Upload complete read-only forensic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: banador-1214-variation-forensic
+          path: forensic/
+          if-no-files-found: warn
+          retention-days: 14
