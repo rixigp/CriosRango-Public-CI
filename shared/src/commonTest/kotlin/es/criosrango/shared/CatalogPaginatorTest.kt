@@ -145,4 +145,32 @@ class CatalogPaginatorTest {
         assertEquals(1, paginator.state.value.currentPage)
         assertFalse(paginator.state.value.hasMore)
     }
+    @Test
+    fun deterministic_fake_loader_appends_two_pages_without_networking() = runTest {
+        val paginator = paginator()
+        val requestedPages = mutableListOf<Pair<Int, Int>>()
+        suspend fun loadPage(page: Int, perPage: Int): CatalogPage<Item> {
+            requestedPages += page to perPage
+            return when (page) {
+                1 -> CatalogPage((1001..1012).map(::Item), hasMore = true, totalItems = 13)
+                2 -> CatalogPage(listOf(Item(2001)), hasMore = false, totalItems = 13)
+                else -> error("Unexpected page: " + page)
+            }
+        }
+
+        paginator.start("root-filter-test", ::loadPage)
+        assertEquals((1001..1012).toList(), paginator.state.value.items.map { it.id })
+        assertEquals(1, paginator.state.value.currentPage)
+        assertTrue(paginator.state.value.hasMore)
+
+        paginator.loadNext(::loadPage)
+        assertEquals((1001..1012).toList() + 2001, paginator.state.value.items.map { it.id })
+        assertEquals(13, paginator.state.value.items.size)
+        assertEquals(2, paginator.state.value.currentPage)
+        assertFalse(paginator.state.value.hasMore)
+        assertFalse(paginator.state.value.isAppending)
+        assertEquals(null, paginator.state.value.appendError)
+        assertEquals(listOf(1 to 12, 2 to 12), requestedPages)
+    }
+
 }

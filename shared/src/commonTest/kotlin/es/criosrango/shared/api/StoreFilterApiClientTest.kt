@@ -25,4 +25,17 @@ class StoreFilterApiClientTest {
   assertEquals(listOf(39291,46553), response.productIds); assertEquals(25,response.total); assertEquals(true,response.hasMore)
   client.close()
  }
+ @Test fun query_decodes_product_ids_has_more_and_total_directly() = runTest {
+  val http = HttpClient(MockEngine {
+   respond("""{"schema_version":1,"page":1,"per_page":12,"total":13,"has_more":true,"product_ids":[1001,1002,1003],"facets":{"sizes":[],"colors":[],"brands":[]}}""",
+    HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
+  }) { install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) } }
+  val client = StoreFilterApiClient(endpoint = "https://example.test/query", client = http)
+  val response = client.query(scope = "catalog", page = 1, perPage = 12, sort = "newest")
+  assertEquals(listOf(1001, 1002, 1003), response.productIds)
+  assertEquals(true, response.hasMore)
+  assertEquals(13, response.total)
+  client.close()
+ }
+
 }

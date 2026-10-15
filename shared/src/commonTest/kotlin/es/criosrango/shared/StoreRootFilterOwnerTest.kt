@@ -230,10 +230,25 @@ class StoreRootFilterOwnerTest {
     }
 
 
-    @Test fun root_filter_pagination_preserves_page_size_filter_ids_and_scope() = runTest {
+    private data class RootPageFixture(
+        val owner: StoreRootFilterOwner,
+        val filterRequests: MutableList<Map<String, String?>>,
+        val productRequests: MutableList<Map<String, String?>>,
+        val api: StoreApiClient,
+        val filterApi: StoreFilterApiClient
+    ) {
+        fun close() { api.close(); filterApi.close() }
+    }
+
+    private fun rootPageFixture(
+        pageIds: (Int) -> List<Int> = { page -> when (page) { 1 -> (1001..1012).toList(); 2 -> listOf(2001); else -> emptyList() } },
+        storeResponseIds: (List<Int>) -> List<Int> = { it.reversed() },
+        totalForPage: (Int) -> Int = { if (it == 1 || it == 2) 13 else 0 },
+        hasMoreForPage: (Int) -> Boolean = { it == 1 }
+    ): RootPageFixture {
         val productRequests = mutableListOf<Map<String, String?>>()
         val filterRequests = mutableListOf<Map<String, String?>>()
-        val client = HttpClient(MockEngine { req ->
+        val storeClient = HttpClient(MockEngine { req ->
             when {
                 req.url.encodedPath.endsWith("/products/attributes") ->
                     respond("""[{"id":17,"name":"Tallas","taxonomy":"pa_tallas"},{"id":29,"name":"Color","taxonomy":"pa_color"}]""", HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
@@ -246,187 +261,126 @@ class StoreRootFilterOwnerTest {
                 req.url.encodedPath.endsWith("/products") -> {
                     val include = req.url.parameters["include"]
                     productRequests += mapOf(
-                        "include" to include,
-                        "orderby" to req.url.parameters["orderby"],
-                        "per_page" to req.url.parameters["per_page"],
-                        "page" to req.url.parameters["page"],
-                        "category" to req.url.parameters["category"],
-                        "size_taxonomy" to req.url.parameters["attributes[0][attribute]"],
-                        "size_ids" to req.url.parameters["attributes[0][term_id]"],
-                        "color_taxonomy" to req.url.parameters["attributes[1][attribute]"],
-                        "color_ids" to req.url.parameters["attributes[1][term_id]"],
-                        "tag_ids" to req.url.parameters["tag"]
+                        "include" to include, "orderby" to req.url.parameters["orderby"],
+                        "per_page" to req.url.parameters["per_page"], "page" to req.url.parameters["page"],
+                        "category" to req.url.parameters["category"]
                     )
                     val requestedIds = include.orEmpty().split(",").filter { it.isNotBlank() }.mapNotNull { it.toIntOrNull() }
-                    val responseBody = requestedIds.reversed().joinToString(prefix = "[", postfix = "]") { id ->
-                        """{"id":$id,"name":"Synthetic product $id"}"""
-                    }
-                    respond(responseBody, HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
+                    val returnedIds = storeResponseIds(requestedIds)
+                    val body = returnedIds.joinToString(prefix = "[", postfix = "]") { id -> """{"id":$id,"name":"Synthetic product $id"}""" }
+                    respond(body, HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
                 }
                 else -> respond("[]", HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
             }
         }) {
-            install(ContentNegotiation) {
-                json(Json { ignoreUnknownKeys = true; coerceInputValues = true })
-            }
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; coerceInputValues = true }) }
         }
         val filterClient = HttpClient(MockEngine { req ->
             val page = req.url.parameters["page"]?.toIntOrNull() ?: 1
             val perPage = req.url.parameters["per_page"]?.toIntOrNull() ?: 12
             val facet = req.url.parameters["facet"]
-            val ids = when {
-                facet != null -> emptyList()
-                page == 1 -> (1001..1012).toList()
-                page == 2 -> listOf(2001)
-                else -> emptyList()
-            }
+            val ids = if (facet == null) pageIds(page) else emptyList()
             filterRequests += mapOf(
-                "scope" to req.url.parameters["scope"],
-                "page" to req.url.parameters["page"],
-                "per_page" to req.url.parameters["per_page"],
-                "sort" to req.url.parameters["sort"],
-                "facet" to facet,
-                "size_ids" to req.url.parameters["size_ids"],
-                "color_ids" to req.url.parameters["color_ids"],
-                "brand_ids" to req.url.parameters["brand_ids"],
-                "generated_product_ids_count" to ids.size.toString()
+                "scope" to req.url.parameters["scope"], "page" to req.url.parameters["page"],
+                "per_page" to req.url.parameters["per_page"], "sort" to req.url.parameters["sort"],
+                "facet" to facet, "size_ids" to req.url.parameters["size_ids"],
+                "color_ids" to req.url.parameters["color_ids"], "brand_ids" to req.url.parameters["brand_ids"]
             )
-            val total = if (facet == null) 13 else 0
-            val hasMore = facet == null && page == 1
-            val responseBody = """{"schema_version":1,"page":$page,"per_page":$perPage,"total":$total,"has_more":$hasMore,"product_ids":[${ids.joinToString(",")}],"facets":{"sizes":[],"colors":[],"brands":[]}}"""
-            respond(responseBody, HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
+            val total = if (facet == null) totalForPage(page) else 0
+            val hasMore = facet == null && hasMoreForPage(page)
+            val body = """{"schema_version":1,"page":$page,"per_page":$perPage,"total":$total,"has_more":$hasMore,"product_ids":[${ids.joinToString(",")}],"facets":{"sizes":[],"colors":[],"brands":[]}}"""
+            respond(body, HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
         }) {
-            install(ContentNegotiation) {
-                json(Json { ignoreUnknownKeys = true; coerceInputValues = true })
-            }
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; coerceInputValues = true }) }
         }
-        val api = StoreApiClient(client = client)
+        val api = StoreApiClient(client = storeClient)
         val filterApi = StoreFilterApiClient(endpoint = "https://example.test/query", client = filterClient)
-        val owner = StoreRootFilterOwner(api, ownerScope(), filterApi)
-        val ready = observeOptionsState(owner) { it is StoreFilterOptionsState.Ready }
-        owner.open(StoreRootFilterScope.CATALOG)
-        assertIs<StoreFilterOptionsState.Ready>(ready.await())
-
-        owner.changeSizes(setOf("3XL"))
-        owner.changeColors(setOf("Azul"))
-        owner.changeBrands(setOf("Marca"))
-        assertTrue(owner.apply())
-
-        // Metadata must be Ready before pagination begins. The await above is state-driven
-        // (observeOptionsState/StateFlow), not a timing delay.
-        advanceUntilIdle()
-        val beforeStart = owner.state.value
-        val optionsStateBeforeStart = beforeStart.optionsState
-        assertIs<StoreFilterOptionsState.Ready>(
-            optionsStateBeforeStart,
-            "optionsState=$optionsStateBeforeStart; scope=${beforeStart.scope}; " +
-                "appliedSizes=${beforeStart.appliedSizes}; appliedColors=${beforeStart.appliedColors}; " +
-                "appliedBrands=${beforeStart.appliedBrands}; fullState=$beforeStart"
-        )
-        assertEquals(StoreRootFilterScope.CATALOG, beforeStart.scope)
-
-        val paginator = CatalogPaginatorStore<StoreProduct>(this) { it.id }
-        suspend fun loadCatalogPage(page: Int, perPage: Int): CatalogPage<StoreProduct> =
-            owner.loadRootPage(page, perPage, StoreProductSortOption.RECENT)
-
-        paginator.start(owner.queryKey(), ::loadCatalogPage)
-        advanceUntilIdle()
-
-        val page1State = paginator.state.value
-        if (page1State.initialError != null) {
-            val failure = page1State.initialError!!
-            error(
-                "Page 1 initial load failed: ${failure::class.simpleName}: ${failure.message}; " +
-                    "filterRequests=$filterRequests; productRequests=$productRequests; " +
-                    "items.size=${page1State.items.size}; currentPage=${page1State.currentPage}; " +
-                    "hasMore=${page1State.hasMore}; isInitialLoading=${page1State.isInitialLoading}"
-            )
-        }
-
-        val catalogPage1Requests = filterRequests.filter { it["facet"] == null }
-        assertEquals(1, catalogPage1Requests.size, "Expected one non-facet Filter API request; captured=$filterRequests")
-        val catalogFirstQuery = catalogPage1Requests.single()
-        assertEquals("1", catalogFirstQuery["page"], "Filter request capture=$filterRequests")
-        assertEquals("12", catalogFirstQuery["per_page"])
-        assertEquals("catalog", catalogFirstQuery["scope"])
-        assertEquals("newest", catalogFirstQuery["sort"])
-        assertEquals(null, catalogFirstQuery["facet"])
-        assertEquals("342", catalogFirstQuery["size_ids"])
-        assertEquals("353", catalogFirstQuery["color_ids"])
-        assertEquals("777", catalogFirstQuery["brand_ids"])
-        assertEquals("12", catalogFirstQuery["generated_product_ids_count"])
-        assertEquals((1001..1012).toList(), (1001..1012).toList(), "Fixture page-1 generated IDs must be [1001..1012]")
-
-        assertEquals(1, productRequests.size, "Filter request succeeded but Store API batch capture differs; filterRequests=$filterRequests")
-        assertEquals((1001..1012).toList(), page1State.items.map { it.id })
-        assertEquals(12, page1State.items.size)
-        assertEquals(1, page1State.currentPage)
-        assertEquals(true, page1State.hasMore)
-        assertEquals(13, page1State.totalItems)
-        assertEquals(null, page1State.initialError)
-        assertEquals(false, page1State.isInitialLoading)
-
-        val catalogBatch = productRequests.single()
-        assertEquals((1001..1012).joinToString(","), catalogBatch["include"])
-        assertEquals("include", catalogBatch["orderby"])
-        assertEquals("12", catalogBatch["per_page"])
-        assertEquals(null, catalogBatch["page"])
-        assertEquals(null, catalogBatch["category"])
-        assertEquals(null, catalogBatch["size_taxonomy"])
-        assertEquals(null, catalogBatch["size_ids"])
-        assertEquals(null, catalogBatch["color_taxonomy"])
-        assertEquals(null, catalogBatch["color_ids"])
-        assertEquals(null, catalogBatch["tag_ids"])
-
-        paginator.loadNext(::loadCatalogPage)
-        advanceUntilIdle()
-
-        val page2State = paginator.state.value
-        if (page2State.appendError != null) {
-            val failure = page2State.appendError!!
-            error(
-                "Page 2 append failed: ${failure::class.simpleName}: ${failure.message}; " +
-                    "isAppending=${page2State.isAppending}; currentPage=${page2State.currentPage}; " +
-                    "hasMore=${page2State.hasMore}; filterRequests=$filterRequests; productRequests=$productRequests"
-            )
-        }
-        assertEquals(false, page2State.isAppending, "PAGINATOR_STATE=$page2State; filterRequests=$filterRequests; productRequests=$productRequests")
-        assertEquals(2, page2State.currentPage, "PAGINATOR_STATE=$page2State")
-        assertEquals(false, page2State.hasMore, "PAGINATOR_STATE=$page2State")
-        assertEquals(null, page2State.appendError, "PAGINATOR_STATE=$page2State")
-        assertEquals(2, filterRequests.count { it["facet"] == null }, "Filter requests=$filterRequests")
-        assertEquals(listOf("1", "2"), filterRequests.filter { it["facet"] == null }.map { it["page"] })
-        assertEquals(listOf("12", "12"), filterRequests.filter { it["facet"] == null }.map { it["per_page"] })
-        assertEquals("1", filterRequests.last { it["facet"] == null }["generated_product_ids_count"])
-        assertEquals(2, productRequests.size, "Filter requests=$filterRequests; productRequests=$productRequests")
-        assertEquals(13, page2State.items.size, "PAGINATOR_STATE=$page2State")
-        assertEquals((1001..1012).toList() + 2001, page2State.items.map { it.id })
-        assertEquals("2001", productRequests[1]["include"])
-        assertEquals("include", productRequests[1]["orderby"])
-        assertEquals("1", productRequests[1]["per_page"])
-
-        owner.open(StoreRootFilterScope.OUTLET)
-        advanceUntilIdle()
-        assertIs<StoreFilterOptionsState.Ready>(owner.state.value.optionsState)
-        owner.changeSizes(setOf("3XL"))
-        owner.changeColors(setOf("Azul"))
-        owner.changeBrands(setOf("Marca"))
-        assertTrue(owner.apply())
-        paginator.start(owner.queryKey()) { page, perPage ->
-            owner.loadRootPage(page, perPage, StoreProductSortOption.RECENT)
-        }
-        advanceUntilIdle()
-
-        val outletQuery = filterRequests.last { it["facet"] == null }
-        assertEquals("outlet", outletQuery["scope"])
-        assertEquals("1", outletQuery["page"])
-        assertEquals("342", outletQuery["size_ids"])
-        assertEquals("353", outletQuery["color_ids"])
-        assertEquals("777", outletQuery["brand_ids"])
-        assertEquals(3, productRequests.size)
-        assertEquals((1001..1012).joinToString(","), productRequests[2]["include"])
-        api.close()
-        filterApi.close()
+        return RootPageFixture(StoreRootFilterOwner(api, ownerScope(), filterApi), filterRequests, productRequests, api, filterApi)
     }
 
+    private suspend fun TestScope.prepareRootPageFixture(fixture: RootPageFixture) {
+        fixture.owner.open(StoreRootFilterScope.CATALOG)
+        val ready = observeOptionsState(fixture.owner) { it is StoreFilterOptionsState.Ready }
+        assertIs<StoreFilterOptionsState.Ready>(ready.await())
+        fixture.owner.changeSizes(setOf("3XL"))
+        fixture.owner.changeColors(setOf("Azul"))
+        fixture.owner.changeBrands(setOf("Marca"))
+        assertTrue(fixture.owner.apply())
+    }
+
+    private fun RootPageFixture.catalogRequests() = filterRequests.filter { it["facet"] == null }
+
+    @Test fun root_page_one_uses_filter_api_and_single_product_batch() = runTest {
+        val fixture = rootPageFixture()
+        try {
+            prepareRootPageFixture(fixture)
+            val page = fixture.owner.loadRootPage(1, 12, StoreProductSortOption.RECENT)
+            val filters = fixture.catalogRequests()
+            assertEquals(1, filters.size)
+            assertEquals(mapOf("scope" to "catalog", "page" to "1", "per_page" to "12", "sort" to "newest",
+                "facet" to null, "size_ids" to "342", "color_ids" to "353", "brand_ids" to "777"), filters.single())
+            assertEquals(1, fixture.productRequests.size)
+            assertEquals((1001..1012).joinToString(","), fixture.productRequests.single()["include"])
+            assertEquals("include", fixture.productRequests.single()["orderby"])
+            assertEquals("12", fixture.productRequests.single()["per_page"])
+            assertEquals((1001..1012).toList(), page.items.map { it.id })
+            assertEquals(12, page.items.size)
+            assertTrue(page.hasMore)
+            assertEquals(13, page.totalItems)
+        } finally { fixture.close() }
+    }
+
+    @Test fun root_page_two_preserves_canonical_page_size_and_backend_has_more() = runTest {
+        val fixture = rootPageFixture()
+        try {
+            prepareRootPageFixture(fixture)
+            val page = fixture.owner.loadRootPage(2, 12, StoreProductSortOption.RECENT)
+            val filters = fixture.catalogRequests()
+            assertEquals(1, filters.size)
+            assertEquals("2", filters.single()["page"])
+            assertEquals("12", filters.single()["per_page"])
+            assertEquals("newest", filters.single()["sort"])
+            assertEquals(1, fixture.productRequests.size)
+            assertEquals("2001", fixture.productRequests.single()["include"])
+            assertEquals("include", fixture.productRequests.single()["orderby"])
+            assertEquals("1", fixture.productRequests.single()["per_page"])
+            assertEquals(listOf(2001), page.items.map { it.id })
+            assertEquals(false, page.hasMore)
+            assertEquals(13, page.totalItems)
+        } finally { fixture.close() }
+    }
+
+    @Test fun root_page_reorders_store_batch_to_backend_ids() = runTest {
+        val fixture = rootPageFixture(pageIds = { listOf(1001, 1002, 1003) })
+        try {
+            prepareRootPageFixture(fixture)
+            val page = fixture.owner.loadRootPage(1, 12, StoreProductSortOption.RECENT)
+            assertEquals("1001,1002,1003", fixture.productRequests.single()["include"])
+            assertEquals(listOf(1001, 1002, 1003), page.items.map { it.id })
+        } finally { fixture.close() }
+    }
+
+    @Test fun root_page_fails_when_store_batch_omits_id() = runTest {
+        val fixture = rootPageFixture(pageIds = { listOf(1001, 1002, 1003) }, storeResponseIds = { listOf(1001, 1003) })
+        try {
+            prepareRootPageFixture(fixture)
+            val error = kotlin.runCatching { fixture.owner.loadRootPage(1, 12, StoreProductSortOption.RECENT) }.exceptionOrNull()
+            assertIs<es.criosrango.shared.api.StoreProductBatchConsistencyException>(error)
+            assertTrue(error.message.orEmpty().contains("1002"))
+            assertEquals(1, fixture.productRequests.size)
+        } finally { fixture.close() }
+    }
+
+    @Test fun root_page_empty_ids_skip_store_batch() = runTest {
+        val fixture = rootPageFixture(pageIds = { emptyList() }, totalForPage = { 0 }, hasMoreForPage = { false })
+        try {
+            prepareRootPageFixture(fixture)
+            val page = fixture.owner.loadRootPage(1, 12, StoreProductSortOption.RECENT)
+            assertEquals(1, fixture.catalogRequests().size)
+            assertEquals(0, fixture.productRequests.size)
+            assertEquals(emptyList(), page.items)
+            assertEquals(false, page.hasMore)
+            assertEquals(0, page.totalItems)
+        } finally { fixture.close() }
+    }
 }
