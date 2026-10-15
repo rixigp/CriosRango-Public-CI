@@ -290,6 +290,23 @@ class StoreApiClient(
         attributeFilters: List<StoreProductAttributeFilter> = emptyList(),
         tagIds: List<Int> = emptyList()
     ): List<StoreProduct> {
+        val diagnosticUrl = io.ktor.http.URLBuilder("${baseUrl}products").apply {
+            parameters.append("per_page", perPage.toString())
+            parameters.append("page", page.toString())
+            search?.let { parameters.append("search", it) }
+            category?.let { parameters.append("category", it.toString()) }
+            orderBy?.let { parameters.append("orderby", it) }
+            order?.let { parameters.append("order", it) }
+            after?.let { parameters.append("after", it) }
+            featured?.let { parameters.append("featured", it.toString()) }
+            tag?.let { parameters.append("tag", it) }
+            tagIds.takeIf { it.isNotEmpty() }?.let { parameters.append("tag", it.joinToString(",")) }
+            attributeFilters.forEachIndexed { index, filter ->
+                parameters.append("attributes[$index][attribute]", filter.taxonomy)
+                parameters.append("attributes[$index][term_id]", filter.termIds.joinToString(","))
+            }
+        }.buildString()
+        RootFilterDiagnosticTelemetry.apiRequestStarted(diagnosticUrl)
         val response = try {
             client.get("${baseUrl}products") {
                 parameter("per_page", perPage)
