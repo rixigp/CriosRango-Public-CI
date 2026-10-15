@@ -12,8 +12,8 @@ import kotlinx.coroutines.launch
 class CatalogPaginatorStore<T>(
     private val scope: CoroutineScope,
     private val pageSize: Int = CatalogPaginator.PAGE_SIZE,
-    identity: (T) -> Any,
-    onPublish: ((String?, CatalogPagingState<T>) -> Unit)? = null
+    onPublish: ((String?, CatalogPagingState<T>) -> Unit)? = null,
+    identity: (T) -> Any
 ) {
     private val paginator = CatalogPaginator(pageSize = pageSize, identity = identity, onPublish = onPublish)
 
