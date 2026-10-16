@@ -8,111 +8,206 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-enum class StoreNovedadesAudience(val key:String,val label:String) {
-    ALL("all","Todas"), GIRL("girl","Niña"), BOY("boy","Niño"), BABY("baby","Bebé"), WOMAN("woman","Mujer"), MAN("man","Hombre")
+enum class StoreNovedadesAudience(val key: String, val label: String) {
+    ALL("all", "Todas"),
+    GIRL("girl", "Niña"),
+    BOY("boy", "Niño"),
+    BABY("baby", "Bebé")
 }
-enum class StoreNovedadesSort(val key:String,val label:String,val orderBy:String,val order:String) {
-    RECENT("recent","Más recientes","date","desc"),
-    PRICE_ASC("price_asc","Precio: menor a mayor","price","asc"),
-    PRICE_DESC("price_desc","Precio: mayor a menor","price","desc"),
-    NAME_ASC("name_asc","Nombre A-Z","title","asc")
+
+enum class StoreNovedadesSort(val key: String, val label: String, val orderBy: String, val order: String) {
+    RECENT("recent", "Más recientes", "date", "desc"),
+    PRICE_ASC("price_asc", "Precio: menor a mayor", "price", "asc"),
+    PRICE_DESC("price_desc", "Precio: mayor a menor", "price", "desc"),
+    NAME_ASC("name_asc", "Nombre A-Z", "title", "asc")
 }
+
 data class StoreNovedadesState(
-    val selectedAudience:StoreNovedadesAudience=StoreNovedadesAudience.ALL,
-    val selectedSort:StoreNovedadesSort=StoreNovedadesSort.RECENT,
-    val queryIdentity:String="novedades:all:recent",
-    val paging:CatalogPagingState<StoreProduct> = CatalogPagingState()
+    val selectedAudience: StoreNovedadesAudience = StoreNovedadesAudience.ALL,
+    val selectedSort: StoreNovedadesSort = StoreNovedadesSort.RECENT,
+    val queryIdentity: String = "novedades:all:recent",
+    val paging: CatalogPagingState<StoreProduct> = CatalogPagingState(hasMore = false)
 )
+
 interface StoreNovedadesDataSource {
-    suspend fun categories(page:Int,perPage:Int):List<StoreCategory>
-    suspend fun products(page:Int,perPage:Int,categoryIds:List<Int>,sort:StoreNovedadesSort):CatalogPage<StoreProduct>
+    suspend fun categories(page: Int, perPage: Int): List<StoreCategory>
+    suspend fun products(page: Int, perPage: Int, categoryIds: List<Int>, sort: StoreNovedadesSort): CatalogPage<StoreProduct>
 }
-class StoreApiNovedadesDataSource(private val api:StoreApiClient):StoreNovedadesDataSource {
-    override suspend fun categories(page:Int,perPage:Int)=api.categories(perPage=perPage,page=page)
-    override suspend fun products(page:Int,perPage:Int,categoryIds:List<Int>,sort:StoreNovedadesSort):CatalogPage<StoreProduct> {
-        val result=api.productsPage(perPage,page,categoryIds,sort.orderBy,sort.order)
-        val more=result.totalPages?.let { page<it } ?: (result.items.size>=perPage)
-        return CatalogPage(result.items,more,result.totalItems)
+
+class StoreApiNovedadesDataSource(private val api: StoreApiClient) : StoreNovedadesDataSource {
+    override suspend fun categories(page: Int, perPage: Int) = api.categories(perPage = perPage, page = page)
+
+    override suspend fun products(
+        page: Int,
+        perPage: Int,
+        categoryIds: List<Int>,
+        sort: StoreNovedadesSort
+    ): CatalogPage<StoreProduct> {
+        val result = api.productsPage(perPage, page, categoryIds, sort.orderBy, sort.order)
+        val more = result.totalPages?.let { page < it } ?: (result.items.size >= perPage)
+        return CatalogPage(result.items, more, result.totalItems)
     }
 }
-class StoreNovedadesController(private val scope:CoroutineScope,private val source:StoreNovedadesDataSource) {
-    companion object { const val PAGE_SIZE=24 }
-    private val paginator=CatalogPaginator<StoreProduct>(pageSize=PAGE_SIZE,identity={it.id})
-    private var generation=0L
-    private var started=false
-    private var activeLoader:(suspend (Int,Int)->CatalogPage<StoreProduct>)?=null
-    private val mutableState=MutableStateFlow(StoreNovedadesState())
-    val state:StateFlow<StoreNovedadesState> = mutableState
-    fun start(){ if(!started){started=true;restart()} }
-    fun selectAudience(value:StoreNovedadesAudience){
-        if(value==mutableState.value.selectedAudience)return
-        mutableState.value=mutableState.value.copy(selectedAudience=value,queryIdentity=identity(value,mutableState.value.selectedSort))
-        restart()
+
+/**
+ * Novedades has one fixed global universe: the newest 24 products.
+ * Audience and sort selections are projections of that in-memory snapshot and never issue product requests.
+ */
+class StoreNovedadesController(
+    private val scope: CoroutineScope,
+    private val source: StoreNovedadesDataSource
+) {
+    companion object {
+        const val PAGE_SIZE = 24
+        const val GLOBAL_NOVEDADES_LIMIT = 24
     }
-    fun selectSort(value:StoreNovedadesSort){
-        if(value==mutableState.value.selectedSort)return
-        mutableState.value=mutableState.value.copy(selectedSort=value,queryIdentity=identity(mutableState.value.selectedAudience,value))
-        restart()
+
+    private val mutableState = MutableStateFlow(StoreNovedadesState())
+    val state: StateFlow<StoreNovedadesState> = mutableState
+    private var started = false
+    private var loading = false
+    private var generation = 0L
+    private var globalProducts: List<StoreProduct> = emptyList()
+    private var categoryIdsByAudience: Map<StoreNovedadesAudience, Set<Int>> = emptyMap()
+
+    fun start() {
+        if (!started) {
+            started = true
+            reloadGlobalDataset()
+        }
     }
-    fun refresh()=restart()
-    fun retry()=restart()
-    fun loadNextPage(expectedIdentity:String?=null){
-        val snapshot=mutableState.value
-        if(expectedIdentity!=null && expectedIdentity!=snapshot.queryIdentity)return
-        val loader=activeLoader?:return
-        val requestGeneration=generation
-        if(snapshot.paging.isAppending||snapshot.paging.isInitialLoading||!snapshot.paging.hasMore||snapshot.paging.currentPage<=0)return
-        mutableState.value=snapshot.copy(paging=snapshot.paging.copy(isAppending=true,appendError=null))
+
+    fun selectAudience(value: StoreNovedadesAudience) {
+        if (value == mutableState.value.selectedAudience) return
+        mutableState.value = mutableState.value.copy(
+            selectedAudience = value,
+            queryIdentity = identity(value, mutableState.value.selectedSort)
+        )
+        publishProjection()
+    }
+
+    fun selectSort(value: StoreNovedadesSort) {
+        if (value == mutableState.value.selectedSort) return
+        mutableState.value = mutableState.value.copy(
+            selectedSort = value,
+            queryIdentity = identity(mutableState.value.selectedAudience, value)
+        )
+        publishProjection()
+    }
+
+    /** Explicit user refresh is the only post-start action that fetches a new global snapshot. */
+    fun refresh() = reloadGlobalDataset()
+    fun retry() = reloadGlobalDataset()
+
+    /** Kept as a harmless compatibility entry point: this screen has no pagination. */
+    fun loadNextPage(expectedIdentity: String? = null) = Unit
+
+    private fun reloadGlobalDataset() {
+        val requestGeneration = ++generation
+        loading = true
+        mutableState.value = mutableState.value.copy(
+            paging = CatalogPagingState(isInitialLoading = true, hasMore = false)
+        )
         scope.launch {
-            paginator.loadNext(loader)
-            if(requestGeneration==generation && snapshot.queryIdentity==mutableState.value.queryIdentity)
-                mutableState.value=mutableState.value.copy(paging=paginator.state.value)
+            try {
+                val categories = loadCategories()
+                val allProducts = source.products(
+                    page = 1,
+                    perPage = GLOBAL_NOVEDADES_LIMIT,
+                    categoryIds = emptyList(),
+                    sort = StoreNovedadesSort.RECENT
+                ).items.take(GLOBAL_NOVEDADES_LIMIT)
+                if (requestGeneration != generation) return@launch
+
+                globalProducts = allProducts
+                categoryIdsByAudience = StoreNovedadesAudience.values()
+                    .filter { it != StoreNovedadesAudience.ALL }
+                    .associateWith { resolveAudienceCategoryIds(categories, it).toSet() }
+                loading = false
+                publishProjection()
+            } catch (error: Throwable) {
+                if (requestGeneration != generation) return@launch
+                loading = false
+                mutableState.value = mutableState.value.copy(
+                    paging = CatalogPagingState(
+                        isInitialLoading = false,
+                        initialError = error,
+                        hasMore = false
+                    )
+                )
+            }
         }
     }
-    private fun restart(){
-        val requestGeneration=++generation
-        val snapshot=mutableState.value
-        val key=identity(snapshot.selectedAudience,snapshot.selectedSort)
-        mutableState.value=snapshot.copy(queryIdentity=key,paging=CatalogPagingState(isInitialLoading=true))
-        var idsCache:List<Int>?=null
-        val loader:suspend (Int,Int)->CatalogPage<StoreProduct> = { page,size ->
-            val ids=idsCache ?: if(snapshot.selectedAudience==StoreNovedadesAudience.ALL) emptyList() else resolveAudienceCategoryIds(loadCategories(),snapshot.selectedAudience).also { idsCache=it }
-            if(snapshot.selectedAudience!=StoreNovedadesAudience.ALL && ids.isEmpty()) CatalogPage(emptyList(),false,0)
-            else source.products(page,size,ids,snapshot.selectedSort)
+
+    private suspend fun loadCategories(): List<StoreCategory> {
+        val all = mutableListOf<StoreCategory>()
+        var page = 1
+        while (true) {
+            val batch = source.categories(page, 100)
+            all += batch
+            if (batch.size < 100) break
+            page++
         }
-        activeLoader=loader
-        scope.launch {
-            if(requestGeneration!=generation)return@launch
-            paginator.start(key,loader)
-            if(requestGeneration==generation && key==mutableState.value.queryIdentity)
-                mutableState.value=mutableState.value.copy(paging=paginator.state.value)
-        }
-    }
-    private suspend fun loadCategories():List<StoreCategory>{
-        val all=mutableListOf<StoreCategory>(); var page=1
-        while(true){ val batch=source.categories(page,100); all+=batch; if(batch.size<100)break; page++ }
         return all.distinctBy { it.id }
     }
-    private fun identity(a:StoreNovedadesAudience,s:StoreNovedadesSort)="novedades:"+a.key+":"+s.key
-}
-internal fun resolveAudienceCategoryIds(categories:List<StoreCategory>,audience:StoreNovedadesAudience):List<Int>{
-    if(audience==StoreNovedadesAudience.ALL)return emptyList()
-    val byId=categories.associateBy{it.id}
-    val targets=when(audience){
-        StoreNovedadesAudience.ALL->emptySet()
-        StoreNovedadesAudience.GIRL->setOf("nina")
-        StoreNovedadesAudience.BOY->setOf("nino")
-        StoreNovedadesAudience.BABY->setOf("bebe nina","bebe nino","recien nacido")
-        StoreNovedadesAudience.WOMAN->setOf("mujer")
-        StoreNovedadesAudience.MAN->setOf("hombre")
+
+    private fun publishProjection() {
+        if (loading) return
+        val snapshot = mutableState.value
+        val audience = snapshot.selectedAudience
+        val audienceIds = categoryIdsByAudience[audience].orEmpty()
+        val filtered = when (audience) {
+            StoreNovedadesAudience.ALL -> globalProducts
+            else -> globalProducts.filter { product -> product.categories.any { it.id in audienceIds } }
+        }
+        val sorted = when (snapshot.selectedSort) {
+            StoreNovedadesSort.RECENT -> filtered
+            StoreNovedadesSort.PRICE_ASC -> filtered.sortedBy { it.prices.price.toLongOrNull() ?: Long.MAX_VALUE }
+            StoreNovedadesSort.PRICE_DESC -> filtered.sortedByDescending { it.prices.price.toLongOrNull() ?: Long.MIN_VALUE }
+            StoreNovedadesSort.NAME_ASC -> filtered.sortedBy { it.name.lowercase() }
+        }
+        mutableState.value = snapshot.copy(
+            paging = CatalogPagingState(
+                items = sorted,
+                currentPage = if (globalProducts.isEmpty()) 0 else 1,
+                hasMore = false,
+                isInitialLoading = false,
+                totalItems = sorted.size
+            )
+        )
     }
-    fun normalize(s:String)=s.lowercase().trim().replace('á','a').replace('é','e').replace('í','i').replace('ó','o').replace('ú','u').replace('ü','u').replace('ñ','n')
+
+    private fun identity(audience: StoreNovedadesAudience, sort: StoreNovedadesSort) =
+        "novedades:${audience.key}:${sort.key}"
+}
+
+internal fun resolveAudienceCategoryIds(
+    categories: List<StoreCategory>,
+    audience: StoreNovedadesAudience
+): List<Int> {
+    if (audience == StoreNovedadesAudience.ALL) return emptyList()
+    val byId = categories.associateBy { it.id }
+    val targets = when (audience) {
+        StoreNovedadesAudience.ALL -> emptySet()
+        StoreNovedadesAudience.GIRL -> setOf("nina")
+        StoreNovedadesAudience.BOY -> setOf("nino")
+        StoreNovedadesAudience.BABY -> setOf("bebe nina", "bebe nino", "recien nacido")
+    }
+    fun normalize(value: String) = value.lowercase().trim()
+        .replace('á', 'a').replace('é', 'e').replace('í', 'i')
+        .replace('ó', 'o').replace('ú', 'u').replace('ü', 'u').replace('ñ', 'n')
+
     return categories.filter { category ->
-        var current:StoreCategory?=category; val visited=mutableSetOf<Int>(); var match=false
-        while(current!=null && current.id!=0 && visited.add(current.id)){
-            if(normalize(current.name) in targets){match=true;break}
-            current=byId[current.parent]
+        var current: StoreCategory? = category
+        val visited = mutableSetOf<Int>()
+        var match = false
+        while (current != null && current.id != 0 && visited.add(current.id)) {
+            if (normalize(current.name) in targets || normalize(current.slug) in targets) {
+                match = true
+                break
+            }
+            current = byId[current.parent]
         }
         match
-    }.map{it.id}.distinct().sorted()
+    }.map { it.id }.distinct().sorted()
 }
