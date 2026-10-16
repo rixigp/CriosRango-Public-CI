@@ -292,7 +292,8 @@ class StoreApiClient(
         featured: Boolean? = null,
         tag: String? = null,
         attributeFilters: List<StoreProductAttributeFilter> = emptyList(),
-        tagIds: List<Int> = emptyList()
+        tagIds: List<Int> = emptyList(),
+        brand: String? = null
     ): List<StoreProduct> =
         client.get("${baseUrl}products") {
             parameter("per_page", perPage)
@@ -303,6 +304,7 @@ class StoreApiClient(
             order?.let { parameter("order", it) }
             after?.let { parameter("after", it) }
             featured?.let { parameter("featured", it) }
+            brand?.let { parameter("brand", it) }
             tag?.let { parameter("tag", it) }
             tagIds.takeIf { it.isNotEmpty() }?.let { parameter("tag", it.joinToString(",")) }
             attributeFilters.forEachIndexed { index, filter ->
@@ -333,8 +335,8 @@ class StoreApiClient(
         client.get("${baseUrl}products/tags") { parameter("per_page", perPage) }.body()
 
     /** Real WooCommerce product_brand terms, not product tags. */
-    suspend fun productBrands(perPage: Int = 100, page: Int = 1): List<StoreGlobalBrand> =
-        client.get("${baseUrl}products/brands") { parameter("per_page", perPage); parameter("page", page); parameter("hide_empty", true) }.body()
+    suspend fun productBrands(perPage: Int = 100, page: Int = 1, hideEmpty: Boolean = true): List<StoreGlobalBrand> =
+        client.get("${baseUrl}products/brands") { parameter("per_page", perPage); parameter("page", page); parameter("hide_empty", hideEmpty) }.body()
 
     suspend fun categories(perPage: Int = 100, page: Int = 1): List<StoreCategory> =
         client.get("${baseUrl}products/categories") { parameter("per_page", perPage); parameter("page", page) }.body()

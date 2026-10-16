@@ -114,6 +114,7 @@ internal fun IosSearchScreen(
     var submitted by rememberSaveable { mutableStateOf("") }
     var products by remember { mutableStateOf(emptyList<StoreProduct>()) }
     var categories by remember { mutableStateOf(emptyList<StoreCategory>()) }
+    var brands by remember { mutableStateOf(emptyList<es.criosrango.shared.model.StoreGlobalBrand>()) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var retryAttempt by remember { mutableStateOf(0) }
@@ -122,6 +123,7 @@ internal fun IosSearchScreen(
 
     LaunchedEffect(Unit) {
         categories = runCatching { storeApi.categories(perPage = 100) }.getOrDefault(emptyList())
+        brands = runCatching { buildList { var page = 1; while (true) { val batch = storeApi.productBrands(perPage = 100, page = page, hideEmpty = true); addAll(batch); if (batch.size < 100) break; page++ } }.distinctBy { it.id }.filter { it.count > 0 }.sortedBy { it.name.lowercase() } }.getOrDefault(emptyList())
     }
 
     LaunchedEffect(normalizedQuery, retryAttempt) {
@@ -174,7 +176,7 @@ internal fun IosSearchScreen(
         if (normalizedQuery.length < 2) emptyList()
         else {
             val tokens = normalizedQuery.split(" ").filter { it.isNotBlank() }
-            storeBrands.filter { brand ->
+            brands.filter { brand ->
                 val text = brand.name.normalizeForIosSearch()
                 tokens.any { iosSearchTokenMatches(it, text) }
             }.take(2)
@@ -244,14 +246,8 @@ internal fun IosSearchScreen(
 }
 
 @Composable
-internal fun IosBrandsScreen(storeApi:StoreApiClient,padding:PaddingValues,cartStore:StoreCartStore,onProduct:(StoreProduct)->Unit,onBack:()->Unit){
-    var selected by remember { mutableStateOf<StoreBrand?>(null) }
-    if(selected==null) Column(Modifier.fillMaxSize().padding(padding)){
-        Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=4.dp),verticalAlignment=Alignment.CenterVertically){TextButton(onClick=onBack,contentPadding=PaddingValues(horizontal=8.dp,vertical=4.dp)){Text("Atrás")};Text("Nuestras marcas",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)}
-        LazyVerticalGrid(columns=GridCells.Fixed(2),contentPadding=PaddingValues(start=16.dp,top=4.dp,end=16.dp,bottom=28.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
-            items(storeBrands,key={it.slug}){brand->OutlinedButton(onClick={selected=brand},modifier=Modifier.fillMaxWidth()){Text(brand.name)}}
-        }
-    } else IosPagedProductScreen(selected!!.name,padding,cartStore,onProduct,{selected=null},{p,n->storeApi.products(p,n,tag=selected!!.slug)},"brand:"+selected!!.slug,enableProductControls=true)
+internal fun IosBrandsScreen(controller:StoreBrandsController,padding:PaddingValues,onProduct:(StoreProduct)->Unit,onBack:()->Unit){
+    StoreBrandsScreen(controller = controller, padding = padding, onBack = onBack, onProduct = onProduct)
 }
 
 @Composable

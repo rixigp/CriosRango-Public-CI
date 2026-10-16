@@ -68,16 +68,6 @@ class ShopViewModel(
     private val _checkoutLoading = MutableStateFlow(false)
     val checkoutLoading: StateFlow<Boolean> = _checkoutLoading.asStateFlow()
     private val _products = MutableStateFlow<List<StoreProduct>>(emptyList())
-    private val brandProductsCache = mutableMapOf<String, CatalogPagingState<StoreProduct>>()
-    private val brandPaginators = mutableMapOf<String, CatalogPaginator<StoreProduct>>()
-    private val _brandPagingState = MutableStateFlow(CatalogPagingState<StoreProduct>())
-    val brandPagingState: StateFlow<CatalogPagingState<StoreProduct>> = _brandPagingState.asStateFlow()
-    private var brandStateSyncJob: Job? = null
-    private var activeBrand: BrandTerm? = null
-    private val _activeBrandProducts = MutableStateFlow<List<StoreProduct>>(emptyList())
-    val activeBrandProducts: StateFlow<List<StoreProduct>> = _activeBrandProducts.asStateFlow()
-    private val _activeBrandSlug = MutableStateFlow<String?>(null)
-    val activeBrandSlug: StateFlow<String?> = _activeBrandSlug.asStateFlow()
     val products: StateFlow<List<StoreProduct>> = _products.asStateFlow()
     private val _categoryProducts = MutableStateFlow<Map<Int, CategoryProductsState>>(emptyMap())
     val categoryProducts: StateFlow<Map<Int, CategoryProductsState>> = _categoryProducts.asStateFlow()
@@ -95,8 +85,6 @@ class ShopViewModel(
     val categories: StateFlow<List<ProductCategory>> = _categories.asStateFlow()
     private val _homeProducts = MutableStateFlow<List<StoreProduct>>(emptyList())
     val homeProducts: StateFlow<List<StoreProduct>> = _homeProducts.asStateFlow()
-    private val _brands = MutableStateFlow<List<BrandTerm>>(APP_BRANDS)
-    val brands: StateFlow<List<BrandTerm>> = _brands.asStateFlow()
     private val _selectedProduct = MutableStateFlow<StoreProduct?>(null)
     val selectedProduct: StateFlow<StoreProduct?> = _selectedProduct.asStateFlow()
     private val _selectedVariation = MutableStateFlow<StoreProduct?>(null)
@@ -112,7 +100,6 @@ class ShopViewModel(
         data object Home : CatalogOperation
         data class Category(val id: Int) : CatalogOperation
         data class Search(val query: String) : CatalogOperation
-        data class Brand(val brand: BrandTerm) : CatalogOperation
     }
 
     private var lastCatalogOperation: CatalogOperation = CatalogOperation.Home
@@ -129,20 +116,8 @@ class ShopViewModel(
     val paymentRedirect: StateFlow<PaymentRedirect?> = _paymentRedirect.asStateFlow()
     private var productsRequestVersion = 0
     private val searchResultCache = mutableMapOf<String, List<StoreProduct>>()
-    private var brandLoadJob: Job? = null
-
-    private fun loadBrands() {
-        brandLoadJob?.cancel()
-        brandLoadJob = viewModelScope.launch {
-            val loadedBrands = runCatching { repository.allBrands() }.getOrNull().orEmpty()
-            if (loadedBrands.isNotEmpty()) {
-                _brands.value = loadedBrands
-            }
-        }
-    }
 
     fun refreshHome() {
-        loadBrands()
         lastCatalogOperation = CatalogOperation.Home
         val requestVersion = ++productsRequestVersion
         categoryCatalogLoadStatus.value = CategoryLoadStatus()
@@ -385,77 +360,11 @@ class ShopViewModel(
         }
     }
 
-    fun loadBrand(brand: BrandTerm) {
-        lastCatalogOperation = CatalogOperation.Brand(brand)
-        val requestVersion = ++productsRequestVersion
-        categoryCatalogLoadStatus.value = CategoryLoadStatus()
-        val brandKey = brand.slug.trim().lowercase()
-        activeBrand = brand
-        _activeBrandSlug.value = brandKey
-        brandStateSyncJob?.cancel()
-        val paginator = brandPaginators.getOrPut(brandKey) { CatalogPaginator(identity = { it.id }) }
-        val currentState = paginator.state.value
-        _brandPagingState.value = currentState
-        _activeBrandProducts.value = currentState.items
-        brandProductsCache[brandKey] = currentState
-        brandStateSyncJob = viewModelScope.launch {
-            paginator.state.collect { state ->
-                if (requestVersion != productsRequestVersion || _activeBrandSlug.value != brandKey) return@collect
-                _brandPagingState.value = state
-                _activeBrandProducts.value = state.items
-                brandProductsCache[brandKey] = state
-                if (state.initialError != null) _error.value = (state.initialError as? Exception)?.toStoreUiError() ?: StoreUiError(StoreErrorType.UNEXPECTED)
-                if (!state.isInitialLoading) _isLoading.value = false
-            }
-        }
-        if (currentState.currentPage > 0 || currentState.isInitialLoading) {
-            _isLoading.value = currentState.isInitialLoading
-            return
-        }
-        _brandPagingState.value = CatalogPagingState(isInitialLoading = true)
-        viewModelScope.launch {
-            _isLoading.value = true; _error.value = null
-            paginator.start(brandKey) { page, perPage ->
-                val items = repository.productsByBrandPage(brand, page, perPage)
-                CatalogPage(items = items, hasMore = items.size >= perPage)
-            }
-            if (requestVersion == productsRequestVersion && _activeBrandSlug.value == brandKey) {
-                val state = paginator.state.value
-                _brandPagingState.value = state
-                _activeBrandProducts.value = state.items
-                brandProductsCache[brandKey] = state
-                _isLoading.value = false
-                if (state.initialError != null) _error.value = (state.initialError as? Exception)?.toStoreUiError() ?: StoreUiError(StoreErrorType.UNEXPECTED)
-            }
-        }
-    }
-
-    fun loadNextBrandPage() {
-        val brandKey = _activeBrandSlug.value ?: return
-        val brand = activeBrand ?: return
-        val paginator = brandPaginators[brandKey] ?: return
-        val state = paginator.state.value
-        if (state.isAppending || !state.hasMore || state.currentPage <= 0) return
-        viewModelScope.launch {
-            paginator.loadNext { page, perPage ->
-                val items = repository.productsByBrandPage(brand, page, perPage)
-                CatalogPage(items = items, hasMore = items.size >= perPage)
-            }
-            if (_activeBrandSlug.value == brandKey && activeBrand?.slug?.trim()?.lowercase() == brandKey) {
-                val updated = paginator.state.value
-                _brandPagingState.value = updated
-                _activeBrandProducts.value = updated.items
-                brandProductsCache[brandKey] = updated
-            }
-        }
-    }
-
     fun retryLastOperation() {
         when (val operation = lastCatalogOperation) {
             CatalogOperation.Home -> refreshHome()
             is CatalogOperation.Category -> loadCategory(operation.id)
             is CatalogOperation.Search -> search(operation.query)
-            is CatalogOperation.Brand -> loadBrand(operation.brand)
         }
     }
 

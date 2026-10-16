@@ -50,6 +50,7 @@ import androidx.compose.ui.window.DialogProperties
 internal fun IosCatalogScreen(
     storeApi: es.criosrango.shared.api.StoreApiClient,
     rootFilterOwner: StoreRootFilterOwner,
+    brandsController: StoreBrandsController,
     padding: PaddingValues,
     page: IosCatalogPage,
     cartStore: StoreCartStore,
@@ -87,7 +88,7 @@ internal fun IosCatalogScreen(
         is IosCatalogPage.Product -> IosProductDetail(storeApi, padding, page.product, onBack, cartStore, onShareProductText, onReserveProductMessage)
         IosCatalogPage.Novedades -> StoreNovedadesScreen(storeApi, padding, null, onOpenProduct, onBack)
         IosCatalogPage.Search -> IosSearchScreen(storeApi, padding, cartStore, onOpenProduct, onOpenCategory, onBack)
-        IosCatalogPage.Brands -> IosBrandsScreen(storeApi, padding, cartStore, onOpenProduct, onBack)
+        IosCatalogPage.Brands -> IosBrandsScreen(brandsController, padding, onOpenProduct, onBack)
         IosCatalogPage.Outlet -> {
             var categories by remember { mutableStateOf<List<StoreCategory>?>(null) }
             var loading by remember { mutableStateOf(true) }
