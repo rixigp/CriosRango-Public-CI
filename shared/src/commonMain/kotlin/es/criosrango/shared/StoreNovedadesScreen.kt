@@ -1,10 +1,15 @@
 package es.criosrango.shared
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,22 +37,28 @@ fun StoreNovedadesScreen(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = onBack) { Text("Atrás") }
+            IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Volver") }
             Column(Modifier.weight(1f)) {
                 Text("Novedades", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text("Últimas incorporaciones", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            TextButton(onClick = { controller.refresh() }) { Text("Actualizar") }
+            Spacer(Modifier.width(4.dp))
         }
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(7.dp)
         ) {
             StoreNovedadesAudience.values().forEach { option ->
                 FilterChip(
                     selected = state.selectedAudience == option,
                     onClick = { controller.selectAudience(option) },
-                    label = { Text(option.label) }
+                    label = { Text(option.label) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = Color(0xFF183B35),
+                        selectedLabelColor = Color(0xFFFFFFFF),
+                        selectedLeadingIconColor = Color(0xFFFFFFFF),
+                        selectedTrailingIconColor = Color(0xFFFFFFFF)
+                    )
                 )
             }
         }

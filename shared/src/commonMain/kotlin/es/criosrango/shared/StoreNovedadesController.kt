@@ -9,10 +9,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 enum class StoreNovedadesAudience(val key: String, val label: String) {
-    ALL("all", "Todas"),
-    GIRL("girl", "Niña"),
-    BOY("boy", "Niño"),
-    BABY("baby", "Bebé")
+    ALL("all", "Todas"), BAUTIZO("bautizo", "Bautizo"), CRIOS("crios", "Críos"),
+    COMUNION("comunion", "Comunión"), MUJER("mujer", "Mujer"), HOMBRE("hombre", "Hombre"),
+    RECIEN_NACIDO("recien_nacido", "Recién nacido")
 }
 
 enum class StoreNovedadesSort(val key: String, val label: String, val orderBy: String, val order: String) {
@@ -181,31 +180,27 @@ class StoreNovedadesController(
         "novedades:${audience.key}:${sort.key}"
 }
 
-internal fun resolveAudienceCategoryIds(
-    categories: List<StoreCategory>,
-    audience: StoreNovedadesAudience
-): List<Int> {
+internal fun resolveAudienceCategoryIds(categories: List<StoreCategory>, audience: StoreNovedadesAudience): List<Int> {
     if (audience == StoreNovedadesAudience.ALL) return emptyList()
     val byId = categories.associateBy { it.id }
+    fun normalize(value: String) = value.lowercase().trim().replace('-', ' ').replace('_', ' ')
+        .replace('á','a').replace('é','e').replace('í','i').replace('ó','o').replace('ú','u').replace('ü','u').replace('ñ','n')
+        .replace(Regex("\\s+"), " ")
     val targets = when (audience) {
         StoreNovedadesAudience.ALL -> emptySet()
-        StoreNovedadesAudience.GIRL -> setOf("nina")
-        StoreNovedadesAudience.BOY -> setOf("nino")
-        StoreNovedadesAudience.BABY -> setOf("bebe nina", "bebe nino", "recien nacido")
+        StoreNovedadesAudience.BAUTIZO -> setOf("bautizo")
+        StoreNovedadesAudience.CRIOS -> setOf("bebe nina", "bebe nino", "nina", "nino")
+        StoreNovedadesAudience.COMUNION -> setOf("comunion nina", "comunion nino")
+        StoreNovedadesAudience.MUJER -> setOf("mujer")
+        StoreNovedadesAudience.HOMBRE -> setOf("hombre")
+        StoreNovedadesAudience.RECIEN_NACIDO -> setOf("recien nacido")
     }
-    fun normalize(value: String) = value.lowercase().trim()
-        .replace('á', 'a').replace('é', 'e').replace('í', 'i')
-        .replace('ó', 'o').replace('ú', 'u').replace('ü', 'u').replace('ñ', 'n')
-
     return categories.filter { category ->
         var current: StoreCategory? = category
         val visited = mutableSetOf<Int>()
         var match = false
         while (current != null && current.id != 0 && visited.add(current.id)) {
-            if (normalize(current.name) in targets || normalize(current.slug) in targets) {
-                match = true
-                break
-            }
+            if (normalize(current.name) in targets || normalize(current.slug) in targets) { match = true; break }
             current = byId[current.parent]
         }
         match
