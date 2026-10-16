@@ -284,7 +284,7 @@ fun CriosRangoIOSRootScreen(
                         resetCatalog()
                         openCatalog(IosCatalogPage.Product(it))
                     },
-                    onNovedades = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Novedades) },
+                    onNovedades = { section = IosRootSection.CATEGORIES; resetCatalog(); catalogOriginHome = true; openCatalog(IosCatalogPage.Novedades) },
                     onSearch = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Search) },
                     onBrands = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Brands) },
                     onOutlet = { section = IosRootSection.OUTLET; resetCatalog(); openCatalog(IosCatalogPage.Outlet) }
@@ -308,7 +308,7 @@ fun CriosRangoIOSRootScreen(
                             resetCatalog()
                         } else {
                             backCatalog()
-                            if (catalogHistory.isEmpty() && catalogPage == IosCatalogPage.Root && catalogOriginHome) {
+                            if (shouldReturnHomeAfterCatalogBack(catalogHistory.isEmpty(), catalogPage == IosCatalogPage.Root, catalogOriginHome)) {
                                 section = IosRootSection.HOME
                                 resetCatalog()
                             }
@@ -1212,3 +1212,6 @@ internal fun IosStoreError(message: String, retry: () -> Unit) {
 
 @Composable
 private fun IosCategoryRootPreview(): Unit = Unit
+
+internal fun shouldReturnHomeAfterCatalogBack(historyIsEmpty: Boolean, pageIsRoot: Boolean, catalogOriginHome: Boolean): Boolean =
+    historyIsEmpty && pageIsRoot && catalogOriginHome

@@ -7,8 +7,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,13 +36,6 @@ fun StoreNovedadesScreen(storeApi:StoreApiClient,padding:PaddingValues,cartStore
             titleFontWeight = FontWeight.Bold,
             showBack = true,
             onBack = onBack,
-            trailing = {
-                StoreCatalogFilterButton(
-                    activeFilterCount = state.activeFilterCount,
-                    onClick = controller::openFilters,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                )
-            }
         )
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal=12.dp,vertical=4.dp),horizontalArrangement=Arrangement.spacedBy(7.dp)) {
             StoreNovedadesAudience.values().forEach { option ->
@@ -66,25 +57,13 @@ fun StoreNovedadesScreen(storeApi:StoreApiClient,padding:PaddingValues,cartStore
         when {
             shouldShowNovedadesInitialLoading(state) -> StoreProductGridSkeleton(Modifier.weight(1f))
             state.paging.items.isEmpty() && state.paging.initialError!=null -> IosStoreError(state.paging.initialError?.message?:"No se han podido cargar las novedades."){controller.retry()}
-            state.paging.items.isEmpty() && state.filterError!=null -> IosStoreError(state.filterError?.message?:"No se han podido aplicar los filtros."){controller.retryFilters()}
             state.paging.items.isEmpty() -> IosStoreEmpty(
-                if(state.selectedAudience==StoreNovedadesAudience.ALL && state.activeFilterCount==0) "No hay novedades." else "No hay productos con estos filtros.",
-                if(state.selectedAudience==StoreNovedadesAudience.ALL && state.activeFilterCount==0) null else ({controller.selectAudience(StoreNovedadesAudience.ALL);controller.clearFilters()}),
-                if(state.selectedAudience==StoreNovedadesAudience.ALL && state.activeFilterCount==0) null else "Borrar filtros")
+                if(state.selectedAudience==StoreNovedadesAudience.ALL) "No hay novedades." else "No hay productos en esta categoría.",
+                null,
+                null)
             else -> LazyVerticalGrid(columns=GridCells.Fixed(2),contentPadding=PaddingValues(start=12.dp,top=4.dp,end=12.dp,bottom=28.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 items(state.paging.items,key={it.id}){IosProductCard(it,onProduct,cartStore)}
             }
         }
-    }
-    if(state.filterDialogVisible) {
-        val options=(state.filterOptionsState as? StoreFilterOptionsState.Ready)?.options?:StoreFilterOptions(emptyList(),emptyList(),emptyList())
-        val status=when(val o=state.filterOptionsState){StoreFilterOptionsState.Loading->"Cargando filtros…";is StoreFilterOptionsState.Error->o.message;else->null}
-        StoreCatalogFilterDialog(
-            sizes=options.sizes.map{it.name},colors=options.colors.map{it.name},brands=options.brands.map{it.name},
-            selectedSizes=state.draftSizes,selectedColors=state.draftColors,selectedBrands=state.draftBrands,
-            enabledSizes=state.enabledSizes,enabledColors=state.enabledColors,enabledBrands=state.enabledBrands,
-            showBrands=true,hideUnavailableOptions=true,statusMessage=status,onRetry=if(state.filterOptionsState is StoreFilterOptionsState.Error) controller::retryFilterOptions else null,
-            onDimensionSelected=controller::selectFilterDimension,onSizesChanged=controller::changeDraftSizes,onColorsChanged=controller::changeDraftColors,onBrandsChanged=controller::changeDraftBrands,
-            onApply=controller::applyFilters,onClear=controller::clearDraftFilters,onDismiss=controller::cancelFilters,onCancel=controller::cancelFilters)
     }
 }
