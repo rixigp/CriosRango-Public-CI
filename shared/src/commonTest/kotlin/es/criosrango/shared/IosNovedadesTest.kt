@@ -229,12 +229,16 @@ class IosNovedadesTest {
  }
 
  @Test fun facetRefreshKeepsLastEnabledOptionsUntilAllNewFacetsArrive()=runTest{
-  val f=Fake();val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle();open(c);advanceUntilIdle()
+  val f=Fake();val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle()
+  val visibleBefore=c.state.value.paging.items.map{it.id};val countBefore=c.state.value.paging.totalItems
+  open(c);advanceUntilIdle()
   assertTrue("6A" in c.state.value.enabledSizes)
   assertTrue("Azul" in c.state.value.enabledColors)
   assertTrue("Marca A" in c.state.value.enabledBrands)
   val next=CompletableDeferred<Map<Int,Int>>();f.facetGate=next
   c.changeDraftSizes(setOf("6A"));runCurrent()
+  assertEquals(visibleBefore,c.state.value.paging.items.map{it.id})
+  assertEquals(countBefore,c.state.value.paging.totalItems)
   assertTrue("6A" in c.state.value.enabledSizes)
   assertTrue("Azul" in c.state.value.enabledColors)
   assertTrue("Marca A" in c.state.value.enabledBrands)
