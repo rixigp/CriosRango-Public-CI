@@ -26,7 +26,7 @@ fun StoreNovedadesScreen(storeApi:StoreApiClient,padding:PaddingValues,cartStore
     var sortExpanded by remember{mutableStateOf(false)}
     LaunchedEffect(controller){controller.start()}
     Column(Modifier.fillMaxSize().padding(padding)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=4.dp),verticalAlignment=Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal=20.dp,vertical=2.dp).padding(bottom=2.dp),verticalAlignment=Alignment.CenterVertically) {
             IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,contentDescription="Volver")}
             Column(Modifier.weight(1f)) {
                 Text("Novedades",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
