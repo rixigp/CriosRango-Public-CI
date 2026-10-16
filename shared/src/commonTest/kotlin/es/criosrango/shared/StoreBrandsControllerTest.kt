@@ -121,7 +121,6 @@ class StoreBrandsControllerTest {
             val api = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
             val controller = StoreBrandsController(api, this)
             advanceUntilIdle()
-            advanceUntilIdle()
             val brands = controller.state.value.brands
             controller.selectBrand(brands.first())
             advanceUntilIdle()
@@ -154,7 +153,6 @@ class StoreBrandsControllerTest {
         try {
             val api = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
             val controller = StoreBrandsController(api, this)
-            advanceUntilIdle()
             advanceUntilIdle()
             val brands = controller.state.value.brands
             controller.selectBrand(brands.first())
