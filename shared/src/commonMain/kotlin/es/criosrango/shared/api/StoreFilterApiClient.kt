@@ -14,7 +14,7 @@ import kotlinx.serialization.Serializable
 )
 /** Shared KMP owner for the variation-aware WordPress filter endpoint. */
 class StoreFilterApiClient(private val endpoint: String = "https://criosrango.es/wp-json/criosrango-filter/v1/query", private val client: HttpClient = createStoreHttpClient()) {
- suspend fun query(scope: String, outletCategoryId: Int? = null, originCategoryIds: List<Int> = emptyList(), sizeIds: List<Int> = emptyList(), colorIds: List<Int> = emptyList(), brandIds: List<Int> = emptyList(), page: Int = 1, perPage: Int = 12, sort: String = "newest", facet: String? = null): StoreFilterQueryResponse {
+ suspend fun query(scope: String, outletCategoryId: Int? = null, originCategoryIds: List<Int> = emptyList(), sizeIds: List<Int> = emptyList(), colorIds: List<Int> = emptyList(), brandIds: List<Int> = emptyList(), page: Int = 1, perPage: Int = 12, sort: String = "newest", facet: String? = null, allowedProductIds: List<Int> = emptyList()): StoreFilterQueryResponse {
   require(scope == "catalog" || scope == "outlet"); require(page >= 1 && perPage in 1..100)
   require(sort in setOf("newest", "oldest", "price_asc", "price_desc", "title_asc", "title_desc", "default"))
   if (facet != null) require(facet in setOf("sizes", "colors", "brands"))
@@ -25,6 +25,7 @@ class StoreFilterApiClient(private val endpoint: String = "https://criosrango.es
    if (sizeIds.isNotEmpty()) parameter("size_ids", sizeIds.distinct().sorted().joinToString(","))
    if (colorIds.isNotEmpty()) parameter("color_ids", colorIds.distinct().sorted().joinToString(","))
    if (brandIds.isNotEmpty()) parameter("brand_ids", brandIds.distinct().sorted().joinToString(","))
+   if (allowedProductIds.isNotEmpty()) parameter("allowed_product_ids", allowedProductIds.distinct().sorted().joinToString(","))
    parameter("page", page); parameter("per_page", perPage); parameter("sort", sort); facet?.let { parameter("facet", it) }
   }.body()
   if (response.schemaVersion != 1) throw IllegalStateException("Unsupported Filter API schema version: ${response.schemaVersion}")

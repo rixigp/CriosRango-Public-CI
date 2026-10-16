@@ -32,7 +32,7 @@ fun StoreNovedadesScreen(storeApi:StoreApiClient,padding:PaddingValues,cartStore
                 Text("Novedades",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
                 Text("Últimas incorporaciones",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            StoreRootFilterButton(onClick=controller::openFilters)
+            OutlinedButton(onClick=controller::openFilters) { Text(if (state.activeFilterCount == 0) "Filtros" else "Filtros (${state.activeFilterCount})") }
         }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal=12.dp,vertical=4.dp),horizontalArrangement=Arrangement.spacedBy(7.dp)) {
             StoreNovedadesAudience.values().forEach { option ->
@@ -69,7 +69,7 @@ fun StoreNovedadesScreen(storeApi:StoreApiClient,padding:PaddingValues,cartStore
         StoreCatalogFilterDialog(
             sizes=options.sizes.map{it.name},colors=options.colors.map{it.name},brands=options.brands.map{it.name},
             selectedSizes=state.draftSizes,selectedColors=state.draftColors,selectedBrands=state.draftBrands,
-            enabledSizes=options.sizes.map{it.name}.toSet(),enabledColors=options.colors.map{it.name}.toSet(),enabledBrands=options.brands.map{it.name}.toSet(),
+            enabledSizes=state.enabledSizes,enabledColors=state.enabledColors,enabledBrands=state.enabledBrands,
             showBrands=true,statusMessage=status,onRetry=if(state.filterOptionsState is StoreFilterOptionsState.Error) controller::retryFilterOptions else null,
             onDimensionSelected=controller::selectFilterDimension,onSizesChanged=controller::changeDraftSizes,onColorsChanged=controller::changeDraftColors,onBrandsChanged=controller::changeDraftBrands,
             onApply=controller::applyFilters,onClear=controller::clearDraftFilters,onDismiss=controller::cancelFilters,onCancel=controller::cancelFilters)

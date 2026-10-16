@@ -46,6 +46,7 @@ class StoreFilterApiClientTest {
         assertEquals("342", query["size_ids"])
         assertEquals("353", query["color_ids"])
         assertEquals("777", query["brand_ids"])
+        assertFalse("allowed_product_ids" in query)
         assertEquals("2", query["page"])
         assertEquals("12", query["per_page"])
         assertEquals("price_asc", query["sort"])
@@ -70,6 +71,20 @@ class StoreFilterApiClientTest {
         client.query(scope = "catalog")
         assertFalse("outlet_category_id" in query)
         assertFalse("origin_category_ids" in query)
+        client.close()
+    }
+
+    @Test fun allowed_product_ids_are_sorted_deduplicated_and_omitted_when_empty() = runTest {
+        var query = emptyMap<String, String>()
+        val http = HttpClient(MockEngine { request ->
+            query = request.url.parameters.names().associateWith { request.url.parameters[it] ?: "" }
+            respond("""{"schema_version":1,"page":1,"per_page":12,"total":0,"has_more":false,"product_ids":[],"facets":{}}""", HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
+        }) { install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) } }
+        val client = StoreFilterApiClient(endpoint = "https://example.test/query", client = http)
+        client.query(scope = "catalog", allowedProductIds = emptyList())
+        assertFalse("allowed_product_ids" in query)
+        client.query(scope = "catalog", allowedProductIds = listOf(789, 123, 456, 123, 789))
+        assertEquals("123,456,789", query["allowed_product_ids"])
         client.close()
     }
 

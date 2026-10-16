@@ -331,6 +331,10 @@ class StoreApiClient(
     suspend fun productTags(perPage: Int = 100): List<StoreGlobalTag> =
         client.get("${baseUrl}products/tags") { parameter("per_page", perPage) }.body()
 
+    /** Real WooCommerce product_brand terms, not product tags. */
+    suspend fun productBrands(perPage: Int = 100, page: Int = 1): List<StoreGlobalBrand> =
+        client.get("${baseUrl}products/brands") { parameter("per_page", perPage); parameter("page", page); parameter("hide_empty", true) }.body()
+
     suspend fun categories(perPage: Int = 100, page: Int = 1): List<StoreCategory> =
         client.get("${baseUrl}products/categories") { parameter("per_page", perPage); parameter("page", page) }.body()
 
