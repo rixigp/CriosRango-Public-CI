@@ -139,7 +139,7 @@ class IosNovedadesTest {
  @Test fun contextualFacetsUseCategoryAllowlistAndExcludeTheirOwnDraftDimension()=runTest{
   val f=Fake();val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle()
   c.selectAudience(StoreNovedadesAudience.CRIOS);open(c);advanceUntilIdle()
-  c.changeDraftSizes(setOf("6A"));c.changeDraftColors(setOf("Azul"));c.changeDraftBrands(setOf("Marca A"));advanceUntilIdle()
+  c.changeDraftSizes(setOf("6A"));advanceUntilIdle();c.changeDraftColors(setOf("Azul"));advanceUntilIdle();c.changeDraftBrands(setOf("Marca A"));advanceUntilIdle()
   val last=f.facetRequests.takeLast(3).associateBy { it.first }
   assertEquals(listOf(2,3,4,5),last.getValue("sizes").second[0])
   assertEquals(emptyList<Int>(),last.getValue("sizes").second[1])
