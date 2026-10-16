@@ -224,7 +224,9 @@ fun CriosRangoIOSRootScreen(
     MaterialTheme {
         androidx.compose.runtime.LaunchedEffect(Unit) { println("KMP_RUNTIME_ROOT_SCREEN_READY") }
         StoreGlobalShell(
-            selectedTab = when (section) {
+            selectedTab = if (catalogPage == IosCatalogPage.Brands && catalogOriginHome) {
+                StoreMainTab.HOME
+            } else when (section) {
                 IosRootSection.HOME -> StoreMainTab.HOME
                 IosRootSection.CATEGORIES -> StoreMainTab.CATEGORIES
                 IosRootSection.OUTLET -> StoreMainTab.OUTLET
@@ -287,7 +289,12 @@ fun CriosRangoIOSRootScreen(
                     },
                     onNovedades = { section = IosRootSection.CATEGORIES; resetCatalog(); catalogOriginHome = true; openCatalog(IosCatalogPage.Novedades) },
                     onSearch = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Search) },
-                    onBrands = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Brands) },
+                    onBrands = {
+                        section = IosRootSection.CATEGORIES
+                        resetCatalog()
+                        catalogOriginHome = true
+                        openCatalog(IosCatalogPage.Brands)
+                    },
                     onOutlet = { section = IosRootSection.OUTLET; resetCatalog(); openCatalog(IosCatalogPage.Outlet) }
                 )
                 IosRootSection.OUTLET, IosRootSection.CATEGORIES -> IosCatalogScreen(
