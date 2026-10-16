@@ -187,7 +187,8 @@ class StoreNovedadesController(private val scope: CoroutineScope, private val so
         try {
             sizeIds=ids(s.selectedSizes,options.sizes,"talla"); colorIds=ids(s.selectedColors,options.colors,"color"); brandIds=ids(s.selectedBrands,options.brands,"marca")
         } catch(e:Exception) {
-            matchingFilterProductIds=null; mutableState.value=s.copy(isFiltering=false,filterError=e); publishProjection(); return
+            mutableState.value=s.copy(isFiltering=false,filterError=e)
+            return
         }
         val allowedIds = categoryProducts(s).map { it.id }.distinct().sorted()
         mutableState.value=s.copy(isFiltering=true,filterError=null)
