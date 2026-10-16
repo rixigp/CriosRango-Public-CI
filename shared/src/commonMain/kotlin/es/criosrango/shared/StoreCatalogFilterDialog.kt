@@ -69,7 +69,10 @@ fun StoreCatalogFilterDialog(
         .sortedWith(compareBy({ storeCatalogFilterSizeSortKey(it) }, { it }))
     val colorLabels = distinctFilterMetadataDisplayNames(colors)
         .sortedWith(compareBy({ storeCatalogFilterKey(it) }, { it }))
-    val brandLabels = filterBrandDisplayNames(brands, brandQuery)
+    val brandLabels = filterBrandDisplayNames(brands, brandQuery).let { matching ->
+        if (!hideUnavailableOptions) matching
+        else (matching + brands.filter { it in selectedBrands }).distinct()
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
