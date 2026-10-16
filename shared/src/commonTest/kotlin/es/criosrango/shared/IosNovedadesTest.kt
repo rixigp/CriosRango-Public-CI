@@ -88,6 +88,7 @@ class IosNovedadesTest {
   assertFalse(shouldShowNovedadesCountAndSort(c.state.value))
   assertTrue(c.state.value.paging.items.isEmpty())
   assertTrue(c.state.value.paging.isInitialLoading)
+  gate.complete(CatalogPage(f.products,true,999));advanceUntilIdle()
  }
 
  @Test fun initialQueryLoadsOnlyOneGlobalRecentPageOf24()=runTest{
