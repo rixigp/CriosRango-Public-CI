@@ -1106,9 +1106,10 @@ internal fun CatalogFilteredProductGrid(
                 ProductSortControl(mode = sortMode, onMode = { sortMode = it })
                 if (headerTitle == null) {
                     Spacer(Modifier.weight(1f))
-                    OutlinedButton(onClick = { filtersOpen = true }) {
-                        Text(if (active == 0) "Filtros" else "Filtros ($active)")
-                    }
+                    es.criosrango.shared.StoreCatalogFilterButton(
+                        activeFilterCount = active,
+                        onClick = { filtersOpen = true }
+                    )
                 }
             }
             ProductGrid(
@@ -1372,9 +1373,10 @@ internal fun CategoryParentWithFilters(
                 showBack = true,
                 onBack = onBack,
                 trailing = {
-                    OutlinedButton(onClick = { open = true }) {
-                        Text(if (active == 0) "Filtros" else "Filtros ($active)")
-                    }
+                    es.criosrango.shared.StoreCatalogFilterButton(
+                        activeFilterCount = active,
+                        onClick = { open = true }
+                    )
                 }
             )
     
