@@ -64,7 +64,6 @@ class StoreBrandsControllerTest {
 
     @Test
     fun controllerLoadsAllBrandPagesAndPaginatesSelectedBrand() = runTest {
-        try {
         val requests = mutableListOf<String>()
         val pageOneBrands = (1..100).joinToString(",") { id ->
             """{"id":$id,"name":"Brand-$id","slug":"brand-$id","count":1}"""
