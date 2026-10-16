@@ -85,6 +85,7 @@ class StoreNovedadesController(private val scope: CoroutineScope, private val so
     val state: StateFlow<StoreNovedadesState> = mutableState
     private var started = false
     private var loading = false
+    private var hasLoadedGlobalDataset = false
     private var generation = 0L
     private var filterGeneration = 0L
     private var globalProducts: List<StoreProduct> = emptyList()
@@ -100,7 +101,6 @@ class StoreNovedadesController(private val scope: CoroutineScope, private val so
         if (value == s.selectedAudience) return
         mutableState.value = s.copy(selectedAudience=value, queryIdentity=identity(value,s.selectedSort,s.selectedSizes,s.selectedColors,s.selectedBrands))
         filterGeneration++
-        matchingFilterProductIds = null
         if (mutableState.value.activeFilterCount > 0) reloadFilterProjection() else publishProjection()
         requestFacetsIfReady()
     }
@@ -189,19 +189,19 @@ class StoreNovedadesController(private val scope: CoroutineScope, private val so
         } catch(e:Exception) {
             matchingFilterProductIds=null; mutableState.value=s.copy(isFiltering=false,filterError=e); publishProjection(); return
         }
-        matchingFilterProductIds=null
-        mutableState.value=s.copy(isFiltering=true,filterError=null); publishProjection()
+        val allowedIds = categoryProducts(s).map { it.id }.distinct().sorted()
+        mutableState.value=s.copy(isFiltering=true,filterError=null)
         scope.launch {
             try {
-                val allowedIds = categoryProducts(mutableState.value).map { it.id }.distinct().sorted()
                 val returnedIds=source.matchingProductIds(allowedIds,sizeIds,colorIds,brandIds)
                 if(request!=filterGeneration) return@launch
                 matchingFilterProductIds=returnedIds intersect allowedIds.toSet()
-                mutableState.value=mutableState.value.copy(isFiltering=false,filterError=null); publishProjection()
+                mutableState.value=mutableState.value.copy(isFiltering=false,filterError=null)
+                publishProjection()
             } catch(e:CancellationException) { throw e
             } catch(e:Exception) {
                 if(request!=filterGeneration) return@launch
-                matchingFilterProductIds=null; mutableState.value=mutableState.value.copy(isFiltering=false,filterError=e); publishProjection()
+                mutableState.value=mutableState.value.copy(isFiltering=false,filterError=e)
             }
         }
     }
@@ -212,7 +212,6 @@ class StoreNovedadesController(private val scope: CoroutineScope, private val so
         if (!s.filterDialogVisible) return
         val allowedIds = categoryProducts(s).map { it.id }.distinct().sorted()
         val gen = ++facetGeneration
-        mutableState.value = s.copy(facetCounts = emptyMap(), loadedFacetKeys = emptyMap(), enabledSizes = s.draftSizes, enabledColors = s.draftColors, enabledBrands = s.draftBrands)
         val sizes = s.draftSizes; val colors = s.draftColors; val brands = s.draftBrands
         fun ids(selected: Set<String>, values: List<StoreFilterOption>) = values.filter { it.name in selected }.map { it.id }.distinct().sorted()
         val sizeIds = ids(sizes, options.sizes); val colorIds = ids(colors, options.colors); val brandIds = ids(brands, options.brands)
@@ -223,29 +222,45 @@ class StoreNovedadesController(private val scope: CoroutineScope, private val so
                 Triple("colors", sizeIds, emptyList<Int>() to brandIds),
                 Triple("brands", sizeIds, colorIds to emptyList<Int>())
             )
+            val refreshedCounts = mutableMapOf<String, Map<Int, Int>>()
             for ((dimension, sizeFilter, otherFilters) in requests) {
-                try {
-                    val counts = source.loadFacet(allowedIds, sizeFilter, otherFilters.first, otherFilters.second, dimension)
-                    val current = mutableState.value
-                    if (gen != facetGeneration || !current.filterDialogVisible || current.selectedAudience != s.selectedAudience ||
-                        current.draftSizes != sizes || current.draftColors != colors || current.draftBrands != brands) return@launch
-                    val countMap = current.facetCounts + (dimension to counts)
-                    val loadedMap = current.loadedFacetKeys + (dimension to key)
-                    fun enabled(values: List<StoreFilterOption>, selected: Set<String>) =
-                        values.filter { (counts[it.id] ?: 0) > 0 || it.name in selected }.map { it.name }.toSet()
-                    mutableState.value = when (dimension) {
-                        "sizes" -> current.copy(facetCounts = countMap, loadedFacetKeys = loadedMap, enabledSizes = enabled(options.sizes, sizes))
-                        "colors" -> current.copy(facetCounts = countMap, loadedFacetKeys = loadedMap, enabledColors = enabled(options.colors, colors))
-                        else -> current.copy(facetCounts = countMap, loadedFacetKeys = loadedMap, enabledBrands = enabled(options.brands, brands))
-                    }
-                } catch (e: CancellationException) { throw e } catch (_: Exception) { /* Retry on next interaction; never infer availability from cards. */ }
+                val counts = try {
+                    source.loadFacet(allowedIds, sizeFilter, otherFilters.first, otherFilters.second, dimension)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    return@launch
+                }
+                val current = mutableState.value
+                if (gen != facetGeneration || !current.filterDialogVisible || current.selectedAudience != s.selectedAudience ||
+                    current.draftSizes != sizes || current.draftColors != colors || current.draftBrands != brands) return@launch
+                refreshedCounts[dimension] = counts
             }
+            val current = mutableState.value
+            if (gen != facetGeneration || !current.filterDialogVisible || current.selectedAudience != s.selectedAudience ||
+                current.draftSizes != sizes || current.draftColors != colors || current.draftBrands != brands) return@launch
+            fun enabled(values: List<StoreFilterOption>, selected: Set<String>, counts: Map<Int, Int>) =
+                values.filter { (counts[it.id] ?: 0) > 0 || it.name in selected }.map { it.name }.toSet()
+            mutableState.value = current.copy(
+                facetCounts = current.facetCounts + refreshedCounts,
+                loadedFacetKeys = current.loadedFacetKeys + requests.associate { it.first to key },
+                enabledSizes = enabled(options.sizes, sizes, refreshedCounts.getValue("sizes")),
+                enabledColors = enabled(options.colors, colors, refreshedCounts.getValue("colors")),
+                enabledBrands = enabled(options.brands, brands, refreshedCounts.getValue("brands"))
+            )
         }
     }
 
     private fun reloadGlobalDataset() {
-        val request=++generation; filterGeneration++; loading=true; matchingFilterProductIds=null
-        mutableState.value=mutableState.value.copy(isFiltering=false,filterError=null,paging=CatalogPagingState(isInitialLoading=true,hasMore=false))
+        val request=++generation
+        filterGeneration++
+        loading=true
+        val current = mutableState.value
+        mutableState.value = current.copy(
+            isFiltering = false,
+            filterError = null,
+            paging = if (hasLoadedGlobalDataset) current.paging else CatalogPagingState(isInitialLoading = true, hasMore = false)
+        )
         scope.launch {
             try {
                 val categories=loadCategories()
@@ -254,12 +269,17 @@ class StoreNovedadesController(private val scope: CoroutineScope, private val so
                 globalProducts=products
                 categoryIdsByAudience=StoreNovedadesAudience.values().filter{it!=StoreNovedadesAudience.ALL}
                     .associateWith{resolveAudienceCategoryIds(categories,it).toSet()}
+                hasLoadedGlobalDataset = true
                 loading=false
+                requestFacetsIfReady()
                 if(mutableState.value.activeFilterCount>0) reloadFilterProjection() else publishProjection()
             } catch(e:CancellationException) { throw e
             } catch(e:Exception) {
                 if(request!=generation) return@launch
-                loading=false; mutableState.value=mutableState.value.copy(paging=CatalogPagingState(isInitialLoading=false,initialError=e,hasMore=false))
+                loading=false
+                if (!hasLoadedGlobalDataset) {
+                    mutableState.value=mutableState.value.copy(paging=CatalogPagingState(isInitialLoading=false,initialError=e,hasMore=false))
+                }
             }
         }
     }
