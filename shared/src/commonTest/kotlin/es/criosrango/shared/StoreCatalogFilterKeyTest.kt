@@ -6,6 +6,25 @@ import kotlin.test.assertTrue
 
 class StoreCatalogFilterKeyTest {
     @Test
+    fun novedadesOnlyShowsEnabledOrSelectedOptionsForSizesColorsAndBrands() {
+        val allOptions = listOf("2M", "3M", "6M", "M", "L", "XL", "XXL", "1M", "4M")
+        val enabled = setOf("2M", "3M", "6M", "M", "L", "XL", "XXL")
+        val selectedButNowDisabled = setOf("4M")
+        val expected = listOf("2M", "3M", "6M", "M", "L", "XL", "XXL", "4M")
+        listOf("Talla", "Color", "Marca").forEach { dimension ->
+            assertEquals(
+                expected,
+                visibleStoreCatalogFilterOptions(allOptions, enabled, selectedButNowDisabled, hideUnavailableOptions = true),
+                "$dimension must retain selected options even when unavailable"
+            )
+        }
+        assertEquals(
+            allOptions,
+            visibleStoreCatalogFilterOptions(allOptions, enabled, selectedButNowDisabled, hideUnavailableOptions = false)
+        )
+    }
+
+    @Test
     fun removesCanonicalAccentsAndNormalizesWhitespace() {
         assertEquals("arbol", storeCatalogFilterKey("Árbol"))
         assertEquals("arbol", storeCatalogFilterKey("árbol"))
