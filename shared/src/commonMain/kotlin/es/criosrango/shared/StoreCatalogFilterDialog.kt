@@ -51,7 +51,8 @@ fun StoreCatalogFilterDialog(
     onDimensionSelected: (String) -> Unit = {},
     onSizesChanged: (Set<String>) -> Unit, onColorsChanged: (Set<String>) -> Unit,
     onBrandsChanged: (Set<String>) -> Unit, onApply: () -> Unit,
-    onClear: () -> Unit, onDismiss: () -> Unit, onCancel: (() -> Unit)? = null
+    onClear: () -> Unit, onDismiss: () -> Unit, onCancel: (() -> Unit)? = null,
+    statusMessage: String? = null, onRetry: (() -> Unit)? = null
 ) {
     var activeDimension by remember { mutableStateOf("Talla") }
     var brandQuery by remember { mutableStateOf("") }
@@ -127,11 +128,13 @@ fun StoreCatalogFilterDialog(
                         .fillMaxWidth()
                         .heightIn(max = 320.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState())
-                            .padding(vertical = 2.dp)
+                    if (statusMessage != null) {
+                        Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(statusMessage)
+                            if (onRetry != null) TextButton(onClick = onRetry) { Text("Reintentar") }
+                        }
+                    } else Column(
+                        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 2.dp)
                     ) {
                         when (activeTab) {
                             "Talla" -> StoreCatalogFilterChoices(
