@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.minimumInteractiveComponentSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -83,7 +82,7 @@ fun StoreCatalogFilterDialog(
                     FilterChip(
                         selected = activeTab == "Talla",
                         onClick = { activeDimension = "Talla"; onDimensionSelected("sizes") },
-                        modifier = Modifier.weight(1f).minimumInteractiveComponentSize().height(40.dp),
+                        modifier = Modifier.weight(1f).height(40.dp),
                         colors = chipColors,
                         label = {
                             Text(
@@ -96,7 +95,7 @@ fun StoreCatalogFilterDialog(
                     FilterChip(
                         selected = activeTab == "Color",
                         onClick = { activeDimension = "Color"; onDimensionSelected("colors") },
-                        modifier = Modifier.weight(1f).minimumInteractiveComponentSize().height(40.dp),
+                        modifier = Modifier.weight(1f).height(40.dp),
                         colors = chipColors,
                         label = {
                             Text(
@@ -110,7 +109,7 @@ fun StoreCatalogFilterDialog(
                         FilterChip(
                             selected = activeTab == "Marca",
                             onClick = { activeDimension = "Marca"; onDimensionSelected("brands") },
-                            modifier = Modifier.weight(1f).minimumInteractiveComponentSize().height(40.dp),
+                            modifier = Modifier.weight(1f).height(40.dp),
                             colors = chipColors,
                             label = {
                                 Text(
@@ -204,7 +203,7 @@ private fun StoreCatalogFilterChoices(
         values.forEach { value ->
             FilterChip(
                 selected = value in selected,
-                modifier = Modifier.minimumInteractiveComponentSize().height(40.dp),
+                modifier = Modifier.height(40.dp),
                 enabled = value in selected || value in enabledValues,
                 onClick = { onChange(if (value in selected) selected - value else selected + value) },
                 colors = chipColors,
