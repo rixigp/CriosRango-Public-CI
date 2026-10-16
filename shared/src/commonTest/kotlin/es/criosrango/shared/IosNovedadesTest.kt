@@ -2,6 +2,16 @@ package es.criosrango.shared
 import es.criosrango.shared.model.ProductPrices
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
+import es.criosrango.shared.api.StoreApiClient
+import es.criosrango.shared.api.StoreFilterApiClient
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.json.Json
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
@@ -39,6 +49,34 @@ class IosNovedadesTest {
   override suspend fun loadFacet(allowedProductIds:List<Int>,sizeIds:List<Int>,colorIds:List<Int>,brandIds:List<Int>,dimension:String):Map<Int,Int>{facetRequests+=dimension to listOf(allowedProductIds,sizeIds,colorIds,brandIds);val gate=facetGate;return gate?.await() ?: facetCounts[dimension].orEmpty()}
  }
  private suspend fun open(c:StoreNovedadesController){c.openFilters()}
+
+
+ @Test fun filterOptionsUseWooCommerceProductBrandsNotProductTags()=runTest{
+  val requested=mutableListOf<String>()
+  val http=HttpClient(MockEngine { request ->
+   val path=request.url.encodedPath;requested+=path
+   val body=when(path){
+    "/wp-json/wc/store/v1/products/attributes" -> """[{"id":1,"name":"Tallas","taxonomy":"pa_tallas"},{"id":2,"name":"Color","taxonomy":"pa_color"}]"""
+    "/wp-json/wc/store/v1/products/attributes/1/terms" -> """[{"id":342,"name":"6A","slug":"6a","count":3}]"""
+    "/wp-json/wc/store/v1/products/attributes/2/terms" -> """[{"id":353,"name":"Azul","slug":"azul","count":2}]"""
+    "/wp-json/wc/store/v1/products/brands" -> """[{"id":777,"name":"Marca real","slug":"marca-real","count":1,"image":{"id":1,"src":"https://example.test/brand.png","thumbnail":"https://example.test/brand-thumb.png"}}]"""
+    else -> error("Unexpected metadata endpoint: $path")
+   }
+   respond(body,HttpStatusCode.OK,headersOf("Content-Type","application/json"))
+  }) { install(ContentNegotiation) { json(Json { ignoreUnknownKeys=true }) } }
+  val filterHttp=HttpClient(MockEngine { error("Filter API must not be called while loading metadata") }) {
+   install(ContentNegotiation) { json(Json { ignoreUnknownKeys=true }) }
+  }
+  val options=StoreApiNovedadesDataSource(
+   StoreApiClient(baseUrl="https://example.test/wp-json/wc/store/v1/",client=http),
+   StoreFilterApiClient(endpoint="https://example.test/query",client=filterHttp)
+  ).loadFilterOptions()
+  assertEquals(777,options.brands.single().id)
+  assertEquals("product_brand",options.brands.single().taxonomy)
+  assertTrue(requested.any { it.endsWith("/products/brands") })
+  assertFalse(requested.any { it.endsWith("/products/tags") })
+  http.close();filterHttp.close()
+ }
 
  @Test fun initialQueryLoadsOnlyOneGlobalRecentPageOf24()=runTest{
   val f=Fake();val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle()
