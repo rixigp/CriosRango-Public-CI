@@ -62,7 +62,8 @@ class StoreApiNovedadesDataSource(
         fun es.criosrango.shared.model.StoreGlobalAttributeTerm.toOption(taxonomy: String) = StoreFilterOption(id, normalizeFilterMetadataDisplayName(name), slug, taxonomy, count)
         val sizes = api.globalAttributeTerms(sizeAttr.id).map { it.toOption(sizeAttr.taxonomy) }
         val colors = api.globalAttributeTerms(colorAttr.id).map { it.toOption(colorAttr.taxonomy) }
-        val brands = api.productBrands().map { StoreFilterOption(it.id, normalizeFilterMetadataDisplayName(it.name), it.slug, "product_brand", it.count) }
+        val brandTerms = buildList { var page = 1; while (true) { val batch = api.productBrands(page = page); addAll(batch); if (batch.size < 100) break; page++ } }
+        val brands = brandTerms.map { StoreFilterOption(it.id, normalizeFilterMetadataDisplayName(it.name), it.slug, "product_brand", it.count) }
         return StoreFilterOptions(sizes, colors, brands)
     }
     override suspend fun matchingProductIds(allowedProductIds: List<Int>, sizeIds: List<Int>, colorIds: List<Int>, brandIds: List<Int>): Set<Int> {
@@ -124,7 +125,7 @@ class StoreNovedadesController(private val scope: CoroutineScope, private val so
     fun changeDraftColors(values:Set<String>) { mutableState.value=mutableState.value.copy(draftColors=values); requestFacetsIfReady() }
     fun changeDraftBrands(values:Set<String>) { mutableState.value=mutableState.value.copy(draftBrands=values); requestFacetsIfReady() }
     fun selectFilterDimension(dimension:String) { if (dimension in setOf("sizes","colors","brands")) requestFacetsIfReady() }
-    fun clearDraftFilters() { mutableState.value=mutableState.value.copy(draftSizes=emptySet(),draftColors=emptySet(),draftBrands=emptySet()) }
+    fun clearDraftFilters() { mutableState.value=mutableState.value.copy(draftSizes=emptySet(),draftColors=emptySet(),draftBrands=emptySet()); requestFacetsIfReady() }
     fun applyFilters() {
         val s=mutableState.value
         mutableState.value=s.copy(
@@ -232,12 +233,11 @@ class StoreNovedadesController(private val scope: CoroutineScope, private val so
                     val loadedMap = current.loadedFacetKeys + (dimension to key)
                     fun enabled(values: List<StoreFilterOption>, selected: Set<String>) =
                         values.filter { (counts[it.id] ?: 0) > 0 || it.name in selected }.map { it.name }.toSet()
-                    mutableState.value = current.copy(
-                        facetCounts = countMap, loadedFacetKeys = loadedMap,
-                        enabledSizes = enabled(options.sizes, sizes),
-                        enabledColors = enabled(options.colors, colors),
-                        enabledBrands = enabled(options.brands, brands)
-                    )
+                    mutableState.value = when (dimension) {
+                        "sizes" -> current.copy(facetCounts = countMap, loadedFacetKeys = loadedMap, enabledSizes = enabled(options.sizes, sizes))
+                        "colors" -> current.copy(facetCounts = countMap, loadedFacetKeys = loadedMap, enabledColors = enabled(options.colors, colors))
+                        else -> current.copy(facetCounts = countMap, loadedFacetKeys = loadedMap, enabledBrands = enabled(options.brands, brands))
+                    }
                 } catch (e: CancellationException) { throw e } catch (_: Exception) { /* Retry on next interaction; never infer availability from cards. */ }
             }
         }
