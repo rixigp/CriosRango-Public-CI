@@ -15,6 +15,7 @@ on:
     branches:
       - kmp-migration
       - compose-multiplatform-convergence
+      - home-novedades-marcas-convergence
     paths:
       - "app/**"
       - "shared/**"
@@ -83,7 +84,7 @@ jobs:
           ./gradlew :app:assembleDebug --warning-mode all --stacktrace
 
       - name: Validate Android debug, tests, lint, and minified release
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/home-novedades-marcas-convergence')
         run: |
           set +e
           ./gradlew clean :app:assembleDebug :app:lintDebug test :app:assembleRelease --warning-mode all --stacktrace
@@ -93,7 +94,7 @@ jobs:
           fi
           exit $STATUS
       - name: Validate R8 outputs and release manifest
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/home-novedades-marcas-convergence')
         shell: bash
         run: |
           set -euo pipefail
