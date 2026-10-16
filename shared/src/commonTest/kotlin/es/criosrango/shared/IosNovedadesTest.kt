@@ -20,6 +20,7 @@ class IosNovedadesTest {
   val allowedRequests=mutableListOf<List<Int>>()
   val facetRequests=mutableListOf<Pair<String, List<List<Int>>>>()
   var facetCounts: Map<String, Map<Int, Int>> = mapOf("sizes" to mapOf(342 to 2), "colors" to mapOf(353 to 2), "brands" to mapOf(777 to 2))
+  var facetGate:CompletableDeferred<Map<Int,Int>>?=null
   var filterIds:Set<Int> = setOf(2,4,999)
   var products=(1..10).map { id ->
    val cat=when(id){1->11;2->21;3->30;4->41;5->50;6->61;7->70;8->81;9->90;else->101}
@@ -35,7 +36,7 @@ class IosNovedadesTest {
   }
   override suspend fun loadFilterOptions():StoreFilterOptions{optionsCalls++;return options}
   override suspend fun matchingProductIds(allowedProductIds:List<Int>,sizeIds:List<Int>,colorIds:List<Int>,brandIds:List<Int>):Set<Int>{filterCalls++;allowedRequests+=allowedProductIds;filterRequests+=Triple(sizeIds,colorIds,brandIds);return filterIds}
-  override suspend fun loadFacet(allowedProductIds:List<Int>,sizeIds:List<Int>,colorIds:List<Int>,brandIds:List<Int>,dimension:String):Map<Int,Int>{facetRequests+=dimension to listOf(allowedProductIds,sizeIds,colorIds,brandIds);return facetCounts[dimension].orEmpty()}
+  override suspend fun loadFacet(allowedProductIds:List<Int>,sizeIds:List<Int>,colorIds:List<Int>,brandIds:List<Int>,dimension:String):Map<Int,Int>{facetRequests+=dimension to listOf(allowedProductIds,sizeIds,colorIds,brandIds);val gate=facetGate;return gate?.await() ?: facetCounts[dimension].orEmpty()}
  }
  private suspend fun open(c:StoreNovedadesController){c.openFilters()}
 
@@ -84,7 +85,7 @@ class IosNovedadesTest {
  }
  @Test fun categoryAndVariationFiltersAreIntersected()=runTest{
   val f=Fake();f.filterIds=setOf(2,4,5,9,999);val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle();c.selectAudience(StoreNovedadesAudience.CRIOS);open(c);advanceUntilIdle()
-  c.changeDraftSizes(setOf("6A"));c.applyFilters();advanceUntilIdle();assertEquals(listOf(2,4,5),c.state.value.paging.items.map{it.id})
+  c.changeDraftSizes(setOf("6A"));c.applyFilters();advanceUntilIdle();assertEquals(listOf(2,4,5),c.state.value.paging.items.map{it.id});assertEquals(listOf(2,3,4,5),f.allowedRequests.single())
  }
  @Test fun filtersAndSortComposeWithoutReloadingGlobalProducts()=runTest{
   val f=Fake();f.filterIds=setOf(2,4,9,999);val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle();open(c);advanceUntilIdle();c.changeDraftBrands(setOf("Marca A"));c.applyFilters();advanceUntilIdle()
@@ -122,6 +123,18 @@ class IosNovedadesTest {
   assertTrue(c.state.value.draftSizes.isEmpty())
   assertTrue(c.state.value.draftColors.isEmpty())
   assertTrue(c.state.value.draftBrands.isEmpty())
+ }
+
+
+ @Test fun staleFacetResponseCannotOverwriteAvailabilityForNewCategory()=runTest{
+  val f=Fake();val oldFacet=CompletableDeferred<Map<Int,Int>>();f.facetGate=oldFacet
+  val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle();open(c);advanceUntilIdle()
+  f.facetGate=null
+  c.selectAudience(StoreNovedadesAudience.CRIOS);advanceUntilIdle()
+  assertEquals(listOf(2,3,4,5),f.facetRequests.last { it.first == "sizes" }.second[0])
+  assertTrue("6A" in c.state.value.enabledSizes)
+  oldFacet.complete(emptyMap());advanceUntilIdle()
+  assertTrue("6A" in c.state.value.enabledSizes)
  }
 
  @Test fun counterEqualsFinalVisibleResult()=runTest{
