@@ -284,7 +284,7 @@ fun StoreProductCard(
 }
 
 @Composable
-private fun StoreProductGridSkeleton(modifier: Modifier = Modifier) {
+internal fun StoreProductGridSkeleton(modifier: Modifier = Modifier) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
         modifier = modifier,
