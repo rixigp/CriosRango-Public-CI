@@ -201,16 +201,6 @@ internal fun SearchScreen(
     showAllBrands: Boolean = false,
     onBackFromAllBrands: () -> Unit = {},
     onBrandFromAllBrands: (BrandTerm) -> Unit = {}) {
-    if (showAllBrands) {
-        AllBrandsScreen(
-            brands = brands,
-            padding = padding,
-            onBrand = onBrandFromAllBrands,
-            onBack = onBackFromAllBrands
-        )
-        return
-    }
-
     var query by androidx.compose.runtime.saveable.rememberSaveable(initialQuery) {
         mutableStateOf(initialQuery)
     }
