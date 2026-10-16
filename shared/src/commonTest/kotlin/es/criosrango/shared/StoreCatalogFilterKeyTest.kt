@@ -2,6 +2,7 @@ package es.criosrango.shared
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class StoreCatalogFilterKeyTest {
     @Test
@@ -30,5 +31,46 @@ class StoreCatalogFilterKeyTest {
         assertEquals("straße", storeCatalogFilterKey("Straße"))
         assertEquals("straße", storeCatalogFilterKey("straße"))
         assertEquals("strasse", storeCatalogFilterKey("strasse"))
+    }
+
+    @Test
+    fun decodes_html_entities_for_display_labels_only() {
+        assertEquals("Abel & Lula", normalizeFilterMetadataDisplayName("Abel &amp; Lula"))
+        assertEquals("Tachi & Zucca", normalizeFilterMetadataDisplayName("Tachi &amp; Zucca"))
+        assertEquals("V&L", normalizeFilterMetadataDisplayName("V&amp;L"))
+        assertEquals("X&M", normalizeFilterMetadataDisplayName("X&amp;M"))
+        assertEquals("Café ©", normalizeFilterMetadataDisplayName("Caf&eacute; &copy;"))
+        assertEquals("A😀B", normalizeFilterMetadataDisplayName("A&#x1F600;B"))
+        assertEquals("&unknown;", normalizeFilterMetadataDisplayName("&unknown;"))
+    }
+
+    @Test
+    fun display_decoding_does_not_change_canonical_ids_taxonomy_or_slugs() {
+        val original = StoreFilterOption(id = 12, name = "V&amp;L", slug = "v-l", taxonomy = "product_tag", count = 7)
+        val display = original.copy(name = normalizeFilterMetadataDisplayName(original.name))
+        assertEquals("V&L", display.name)
+        assertEquals(original.id, display.id)
+        assertEquals(original.slug, display.slug)
+        assertEquals(original.taxonomy, display.taxonomy)
+        assertEquals(original.count, display.count)
+    }
+
+    @Test
+    fun exact_decoded_duplicate_labels_collapse_without_case_folding() {
+        assertEquals(
+            listOf("42", "V&L", "v&l", "Azul", "Azul claro", "Azul marino"),
+            distinctFilterMetadataDisplayNames(listOf(
+                "42", "42", "V&amp;L", "V&L", "v&l", "Azul", "Azul claro", "Azul marino"
+            ).map(::normalizeFilterMetadataDisplayName))
+        )
+    }
+
+    @Test
+    fun brand_search_is_local_case_insensitive_and_accent_tolerant() {
+        val brands = listOf("Amaya", "Ámbar", "Niño", normalizeFilterMetadataDisplayName("Abel &amp; Lula"), "Amaya")
+        assertEquals(listOf("Amaya", "Ámbar"), filterBrandDisplayNames(brands, "AM"))
+        assertEquals(listOf("Niño"), filterBrandDisplayNames(brands, "nino"))
+        assertEquals(listOf("Abel & Lula"), filterBrandDisplayNames(brands, "abel & lula"))
+        assertTrue(filterBrandDisplayNames(brands, "not found").isEmpty())
     }
 }

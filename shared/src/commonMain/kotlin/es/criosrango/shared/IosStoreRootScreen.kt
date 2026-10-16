@@ -117,6 +117,7 @@ internal sealed class IosCatalogPage {
     data object Brands : IosCatalogPage()
     data object Outlet : IosCatalogPage()
     data object Root : IosCatalogPage()
+    data class RootFilter(val scope: StoreRootFilterScope) : IosCatalogPage()
     data class Category(val category: StoreCategory) : IosCatalogPage()
     data class Product(val product: StoreProduct) : IosCatalogPage()
 }
@@ -144,6 +145,11 @@ fun CriosRangoIOSRootScreen(
     var catalogOriginHome by remember { mutableStateOf(false) }
     val catalogHistory = remember { mutableStateListOf<IosCatalogPage>() }
     val catalogRestoration = remember { mutableStateMapOf<Long, IosCatalogRestorationState>() }
+    val outletControllerScope = rememberCoroutineScope()
+    val rootFilterOwner = remember(storeApi) { StoreRootFilterOwner(storeApi, outletControllerScope) }
+    val outletController = remember(storeApi) {
+        StoreOutletController(outletControllerScope, storeOutletDataSource(storeApi))
+    }
     var categorySnapshot by remember { mutableStateOf<List<StoreCategory>?>(null) }
     var categorySnapshotLoading by remember { mutableStateOf(true) }
     var categorySnapshotError by remember { mutableStateOf<String?>(null) }
@@ -285,10 +291,13 @@ fun CriosRangoIOSRootScreen(
                 )
                 IosRootSection.OUTLET, IosRootSection.CATEGORIES -> IosCatalogScreen(
                     storeApi = storeApi,
+                    rootFilterOwner = rootFilterOwner,
                     padding = padding,
                     page = catalogPage,
                     cartStore = cartStore,
+                    outletController = outletController,
                     onOpenCategory = { openCatalog(IosCatalogPage.Category(it)) },
+                    onOpenRootFilter = { scope -> rootFilterOwner.open(scope) },
                     onOpenProduct = { openCatalog(IosCatalogPage.Product(it)) },
                     onBack = {
                         if (section == IosRootSection.OUTLET && catalogPage == IosCatalogPage.Outlet) {

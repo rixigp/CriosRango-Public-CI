@@ -49,10 +49,13 @@ import androidx.compose.ui.window.DialogProperties
 @Composable
 internal fun IosCatalogScreen(
     storeApi: es.criosrango.shared.api.StoreApiClient,
+    rootFilterOwner: StoreRootFilterOwner,
     padding: PaddingValues,
     page: IosCatalogPage,
     cartStore: StoreCartStore,
+    outletController: StoreOutletController,
     onOpenCategory: (StoreCategory) -> Unit,
+    onOpenRootFilter: (StoreRootFilterScope) -> Unit,
     onOpenProduct: (StoreProduct) -> Unit,
     onBack: () -> Unit,
     onShareProductText: (String) -> Unit,
@@ -63,8 +66,20 @@ internal fun IosCatalogScreen(
     categorySnapshotError: String?,
     onRetryCategorySnapshot: () -> Unit
 ) {
-    when (page) {
-        IosCatalogPage.Root -> IosCategoryRoot(padding, onOpenCategory, onBack, categorySnapshot.orEmpty(), categorySnapshotLoading, categorySnapshotError, onRetryCategorySnapshot)
+    val rootFilterState by rootFilterOwner.state.collectAsState()
+    // This state is owned above the page switch so Outlet → Product → Outlet restores presentation.
+    var showOutletChooser by remember(outletController) { mutableStateOf(true) }
+    val outletGridState = rememberLazyGridState()
+    if (rootFilterState.resultsVisible && page == IosCatalogPage.Root && rootFilterState.scope == StoreRootFilterScope.CATALOG) {
+        StoreRootFilterResultsScreen(rootFilterOwner, padding, onOpenProduct)
+    } else when (page) {
+        IosCatalogPage.Root -> IosCategoryRoot(padding, onOpenCategory, onOpenRootFilter, onBack, categorySnapshot.orEmpty(), categorySnapshotLoading, categorySnapshotError, onRetryCategorySnapshot)
+        is IosCatalogPage.RootFilter -> IosPagedProductScreen(
+            title = page.scope.title, padding = padding, cartStore = cartStore,
+            onProduct = onOpenProduct, onBack = onBack,
+            load = { perPage, pageNumber -> storeApi.products(perPage = perPage, page = pageNumber, category = page.scope.categoryQueryId) },
+            queryKey = page.scope.queryKey, enableProductControls = true, initialFiltersOpen = true
+        )
         is IosCatalogPage.Category -> IosCategoryPage(
             storeApi, padding, page.category, onOpenCategory, onOpenProduct, onBack, cartStore,
             catalogRestoration, categorySnapshot, categorySnapshotLoading, categorySnapshotError, onRetryCategorySnapshot
@@ -91,17 +106,30 @@ internal fun IosCatalogScreen(
                 }
             }
             IosOutletScreen(
-                storeApi, padding, cartStore, categories, loading, loadError,
-                onRetry = { retryToken++ }, onProduct = onOpenProduct, onBack = onBack
+                storeApi = storeApi,
+                padding = padding,
+                cartStore = cartStore,
+                controller = outletController,
+                showOutletChooser = showOutletChooser,
+                onShowOutletChooserChange = { showOutletChooser = it },
+                gridState = outletGridState,
+                categories = categories,
+                categoriesLoading = loading,
+                categoriesError = loadError,
+                onRetry = { retryToken++ },
+                onProduct = onOpenProduct,
+                onBack = onBack
             )
         }
     }
+    StoreRootFilterDialog(rootFilterOwner)
 }
 
 @Composable
 internal fun IosCategoryRoot(
     padding: PaddingValues,
     onOpenCategory: (StoreCategory) -> Unit,
+    onOpenRootFilter: (StoreRootFilterScope) -> Unit,
     onBack: () -> Unit,
     categories: List<StoreCategory>,
     loading: Boolean,
@@ -109,7 +137,7 @@ internal fun IosCategoryRoot(
     onRetry: () -> Unit
 ) {
     StoreCategoriesScreen(categories=categories, loading=loading, errorMessage=error, onBack=onBack,
-        onCategory=onOpenCategory, onRetry=onRetry, modifier=Modifier.fillMaxSize().padding(padding))
+        onCategory=onOpenCategory, onRootFilter=onOpenRootFilter, onRetry=onRetry, modifier=Modifier.fillMaxSize().padding(padding))
 }
 
 @Composable

@@ -40,5 +40,6 @@ data class StoreProductListUiState(
     val initialErrorMessage: String?,
     val appendErrorMessage: String?,
     val appendRetryLabel: String,
-    val canLoadMore: Boolean
+    val canLoadMore: Boolean,
+    val isProbingSelectedBubble: Boolean = false
 )

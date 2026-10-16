@@ -17,10 +17,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import es.criosrango.shared.api.StoreApiClient
-import es.criosrango.shared.model.OutletAvailability
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
-import es.criosrango.shared.model.countFor
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -430,22 +428,16 @@ private fun IosDiscoveryFilterChoices(
     }
 }
 
-private class IosOutletRetainedCategoryState {
-    val selectedBubbleKey = mutableStateOf<String?>(null)
-    val filtersOpen = mutableStateOf(false)
-    val selectedSizes = mutableStateOf(emptySet<String>())
-    val selectedColors = mutableStateOf(emptySet<String>())
-    val selectedBrands = mutableStateOf(emptySet<String>())
-    val selectedSort = mutableStateOf(StoreProductSortOption.RECENT)
-    val scrollPositions = mutableMapOf<String, Pair<Int, Int>>()
-}
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun IosOutletScreen(
     storeApi: StoreApiClient,
     padding: PaddingValues,
     cartStore: StoreCartStore,
+    controller: StoreOutletController,
+    showOutletChooser: Boolean,
+    onShowOutletChooserChange: (Boolean) -> Unit,
+    gridState: LazyGridState,
     categories: List<StoreCategory>?,
     categoriesLoading: Boolean,
     categoriesError: String?,
@@ -462,7 +454,7 @@ internal fun IosOutletScreen(
             errorMessage = if (categoriesLoading) null else categoriesError ?: "No se han podido cargar las categorías.",
             onBack = onBack,
             onCategory = {},
-            onFilterClick = {},
+            showFilterButton = false,
             onRetry = onRetry,
             modifier = Modifier.fillMaxSize().padding(padding)
         )
@@ -477,256 +469,210 @@ internal fun IosOutletScreen(
             errorMessage = "Outlet no disponible.",
             onBack = onBack,
             onCategory = {},
-            onFilterClick = {},
+            showFilterButton = false,
             onRetry = onRetry,
             modifier = Modifier.fillMaxSize().padding(padding)
         )
         return
     }
 
-    // Keep Outlet data/state owners above the root-versus-products branch so
-    // leaving a category for the Outlet root does not discard loaded state.
-    val outletScope = rememberCoroutineScope()
-    val retainedOutletPaginators = remember(outlet.id) {
-        mutableMapOf<String, CatalogPaginatorStore<StoreProduct>>()
-    }
-    val retainedOutletCategoryStates = remember(outlet.id) {
-        mutableMapOf<Int, IosOutletRetainedCategoryState>()
-    }
-    var availability by remember(outlet.id) { mutableStateOf<OutletAvailability?>(null) }
+    val outletChildren = categories.filter { it.parent == outlet.id }.distinctBy { it.id }
+    val controllerState by controller.state.collectAsState()
     var availabilityError by remember(outlet.id) { mutableStateOf<String?>(null) }
-    LaunchedEffect(outlet.id) {
-        runCatching { storeApi.outletAvailability() }
-            .onSuccess { availability = it }
-            .onFailure { availabilityError = it.message ?: "No se ha podido cargar la disponibilidad." }
+
+    LaunchedEffect(controllerState.activeCategoryId, controllerState.activeFilterCount, outlet.id) {
+        val activeCategoryId = controllerState.activeCategoryId
+        val isRootCategory = activeCategoryId == null || activeCategoryId == outlet.id
+        onShowOutletChooserChange(isRootCategory && controllerState.activeFilterCount == 0)
     }
 
-    val outletChildren = categories.filter { it.parent == outlet.id }.distinctBy { it.id }
-    var selectedOutletCategory by remember(outlet.id) { mutableStateOf<StoreCategory?>(null) }
-    var showAllOutletProducts by remember(outlet.id) { mutableStateOf(false) }
-    if (selectedOutletCategory == null && !showAllOutletProducts) {
+    LaunchedEffect(controller, categories) {
+        controller.updateCategories(categories)
+    }
+    LaunchedEffect(controller, outlet.id) {
+        runCatching { storeApi.outletAvailability() }
+            .onSuccess { controller.updateAvailability(it) }
+            .onFailure {
+                controller.updateAvailability(null)
+                availabilityError = it.message ?: "No se ha podido cargar la disponibilidad."
+            }
+    }
+
+    if (showOutletChooser) {
         StoreSubcategoriesScreen(
             parent = outlet,
             categories = outletChildren,
             loading = false,
             onBack = onBack,
-            onCategory = { selectedOutletCategory = it },
-            onFilterClick = { showAllOutletProducts = true },
+            onCategory = { category ->
+                controller.selectCategory(category.id)
+                onShowOutletChooserChange(false)
+            },
+            onFilterClick = {
+                controller.selectCategory(outlet.id)
+                controller.openFilters()
+            },
+            showFilterButton = true,
             modifier = Modifier.fillMaxSize().padding(padding)
         )
-        return
-    }
-    val activeCategoryId = selectedOutletCategory?.id ?: outlet.id
-    val bubbles = remember(activeCategoryId) {
-        selectedOutletCategory?.let { fixedOutletBubbles(it.id) }.orEmpty()
-    }
-    val retainedCategoryState = retainedOutletCategoryStates.getOrPut(activeCategoryId) {
-        IosOutletRetainedCategoryState()
-    }
-    var selectedBubbleKey by retainedCategoryState.selectedBubbleKey
-    var filtersOpen by retainedCategoryState.filtersOpen
-    var selectedSizes by retainedCategoryState.selectedSizes
-    var selectedColors by retainedCategoryState.selectedColors
-    var selectedBrands by retainedCategoryState.selectedBrands
-    val visibleBubbles = if (availability == null) bubbles else bubbles.filter { bubble ->
-        bubble.categoryIds.any { availability!!.countFor(activeCategoryId, it) > 0 }
-    }
-    LaunchedEffect(visibleBubbles, selectedBubbleKey) {
-        if (selectedBubbleKey != null && visibleBubbles.none { it.key == selectedBubbleKey }) {
-            selectedBubbleKey = null
+    } else {
+        val activeCategoryId = controllerState.activeCategoryId ?: outlet.id
+        val showBubbles = activeCategoryId != outlet.id
+        val paging = controllerState.paging
+    
+        LaunchedEffect(gridState, controller, controllerState.activeCategoryId) {
+            snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+                .collect { lastVisible -> controller.onVisibleRangeChanged(lastVisible) }
         }
-    }
-    val selectedBubble = selectedBubbleKey?.let { key -> visibleBubbles.firstOrNull { it.key == key } }
-    val queryKey = "outlet:" + activeCategoryId + ":" + (selectedBubble?.key ?: "all")
-    val paginator = retainedOutletPaginators.getOrPut(queryKey) {
-        CatalogPaginatorStore<StoreProduct>(outletScope, identity = { it.id })
-    }
-    val pagingState by paginator.state.collectAsState()
-    val savedScroll = retainedCategoryState.scrollPositions[queryKey] ?: (0 to 0)
-    val gridState = rememberLazyGridState(
-        initialFirstVisibleItemIndex = savedScroll.first,
-        initialFirstVisibleItemScrollOffset = savedScroll.second
-    )
-    LaunchedEffect(gridState, queryKey) {
-        snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
-            .collect { retainedCategoryState.scrollPositions[queryKey] = it }
-    }
-
-    val loadPage: suspend (Int, Int) -> CatalogPage<StoreProduct> = { page, perPage ->
-        val loaded = if (selectedBubble == null) {
-            storeApi.products(perPage, page, category = activeCategoryId)
-        } else {
-            coroutineScope {
-                selectedBubble.categoryIds.map { categoryId ->
-                    async { storeApi.products(perPage, page, category = categoryId) }
-                }.awaitAll().flatten().distinctBy { it.id }
-            }
-        }
-        CatalogPage(loaded, loaded.size >= perPage)
-    }
-
-    var selectedSort by retainedCategoryState.selectedSort
-    LaunchedEffect(queryKey) {
-        // Re-entering a previously loaded query must reuse its retained pages.
-        val retained = paginator.state.value
-        if (retained.currentPage == 0 && retained.items.isEmpty() &&
-            !retained.isInitialLoading &&
-            (selectedOutletCategory != null || showAllOutletProducts)
+        LaunchedEffect(
+            controllerState.activeCategoryId,
+            controllerState.selectedBubbleKey,
+            controllerState.selectedSort,
+            controllerState.selectedSizes,
+            controllerState.selectedColors,
+            controllerState.selectedBrands
         ) {
-            paginator.start(queryKey, loadPage)
+            if (controllerState.sortedProducts.isNotEmpty()) gridState.scrollToItem(0)
         }
-    }
-    LaunchedEffect(gridState, pagingState.items.size, pagingState.hasMore, pagingState.isInitialLoading, pagingState.isAppending) {
-        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
-            .collect { lastVisible ->
-                if (
-                    pagingState.hasMore && !pagingState.isInitialLoading && !pagingState.isAppending &&
-                    pagingState.appendError == null &&
-                    lastVisible >= pagingState.items.size - CatalogPaginator.PREFETCH_DISTANCE
-                ) paginator.loadNext(loadPage)
-            }
-    }
-
-    fun values(product: StoreProduct, attribute: String): Set<String> =
-        product.attributes.filter { it.name.equals(attribute, true) }
-            .flatMap { it.terms.map { term -> term.name } }
-            .filter { it.isNotBlank() }.toSet()
-    fun matchesValues(values: Set<String>, selected: Set<String>): Boolean =
-        selected.isEmpty() || values.any { value ->
-            selected.any { outletCatalogFilterKey(it) == outletCatalogFilterKey(value) }
+    
+        val activeChips = buildList {
+            controllerState.selectedSizes.sorted().forEach { add(StoreActiveFilterChipUi("size:$it", "Talla $it")) }
+            controllerState.selectedColors.sorted().forEach { add(StoreActiveFilterChipUi("color:$it", it)) }
+            controllerState.selectedBrands.sorted().forEach { add(StoreActiveFilterChipUi("brand:$it", it)) }
         }
-    fun matches(product: StoreProduct): Boolean =
-        matchesValues(values(product, "Tallas"), selectedSizes) &&
-            matchesValues(values(product, "Color"), selectedColors) &&
-            matchesValues(product.tags.map { it.name }.filter { it.isNotBlank() }.toSet(), selectedBrands)
-
-    val rawItems = pagingState.items
-    val filteredItems = rawItems.filter(::matches)
-    val sortedItems = when (selectedSort) {
-        StoreProductSortOption.RECENT -> filteredItems
-        StoreProductSortOption.PRICE_ASC -> filteredItems.sortedBy { it.prices.price.toLongOrNull() ?: Long.MAX_VALUE }
-        StoreProductSortOption.PRICE_DESC -> filteredItems.sortedByDescending { it.prices.price.toLongOrNull() ?: Long.MIN_VALUE }
-        StoreProductSortOption.NAME_ASC -> filteredItems.sortedBy { it.name.lowercase() }
-    }
-    val activeFilterCount = selectedSizes.size + selectedColors.size + selectedBrands.size
-    LaunchedEffect(
-        pagingState.items.size,
-        pagingState.currentPage,
-        pagingState.hasMore,
-        pagingState.isInitialLoading,
-        pagingState.isAppending,
-        selectedSizes,
-        selectedColors,
-        selectedBrands
-    ) {
-        if (
-            activeFilterCount > 0 &&
-            filteredItems.size < CatalogPaginator.PREFETCH_DISTANCE &&
-            pagingState.hasMore &&
-            !pagingState.isInitialLoading &&
-            !pagingState.isAppending &&
-            pagingState.currentPage > 0
-        ) {
-            paginator.loadNext(loadPage)
-        }
-    }
-    val sizes = rawItems.flatMap { values(it, "Tallas") }.distinct().sorted()
-    val colors = rawItems.flatMap { values(it, "Color") }.distinct().sorted()
-    val brands = rawItems.flatMap { it.tags.map { tag -> tag.name } }.filter { it.isNotBlank() }.distinct().sorted()
-    val possibleSizes = rawItems.filter { product ->
-        matchesValues(values(product, "Color"), selectedColors) &&
-            matchesValues(product.tags.map { it.name }.filter { it.isNotBlank() }.toSet(), selectedBrands)
-    }.flatMap { values(it, "Tallas") }.toSet()
-    val possibleColors = rawItems.filter { product ->
-        matchesValues(values(product, "Tallas"), selectedSizes) &&
-            matchesValues(product.tags.map { it.name }.filter { it.isNotBlank() }.toSet(), selectedBrands)
-    }.flatMap { values(it, "Color") }.toSet()
-    val possibleBrands = rawItems.filter { product ->
-        matchesValues(values(product, "Tallas"), selectedSizes) &&
-            matchesValues(values(product, "Color"), selectedColors)
-    }.flatMap { it.tags.map { tag -> tag.name } }.toSet()
-    val activeChips = buildList {
-        selectedSizes.sorted().forEach { add(StoreActiveFilterChipUi("size:$it", "Talla $it")) }
-        selectedColors.sorted().forEach { add(StoreActiveFilterChipUi("color:$it", it)) }
-        selectedBrands.sorted().forEach { add(StoreActiveFilterChipUi("brand:$it", it)) }
-    }
-
-    val listState = StoreProductListUiState(
-        title = selectedBubble?.label ?: (selectedOutletCategory?.name ?: "Outlet"),
-        items = sortedItems.map { product ->
-            StoreProductItemUi(
-                id = product.id,
-                nameText = normalizeWooPlainText(product.name),
-                imageIdentity = product.images.firstOrNull()?.src,
-                displayPriceText = formatStorePrice(product.prices.price, product.prices.currencyMinorUnit, product.prices.currencySymbol),
-                regularPriceText = formatStorePrice(product.prices.regularPrice, product.prices.currencyMinorUnit, product.prices.currencySymbol),
-                showPrice = product.prices.price.toLongOrNull()?.let { it > 0L } == true,
-                isOnSale = product.onSale
-            )
-        },
-        selectedSort = selectedSort,
-        availableSortOptions = StoreProductSortOption.values().toList(),
-        activeFilterCount = selectedSizes.size + selectedColors.size + selectedBrands.size,
-        activeFilterChips = activeChips,
-        isInitialLoading = pagingState.isInitialLoading,
-        isLoadingMore = pagingState.isAppending,
-        isEmpty = sortedItems.isEmpty() && !pagingState.hasMore,
-        emptyMessage = if (selectedSizes.isNotEmpty() || selectedColors.isNotEmpty() || selectedBrands.isNotEmpty()) "No hay productos con estos filtros." else "No hay productos.",
-        initialErrorMessage = pagingState.initialError?.message ?: if (pagingState.initialError != null) "No se han podido cargar los productos." else null,
-        appendErrorMessage = pagingState.appendError?.message ?: if (pagingState.appendError != null) "No se han podido cargar más productos." else null,
-        appendRetryLabel = "Reintentar",
-        canLoadMore = pagingState.hasMore
-    )
-
-    StoreProductListScreen(
-        state = listState,
-        gridState = gridState,
-        modifier = Modifier.fillMaxSize().padding(padding),
-        onBack = { if (selectedBubbleKey != null) selectedBubbleKey = null else if (selectedOutletCategory != null) selectedOutletCategory = null else showAllOutletProducts = false },
-        onProductSelected = { id -> sortedItems.firstOrNull { it.id == id }?.let(onProduct) },
-        onSortSelected = { selectedSort = it },
-        onFilterClick = { filtersOpen = true },
-        onRemoveFilter = { id ->
-            when {
-                id.startsWith("size:") -> selectedSizes = selectedSizes - id.removePrefix("size:")
-                id.startsWith("color:") -> selectedColors = selectedColors - id.removePrefix("color:")
-                id.startsWith("brand:") -> selectedBrands = selectedBrands - id.removePrefix("brand:")
-            }
-        },
-        onClearFilters = { selectedSizes = emptySet(); selectedColors = emptySet(); selectedBrands = emptySet() },
-        onRetryInitial = { paginator.start(queryKey, loadPage) },
-        onRetryAppend = { paginator.loadNext(loadPage) },
-        headerContent = {
-            if (selectedOutletCategory != null) {
-                StoreOutletBubbles(
-                    bubbles = visibleBubbles,
-                    selectedKey = selectedBubbleKey,
-                    onSelected = { selectedBubbleKey = it }
+        val listState = StoreProductListUiState(
+            title = controllerState.screenTitle,
+            items = controllerState.sortedProducts.map { product ->
+                StoreProductItemUi(
+                    id = product.id,
+                    nameText = normalizeWooPlainText(product.name),
+                    imageIdentity = product.images.firstOrNull()?.src,
+                    displayPriceText = formatStorePrice(product.prices.price, product.prices.currencyMinorUnit, product.prices.currencySymbol),
+                    regularPriceText = formatStorePrice(product.prices.regularPrice, product.prices.currencyMinorUnit, product.prices.currencySymbol),
+                    showPrice = product.prices.price.toLongOrNull()?.let { it > 0L } == true,
+                    isOnSale = product.onSale
                 )
-            }
-            availabilityError?.let { Text(it, modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)) }
-        },
-        imageContent = { item, imageModifier ->
-            val product = sortedItems.firstOrNull { it.id == item.id }
-            RemoteStoreImage(product?.images?.firstOrNull()?.src.orEmpty(), item.nameText, imageModifier, androidx.compose.ui.layout.ContentScale.Crop)
-        }
-    )
-
-    if (filtersOpen) {
-        StoreCatalogFilterDialog(
-            sizes = sizes, colors = colors, brands = brands,
-            selectedSizes = selectedSizes, selectedColors = selectedColors, selectedBrands = selectedBrands,
-            enabledSizes = possibleSizes, enabledColors = possibleColors, enabledBrands = possibleBrands,
-            onSizesChanged = { selectedSizes = it }, onColorsChanged = { selectedColors = it }, onBrandsChanged = { selectedBrands = it },
-            onApply = { filtersOpen = false },
-            onClear = { selectedSizes = emptySet(); selectedColors = emptySet(); selectedBrands = emptySet() },
-            onDismiss = { filtersOpen = false }
+            },
+            selectedSort = when (controllerState.selectedSort) {
+                StoreOutletSort.RECENT -> StoreProductSortOption.RECENT
+                StoreOutletSort.PRICE_ASC -> StoreProductSortOption.PRICE_ASC
+                StoreOutletSort.PRICE_DESC -> StoreProductSortOption.PRICE_DESC
+                StoreOutletSort.NAME_ASC -> StoreProductSortOption.NAME_ASC
+            },
+            availableSortOptions = StoreProductSortOption.values().toList(),
+            activeFilterCount = controllerState.activeFilterCount,
+            activeFilterChips = activeChips,
+            isInitialLoading = paging.isInitialLoading,
+            isLoadingMore = paging.isAppending,
+            isEmpty = controllerState.sortedProducts.isEmpty() && !controllerState.isProbingSelectedBubble && !paging.hasMore,
+            emptyMessage = if (controllerState.selectedSizes.isNotEmpty() || controllerState.selectedColors.isNotEmpty() || controllerState.selectedBrands.isNotEmpty()) "No hay productos con estos filtros." else "No hay productos.",
+            initialErrorMessage = paging.initialError?.message ?: if (paging.initialError != null) "No se han podido cargar los productos." else null,
+            appendErrorMessage = paging.appendError?.message ?: if (paging.appendError != null) "No se han podido cargar más productos." else null,
+            appendRetryLabel = "Reintentar",
+            canLoadMore = paging.hasMore,
+            isProbingSelectedBubble = showBubbles && controllerState.isProbingSelectedBubble
         )
+    
+        StoreProductListScreen(
+                state = listState,
+                gridState = gridState,
+                modifier = Modifier.fillMaxSize().padding(padding),
+                onBack = {
+                    if (showBubbles && controllerState.selectedBubbleKey != null) {
+                        controller.selectBubble(null)
+                    } else {
+                        controller.selectCategory(outlet.id)
+                        onShowOutletChooserChange(true)
+                    }
+                },
+                onProductSelected = { id ->
+                    controllerState.sortedProducts.firstOrNull { it.id == id }?.let(onProduct)
+                },
+                onSortSelected = { option ->
+                    controller.selectSort(when (option) {
+                        StoreProductSortOption.RECENT -> StoreOutletSort.RECENT
+                        StoreProductSortOption.PRICE_ASC -> StoreOutletSort.PRICE_ASC
+                        StoreProductSortOption.PRICE_DESC -> StoreOutletSort.PRICE_DESC
+                        StoreProductSortOption.NAME_ASC -> StoreOutletSort.NAME_ASC
+                    })
+                },
+                onFilterClick = controller::openFilters,
+                onRemoveFilter = { id ->
+                    when {
+                        id.startsWith("size:") -> controller.selectSizes(controllerState.selectedSizes - id.removePrefix("size:"))
+                        id.startsWith("color:") -> controller.selectColors(controllerState.selectedColors - id.removePrefix("color:"))
+                        id.startsWith("brand:") -> controller.selectBrands(controllerState.selectedBrands - id.removePrefix("brand:"))
+                    }
+                },
+                onClearFilters = controller::clearFilters,
+                onRetryInitial = controller::retryInitial,
+                onRetryAppend = controller::retryAppend,
+                headerContent = {
+                    if (showBubbles) {
+                        StoreOutletBubbles(
+                            bubbles = controllerState.visibleBubbles,
+                            selectedKey = controllerState.selectedBubbleKey,
+                            onSelected = controller::selectBubble
+                        )
+                    }
+                    availabilityError?.let {
+                        Text(it, modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp))
+                    }
+                },
+                imageContent = { item, imageModifier ->
+                    val product = controllerState.sortedProducts.firstOrNull { it.id == item.id }
+                    RemoteStoreImage(
+                        product?.images?.firstOrNull()?.src.orEmpty(),
+                        item.nameText,
+                        imageModifier,
+                        androidx.compose.ui.layout.ContentScale.Crop
+                    )
+                }
+            )
+    }
+
+    if (controllerState.filterDialogVisible) {
+        when (val optionsState = controllerState.filterOptionsState) {
+            StoreFilterOptionsState.Idle, StoreFilterOptionsState.Loading -> AlertDialog(
+                onDismissRequest = controller::cancelFilters,
+                title = { Text("Filtros") },
+                text = { Text("Cargando opciones de filtros…") },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = controller::cancelFilters) { Text("Cancelar") } }
+            )
+            is StoreFilterOptionsState.Error -> AlertDialog(
+                onDismissRequest = controller::cancelFilters,
+                title = { Text("No se han podido cargar los filtros") },
+                text = { Text(optionsState.message) },
+                confirmButton = { TextButton(onClick = controller::retryFilterOptions) { Text("Reintentar") } },
+                dismissButton = { TextButton(onClick = controller::cancelFilters) { Text("Cancelar") } }
+            )
+            is StoreFilterOptionsState.Ready -> StoreCatalogFilterDialog(
+                sizes = controllerState.sizes,
+                colors = controllerState.colors,
+                brands = controllerState.brands,
+                selectedSizes = controllerState.draftSizes,
+                selectedColors = controllerState.draftColors,
+                selectedBrands = controllerState.draftBrands,
+                enabledSizes = controllerState.enabledSizes,
+                enabledColors = controllerState.enabledColors,
+                enabledBrands = controllerState.enabledBrands,
+                showBrands = true,
+                onDimensionSelected = controller::selectFacetDimension,
+                onSizesChanged = controller::changeDraftSizes,
+                onColorsChanged = controller::changeDraftColors,
+                onBrandsChanged = controller::changeDraftBrands,
+                onApply = { controller.applyFilters() },
+                onClear = controller::clearDraftFilters,
+                onDismiss = controller::cancelFilters,
+                onCancel = controller::cancelFilters
+            )
+        }
     }
 }
 
 @Composable
-private fun IosPagedProductScreen(
+internal fun IosPagedProductScreen(
     title: String,
     padding: PaddingValues,
     cartStore: StoreCartStore,
@@ -739,11 +685,12 @@ private fun IosPagedProductScreen(
     emptyActionLabel: String? = null,
     onEmptyAction: (() -> Unit)? = null,
     headerContent: (@Composable ColumnScope.() -> Unit)? = null,
-    enableProductControls: Boolean = false
+    enableProductControls: Boolean = false,
+    initialFiltersOpen: Boolean = false
 ) {
     val scope=rememberCoroutineScope(); val paginator=remember(queryKey){CatalogPaginatorStore<StoreProduct>(scope, pageSize = if (queryKey.startsWith("novedades:")) 24 else CatalogPaginator.PAGE_SIZE) { it.id }}; val state by paginator.state.collectAsState(); val grid=rememberLazyGridState()
     var sortMode by rememberSaveable(queryKey) { mutableStateOf(IosCatalogSortModeState.RECENT) }
-    var filtersOpen by rememberSaveable(queryKey) { mutableStateOf(false) }
+    var filtersOpen by rememberSaveable(queryKey) { mutableStateOf(initialFiltersOpen) }
     var selectedSizes by rememberSaveable(queryKey) { mutableStateOf(setOf<String>()) }
     var selectedColors by rememberSaveable(queryKey) { mutableStateOf(setOf<String>()) }
     var selectedBrands by rememberSaveable(queryKey) { mutableStateOf(setOf<String>()) }

@@ -306,6 +306,10 @@ class StoreRepository(private val api: StoreApi) {
             perPage = perPage
         )
 
+    /** A nullable category is the genuine unscoped catalog query. */
+    suspend fun productsPage(categoryId: Int?, page: Int, perPage: Int): List<StoreProduct> =
+        api.products(perPage = perPage, page = page, category = categoryId)
+
     suspend fun allProducts(): List<StoreProduct> {
         val result = mutableListOf<StoreProduct>()
         var page = 1
