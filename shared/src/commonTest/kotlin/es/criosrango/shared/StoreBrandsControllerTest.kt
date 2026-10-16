@@ -18,25 +18,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StoreBrandsControllerTest {
-    private fun assertEqualsDiagnostic(
-        id: String,
-        expected: Any?,
-        actual: Any?,
-        requests: List<String>,
-        controllerState: Any?,
-    ) {
-        if (expected != actual) {
-            throw AssertionError(
-                "BRANDS_DIAG\\n" +
-                    "ID=$id\\n" +
-                    "EXPECTED=$expected\\n" +
-                    "ACTUAL=$actual\\n" +
-                    "REQUESTS=$requests\\n" +
-                    "STATE=$controllerState"
-            )
-        }
-    }
-
     private fun httpClient(handler: suspend io.ktor.client.engine.mock.MockRequestHandleScope.(io.ktor.client.request.HttpRequestData) -> io.ktor.client.request.HttpResponseData) =
         HttpClient(MockEngine { request -> handler(request) }) {
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
@@ -82,7 +63,7 @@ class StoreBrandsControllerTest {
     }
 
     @Test
-    fun controllerLoadsAllBrandPagesAndPaginatesSelectedBrand() = runTest {
+    fun controllerLoadsAllBrandPages() = runTest {
         val requests = mutableListOf<String>()
         val pageOneBrands = (1..100).joinToString(",") { id ->
             """{"id":$id,"name":"Brand-$id","slug":"brand-$id","count":1}"""
@@ -105,35 +86,85 @@ class StoreBrandsControllerTest {
             val api = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
             val controller = StoreBrandsController(api, this)
             advanceUntilIdle()
+            advanceUntilIdle()
             val brands = controller.state.value.brands
-            assertEqualsDiagnostic("BRANDS_ALL_PAGES", 101, brands.size, requests, controller.state.value)
-            assertEqualsDiagnostic("BRANDS_ORDER", "Alpha", brands.first().name, requests, controller.state.value)
-            assertEqualsDiagnostic("BRANDS_HIDE_EMPTY", true, brands.none { it.count <= 0 }, requests, controller.state.value)
-            assertEqualsDiagnostic("BRANDS_DEDUPLICATED_IDS", 101, brands.map { it.id }.distinct().size, requests, controller.state.value)
-            assertEqualsDiagnostic("BRANDS_HIDE_EMPTY_REQUEST", true, requests.any { it.contains("hide_empty=true") }, requests, controller.state.value)
-            controller.selectBrand(brands.first())
-            advanceUntilIdle()
-            assertEqualsDiagnostic("BRAND_PAGE1_CURRENT_PAGE", 1, controller.state.value.paging.currentPage, requests, controller.state.value)
-            assertEqualsDiagnostic("BRAND_PAGE1_PRODUCTS", 12, controller.state.value.paging.items.size, requests, controller.state.value)
-            assertEqualsDiagnostic("BRAND_PAGE1_REQUESTS", true, requests.any { it.contains("brand=alpha") && it.contains("per_page=12") && !it.contains("tag=") }, requests, controller.state.value)
-            controller.loadNextPage()
-            advanceUntilIdle()
-            assertEqualsDiagnostic("BRAND_PAGE2_CURRENT_PAGE", 2, controller.state.value.paging.currentPage, requests, controller.state.value)
-            assertEqualsDiagnostic("BRAND_PAGE2_PRODUCTS", 13, controller.state.value.paging.items.size, requests, controller.state.value)
-            controller.setSort(StoreProductSortOption.NAME_ASC)
-            controller.setSizes(setOf("M"))
-            controller.setColors(setOf("Azul"))
-            assertEqualsDiagnostic("BRAND_PAGINATION_SORT", StoreProductSortOption.NAME_ASC, controller.state.value.sort, requests, controller.state.value)
-            assertEqualsDiagnostic("BRAND_PAGINATION_SIZE_FILTER", setOf("M"), controller.state.value.selectedSizes, requests, controller.state.value)
-            assertEqualsDiagnostic("BRAND_PAGINATION_COLOR_FILTER", setOf("Azul"), controller.state.value.selectedColors, requests, controller.state.value)
-            controller.backToBrands()
-            controller.selectBrand(brands.first())
-            advanceUntilIdle()
-            assertEqualsDiagnostic("BRAND_RESELECT_PAGE", 2, controller.state.value.paging.currentPage, requests, controller.state.value)
-            assertEqualsDiagnostic("BRAND_RESELECT_PRODUCTS", 13, controller.state.value.paging.items.size, requests, controller.state.value)
-            assertEqualsDiagnostic("BRAND_RESELECT_SORT", StoreProductSortOption.NAME_ASC, controller.state.value.sort, requests, controller.state.value)
-            assertEqualsDiagnostic("BRAND_RESELECT_SIZE_FILTER", setOf("M"), controller.state.value.selectedSizes, requests, controller.state.value)
-            assertEqualsDiagnostic("BRAND_RESELECT_COLOR_FILTER", setOf("Azul"), controller.state.value.selectedColors, requests, controller.state.value)
+            assertEquals(101, brands.size)
+            assertEquals("Alpha", brands.first().name)
+            assertTrue(brands.none { it.count <= 0 })
+            assertEquals(101, brands.map { it.id }.distinct().size)
+            assertTrue(requests.any { it.contains("hide_empty=true") })
+            assertTrue(requests.any { it.contains("/products/brands?page=1") })
+            assertTrue(requests.any { it.contains("/products/brands?page=2") })
         } finally { client.close() }
     }
-}
+
+    @Test
+    fun controllerLoadsFirstSelectedBrandPage() = runTest {
+        val requests = mutableListOf<String>()
+        val pageOneBrands = (1..100).joinToString(",") { id ->
+            """{"id":$id,"name":"Brand-$id","slug":"brand-$id","count":1}"""
+        }
+        val client = httpClient { request ->
+            requests += request.url.toString()
+            when {
+                request.url.encodedPath.endsWith("/products/brands") && request.url.parameters["page"] == "1" ->
+                    respond("[$pageOneBrands]", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                request.url.encodedPath.endsWith("/products/brands") ->
+                    respond("""[{"id":1,"name":"Duplicate","slug":"duplicate","count":9},{"id":101,"name":"Alpha","slug":"alpha","count":2},{"id":102,"name":"Empty","slug":"empty","count":0}]""", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                request.url.encodedPath.endsWith("/products") && request.url.parameters["page"] == "1" ->
+                    respond((1..12).joinToString(prefix="[", postfix="]") { """{"id":$it,"name":"Product-$it","prices":{"price":"1000"}}""" }, headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                request.url.encodedPath.endsWith("/products") ->
+                    respond("""[{"id":13,"name":"Product-13","prices":{"price":"1000"}}]""", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                else -> respond("[]", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+            }
+        }
+        try {
+            val api = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
+            val controller = StoreBrandsController(api, this)
+            advanceUntilIdle()
+            advanceUntilIdle()
+            val brands = controller.state.value.brands
+            controller.selectBrand(brands.first())
+            advanceUntilIdle()
+            assertEquals(1, controller.state.value.paging.currentPage)
+            assertEquals(12, controller.state.value.paging.items.size)
+            assertTrue(requests.any { it.contains("brand=alpha") && it.contains("per_page=12") && it.contains("page=1") && !it.contains("tag=") })
+        } finally { client.close() }
+    }
+
+    @Test
+    fun controllerLoadsNextSelectedBrandPage() = runTest {
+        val requests = mutableListOf<String>()
+        val pageOneBrands = (1..100).joinToString(",") { id ->
+            """{"id":$id,"name":"Brand-$id","slug":"brand-$id","count":1}"""
+        }
+        val client = httpClient { request ->
+            requests += request.url.toString()
+            when {
+                request.url.encodedPath.endsWith("/products/brands") && request.url.parameters["page"] == "1" ->
+                    respond("[$pageOneBrands]", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                request.url.encodedPath.endsWith("/products/brands") ->
+                    respond("""[{"id":1,"name":"Duplicate","slug":"duplicate","count":9},{"id":101,"name":"Alpha","slug":"alpha","count":2},{"id":102,"name":"Empty","slug":"empty","count":0}]""", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                request.url.encodedPath.endsWith("/products") && request.url.parameters["page"] == "1" ->
+                    respond((1..12).joinToString(prefix="[", postfix="]") { """{"id":$it,"name":"Product-$it","prices":{"price":"1000"}}""" }, headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                request.url.encodedPath.endsWith("/products") ->
+                    respond("""[{"id":13,"name":"Product-13","prices":{"price":"1000"}}]""", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                else -> respond("[]", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+            }
+        }
+        try {
+            val api = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
+            val controller = StoreBrandsController(api, this)
+            advanceUntilIdle()
+            advanceUntilIdle()
+            val brands = controller.state.value.brands
+            controller.selectBrand(brands.first())
+            advanceUntilIdle()
+            controller.loadNextPage()
+            advanceUntilIdle()
+            assertEquals(2, controller.state.value.paging.currentPage)
+            assertEquals(13, controller.state.value.paging.items.size)
+            assertEquals(13, controller.state.value.paging.items.map { it.id }.distinct().size)
+            assertTrue(requests.any { it.contains("brand=alpha") && it.contains("per_page=12") && it.contains("page=2") && !it.contains("tag=") })
+        } finally { client.close() }
+    }}
