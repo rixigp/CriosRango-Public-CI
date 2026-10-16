@@ -64,6 +64,7 @@ class StoreBrandsControllerTest {
 
     @Test
     fun controllerLoadsAllBrandPagesAndPaginatesSelectedBrand() = runTest {
+        try {
         val requests = mutableListOf<String>()
         val pageOneBrands = (1..100).joinToString(",") { id ->
             """{"id":$id,"name":"Brand-$id","slug":"brand-$id","count":1}"""
@@ -115,6 +116,9 @@ class StoreBrandsControllerTest {
             assertEquals(StoreProductSortOption.NAME_ASC, controller.state.value.sort, "ASSERT_RESELECT_SORT_PRESERVED expected=${StoreProductSortOption.NAME_ASC} actual=${controller.state.value.sort}")
             assertEquals(setOf("M"), controller.state.value.selectedSizes, "ASSERT_RESELECT_SIZE_PRESERVED expected=${setOf("M")} actual=${controller.state.value.selectedSizes}")
             assertEquals(setOf("Azul"), controller.state.value.selectedColors, "ASSERT_RESELECT_COLOR_PRESERVED expected=${setOf("Azul")} actual=${controller.state.value.selectedColors}")
+        } catch (failure: AssertionError) {
+            println("BRANDS_DIAGNOSTIC_FAILURE=${failure.message}")
+            throw failure
         } finally { client.close() }
     }
 }
