@@ -26,6 +26,9 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
+private val FILTER_ACTIVE_CONTAINER = Color(0xFFE4EFEA)
+private val FILTER_ACTIVE_CONTENT = Color(0xFF183B35)
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun StoreProductListScreen(
@@ -70,6 +73,15 @@ fun StoreProductListScreen(
                     FilterChip(
                         selected = true,
                         onClick = { onRemoveFilter(filter.id) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = FILTER_ACTIVE_CONTAINER,
+                            labelColor = FILTER_ACTIVE_CONTENT,
+                            iconColor = FILTER_ACTIVE_CONTENT,
+                            selectedContainerColor = FILTER_ACTIVE_CONTAINER,
+                            selectedLabelColor = FILTER_ACTIVE_CONTENT,
+                            selectedLeadingIconColor = FILTER_ACTIVE_CONTENT,
+                            selectedTrailingIconColor = FILTER_ACTIVE_CONTENT
+                        ),
                         label = { Text(filter.label) },
                         trailingIcon = {
                             Icon(
@@ -82,6 +94,7 @@ fun StoreProductListScreen(
                 }
                 TextButton(
                     onClick = onClearFilters,
+                    colors = ButtonDefaults.textButtonColors(contentColor = FILTER_ACTIVE_CONTENT),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                     modifier = Modifier.heightIn(min = 32.dp)
                 ) {

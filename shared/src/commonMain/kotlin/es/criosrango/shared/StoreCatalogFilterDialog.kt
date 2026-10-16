@@ -36,6 +36,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
+private val FILTER_SELECTED_CONTAINER = androidx.compose.ui.graphics.Color(0xFF183B35)
+private val FILTER_SELECTED_CONTENT = androidx.compose.ui.graphics.Color.White
+
 /** The single filter-dialog presentation for the normal catalog on Android and iOS. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -54,9 +57,10 @@ fun StoreCatalogFilterDialog(
     val showBrandTab = showBrands
     val activeTab = if (activeDimension == "Marca" && !showBrandTab) "Talla" else activeDimension
     val chipColors = FilterChipDefaults.filterChipColors(
-        selectedContainerColor = MaterialTheme.colorScheme.primary,
-        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-        selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary
+        selectedContainerColor = FILTER_SELECTED_CONTAINER,
+        selectedLabelColor = FILTER_SELECTED_CONTENT,
+        selectedLeadingIconColor = FILTER_SELECTED_CONTENT,
+        selectedTrailingIconColor = FILTER_SELECTED_CONTENT
     )
     val sizeLabels = distinctFilterMetadataDisplayNames(sizes)
         .sortedWith(compareBy({ storeCatalogFilterSizeSortKey(it) }, { it }))
@@ -116,7 +120,7 @@ fun StoreCatalogFilterDialog(
                         )
                     }
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(4.dp))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -168,11 +172,11 @@ fun StoreCatalogFilterDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onApply) { Text("Aplicar") } },
+        confirmButton = { TextButton(onClick = onApply, colors = ButtonDefaults.textButtonColors(contentColor = FILTER_SELECTED_CONTAINER)) { Text("Aplicar") } },
         dismissButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onClear) { Text("Limpiar") }
-                if (onCancel != null) TextButton(onClick = onCancel) { Text("Cancelar") }
+                TextButton(onClick = onClear, colors = ButtonDefaults.textButtonColors(contentColor = FILTER_SELECTED_CONTAINER)) { Text("Limpiar") }
+                if (onCancel != null) TextButton(onClick = onCancel, colors = ButtonDefaults.textButtonColors(contentColor = FILTER_SELECTED_CONTAINER)) { Text("Cancelar") }
             }
         }
     )
@@ -193,7 +197,7 @@ private fun StoreCatalogFilterChoices(
 ) {
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         values.forEach { value ->
             FilterChip(
@@ -218,7 +222,7 @@ private fun StoreCatalogFilterChoices(
                                         Icons.Default.Check,
                                         contentDescription = null,
                                         modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.onPrimary
+                                        tint = FILTER_SELECTED_CONTENT
                                     )
                                 }
                             }
