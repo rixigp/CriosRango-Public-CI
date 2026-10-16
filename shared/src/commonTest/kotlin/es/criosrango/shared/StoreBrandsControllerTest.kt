@@ -84,7 +84,7 @@ class StoreBrandsControllerTest {
         }
         try {
             val api = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
-            val controller = StoreBrandsController(api, backgroundScope)
+            val controller = StoreBrandsController(api, this)
             advanceUntilIdle()
             val brands = controller.state.value.brands
             assertEquals(101, brands.size)
