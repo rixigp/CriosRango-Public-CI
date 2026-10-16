@@ -26,7 +26,7 @@ class IosNovedadesTest {
    val name=when(id){1->"Bautizo";2->"Bebé niña";3->"Bebé niño";4->"Niña";5->"Niño";6->"Comunión niña";7->"Comunión niño";8->"Mujer";9->"Hombre";else->"Recién nacido"}
    StoreProduct(id=id,name=name,prices=ProductPrices(price=(id*10).toString()),categories=listOf(StoreCategory(id=cat)))
   }
-  val options=StoreFilterOptions(listOf(StoreFilterOption(342,"6A","6a","pa_tallas")),listOf(StoreFilterOption(353,"Azul","azul","pa_color")),listOf(StoreFilterOption(777,"Marca A","marca-a")))
+  val options=StoreFilterOptions(listOf(StoreFilterOption(342,"6A","6a","pa_tallas")),listOf(StoreFilterOption(353,"Azul","azul","pa_color")),listOf(StoreFilterOption(777,"Marca A","marca-a","product_brand")))
   override suspend fun categories(page:Int,perPage:Int)=if(page==1)tree else emptyList()
   override suspend fun products(page:Int,perPage:Int,categoryIds:List<Int>,sort:StoreNovedadesSort):CatalogPage<StoreProduct>{
    calls++;pages+=page;sizes+=perPage;categoryQueries+=categoryIds;sorts+=sort
@@ -80,6 +80,7 @@ class IosNovedadesTest {
   val f=Fake();f.filterIds=setOf(3,9,999);val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle();open(c);advanceUntilIdle();c.changeDraftBrands(setOf("Marca A"));c.applyFilters();advanceUntilIdle()
   assertEquals(listOf(3,9),c.state.value.paging.items.map{it.id});assertEquals(Triple(emptyList<Int>(),emptyList<Int>(),listOf(777)),f.filterRequests.single())
   assertEquals("Marca A", f.options.brands.single().name)
+  assertEquals("product_brand", f.options.brands.single().taxonomy)
  }
  @Test fun categoryAndVariationFiltersAreIntersected()=runTest{
   val f=Fake();f.filterIds=setOf(2,4,5,9,999);val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle();c.selectAudience(StoreNovedadesAudience.CRIOS);open(c);advanceUntilIdle()
@@ -95,6 +96,34 @@ class IosNovedadesTest {
   open(c);advanceUntilIdle();c.changeDraftSizes(setOf("6A"));c.applyFilters();advanceUntilIdle();assertEquals(listOf(2),c.state.value.paging.items.map{it.id})
   c.clearFilters();assertEquals(before,c.state.value.paging.items.map{it.id}.toSet());assertEquals(1,f.calls);assertFalse(c.state.value.paging.items.any{it.id !in before})
  }
+
+ @Test fun contextualFacetsUseCategoryAllowlistAndExcludeTheirOwnDraftDimension()=runTest{
+  val f=Fake();val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle()
+  c.selectAudience(StoreNovedadesAudience.CRIOS);open(c);advanceUntilIdle()
+  c.changeDraftSizes(setOf("6A"));c.changeDraftColors(setOf("Azul"));c.changeDraftBrands(setOf("Marca A"));advanceUntilIdle()
+  val last=f.facetRequests.takeLast(3).associateBy { it.first }
+  assertEquals(listOf(2,3,4,5),last.getValue("sizes").second[0])
+  assertEquals(emptyList<Int>(),last.getValue("sizes").second[1])
+  assertEquals(listOf(353),last.getValue("sizes").second[2])
+  assertEquals(listOf(777),last.getValue("sizes").second[3])
+  assertEquals(emptyList<Int>(),last.getValue("colors").second[2])
+  assertEquals(listOf(342),last.getValue("colors").second[1])
+  assertEquals(emptyList<Int>(),last.getValue("brands").second[3])
+  assertEquals(listOf(342),last.getValue("brands").second[1])
+  assertEquals(listOf(353),last.getValue("brands").second[2])
+ }
+ @Test fun zeroCountOptionsStayDisabledAndCannotBeSelected()=runTest{
+  val f=Fake();f.facetCounts=mapOf("sizes" to emptyMap(),"colors" to emptyMap(),"brands" to emptyMap())
+  val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle();open(c);advanceUntilIdle()
+  assertFalse("6A" in c.state.value.enabledSizes)
+  assertFalse("Azul" in c.state.value.enabledColors)
+  assertFalse("Marca A" in c.state.value.enabledBrands)
+  c.changeDraftSizes(setOf("6A"));c.changeDraftColors(setOf("Azul"));c.changeDraftBrands(setOf("Marca A"))
+  assertTrue(c.state.value.draftSizes.isEmpty())
+  assertTrue(c.state.value.draftColors.isEmpty())
+  assertTrue(c.state.value.draftBrands.isEmpty())
+ }
+
  @Test fun counterEqualsFinalVisibleResult()=runTest{
   val f=Fake();f.filterIds=setOf(2,4,9,999);val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle();c.selectAudience(StoreNovedadesAudience.CRIOS);open(c);advanceUntilIdle()
   c.changeDraftSizes(setOf("6A"));c.applyFilters();advanceUntilIdle();c.selectSort(StoreNovedadesSort.PRICE_DESC)

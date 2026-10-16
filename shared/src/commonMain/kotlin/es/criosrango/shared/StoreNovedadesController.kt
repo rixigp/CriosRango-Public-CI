@@ -47,7 +47,6 @@ interface StoreNovedadesDataSource {
 class StoreApiNovedadesDataSource(
     private val api: StoreApiClient, private val filterApi: StoreFilterApiClient = StoreFilterApiClient()
 ) : StoreNovedadesDataSource {
-    private val filterOptionsSource = storeOutletDataSource(api, filterApi)
     override suspend fun categories(page: Int, perPage: Int) = api.categories(perPage = perPage, page = page)
     override suspend fun products(page: Int, perPage: Int, categoryIds: List<Int>, sort: StoreNovedadesSort): CatalogPage<StoreProduct> {
         val result = api.productsPage(perPage, page, categoryIds, sort.orderBy, sort.order)
@@ -121,9 +120,9 @@ class StoreNovedadesController(private val scope: CoroutineScope, private val so
         val s=mutableState.value
         mutableState.value=s.copy(filterDialogVisible=false,draftSizes=s.selectedSizes,draftColors=s.selectedColors,draftBrands=s.selectedBrands)
     }
-    fun changeDraftSizes(values:Set<String>) { mutableState.value=mutableState.value.copy(draftSizes=values); requestFacetsIfReady() }
-    fun changeDraftColors(values:Set<String>) { mutableState.value=mutableState.value.copy(draftColors=values); requestFacetsIfReady() }
-    fun changeDraftBrands(values:Set<String>) { mutableState.value=mutableState.value.copy(draftBrands=values); requestFacetsIfReady() }
+    fun changeDraftSizes(values:Set<String>) { val s=mutableState.value; mutableState.value=s.copy(draftSizes=values.filter { it in s.draftSizes || it in s.enabledSizes }.toSet()); requestFacetsIfReady() }
+    fun changeDraftColors(values:Set<String>) { val s=mutableState.value; mutableState.value=s.copy(draftColors=values.filter { it in s.draftColors || it in s.enabledColors }.toSet()); requestFacetsIfReady() }
+    fun changeDraftBrands(values:Set<String>) { val s=mutableState.value; mutableState.value=s.copy(draftBrands=values.filter { it in s.draftBrands || it in s.enabledBrands }.toSet()); requestFacetsIfReady() }
     fun selectFilterDimension(dimension:String) { if (dimension in setOf("sizes","colors","brands")) requestFacetsIfReady() }
     fun clearDraftFilters() { mutableState.value=mutableState.value.copy(draftSizes=emptySet(),draftColors=emptySet(),draftBrands=emptySet()); requestFacetsIfReady() }
     fun applyFilters() {
@@ -213,6 +212,7 @@ class StoreNovedadesController(private val scope: CoroutineScope, private val so
         if (!s.filterDialogVisible) return
         val allowedIds = categoryProducts(s).map { it.id }.distinct().sorted()
         val gen = ++facetGeneration
+        mutableState.value = s.copy(facetCounts = emptyMap(), loadedFacetKeys = emptyMap(), enabledSizes = s.draftSizes, enabledColors = s.draftColors, enabledBrands = s.draftBrands)
         val sizes = s.draftSizes; val colors = s.draftColors; val brands = s.draftBrands
         fun ids(selected: Set<String>, values: List<StoreFilterOption>) = values.filter { it.name in selected }.map { it.id }.distinct().sorted()
         val sizeIds = ids(sizes, options.sizes); val colorIds = ids(colors, options.colors); val brandIds = ids(brands, options.brands)
