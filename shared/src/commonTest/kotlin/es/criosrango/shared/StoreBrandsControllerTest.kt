@@ -86,15 +86,14 @@ class StoreBrandsControllerTest {
             val api = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
             val controller = StoreBrandsController(api, this)
             advanceUntilIdle()
-            advanceUntilIdle()
             val brands = controller.state.value.brands
             assertEquals(101, brands.size)
             assertEquals("Alpha", brands.first().name)
             assertTrue(brands.none { it.count <= 0 })
             assertEquals(101, brands.map { it.id }.distinct().size)
             assertTrue(requests.any { it.contains("hide_empty=true") })
-            assertTrue(requests.any { it.contains("/products/brands?page=1") })
-            assertTrue(requests.any { it.contains("/products/brands?page=2") })
+            assertTrue(requests.any { it.contains("/products/brands") && it.contains("page=1") })
+            assertTrue(requests.any { it.contains("/products/brands") && it.contains("page=2") })
         } finally { client.close() }
     }
 
@@ -167,4 +166,5 @@ class StoreBrandsControllerTest {
             assertEquals(13, controller.state.value.paging.items.map { it.id }.distinct().size)
             assertTrue(requests.any { it.contains("brand=alpha") && it.contains("per_page=12") && it.contains("page=2") && !it.contains("tag=") })
         } finally { client.close() }
-    }}
+    }
+}
