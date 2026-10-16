@@ -25,6 +25,8 @@ class IosNovedadesTest {
  private class Fake:StoreNovedadesDataSource {
   val tree=listOf(StoreCategory(id=10,name="Bautizo",slug="bautizo"),StoreCategory(id=11,parent=10,name="Ropa bautizo"),StoreCategory(id=20,name="Bebé niña",slug="bebe-nina"),StoreCategory(id=21,parent=20,name="Vestidos bebé"),StoreCategory(id=30,name="Bebé niño",slug="bebe-nino"),StoreCategory(id=40,name="Niña",slug="nina"),StoreCategory(id=41,parent=40,name="Vestidos niña"),StoreCategory(id=50,name="Niño",slug="nino"),StoreCategory(id=60,name="Comunión niña",slug="comunion-nina"),StoreCategory(id=61,parent=60,name="Vestidos comunión"),StoreCategory(id=70,name="Comunión niño",slug="comunion-nino"),StoreCategory(id=80,name="Mujer",slug="mujer"),StoreCategory(id=81,parent=80,name="Vestidos mujer"),StoreCategory(id=90,name="Hombre",slug="hombre"),StoreCategory(id=100,name="Recién nacido",slug="recien-nacido"),StoreCategory(id=101,parent=100,name="Pijamas"))
   var calls=0;var gate:CompletableDeferred<CatalogPage<StoreProduct>>?=null
+  var refreshGate:CompletableDeferred<CatalogPage<StoreProduct>>?=null
+  var filterGate:CompletableDeferred<Set<Int>>?=null
   val pages=mutableListOf<Int>();val sizes=mutableListOf<Int>();val categoryQueries=mutableListOf<List<Int>>();val sorts=mutableListOf<StoreNovedadesSort>()
   var optionsCalls=0;var filterCalls=0;val filterRequests=mutableListOf<Triple<List<Int>,List<Int>,List<Int>>>()
   val allowedRequests=mutableListOf<List<Int>>()
@@ -42,10 +44,11 @@ class IosNovedadesTest {
   override suspend fun products(page:Int,perPage:Int,categoryIds:List<Int>,sort:StoreNovedadesSort):CatalogPage<StoreProduct>{
    calls++;pages+=page;sizes+=perPage;categoryQueries+=categoryIds;sorts+=sort
    if(calls==1)gate?.let{return it.await()}
+   if(calls==2)refreshGate?.let{return it.await()}
    return CatalogPage(products,true,999)
   }
   override suspend fun loadFilterOptions():StoreFilterOptions{optionsCalls++;return options}
-  override suspend fun matchingProductIds(allowedProductIds:List<Int>,sizeIds:List<Int>,colorIds:List<Int>,brandIds:List<Int>):Set<Int>{filterCalls++;allowedRequests+=allowedProductIds;filterRequests+=Triple(sizeIds,colorIds,brandIds);return filterIds}
+  override suspend fun matchingProductIds(allowedProductIds:List<Int>,sizeIds:List<Int>,colorIds:List<Int>,brandIds:List<Int>):Set<Int>{filterCalls++;allowedRequests+=allowedProductIds;filterRequests+=Triple(sizeIds,colorIds,brandIds);return filterGate?.await() ?: filterIds}
   override suspend fun loadFacet(allowedProductIds:List<Int>,sizeIds:List<Int>,colorIds:List<Int>,brandIds:List<Int>,dimension:String):Map<Int,Int>{facetRequests+=dimension to listOf(allowedProductIds,sizeIds,colorIds,brandIds);val gate=facetGate;return gate?.await() ?: facetCounts[dimension].orEmpty()}
  }
  private suspend fun open(c:StoreNovedadesController){c.openFilters()}
@@ -189,6 +192,55 @@ class IosNovedadesTest {
   val f=Fake();val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle();c.selectAudience(StoreNovedadesAudience.CRIOS);c.retry();advanceUntilIdle()
   assertEquals(2,f.calls);assertEquals(listOf(1,1),f.pages);assertEquals(listOf(24,24),f.sizes);assertEquals(listOf(emptyList(),emptyList()),f.categoryQueries);assertEquals(StoreNovedadesAudience.CRIOS,c.state.value.selectedAudience)
  }
+ @Test fun refreshKeepsVisibleProductsAndCounterUntilValidReplacementArrives()=runTest{
+  val f=Fake();val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle()
+  val before=c.state.value.paging.items.map{it.id};val countBefore=c.state.value.paging.totalItems
+  val next=CompletableDeferred<CatalogPage<StoreProduct>>();f.refreshGate=next
+  c.refresh();runCurrent()
+  assertEquals(before,c.state.value.paging.items.map{it.id})
+  assertEquals(countBefore,c.state.value.paging.totalItems)
+  assertFalse(c.state.value.paging.isInitialLoading)
+  next.complete(CatalogPage(listOf(StoreProduct(id=99)),false,1));advanceUntilIdle()
+  assertEquals(listOf(99),c.state.value.paging.items.map{it.id})
+  assertEquals(1,c.state.value.paging.totalItems)
+ }
+
+ @Test fun filterRefreshKeepsVisibleProductsAndCounterUntilValidReplacementArrives()=runTest{
+  val f=Fake();val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle()
+  val before=c.state.value.paging.items.map{it.id};val countBefore=c.state.value.paging.totalItems
+  open(c);advanceUntilIdle()
+  val next=CompletableDeferred<Set<Int>>();f.filterGate=next
+  c.changeDraftSizes(setOf("6A"));c.applyFilters();runCurrent()
+  assertEquals(before,c.state.value.paging.items.map{it.id})
+  assertEquals(countBefore,c.state.value.paging.totalItems)
+  assertTrue(c.state.value.isFiltering)
+  next.complete(setOf(2,4));advanceUntilIdle()
+  assertEquals(listOf(2,4),c.state.value.paging.items.map{it.id})
+  assertEquals(2,c.state.value.paging.totalItems)
+ }
+
+ @Test fun validEmptyFilterResultIsNotTreatedAsLoading()=runTest{
+  val f=Fake();f.filterIds=emptySet();val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle()
+  open(c);advanceUntilIdle();c.changeDraftSizes(setOf("6A"));c.applyFilters();advanceUntilIdle()
+  assertTrue(c.state.value.paging.items.isEmpty())
+  assertEquals(0,c.state.value.paging.totalItems)
+  assertFalse(shouldShowNovedadesInitialLoading(c.state.value))
+  assertFalse(c.state.value.isFiltering)
+ }
+
+ @Test fun facetRefreshKeepsLastEnabledOptionsUntilAllNewFacetsArrive()=runTest{
+  val f=Fake();val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle();open(c);advanceUntilIdle()
+  assertTrue("6A" in c.state.value.enabledSizes)
+  assertTrue("Azul" in c.state.value.enabledColors)
+  assertTrue("Marca A" in c.state.value.enabledBrands)
+  val next=CompletableDeferred<Map<Int,Int>>();f.facetGate=next
+  c.changeDraftSizes(setOf("6A"));runCurrent()
+  assertTrue("6A" in c.state.value.enabledSizes)
+  assertTrue("Azul" in c.state.value.enabledColors)
+  assertTrue("Marca A" in c.state.value.enabledBrands)
+  next.complete(mapOf(342 to 2,353 to 2,777 to 2));advanceUntilIdle()
+ }
+
  @Test fun staleGlobalResponseCannotOverwriteRefresh()=runTest{
   val f=Fake();val gate=CompletableDeferred<CatalogPage<StoreProduct>>();f.gate=gate;val c=StoreNovedadesController(this,f);c.start();runCurrent();c.refresh();runCurrent()
   assertEquals(2,f.calls);gate.complete(CatalogPage(listOf(StoreProduct(id=999)),false,1));advanceUntilIdle();assertFalse(c.state.value.paging.items.any{it.id==999});assertEquals((1..10).toList(),c.state.value.paging.items.map{it.id})
