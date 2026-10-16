@@ -81,6 +81,15 @@ class IosNovedadesTest {
   http.close();filterHttp.close()
  }
 
+ @Test fun initialEmptyLoadingUsesSharedSkeletonStateWithoutCountOrSpinner()=runTest{
+  val f=Fake();val gate=CompletableDeferred<CatalogPage<StoreProduct>>();f.gate=gate
+  val c=StoreNovedadesController(this,f);c.start();runCurrent()
+  assertTrue(shouldShowNovedadesInitialLoading(c.state.value))
+  assertFalse(shouldShowNovedadesCountAndSort(c.state.value))
+  assertTrue(c.state.value.paging.items.isEmpty())
+  assertTrue(c.state.value.paging.isInitialLoading)
+ }
+
  @Test fun initialQueryLoadsOnlyOneGlobalRecentPageOf24()=runTest{
   val f=Fake();val c=StoreNovedadesController(this,f);c.start();advanceUntilIdle()
   assertEquals(1,f.calls);assertEquals(listOf(1),f.pages);assertEquals(listOf(24),f.sizes);assertEquals(listOf(emptyList()),f.categoryQueries)
@@ -199,6 +208,8 @@ class IosNovedadesTest {
   c.refresh();runCurrent()
   assertEquals(before,c.state.value.paging.items.map{it.id})
   assertEquals(countBefore,c.state.value.paging.totalItems)
+  assertFalse(shouldShowNovedadesInitialLoading(c.state.value))
+  assertTrue(shouldShowNovedadesCountAndSort(c.state.value))
   assertFalse(c.state.value.paging.isInitialLoading)
   next.complete(CatalogPage(listOf(StoreProduct(id=99)),false,1));advanceUntilIdle()
   assertEquals(listOf(99),c.state.value.paging.items.map{it.id})
@@ -225,6 +236,7 @@ class IosNovedadesTest {
   assertTrue(c.state.value.paging.items.isEmpty())
   assertEquals(0,c.state.value.paging.totalItems)
   assertFalse(shouldShowNovedadesInitialLoading(c.state.value))
+  assertTrue(shouldShowNovedadesCountAndSort(c.state.value))
   assertFalse(c.state.value.isFiltering)
  }
 
