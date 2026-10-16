@@ -48,6 +48,7 @@ fun StoreCatalogFilterDialog(
     selectedSizes: Set<String>, selectedColors: Set<String>, selectedBrands: Set<String>,
     enabledSizes: Set<String>, enabledColors: Set<String>, enabledBrands: Set<String>,
     showBrands: Boolean = true,
+    hideUnavailableOptions: Boolean = false,
     onDimensionSelected: (String) -> Unit = {},
     onSizesChanged: (Set<String>) -> Unit, onColorsChanged: (Set<String>) -> Unit,
     onBrandsChanged: (Set<String>) -> Unit, onApply: () -> Unit,
@@ -143,7 +144,8 @@ fun StoreCatalogFilterDialog(
                                 selected = selectedSizes,
                                 enabledValues = enabledSizes,
                                 onChange = onSizesChanged,
-                                chipColors = chipColors
+                                chipColors = chipColors,
+                                hideUnavailableOptions = hideUnavailableOptions
                             )
                             "Color" -> StoreCatalogFilterChoices(
                                 title = "Color",
@@ -151,7 +153,8 @@ fun StoreCatalogFilterDialog(
                                 selected = selectedColors,
                                 enabledValues = enabledColors,
                                 onChange = onColorsChanged,
-                                chipColors = chipColors
+                                chipColors = chipColors,
+                                hideUnavailableOptions = hideUnavailableOptions
                             )
                             else -> {
                                 OutlinedTextField(
@@ -168,7 +171,8 @@ fun StoreCatalogFilterDialog(
                                     selected = selectedBrands,
                                     enabledValues = enabledBrands,
                                     onChange = onBrandsChanged,
-                                    chipColors = chipColors
+                                    chipColors = chipColors,
+                                    hideUnavailableOptions = hideUnavailableOptions
                                 )
                             }
                         }
@@ -197,13 +201,15 @@ private fun StoreCatalogFilterChoices(
     selected: Set<String>,
     enabledValues: Set<String>,
     onChange: (Set<String>) -> Unit,
-    chipColors: androidx.compose.material3.SelectableChipColors
+    chipColors: androidx.compose.material3.SelectableChipColors,
+    hideUnavailableOptions: Boolean = false
 ) {
+    val visibleValues = visibleStoreCatalogFilterOptions(values, enabledValues, selected, hideUnavailableOptions)
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        values.forEach { value ->
+        visibleValues.forEach { value ->
             FilterChip(
                 selected = value in selected,
                 modifier = Modifier.height(40.dp),
@@ -245,6 +251,13 @@ private fun StoreCatalogFilterChoices(
         }
     }
 }
+
+internal fun visibleStoreCatalogFilterOptions(
+    values: List<String>,
+    enabledValues: Set<String>,
+    selected: Set<String>,
+    hideUnavailableOptions: Boolean
+): List<String> = values.filter { !hideUnavailableOptions || it in enabledValues || it in selected }
 
 /** Accent-insensitive matching used by the legacy Outlet filters on Android. */
 fun outletCatalogFilterKey(value: String): String {

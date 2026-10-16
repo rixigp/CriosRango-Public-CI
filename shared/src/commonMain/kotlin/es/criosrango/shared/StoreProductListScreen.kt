@@ -29,6 +29,18 @@ import androidx.compose.ui.unit.dp
 private val FILTER_ACTIVE_CONTAINER = Color(0xFFE4EFEA)
 private val FILTER_ACTIVE_CONTENT = Color(0xFF183B35)
 
+@Composable
+fun StoreCatalogFilterButton(
+    activeFilterCount: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = ButtonDefaults.ContentPadding
+) {
+    OutlinedButton(onClick = onClick, modifier = modifier, contentPadding = contentPadding) {
+        Text(if (activeFilterCount == 0) "Filtros" else "Filtros (${activeFilterCount})")
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun StoreProductListScreen(
@@ -52,12 +64,11 @@ fun StoreProductListScreen(
             showBack = true,
             onBack = onBack,
             trailing = {
-                OutlinedButton(
+                StoreCatalogFilterButton(
+                    activeFilterCount = state.activeFilterCount,
                     onClick = onFilterClick,
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                ) {
-                    Text(if (state.activeFilterCount == 0) "Filtros" else "Filtros (${state.activeFilterCount})")
-                }
+                )
             }
         )
 

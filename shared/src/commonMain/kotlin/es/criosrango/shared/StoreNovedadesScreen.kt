@@ -18,6 +18,9 @@ import androidx.compose.ui.unit.dp
 import es.criosrango.shared.api.StoreApiClient
 import es.criosrango.shared.model.StoreProduct
 
+internal fun shouldShowNovedadesInitialLoading(state: StoreNovedadesState): Boolean =
+    state.paging.isInitialLoading && state.paging.items.isEmpty()
+
 @Composable
 fun StoreNovedadesScreen(storeApi:StoreApiClient,padding:PaddingValues,cartStore:StoreCartStore?=null,onProduct:(StoreProduct)->Unit,onBack:()->Unit) {
     val scope=rememberCoroutineScope()
@@ -26,14 +29,20 @@ fun StoreNovedadesScreen(storeApi:StoreApiClient,padding:PaddingValues,cartStore
     var sortExpanded by remember{mutableStateOf(false)}
     LaunchedEffect(controller){controller.start()}
     Column(Modifier.fillMaxSize().padding(padding)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal=20.dp,vertical=2.dp).padding(bottom=2.dp),verticalAlignment=Alignment.CenterVertically) {
-            IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,contentDescription="Volver")}
-            Column(Modifier.weight(1f)) {
-                Text("Novedades",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
-                Text("Últimas incorporaciones",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        StoreCatalogHeader(
+            title = "Novedades",
+            subtitle = "Últimas incorporaciones",
+            titleFontWeight = FontWeight.Bold,
+            showBack = true,
+            onBack = onBack,
+            trailing = {
+                StoreCatalogFilterButton(
+                    activeFilterCount = state.activeFilterCount,
+                    onClick = controller::openFilters,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                )
             }
-            OutlinedButton(onClick=controller::openFilters) { Text(if (state.activeFilterCount == 0) "Filtros" else "Filtros (${state.activeFilterCount})") }
-        }
+        )
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal=12.dp,vertical=4.dp),horizontalArrangement=Arrangement.spacedBy(7.dp)) {
             StoreNovedadesAudience.values().forEach { option ->
                 FilterChip(selected=state.selectedAudience==option,onClick={controller.selectAudience(option)},label={Text(option.label)},
@@ -50,10 +59,9 @@ fun StoreNovedadesScreen(storeApi:StoreApiClient,padding:PaddingValues,cartStore
             }
         }
         when {
-            state.paging.isInitialLoading -> IosStoreLoading()
-            state.paging.initialError!=null -> IosStoreError(state.paging.initialError?.message?:"No se han podido cargar las novedades."){controller.retry()}
-            state.isFiltering -> IosStoreLoading()
-            state.filterError!=null -> IosStoreError(state.filterError?.message?:"No se han podido aplicar los filtros."){controller.retryFilters()}
+            shouldShowNovedadesInitialLoading(state) -> IosStoreLoading()
+            state.paging.items.isEmpty() && state.paging.initialError!=null -> IosStoreError(state.paging.initialError?.message?:"No se han podido cargar las novedades."){controller.retry()}
+            state.paging.items.isEmpty() && state.filterError!=null -> IosStoreError(state.filterError?.message?:"No se han podido aplicar los filtros."){controller.retryFilters()}
             state.paging.items.isEmpty() -> IosStoreEmpty(
                 if(state.selectedAudience==StoreNovedadesAudience.ALL && state.activeFilterCount==0) "No hay novedades." else "No hay productos con estos filtros.",
                 if(state.selectedAudience==StoreNovedadesAudience.ALL && state.activeFilterCount==0) null else ({controller.selectAudience(StoreNovedadesAudience.ALL);controller.clearFilters()}),
@@ -70,7 +78,7 @@ fun StoreNovedadesScreen(storeApi:StoreApiClient,padding:PaddingValues,cartStore
             sizes=options.sizes.map{it.name},colors=options.colors.map{it.name},brands=options.brands.map{it.name},
             selectedSizes=state.draftSizes,selectedColors=state.draftColors,selectedBrands=state.draftBrands,
             enabledSizes=state.enabledSizes,enabledColors=state.enabledColors,enabledBrands=state.enabledBrands,
-            showBrands=true,statusMessage=status,onRetry=if(state.filterOptionsState is StoreFilterOptionsState.Error) controller::retryFilterOptions else null,
+            showBrands=true,hideUnavailableOptions=true,statusMessage=status,onRetry=if(state.filterOptionsState is StoreFilterOptionsState.Error) controller::retryFilterOptions else null,
             onDimensionSelected=controller::selectFilterDimension,onSizesChanged=controller::changeDraftSizes,onColorsChanged=controller::changeDraftColors,onBrandsChanged=controller::changeDraftBrands,
             onApply=controller::applyFilters,onClear=controller::clearDraftFilters,onDismiss=controller::cancelFilters,onCancel=controller::cancelFilters)
     }

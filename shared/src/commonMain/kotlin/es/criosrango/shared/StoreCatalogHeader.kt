@@ -24,7 +24,9 @@ fun StoreCatalogHeader(
     title: String,
     showBack: Boolean,
     onBack: () -> Unit,
-    trailing: @Composable RowScope.() -> Unit = {}
+    trailing: @Composable RowScope.() -> Unit = {},
+    subtitle: String? = null,
+    titleFontWeight: FontWeight = FontWeight.Normal
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp).padding(bottom = 2.dp),
@@ -35,15 +37,35 @@ fun StoreCatalogHeader(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
             }
         }
-        Text(
-            text = title,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Normal,
-            color = Color(0xFF183B35),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        if (subtitle == null) {
+            Text(
+                text = title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = titleFontWeight,
+                color = Color(0xFF183B35),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        } else {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = titleFontWeight,
+                    color = Color(0xFF183B35),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically, content = trailing)
     }
 }
