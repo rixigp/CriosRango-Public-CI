@@ -198,7 +198,7 @@ private fun StoreCatalogFilterChoices(
 ) {
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         values.forEach { value ->
             FilterChip(
