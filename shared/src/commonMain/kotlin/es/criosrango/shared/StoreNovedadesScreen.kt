@@ -21,6 +21,9 @@ import es.criosrango.shared.model.StoreProduct
 internal fun shouldShowNovedadesInitialLoading(state: StoreNovedadesState): Boolean =
     state.paging.isInitialLoading && state.paging.items.isEmpty()
 
+internal fun shouldShowNovedadesCountAndSort(state: StoreNovedadesState): Boolean =
+    !shouldShowNovedadesInitialLoading(state)
+
 @Composable
 fun StoreNovedadesScreen(storeApi:StoreApiClient,padding:PaddingValues,cartStore:StoreCartStore?=null,onProduct:(StoreProduct)->Unit,onBack:()->Unit) {
     val scope=rememberCoroutineScope()
@@ -49,17 +52,19 @@ fun StoreNovedadesScreen(storeApi:StoreApiClient,padding:PaddingValues,cartStore
                     colors=FilterChipDefaults.filterChipColors(selectedContainerColor=Color(0xFF183B35),selectedLabelColor=Color(0xFFFFFFFF),selectedLeadingIconColor=Color(0xFFFFFFFF),selectedTrailingIconColor=Color(0xFFFFFFFF)))
             }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=4.dp),verticalAlignment=Alignment.CenterVertically) {
-            Text("${state.paging.items.size} productos",modifier=Modifier.weight(1f),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            Box {
-                TextButton(onClick={sortExpanded=true}){Text("Ordenar: ${state.selectedSort.label} ▾")}
-                DropdownMenu(expanded=sortExpanded,onDismissRequest={sortExpanded=false}) {
-                    StoreNovedadesSort.values().forEach { option -> DropdownMenuItem(text={Text(option.label)},onClick={sortExpanded=false;controller.selectSort(option)}) }
+        if (shouldShowNovedadesCountAndSort(state)) {
+            Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=4.dp),verticalAlignment=Alignment.CenterVertically) {
+                Text("${state.paging.items.size} productos",modifier=Modifier.weight(1f),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Box {
+                    TextButton(onClick={sortExpanded=true}){Text("Ordenar: ${state.selectedSort.label} ▾")}
+                    DropdownMenu(expanded=sortExpanded,onDismissRequest={sortExpanded=false}) {
+                        StoreNovedadesSort.values().forEach { option -> DropdownMenuItem(text={Text(option.label)},onClick={sortExpanded=false;controller.selectSort(option)}) }
+                    }
                 }
             }
         }
         when {
-            shouldShowNovedadesInitialLoading(state) -> IosStoreLoading()
+            shouldShowNovedadesInitialLoading(state) -> StoreProductGridSkeleton(Modifier.weight(1f))
             state.paging.items.isEmpty() && state.paging.initialError!=null -> IosStoreError(state.paging.initialError?.message?:"No se han podido cargar las novedades."){controller.retry()}
             state.paging.items.isEmpty() && state.filterError!=null -> IosStoreError(state.filterError?.message?:"No se han podido aplicar los filtros."){controller.retryFilters()}
             state.paging.items.isEmpty() -> IosStoreEmpty(
