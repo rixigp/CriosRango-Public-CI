@@ -85,7 +85,7 @@ internal fun IosCatalogScreen(
             catalogRestoration, categorySnapshot, categorySnapshotLoading, categorySnapshotError, onRetryCategorySnapshot
         )
         is IosCatalogPage.Product -> IosProductDetail(storeApi, padding, page.product, onBack, cartStore, onShareProductText, onReserveProductMessage)
-        IosCatalogPage.Novedades -> IosNovedadesScreen(storeApi, padding, cartStore, onOpenProduct, onBack)
+        IosCatalogPage.Novedades -> StoreNovedadesScreen(storeApi, padding, null, onOpenProduct, onBack)
         IosCatalogPage.Search -> IosSearchScreen(storeApi, padding, cartStore, onOpenProduct, onOpenCategory, onBack)
         IosCatalogPage.Brands -> IosBrandsScreen(storeApi, padding, cartStore, onOpenProduct, onBack)
         IosCatalogPage.Outlet -> {

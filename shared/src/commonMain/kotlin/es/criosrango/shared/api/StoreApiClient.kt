@@ -77,6 +77,8 @@ class InMemoryStoreSessionStore(
     override var cookieHeader: String? = null
 ) : StoreSessionStore
 
+data class StoreApiProductPage(val items: List<StoreProduct>, val totalItems: Int?, val totalPages: Int?)
+
 class StoreApiException(
     val statusCode: Int,
     val apiCode: String?,
@@ -329,8 +331,17 @@ class StoreApiClient(
     suspend fun productTags(perPage: Int = 100): List<StoreGlobalTag> =
         client.get("${baseUrl}products/tags") { parameter("per_page", perPage) }.body()
 
-    suspend fun categories(perPage: Int = 100): List<StoreCategory> =
-        client.get("${baseUrl}products/categories") { parameter("per_page", perPage) }.body()
+    suspend fun categories(perPage: Int = 100, page: Int = 1): List<StoreCategory> =
+        client.get("${baseUrl}products/categories") { parameter("per_page", perPage); parameter("page", page) }.body()
+
+    suspend fun productsPage(perPage: Int, page: Int, categoryIds: List<Int> = emptyList(), orderBy: String = "date", order: String = "desc"): StoreApiProductPage {
+        val response = client.get("${baseUrl}products") {
+            parameter("per_page", perPage); parameter("page", page); parameter("orderby", orderBy); parameter("order", order)
+            categoryIds.distinct().takeIf { it.isNotEmpty() }?.let { parameter("category", it.joinToString(",")); parameter("category_operator", "in") }
+        }
+        val items: List<StoreProduct> = response.body()
+        return StoreApiProductPage(items, response.headers["X-WP-Total"]?.toIntOrNull(), response.headers["X-WP-TotalPages"]?.toIntOrNull())
+    }
 
     internal suspend fun productsWithRawJson(perPage: Int = 12, page: Int = 1, category: Int? = null): Pair<String, List<StoreProduct>> {
         val response = client.get("${baseUrl}products") {
