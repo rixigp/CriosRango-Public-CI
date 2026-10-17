@@ -10,7 +10,12 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.http.HttpHeaders
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -24,8 +29,8 @@ class StoreBrandsControllerTest {
     private suspend fun awaitState(
         controller: StoreBrandsController,
         predicate: (StoreBrandsState) -> Boolean
-    ): StoreBrandsState = withTimeout(5_000) {
-        controller.state.first(predicate)
+    ): StoreBrandsState = withContext(Dispatchers.Default) {
+        withTimeout(5_000) { controller.state.first(predicate) }
     }
 
     private fun httpClient(handler: suspend io.ktor.client.engine.mock.MockRequestHandleScope.(io.ktor.client.request.HttpRequestData) -> io.ktor.client.request.HttpResponseData) =
@@ -95,9 +100,10 @@ class StoreBrandsControllerTest {
                 else -> respond("[]", headers = headersOf(HttpHeaders.ContentType, "application/json"))
             }
         }
+        val controllerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             val api = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
-            val controller = StoreBrandsController(api, this)
+            val controller = StoreBrandsController(api, controllerScope)
             awaitState(controller) { it.brands.isNotEmpty() || it.brandsError != null }
             assertTrue(controller.state.value.brands.isNotEmpty())
             val brands = controller.state.value.brands
@@ -108,7 +114,7 @@ class StoreBrandsControllerTest {
             assertTrue(requests.any { it.contains("hide_empty=true") })
             assertTrue(requests.any { it.contains("/products/brands") && it.contains("page=1") })
             assertTrue(requests.any { it.contains("/products/brands") && it.contains("page=2") })
-        } finally { client.close() }
+        } finally { controllerScope.cancel(); client.close() }
     }
 
     @Test
@@ -134,9 +140,10 @@ class StoreBrandsControllerTest {
                 else -> respond("[]", headers = headersOf(HttpHeaders.ContentType, "application/json"))
             }
         }
+        val controllerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             val api = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
-            val controller = StoreBrandsController(api, this)
+            val controller = StoreBrandsController(api, controllerScope)
             awaitState(controller) { it.brands.isNotEmpty() || it.brandsError != null }
             assertTrue(controller.state.value.brands.isNotEmpty())
             val brands = controller.state.value.brands
@@ -147,7 +154,7 @@ class StoreBrandsControllerTest {
             assertEquals(1, controller.state.value.paging.currentPage)
             assertEquals(12, controller.state.value.paging.items.size)
             assertTrue(requests.any { it.contains("brand=alpha") && it.contains("per_page=12") && it.contains("page=1") && !it.contains("tag=") })
-        } finally { client.close() }
+        } finally { controllerScope.cancel(); client.close() }
     }
 
     @Test
@@ -173,9 +180,10 @@ class StoreBrandsControllerTest {
                 else -> respond("[]", headers = headersOf(HttpHeaders.ContentType, "application/json"))
             }
         }
+        val controllerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             val api = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
-            val controller = StoreBrandsController(api, this)
+            val controller = StoreBrandsController(api, controllerScope)
             awaitState(controller) { it.brands.isNotEmpty() || it.brandsError != null }
             assertTrue(controller.state.value.brands.isNotEmpty())
             val brands = controller.state.value.brands
@@ -191,7 +199,7 @@ class StoreBrandsControllerTest {
             assertEquals(13, controller.state.value.paging.items.size)
             assertEquals(13, controller.state.value.paging.items.map { it.id }.distinct().size)
             assertTrue(requests.any { it.contains("brand=alpha") && it.contains("per_page=12") && it.contains("page=2") && !it.contains("tag=") })
-        } finally { client.close() }
+        } finally { controllerScope.cancel(); client.close() }
     }
     @Test
     fun storeApiClientLoadsProductsByBrandPage1() = runTest {
@@ -259,10 +267,11 @@ class StoreBrandsControllerTest {
                 else -> respond("[]", headers = headersOf(HttpHeaders.ContentType, "application/json"))
             }
         }
+        val controllerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             val controller = StoreBrandsController(
                 StoreApiClient("https://example.test/wp-json/wc/store/v1/", client),
-                this
+                controllerScope
             )
             awaitState(controller) { it.brands.isNotEmpty() || it.brandsError != null }
             val brand = controller.state.value.brands.first { it.slug == "alpha" }
@@ -277,6 +286,7 @@ class StoreBrandsControllerTest {
             assertEquals(1, controller.state.value.paging.currentPage)
             assertTrue(controller.state.value.paging.hasMore)
         } finally {
+            controllerScope.cancel()
             client.close()
         }
     }
