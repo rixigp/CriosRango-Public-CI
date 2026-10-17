@@ -227,7 +227,7 @@ fun StoreBrandsScreen(
                             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
                         ) {
                             if (!brand.imageUrl.isNullOrBlank()) {
-                                RemoteStoreImage(brand.imageUrl, null, Modifier.fillMaxWidth().height(64.dp), ContentScale.Fit)
+                                RemoteStoreImage(brand.imageUrl, null, Modifier.fillMaxWidth().height(64.dp), ContentScale.Fit, backgroundColor = null)
                             } else {
                                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     Text(
