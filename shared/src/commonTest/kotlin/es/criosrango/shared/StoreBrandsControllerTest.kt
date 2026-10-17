@@ -180,6 +180,92 @@ class StoreBrandsControllerTest {
         } finally { client.close() }
     }
     @Test
+    fun storeApiClientLoadsProductsByBrandPage1() = runTest {
+        var actualRequest = ""
+        val client = httpClient { request ->
+            actualRequest = request.url.toString()
+            respond(
+                (1..12).joinToString(prefix = "[", postfix = "]") { """{"id":$it,"name":"Product-$it","prices":{"price":"1000"}}""" },
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        }
+        try {
+            val products = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
+                .products(brand = "alpha", page = 1, perPage = 12, orderBy = "date", order = "desc")
+            assertEquals((1..12).toList(), products.map { it.id })
+            assertEquals("alpha", io.ktor.http.Url(actualRequest).parameters["brand"])
+            assertEquals("1", io.ktor.http.Url(actualRequest).parameters["page"])
+            assertEquals("12", io.ktor.http.Url(actualRequest).parameters["per_page"])
+            assertNull(io.ktor.http.Url(actualRequest).parameters["tag"])
+            assertTrue(io.ktor.http.Url(actualRequest).parameters.names().none { it.startsWith("product_tag") })
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
+    fun storeApiClientLoadsProductsByBrandPage2() = runTest {
+        var actualRequest = ""
+        val client = httpClient { request ->
+            actualRequest = request.url.toString()
+            respond(
+                """[{"id":13,"name":"Product-13","prices":{"price":"1000"}}]""",
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        }
+        try {
+            val products = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
+                .products(brand = "alpha", page = 2, perPage = 12, orderBy = "date", order = "desc")
+            assertEquals(listOf(13), products.map { it.id })
+            assertEquals("alpha", io.ktor.http.Url(actualRequest).parameters["brand"])
+            assertEquals("2", io.ktor.http.Url(actualRequest).parameters["page"])
+            assertEquals("12", io.ktor.http.Url(actualRequest).parameters["per_page"])
+            assertNull(io.ktor.http.Url(actualRequest).parameters["tag"])
+            assertTrue(io.ktor.http.Url(actualRequest).parameters.names().none { it.startsWith("product_tag") })
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
+    fun controllerSelectBrandSetsExpectedState() = runTest {
+        val pageOneBrands = (1..100).joinToString(",") { id ->
+            """{"id":$id,"name":"Brand-$id","slug":"brand-$id","count":1}"""
+        }
+        val client = httpClient { request ->
+            when {
+                request.url.encodedPath.endsWith("/products/brands") && request.url.parameters["page"] == "1" ->
+                    respond("[$pageOneBrands]", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                request.url.encodedPath.endsWith("/products/brands") ->
+                    respond("""[{"id":1,"name":"Duplicate","slug":"duplicate","count":9},{"id":101,"name":"Alpha","slug":"alpha","count":2},{"id":102,"name":"Empty","slug":"empty","count":0}]""", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                request.url.encodedPath.endsWith("/products") && request.url.parameters["page"] == "1" ->
+                    respond((1..12).joinToString(prefix = "[", postfix = "]") { """{"id":$it,"name":"Product-$it","prices":{"price":"1000"}}""" }, headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                request.url.encodedPath.endsWith("/products") ->
+                    respond("""[{"id":13,"name":"Product-13","prices":{"price":"1000"}}]""", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                else -> respond("[]", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+            }
+        }
+        try {
+            val controller = StoreBrandsController(
+                StoreApiClient("https://example.test/wp-json/wc/store/v1/", client),
+                this
+            )
+            advanceUntilIdle()
+            val brand = controller.state.value.brands.first { it.slug == "alpha" }
+            controller.selectBrand(brand)
+            advanceUntilIdle()
+
+            assertEquals("alpha", controller.state.value.selectedBrand?.slug)
+            assertEquals((1..12).toList(), controller.state.value.paging.items.map { it.id })
+            assertNull(controller.state.value.paging.initialError)
+            assertEquals(1, controller.state.value.paging.currentPage)
+            assertTrue(controller.state.value.paging.hasMore)
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
     fun storeApiClientParsesBrandsPage1() = runTest {
         val pageOneBrands = (1..100).joinToString(",") { id ->
             """{"id":$id,"name":"Brand-$id","slug":"brand-$id","count":1}"""
