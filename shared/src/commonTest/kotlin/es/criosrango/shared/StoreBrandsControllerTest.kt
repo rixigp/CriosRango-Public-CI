@@ -62,19 +62,56 @@ class StoreBrandsControllerTest {
         } finally { client.close() }
     }
 
+    private fun assertBrandsLoadDiagnostic(
+        controller: StoreBrandsController,
+        requests: List<String>,
+        requestUrl: String?,
+        requestPage: String?,
+        responseBody: String?
+    ) {
+        val state = controller.state.value
+        val error = state.brandsError
+        if (error != null) {
+            throw AssertionError(
+                "BRANDS_LOAD_ERROR\n" +
+                    "ERROR_CLASS=UNAVAILABLE: StoreBrandsController stores only Throwable.message in brandsError\n" +
+                    "ERROR_MESSAGE=$error\n" +
+                    "ERROR_CAUSE=UNAVAILABLE: original Throwable/cause discarded by controller\n" +
+                    "STATE=$state\n" +
+                    "REQUESTS=$requests\n" +
+                    "REQUEST_URL=$requestUrl\n" +
+                    "REQUEST_PAGE=$requestPage\n" +
+                    "RESPONSE_BODY=$responseBody"
+            )
+        }
+        assertTrue(state.brands.isNotEmpty(), "Expected brands after load; state=$state; requests=$requests")
+    }
+
     @Test
     fun controllerLoadsAllBrandPages() = runTest {
         val requests = mutableListOf<String>()
+        var lastRequestUrl: String? = null
+        var lastRequestPage: String? = null
+        var lastResponseBody: String? = null
         val pageOneBrands = (1..100).joinToString(",") { id ->
             """{"id":$id,"name":"Brand-$id","slug":"brand-$id","count":1}"""
         }
         val client = httpClient { request ->
             requests += request.url.toString()
+            val isBrandsRequest = request.url.encodedPath.endsWith("/products/brands")
+            if (isBrandsRequest) {
+                lastRequestUrl = request.url.toString()
+                lastRequestPage = request.url.parameters["page"]
+            }
             when {
-                request.url.encodedPath.endsWith("/products/brands") && request.url.parameters["page"] == "1" ->
-                    respond("[$pageOneBrands]", headers = headersOf(HttpHeaders.ContentType, "application/json"))
-                request.url.encodedPath.endsWith("/products/brands") ->
-                    respond("""[{"id":1,"name":"Duplicate","slug":"duplicate","count":9},{"id":101,"name":"Alpha","slug":"alpha","count":2},{"id":102,"name":"Empty","slug":"empty","count":0}]""", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                isBrandsRequest && request.url.parameters["page"] == "1" -> {
+                    lastResponseBody = "[$pageOneBrands]"
+                    respond(lastResponseBody!!, headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                }
+                isBrandsRequest -> {
+                    lastResponseBody = """[{"id":1,"name":"Duplicate","slug":"duplicate","count":9},{"id":101,"name":"Alpha","slug":"alpha","count":2},{"id":102,"name":"Empty","slug":"empty","count":0}]"""
+                    respond(lastResponseBody!!, headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                }
                 request.url.encodedPath.endsWith("/products") && request.url.parameters["page"] == "1" ->
                     respond((1..12).joinToString(prefix="[", postfix="]") { """{"id":$it,"name":"Product-$it","prices":{"price":"1000"}}""" }, headers = headersOf(HttpHeaders.ContentType, "application/json"))
                 request.url.encodedPath.endsWith("/products") ->
@@ -86,6 +123,7 @@ class StoreBrandsControllerTest {
             val api = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
             val controller = StoreBrandsController(api, this)
             advanceUntilIdle()
+            assertBrandsLoadDiagnostic(controller, requests, lastRequestUrl, lastRequestPage, lastResponseBody)
             val brands = controller.state.value.brands
             assertEquals(101, brands.size)
             assertEquals("Alpha", brands.first().name)
@@ -100,16 +138,28 @@ class StoreBrandsControllerTest {
     @Test
     fun controllerLoadsFirstSelectedBrandPage() = runTest {
         val requests = mutableListOf<String>()
+        var lastRequestUrl: String? = null
+        var lastRequestPage: String? = null
+        var lastResponseBody: String? = null
         val pageOneBrands = (1..100).joinToString(",") { id ->
             """{"id":$id,"name":"Brand-$id","slug":"brand-$id","count":1}"""
         }
         val client = httpClient { request ->
             requests += request.url.toString()
+            val isBrandsRequest = request.url.encodedPath.endsWith("/products/brands")
+            if (isBrandsRequest) {
+                lastRequestUrl = request.url.toString()
+                lastRequestPage = request.url.parameters["page"]
+            }
             when {
-                request.url.encodedPath.endsWith("/products/brands") && request.url.parameters["page"] == "1" ->
-                    respond("[$pageOneBrands]", headers = headersOf(HttpHeaders.ContentType, "application/json"))
-                request.url.encodedPath.endsWith("/products/brands") ->
-                    respond("""[{"id":1,"name":"Duplicate","slug":"duplicate","count":9},{"id":101,"name":"Alpha","slug":"alpha","count":2},{"id":102,"name":"Empty","slug":"empty","count":0}]""", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                isBrandsRequest && request.url.parameters["page"] == "1" -> {
+                    lastResponseBody = "[$pageOneBrands]"
+                    respond(lastResponseBody!!, headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                }
+                isBrandsRequest -> {
+                    lastResponseBody = """[{"id":1,"name":"Duplicate","slug":"duplicate","count":9},{"id":101,"name":"Alpha","slug":"alpha","count":2},{"id":102,"name":"Empty","slug":"empty","count":0}]"""
+                    respond(lastResponseBody!!, headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                }
                 request.url.encodedPath.endsWith("/products") && request.url.parameters["page"] == "1" ->
                     respond((1..12).joinToString(prefix="[", postfix="]") { """{"id":$it,"name":"Product-$it","prices":{"price":"1000"}}""" }, headers = headersOf(HttpHeaders.ContentType, "application/json"))
                 request.url.encodedPath.endsWith("/products") ->
@@ -121,6 +171,7 @@ class StoreBrandsControllerTest {
             val api = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
             val controller = StoreBrandsController(api, this)
             advanceUntilIdle()
+            assertBrandsLoadDiagnostic(controller, requests, lastRequestUrl, lastRequestPage, lastResponseBody)
             val brands = controller.state.value.brands
             controller.selectBrand(brands.first())
             advanceUntilIdle()
@@ -133,16 +184,28 @@ class StoreBrandsControllerTest {
     @Test
     fun controllerLoadsNextSelectedBrandPage() = runTest {
         val requests = mutableListOf<String>()
+        var lastRequestUrl: String? = null
+        var lastRequestPage: String? = null
+        var lastResponseBody: String? = null
         val pageOneBrands = (1..100).joinToString(",") { id ->
             """{"id":$id,"name":"Brand-$id","slug":"brand-$id","count":1}"""
         }
         val client = httpClient { request ->
             requests += request.url.toString()
+            val isBrandsRequest = request.url.encodedPath.endsWith("/products/brands")
+            if (isBrandsRequest) {
+                lastRequestUrl = request.url.toString()
+                lastRequestPage = request.url.parameters["page"]
+            }
             when {
-                request.url.encodedPath.endsWith("/products/brands") && request.url.parameters["page"] == "1" ->
-                    respond("[$pageOneBrands]", headers = headersOf(HttpHeaders.ContentType, "application/json"))
-                request.url.encodedPath.endsWith("/products/brands") ->
-                    respond("""[{"id":1,"name":"Duplicate","slug":"duplicate","count":9},{"id":101,"name":"Alpha","slug":"alpha","count":2},{"id":102,"name":"Empty","slug":"empty","count":0}]""", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                isBrandsRequest && request.url.parameters["page"] == "1" -> {
+                    lastResponseBody = "[$pageOneBrands]"
+                    respond(lastResponseBody!!, headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                }
+                isBrandsRequest -> {
+                    lastResponseBody = """[{"id":1,"name":"Duplicate","slug":"duplicate","count":9},{"id":101,"name":"Alpha","slug":"alpha","count":2},{"id":102,"name":"Empty","slug":"empty","count":0}]"""
+                    respond(lastResponseBody!!, headers = headersOf(HttpHeaders.ContentType, "application/json"))
+                }
                 request.url.encodedPath.endsWith("/products") && request.url.parameters["page"] == "1" ->
                     respond((1..12).joinToString(prefix="[", postfix="]") { """{"id":$it,"name":"Product-$it","prices":{"price":"1000"}}""" }, headers = headersOf(HttpHeaders.ContentType, "application/json"))
                 request.url.encodedPath.endsWith("/products") ->
@@ -154,6 +217,7 @@ class StoreBrandsControllerTest {
             val api = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
             val controller = StoreBrandsController(api, this)
             advanceUntilIdle()
+            assertBrandsLoadDiagnostic(controller, requests, lastRequestUrl, lastRequestPage, lastResponseBody)
             val brands = controller.state.value.brands
             controller.selectBrand(brands.first())
             advanceUntilIdle()
