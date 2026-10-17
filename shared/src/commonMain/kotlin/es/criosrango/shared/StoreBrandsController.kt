@@ -29,7 +29,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
-private const val STORE_BRAND_CARD_HEIGHT_DP = 104
+private const val STORE_BRAND_CARD_HEIGHT_DP = 92
 
 private data class StoreBrandPreferences(
     val sort: StoreProductSortOption = StoreProductSortOption.RECENT,
