@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
+private const val STORE_BRAND_CARD_HEIGHT_DP = 104
+
 private data class StoreBrandPreferences(
     val sort: StoreProductSortOption = StoreProductSortOption.RECENT,
     val sizes: Set<String> = emptySet(),
@@ -75,7 +77,7 @@ class StoreBrandsController(
                 var page = 1
                 while (true) {
                     val batch = api.productBrands(perPage = 100, page = page, hideEmpty = true)
-                    all += batch
+                    all += batch.map { brand -> brand.copy(name = normalizeWooPlainText(brand.name)) }
                     if (batch.size < 100) break
                     page++
                 }
@@ -157,32 +159,6 @@ class StoreBrandsController(
     fun clearFilters() { setSizes(emptySet()); setColors(emptySet()) }
 }
 
-private fun decodeBrandHtmlEntities(value: String): String = Regex("&(#x[0-9a-fA-F]+|#[0-9]+|amp|quot|apos|lt|gt|nbsp);").replace(value) { match ->
-    when (val entity = match.groupValues[1]) {
-        "amp" -> "&"
-        "quot" -> "\""
-        "apos" -> "'"
-        "lt" -> "<"
-        "gt" -> ">"
-        "nbsp" -> "\u00A0"
-        else -> {
-            val codePoint = when {
-                entity.startsWith("#x", ignoreCase = true) -> entity.drop(2).toIntOrNull(16)
-                entity.startsWith("#") -> entity.drop(1).toIntOrNull()
-                else -> null
-            }
-            when {
-                codePoint == null || codePoint !in 0..0x10FFFF || codePoint in 0xD800..0xDFFF -> match.value
-                codePoint <= 0xFFFF -> codePoint.toChar().toString()
-                else -> {
-                    val adjusted = codePoint - 0x10000
-                    (0xD800 + (adjusted shr 10)).toChar().toString() + (0xDC00 + (adjusted and 0x3FF)).toChar()
-                }
-            }
-        }
-    }
-}
-
 private fun StoreProduct.brandFilterValues(size: Boolean): Set<String> =
     attributes.filter { attribute ->
         val key = "${attribute.name} ${attribute.taxonomy.orEmpty()}".lowercase()
@@ -223,7 +199,7 @@ fun StoreBrandsScreen(
                 ) {
                     items(state.brands, key = { it.id }) { brand ->
                         Column(
-                            Modifier.fillMaxWidth().height(104.dp).clip(RoundedCornerShape(12.dp)).background(Color.White, RoundedCornerShape(12.dp)).clickable { controller.selectBrand(brand) }.padding(8.dp),
+                            Modifier.fillMaxWidth().height(STORE_BRAND_CARD_HEIGHT_DP.dp).clip(RoundedCornerShape(12.dp)).background(Color.White, RoundedCornerShape(12.dp)).clickable { controller.selectBrand(brand) }.padding(8.dp),
                             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
                         ) {
                             if (!brand.imageUrl.isNullOrBlank()) {
@@ -231,7 +207,7 @@ fun StoreBrandsScreen(
                             } else {
                                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     Text(
-                                        decodeBrandHtmlEntities(brand.name).trim(),
+                                        brand.name,
                                         style = MaterialTheme.typography.bodyMedium,
                                         textAlign = TextAlign.Center,
                                         maxLines = 2,

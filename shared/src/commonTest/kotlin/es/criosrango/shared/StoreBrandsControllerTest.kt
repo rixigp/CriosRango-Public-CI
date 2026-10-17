@@ -63,6 +63,37 @@ class StoreBrandsControllerTest {
     }
 
     @Test
+    fun controllerNormalizesBrandDisplayNameWithoutChangingIdentity() = runTest {
+        val client = httpClient { request ->
+            if (request.url.encodedPath.endsWith("/products/brands")) {
+                respond(
+                    """[{"id":42,"name":"Abel &amp; Lula &ndash; Kids","slug":"abel-lula","count":3}]""",
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            } else {
+                respond("[]", headers = headersOf(HttpHeaders.ContentType, "application/json"))
+            }
+        }
+        val controllerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val controller = StoreBrandsController(
+                StoreApiClient("https://example.test/wp-json/wc/store/v1/", client),
+                controllerScope
+            )
+            awaitState(controller) { it.brands.isNotEmpty() || it.brandsError != null }
+            val brand = controller.state.value.brands.single()
+            assertEquals("Abel & Lula – Kids", brand.name)
+            assertEquals(42, brand.id)
+            assertEquals("abel-lula", brand.slug)
+            controller.selectBrand(brand)
+            assertEquals("Abel & Lula – Kids", controller.state.value.selectedBrand?.name)
+        } finally {
+            controllerScope.cancel()
+            client.close()
+        }
+    }
+
+    @Test
     fun brandProductQueryDoesNotSerializeTag() = runTest {
         var params: io.ktor.http.Parameters? = null
         val client = httpClient { request ->
