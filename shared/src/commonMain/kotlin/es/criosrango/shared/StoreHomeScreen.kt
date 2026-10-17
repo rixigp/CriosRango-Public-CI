@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -32,7 +31,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,6 +47,20 @@ import es.criosrango.shared.api.StoreApiClient
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreGlobalBrand
 import es.criosrango.shared.model.StoreProduct
+import es.criosrango.shared.generated.resources.Res
+import es.criosrango.shared.generated.resources.category_bautizo
+import es.criosrango.shared.generated.resources.category_bebe_nina
+import es.criosrango.shared.generated.resources.category_bebe_nino
+import es.criosrango.shared.generated.resources.category_calzado
+import es.criosrango.shared.generated.resources.category_comunion_nina
+import es.criosrango.shared.generated.resources.category_comunion_nino
+import es.criosrango.shared.generated.resources.category_hombre
+import es.criosrango.shared.generated.resources.category_mujer
+import es.criosrango.shared.generated.resources.category_nina
+import es.criosrango.shared.generated.resources.category_nino
+import es.criosrango.shared.generated.resources.category_recien_nacido
+import org.jetbrains.compose.resources.painterResource
+import androidx.compose.foundation.Image
 import kotlinx.coroutines.delay
 
 private val STORE_HOME_HERO_IMAGES = listOf(
@@ -58,18 +70,18 @@ private val STORE_HOME_HERO_IMAGES = listOf(
     "https://images.pexels.com/photos/29614374/pexels-photo-29614374.jpeg?auto=compress&cs=tinysrgb&w=1600"
 )
 
-private val STORE_HOME_CATEGORY_IMAGES = mapOf(
-    "category_bautizo" to "https://www.criosrango.es/wp-content/uploads/2026/02/633312_0003Y.jpg",
-    "category_bebe_nina" to "https://www.criosrango.es/wp-content/uploads/2026/09/conjunto-pantalon-y-blusa-con-chaleco-bebe-violeta-mezcla-XL-4.avif",
-    "category_bebe_nino" to "https://www.criosrango.es/wp-content/uploads/2026/08/chaqueton-pelo-bolsillos-bebe-alaska-XL-1.avif",
-    "category_calzado" to "https://www.criosrango.es/wp-content/uploads/2026/01/Captura-de-pantalla-2026-01-21-a-las-17.48.57.png",
-    "category_comunion_nina" to "https://www.criosrango.es/wp-content/uploads/2026/01/Captura-de-pantalla-2026-01-21-a-las-17.48.57.png",
-    "category_comunion_nino" to "https://www.criosrango.es/wp-content/uploads/2025/11/208-25TR-JOBIM-1-scaled-reczmlo0rsccbsjo2he9f17qguqnu6a9b27sqk1364.webp",
-    "category_hombre" to "https://www.criosrango.es/wp-content/uploads/2026/05/226_104164026f01_016955_1.webp",
-    "category_mujer" to "https://www.criosrango.es/wp-content/uploads/2026/08/556cado321-46-2.jpg",
-    "category_nina" to "https://www.criosrango.es/wp-content/uploads/2026/09/conjunto-sudadera-bolsillos-y-pantalon-nina-botella-XL-1.avif",
-    "category_nino" to "https://www.criosrango.es/wp-content/uploads/2026/09/polo-combinado-nino-lago-XL-1.avif",
-    "category_recien_nacido" to "https://www.criosrango.es/wp-content/uploads/2026/09/conjunto-peto-estampado-y-jersey-recien-nacida-laurel-XL-4.avif"
+internal val STORE_HOME_CATEGORY_IMAGES = mapOf(
+    "category_bautizo" to Res.drawable.category_bautizo,
+    "category_bebe_nina" to Res.drawable.category_bebe_nina,
+    "category_bebe_nino" to Res.drawable.category_bebe_nino,
+    "category_calzado" to Res.drawable.category_calzado,
+    "category_comunion_nina" to Res.drawable.category_comunion_nina,
+    "category_comunion_nino" to Res.drawable.category_comunion_nino,
+    "category_hombre" to Res.drawable.category_hombre,
+    "category_mujer" to Res.drawable.category_mujer,
+    "category_nina" to Res.drawable.category_nina,
+    "category_nino" to Res.drawable.category_nino,
+    "category_recien_nacido" to Res.drawable.category_recien_nacido
 )
 
 internal fun storeHomeBrandPages(state: StoreHomeState): List<List<StoreGlobalBrand>> =
@@ -104,10 +116,7 @@ fun StoreHomeScreen(
     onOutletSummer: (StoreCategory?) -> Unit,
     onOutletAll: () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    val controller = remember(storeApi, brandsController) {
-        StoreHomeController(scope, StoreApiHomeDataSource(storeApi, brandsController))
-    }
+    val controller = StoreScreenOwners.home(storeApi, brandsController)
     val state by controller.state.collectAsState()
     var heroIndex by remember { mutableStateOf(0) }
 
@@ -122,9 +131,10 @@ fun StoreHomeScreen(
     PullToRefreshBox(
         isRefreshing = state.refreshing,
         onRefresh = controller::refresh,
-        modifier = Modifier.fillMaxSize().padding(padding)
+        modifier = Modifier.fillMaxSize().padding(bottom = padding.calculateBottomPadding())
     ) {
         LazyColumn(
+            state = StoreScreenOwners.homeScrollState,
             modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
             contentPadding = PaddingValues(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
@@ -157,12 +167,11 @@ fun StoreHomeScreen(
                                         Modifier.weight(1f).clickable { onCategory(entry.category) },
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        RemoteStoreImage(
-                                            STORE_HOME_CATEGORY_IMAGES[entry.imageKey],
-                                            entry.category.name,
-                                            Modifier.fillMaxWidth().aspectRatio(1f).padding(1.dp),
-                                            ContentScale.Fit,
-                                            backgroundColor = null
+                                        Image(
+                                            painter = painterResource(STORE_HOME_CATEGORY_IMAGES.getValue(entry.imageKey)),
+                                            contentDescription = entry.category.name,
+                                            modifier = Modifier.fillMaxWidth().aspectRatio(1f).padding(1.dp),
+                                            contentScale = ContentScale.Fit
                                         )
                                         Spacer(Modifier.height(6.dp))
                                         Text(
@@ -356,13 +365,7 @@ private fun StoreHomeSectionStatus(
     onRetry: () -> Unit
 ) {
     when (status) {
-        StoreHomeSectionStatus.LOADING -> Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-            Text("Cargando…", Modifier.padding(start = 10.dp), style = MaterialTheme.typography.bodyMedium)
-        }
+        StoreHomeSectionStatus.LOADING -> Unit
         StoreHomeSectionStatus.ERROR -> Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             Text(error ?: "No se ha podido cargar esta sección.", color = MaterialTheme.colorScheme.error)
             TextButton(onClick = onRetry) { Text("Reintentar") }
