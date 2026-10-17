@@ -1,7 +1,6 @@
 package es.criosrango.shared
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,7 +57,7 @@ internal fun RemoteStoreImage(
         }
     }
 
-    Box(modifier.background(Color(0xFFE8E2DD)), contentAlignment = Alignment.Center) {
+    Box(modifier, contentAlignment = Alignment.Center) {
         bitmap?.let { Image(BitmapPainter(it), contentDescription, Modifier.fillMaxSize(), contentScale = contentScale) }
         if (loading && bitmap == null) CircularProgressIndicator()
     }
