@@ -10,7 +10,8 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.http.HttpHeaders
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -20,6 +21,13 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StoreBrandsControllerTest {
+    private suspend fun awaitState(
+        controller: StoreBrandsController,
+        predicate: (StoreBrandsState) -> Boolean
+    ): StoreBrandsState = withTimeout(5_000) {
+        controller.state.first(predicate)
+    }
+
     private fun httpClient(handler: suspend io.ktor.client.engine.mock.MockRequestHandleScope.(io.ktor.client.request.HttpRequestData) -> io.ktor.client.request.HttpResponseData) =
         HttpClient(MockEngine { request -> handler(request) }) {
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
@@ -90,7 +98,7 @@ class StoreBrandsControllerTest {
         try {
             val api = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
             val controller = StoreBrandsController(api, this)
-            advanceUntilIdle()
+            awaitState(controller) { it.brands.isNotEmpty() || it.brandsError != null }
             assertTrue(controller.state.value.brands.isNotEmpty())
             val brands = controller.state.value.brands
             assertEquals(101, brands.size)
@@ -129,11 +137,13 @@ class StoreBrandsControllerTest {
         try {
             val api = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
             val controller = StoreBrandsController(api, this)
-            advanceUntilIdle()
+            awaitState(controller) { it.brands.isNotEmpty() || it.brandsError != null }
             assertTrue(controller.state.value.brands.isNotEmpty())
             val brands = controller.state.value.brands
             controller.selectBrand(brands.first())
-            advanceUntilIdle()
+            awaitState(controller) {
+                (it.paging.currentPage == 1 && !it.paging.isInitialLoading) || it.paging.initialError != null
+            }
             assertEquals(1, controller.state.value.paging.currentPage)
             assertEquals(12, controller.state.value.paging.items.size)
             assertTrue(requests.any { it.contains("brand=alpha") && it.contains("per_page=12") && it.contains("page=1") && !it.contains("tag=") })
@@ -166,13 +176,17 @@ class StoreBrandsControllerTest {
         try {
             val api = StoreApiClient("https://example.test/wp-json/wc/store/v1/", client)
             val controller = StoreBrandsController(api, this)
-            advanceUntilIdle()
+            awaitState(controller) { it.brands.isNotEmpty() || it.brandsError != null }
             assertTrue(controller.state.value.brands.isNotEmpty())
             val brands = controller.state.value.brands
             controller.selectBrand(brands.first())
-            advanceUntilIdle()
+            awaitState(controller) {
+                (it.paging.currentPage == 1 && !it.paging.isInitialLoading) || it.paging.initialError != null
+            }
             controller.loadNextPage()
-            advanceUntilIdle()
+            awaitState(controller) {
+                (it.paging.currentPage == 2 && !it.paging.isAppending) || it.paging.appendError != null
+            }
             assertEquals(2, controller.state.value.paging.currentPage)
             assertEquals(13, controller.state.value.paging.items.size)
             assertEquals(13, controller.state.value.paging.items.map { it.id }.distinct().size)
@@ -250,10 +264,12 @@ class StoreBrandsControllerTest {
                 StoreApiClient("https://example.test/wp-json/wc/store/v1/", client),
                 this
             )
-            advanceUntilIdle()
+            awaitState(controller) { it.brands.isNotEmpty() || it.brandsError != null }
             val brand = controller.state.value.brands.first { it.slug == "alpha" }
             controller.selectBrand(brand)
-            advanceUntilIdle()
+            awaitState(controller) {
+                (it.paging.currentPage == 1 && !it.paging.isInitialLoading) || it.paging.initialError != null
+            }
 
             assertEquals("alpha", controller.state.value.selectedBrand?.slug)
             assertEquals((1..12).toList(), controller.state.value.paging.items.map { it.id })
