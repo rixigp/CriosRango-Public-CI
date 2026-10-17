@@ -3,7 +3,9 @@ package es.criosrango.shared
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreGlobalBrand
 import es.criosrango.shared.model.StoreProduct
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,6 +18,7 @@ class StoreHomeControllerTest {
         var productsFailure = false
         var brandsFailure = false
         var outletFailure = false
+        var productsGate: CompletableDeferred<Unit>? = null
         var requestedLimit = 0
         var requestedOrderBy = ""
         var requestedOrder = ""
@@ -33,6 +36,7 @@ class StoreHomeControllerTest {
             requestedLimit = perPage
             requestedOrderBy = orderBy
             requestedOrder = order
+            productsGate?.await()
             if (productsFailure) error("products failed")
             return productRows
         }
@@ -77,6 +81,34 @@ class StoreHomeControllerTest {
         assertTrue(HOME_ROOT_CATEGORIES.all { it.category.parent == 0 })
         assertTrue(HOME_ROOT_CATEGORIES.all { it.category.count == 0 })
         assertTrue(HOME_ROOT_CATEGORIES.all { it.category.slug.isEmpty() })
+    }
+
+    @Test
+    fun initialLoadDoesNotShowGlobalRefreshIndicatorButManualRefreshDoes() = runTest {
+        val initialGate = CompletableDeferred<Unit>()
+        val initialSource = FakeSource().apply { productsGate = initialGate }
+        val initialController = StoreHomeController(this, initialSource)
+
+        initialController.start()
+        runCurrent()
+
+        assertEquals(StoreHomeSectionStatus.LOADING, initialController.state.value.novedadesStatus)
+        assertFalse(initialController.state.value.refreshing)
+
+        initialGate.complete(Unit)
+        advanceUntilIdle()
+
+        val refreshGate = CompletableDeferred<Unit>()
+        val refreshSource = FakeSource().apply { productsGate = refreshGate }
+        val refreshController = StoreHomeController(this, refreshSource)
+
+        refreshController.refresh()
+        runCurrent()
+
+        assertTrue(refreshController.state.value.refreshing)
+        refreshGate.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(refreshController.state.value.refreshing)
     }
 
     @Test
