@@ -272,7 +272,8 @@ fun CriosRangoIOSRootScreen(
                     walletEnabled = accountRepository.hasSession
                 )
             } else if (!checkoutOpen) when (section) {
-                IosRootSection.HOME -> IosHomeScreen(
+                IosRootSection.HOME -> Box(Modifier.fillMaxSize()) {
+                    IosHomeScreen(
                     storeApi = storeApi,
                     cartStore = cartStore,
                     padding = padding,
@@ -290,13 +291,51 @@ fun CriosRangoIOSRootScreen(
                     onNovedades = { section = IosRootSection.CATEGORIES; resetCatalog(); catalogOriginHome = true; openCatalog(IosCatalogPage.Novedades) },
                     onSearch = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Search) },
                     onBrands = {
-                        section = IosRootSection.CATEGORIES
                         resetCatalog()
                         catalogOriginHome = true
                         openCatalog(IosCatalogPage.Brands)
                     },
                     onOutlet = { section = IosRootSection.OUTLET; resetCatalog(); openCatalog(IosCatalogPage.Outlet) }
-                )
+                    )
+                    if (catalogOriginHome && catalogPage != IosCatalogPage.Root) {
+                        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                            IosCatalogScreen(
+                                storeApi = storeApi,
+                                rootFilterOwner = rootFilterOwner,
+                                brandsController = brandsController,
+                                padding = padding,
+                                page = catalogPage,
+                                cartStore = cartStore,
+                                outletController = outletController,
+                                onOpenCategory = { openCatalog(IosCatalogPage.Category(it)) },
+                                onOpenRootFilter = { scope -> rootFilterOwner.open(scope) },
+                                onOpenProduct = { openCatalog(IosCatalogPage.Product(it)) },
+                                onBack = {
+                                    if (section == IosRootSection.OUTLET && catalogPage == IosCatalogPage.Outlet) {
+                                        section = IosRootSection.HOME
+                                        resetCatalog()
+                                    } else if (catalogPage == IosCatalogPage.Root) {
+                                        section = IosRootSection.HOME
+                                        resetCatalog()
+                                    } else {
+                                        backCatalog()
+                                        if (shouldReturnHomeAfterCatalogBack(catalogHistory.isEmpty(), catalogPage == IosCatalogPage.Root, catalogOriginHome)) {
+                                            section = IosRootSection.HOME
+                                            resetCatalog()
+                                        }
+                                    }
+                                },
+                                onShareProductText = onShareProductText,
+                                onReserveProductMessage = onReserveProductMessage,
+                                catalogRestoration = catalogRestoration,
+                                categorySnapshot = categorySnapshot,
+                                categorySnapshotLoading = categorySnapshotLoading,
+                                categorySnapshotError = categorySnapshotError,
+                                onRetryCategorySnapshot = ::retryCategorySnapshot
+                            )
+                        }
+                    }
+                }
                 IosRootSection.OUTLET, IosRootSection.CATEGORIES -> IosCatalogScreen(
                     storeApi = storeApi,
                     rootFilterOwner = rootFilterOwner,

@@ -181,7 +181,7 @@ fun StoreBrandsScreen(
     val selected = state.selectedBrand
     if (selected == null) {
         Column(Modifier.fillMaxSize().padding(padding)) {
-            StoreCatalogHeader("Nuestras marcas", true, onBack, titleFontWeight = FontWeight.SemiBold)
+            StoreCatalogHeader("Nuestras marcas", true, onBack)
             when {
                 state.brandsLoading && state.brands.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 state.brandsError != null && state.brands.isEmpty() -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -196,7 +196,7 @@ fun StoreBrandsScreen(
                 ) {
                     items(state.brands, key = { it.id }) { brand ->
                         Column(
-                            Modifier.fillMaxWidth().height(104.dp).clip(RoundedCornerShape(12.dp)).clickable { controller.selectBrand(brand) }.padding(8.dp),
+                            Modifier.fillMaxWidth().height(104.dp).clip(RoundedCornerShape(12.dp)).background(Color.White, RoundedCornerShape(12.dp)).clickable { controller.selectBrand(brand) }.padding(8.dp),
                             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
                         ) {
                             if (!brand.imageUrl.isNullOrBlank()) RemoteStoreImage(brand.imageUrl, brand.name, Modifier.fillMaxWidth().height(64.dp), ContentScale.Fit)
