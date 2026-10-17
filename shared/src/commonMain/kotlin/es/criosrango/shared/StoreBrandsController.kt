@@ -15,7 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import es.criosrango.shared.api.StoreApiClient
@@ -157,6 +157,32 @@ class StoreBrandsController(
     fun clearFilters() { setSizes(emptySet()); setColors(emptySet()) }
 }
 
+private fun decodeBrandHtmlEntities(value: String): String = Regex("&(#x[0-9a-fA-F]+|#[0-9]+|amp|quot|apos|lt|gt|nbsp);").replace(value) { match ->
+    when (val entity = match.groupValues[1]) {
+        "amp" -> "&"
+        "quot" -> "\\\""
+        "apos" -> "'"
+        "lt" -> "<"
+        "gt" -> ">"
+        "nbsp" -> "\\u00A0"
+        else -> {
+            val codePoint = when {
+                entity.startsWith("#x", ignoreCase = true) -> entity.drop(2).toIntOrNull(16)
+                entity.startsWith("#") -> entity.drop(1).toIntOrNull()
+                else -> null
+            }
+            when {
+                codePoint == null || codePoint !in 0..0x10FFFF || codePoint in 0xD800..0xDFFF -> match.value
+                codePoint <= 0xFFFF -> codePoint.toChar().toString()
+                else -> {
+                    val adjusted = codePoint - 0x10000
+                    (0xD800 + (adjusted shr 10)).toChar().toString() + (0xDC00 + (adjusted and 0x3FF)).toChar()
+                }
+            }
+        }
+    }
+}
+
 private fun StoreProduct.brandFilterValues(size: Boolean): Set<String> =
     attributes.filter { attribute ->
         val key = "${attribute.name} ${attribute.taxonomy.orEmpty()}".lowercase()
@@ -200,11 +226,19 @@ fun StoreBrandsScreen(
                             Modifier.fillMaxWidth().height(104.dp).clip(RoundedCornerShape(12.dp)).background(Color.White, RoundedCornerShape(12.dp)).clickable { controller.selectBrand(brand) }.padding(8.dp),
                             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
                         ) {
-                            if (!brand.imageUrl.isNullOrBlank()) RemoteStoreImage(brand.imageUrl, brand.name, Modifier.fillMaxWidth().height(64.dp), ContentScale.Fit)
-                            else Box(Modifier.fillMaxWidth().height(64.dp), contentAlignment = Alignment.Center) {
-                                Text(brand.name.take(1), style = MaterialTheme.typography.headlineMedium, color = Color(0xFF183B35))
+                            if (!brand.imageUrl.isNullOrBlank()) {
+                                RemoteStoreImage(brand.imageUrl, null, Modifier.fillMaxWidth().height(64.dp), ContentScale.Fit)
+                            } else {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(
+                                        decodeBrandHtmlEntities(brand.name).trim(),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
-                            Text(brand.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
