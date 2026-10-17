@@ -115,13 +115,20 @@ fun StoreHomeScreen(
     var heroIndex by remember { mutableStateOf(0) }
 
     LaunchedEffect(controller) { controller.start() }
-    val heroImages = state.mediaConfig.heroImages.ifEmpty { STORE_HOME_HERO_IMAGES }
+    val heroImages = when (state.mediaStatus) {
+        StoreHomeMediaStatus.LOADING -> emptyList()
+        StoreHomeMediaStatus.REMOTE,
+        StoreHomeMediaStatus.EMPTY,
+        StoreHomeMediaStatus.ERROR -> state.mediaConfig.heroImages
+    }
 
     LaunchedEffect(heroImages) {
-        heroIndex = 0
-        while (true) {
-            delay(3500)
-            heroIndex = (heroIndex + 1) % heroImages.size
+        if (heroImages.isNotEmpty()) {
+            heroIndex = heroIndex.coerceIn(0, heroImages.lastIndex)
+            while (heroImages.size > 1) {
+                delay(3500)
+                heroIndex = (heroIndex + 1) % heroImages.size
+            }
         }
     }
 
@@ -137,14 +144,22 @@ fun StoreHomeScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             item {
-                Crossfade(targetState = heroIndex % heroImages.size) { index ->
-                    RemoteStoreImage(
-                        heroImages[index],
-                        null,
-                        Modifier.fillMaxWidth().aspectRatio(4f / 3f),
-                        ContentScale.Crop,
-                        backgroundColor = null
-                    )
+                Box(
+                    Modifier.fillMaxWidth()
+                        .aspectRatio(4f / 3f)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    if (heroImages.isNotEmpty()) {
+                        Crossfade(targetState = heroIndex.coerceIn(0, heroImages.lastIndex)) { index ->
+                            RemoteStoreImage(
+                                heroImages[index],
+                                null,
+                                Modifier.fillMaxSize(),
+                                ContentScale.Crop,
+                                backgroundColor = null
+                            )
+                        }
+                    }
                 }
             }
             item {

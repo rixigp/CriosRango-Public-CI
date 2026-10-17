@@ -97,13 +97,21 @@ enum class StoreHomeSectionStatus {
     EMPTY
 }
 
+enum class StoreHomeMediaStatus {
+    LOADING,
+    REMOTE,
+    EMPTY,
+    ERROR
+}
+
 data class StoreHomeState(
     val novedadesPreview: List<StoreProduct> = emptyList(),
     val categories: List<StoreHomeCategory> = HOME_ROOT_CATEGORIES,
     val brands: List<StoreGlobalBrand> = emptyList(),
     /** Full category snapshot used only to resolve Home's Invierno/Verano Outlet destinations. */
     val outletCategories: List<StoreCategory> = emptyList(),
-    val mediaConfig: HomeMediaConfig = STORE_HOME_FALLBACK_MEDIA_CONFIG,
+    val mediaConfig: HomeMediaConfig = STORE_HOME_FALLBACK_MEDIA_CONFIG.copy(heroImages = emptyList()),
+    val mediaStatus: StoreHomeMediaStatus = StoreHomeMediaStatus.LOADING,
     val novedadesStatus: StoreHomeSectionStatus = StoreHomeSectionStatus.LOADING,
     val categoriesStatus: StoreHomeSectionStatus = StoreHomeSectionStatus.CONTENT,
     val brandsStatus: StoreHomeSectionStatus = StoreHomeSectionStatus.LOADING,
@@ -290,13 +298,31 @@ class StoreHomeController(
 
     private suspend fun loadHomeMediaConfig(request: Long) {
         try {
-            val remote = source.homeMediaConfig() ?: return
+            val remote = source.homeMediaConfig()
+                ?: throw IllegalStateException("Home media configuration is unavailable.")
             if (request != mediaGeneration) return
-            mutableState.value = mutableState.value.copy(mediaConfig = resolveHomeMediaConfig(remote))
+            val remoteHeroImages = remote.heroImages.orEmpty()
+                .mapNotNull(::validHomeMediaUrl)
+                .distinct()
+            val mediaStatus = if (remoteHeroImages.isEmpty()) {
+                StoreHomeMediaStatus.EMPTY
+            } else {
+                StoreHomeMediaStatus.REMOTE
+            }
+            // Commit the resolved images and status together so the renderer never observes
+            // an intermediate empty/fallback list while switching from loading to the result.
+            mutableState.value = mutableState.value.copy(
+                mediaConfig = resolveHomeMediaConfig(remote),
+                mediaStatus = mediaStatus
+            )
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
-            // Keep the last valid configuration (or compiled fallbacks on first load).
+            if (request != mediaGeneration) return
+            mutableState.value = mutableState.value.copy(
+                mediaConfig = STORE_HOME_FALLBACK_MEDIA_CONFIG,
+                mediaStatus = StoreHomeMediaStatus.ERROR
+            )
         }
     }
 
