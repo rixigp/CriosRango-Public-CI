@@ -11,6 +11,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 const val HOME_NOVEDADES_LIMIT = 8
@@ -67,25 +68,30 @@ interface StoreHomeDataSource {
     suspend fun products(perPage: Int, orderBy: String, order: String): List<StoreProduct>
     suspend fun brands(): List<StoreGlobalBrand>
     suspend fun outletCategories(): List<StoreCategory>
+    fun retryBrands() = Unit
 }
 
-class StoreApiHomeDataSource(private val api: StoreApiClient) : StoreHomeDataSource {
+/** Reuses the app's existing StoreBrandsController; Home does not create a second brands fetcher. */
+class StoreApiHomeDataSource(
+    private val api: StoreApiClient,
+    private val brandsController: StoreBrandsController
+) : StoreHomeDataSource {
     override suspend fun products(perPage: Int, orderBy: String, order: String): List<StoreProduct> =
         api.products(perPage = perPage, page = 1, orderBy = orderBy, order = order)
 
     override suspend fun brands(): List<StoreGlobalBrand> {
-        val all = mutableListOf<StoreGlobalBrand>()
-        var page = 1
-        while (true) {
-            val batch = api.productBrands(perPage = 100, page = page, hideEmpty = true)
-            all += batch.map { it.copy(name = normalizeWooPlainText(it.name)) }
-            if (batch.size < 100) break
-            page++
+        val state = brandsController.state.first { !it.brandsLoading }
+        if (state.brands.isEmpty() && state.brandsError != null) {
+            error(state.brandsError)
         }
-        return all.distinctBy { it.id }
+        return state.brands
             .filter { it.id > 0 && it.count > 0 && it.name.isNotBlank() && it.slug.isNotBlank() }
             .sortedWith(compareByDescending<StoreGlobalBrand> { it.count }.thenBy { it.name.trim().lowercase() })
             .take(HOME_BRANDS_MAX)
+    }
+
+    override fun retryBrands() {
+        brandsController.retryBrands()
     }
 
     override suspend fun outletCategories(): List<StoreCategory> {
@@ -116,6 +122,7 @@ class StoreHomeController(
     private var brandsGeneration = 0L
     private var outletGeneration = 0L
     private var refreshJob: Job? = null
+    private var refreshGeneration = 0L
 
     fun start() {
         if (mutableState.value.novedadesStatus == StoreHomeSectionStatus.LOADING &&
@@ -126,6 +133,7 @@ class StoreHomeController(
 
     fun refresh() {
         refreshJob?.cancel()
+        val refreshRequest = ++refreshGeneration
         val productsRequest = ++productsGeneration
         val brandsRequest = ++brandsGeneration
         val outletRequest = ++outletGeneration
@@ -138,7 +146,9 @@ class StoreHomeController(
                     launch { loadOutletCategories(outletRequest) }
                 }
             } finally {
-                mutableState.value = mutableState.value.copy(refreshing = false)
+                if (refreshRequest == refreshGeneration) {
+                    mutableState.value = mutableState.value.copy(refreshing = false)
+                }
             }
         }
     }
@@ -149,6 +159,7 @@ class StoreHomeController(
     }
 
     fun retryBrands() {
+        source.retryBrands()
         val request = ++brandsGeneration
         scope.launch { loadBrands(request) }
     }
