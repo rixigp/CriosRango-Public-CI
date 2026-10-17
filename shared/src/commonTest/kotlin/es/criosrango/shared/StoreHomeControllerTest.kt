@@ -20,8 +20,8 @@ class StoreHomeControllerTest {
         var requestedOrder = ""
         var productRows: List<StoreProduct> = (1..10).map { StoreProduct(id = it, name = "Product-$it") }
         var brandRows: List<StoreGlobalBrand> = listOf(
-            StoreGlobalBrand(id = 1, name = "Zulu", slug = "zulu", count = 5),
-            StoreGlobalBrand(id = 2, name = "Alpha", slug = "alpha", count = 5),
+            StoreGlobalBrand(id = 1, name = "Zulu", slug = "zulu", count = 50),
+            StoreGlobalBrand(id = 2, name = "Alpha", slug = "alpha", count = 50),
             StoreGlobalBrand(id = 3, name = "Empty", slug = "empty", count = 0),
             StoreGlobalBrand(id = 4, name = "Missing slug", slug = "", count = 10),
             StoreGlobalBrand(id = 5, name = "   ", slug = "blank-name", count = 10)
@@ -87,7 +87,9 @@ class StoreHomeControllerTest {
         val brands = controller.state.value.brands
         assertEquals(HOME_BRANDS_MAX, brands.size)
         assertTrue(brands.all { it.id > 0 && it.count > 0 && it.name.isNotBlank() && it.slug.isNotBlank() })
-        assertEquals(listOf(25, 24, 23), brands.take(3).map { it.id })
+        assertEquals(listOf(2, 1, 25), brands.take(3).map { it.id })
+        assertEquals("alpha", brands.first().slug)
+        assertEquals("zulu", brands[1].slug)
         assertEquals(StoreHomeSectionStatus.CONTENT, controller.state.value.brandsStatus)
     }
 
