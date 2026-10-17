@@ -340,10 +340,11 @@ internal fun IosOutletScreen(
     val controllerState by controller.state.collectAsState()
     var availabilityError by remember(outlet.id) { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(controllerState.activeCategoryId, controllerState.activeFilterCount, outlet.id) {
+    LaunchedEffect(controllerState.activeCategoryId, controllerState.activeFilterCount, outlet.id, initialCategoryId, showOutletChooser) {
         val activeCategoryId = controllerState.activeCategoryId
         val isRootCategory = activeCategoryId == null || activeCategoryId == outlet.id
-        onShowOutletChooserChange(isRootCategory && controllerState.activeFilterCount == 0)
+        val explicitRootChooser = initialCategoryId == outlet.id && showOutletChooser
+        onShowOutletChooserChange(explicitRootChooser || (isRootCategory && controllerState.activeFilterCount == 0))
     }
 
     LaunchedEffect(controller, categories, initialCategoryId) {
