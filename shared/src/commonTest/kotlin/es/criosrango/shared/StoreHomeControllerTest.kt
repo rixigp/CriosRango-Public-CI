@@ -171,4 +171,30 @@ class StoreHomeControllerTest {
         assertEquals(StoreHomeSectionStatus.CONTENT, state.outletStatus)
         assertTrue(!state.refreshing)
     }
+
+    @Test
+    fun successfulRefreshReplacesPreviewDataAndKeepsCuratedCategories() = runTest {
+        val source = FakeSource()
+        val controller = StoreHomeController(this, source)
+
+        controller.start()
+        advanceUntilIdle()
+        assertEquals((1..8).toList(), controller.state.value.novedadesPreview.map { it.id })
+
+        source.productRows = (101..104).map { StoreProduct(id = it, name = "Updated-$it") }
+        source.brandRows = listOf(
+            StoreGlobalBrand(id = 201, name = "Fresh", slug = "fresh", count = 7)
+        )
+        controller.refresh()
+        advanceUntilIdle()
+
+        val state = controller.state.value
+        assertEquals(listOf(101, 102, 103, 104), state.novedadesPreview.map { it.id })
+        assertEquals(StoreHomeSectionStatus.CONTENT, state.novedadesStatus)
+        assertEquals(listOf(201), state.brands.map { it.id })
+        assertEquals(StoreHomeSectionStatus.CONTENT, state.brandsStatus)
+        assertEquals(HOME_ROOT_CATEGORIES, state.categories)
+        assertEquals(StoreHomeSectionStatus.CONTENT, state.categoriesStatus)
+        assertFalse(state.refreshing)
+    }
 }
