@@ -123,7 +123,17 @@ internal sealed class IosCatalogPage {
 }
 
 internal fun iosHomeOutletPage(category: StoreCategory?): IosCatalogPage.Outlet =
-    IosCatalogPage.Outlet(category?.id)
+    // Match Android's logical Outlet root; the seasonal category is not a gender destination.
+    IosCatalogPage.Outlet(category?.parent)
+
+internal fun iosSelectedRootTab(section: IosRootSection, catalogOriginHome: Boolean): StoreMainTab =
+    if (catalogOriginHome) StoreMainTab.HOME else when (section) {
+        IosRootSection.HOME -> StoreMainTab.HOME
+        IosRootSection.CATEGORIES -> StoreMainTab.CATEGORIES
+        IosRootSection.OUTLET -> StoreMainTab.OUTLET
+        IosRootSection.CART -> StoreMainTab.CART
+        IosRootSection.ACCOUNT -> StoreMainTab.ACCOUNT
+    }
 
 @Composable
 fun CriosRangoIOSRootScreen(
@@ -173,10 +183,16 @@ fun CriosRangoIOSRootScreen(
             (catalogPage == IosCatalogPage.Root || catalogPage is IosCatalogPage.Category)
         if (!needsCategoryTree || categorySnapshot != null || categorySnapshotError != null) return@LaunchedEffect
         categorySnapshotLoading = true
-        runCatching { storeApi.categories(perPage = 100) }
-            .onSuccess { categorySnapshot = it; categorySnapshotError = null }
-            .onFailure { categorySnapshotError = it.message ?: "No se han podido cargar las categorías." }
-        categorySnapshotLoading = false
+        try {
+            categorySnapshot = storeApi.categories(perPage = 100)
+            categorySnapshotError = null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            categorySnapshotError = "No se han podido cargar las categorías."
+        } finally {
+            categorySnapshotLoading = false
+        }
     }
 
     LaunchedEffect(pushNavigation) {
@@ -227,15 +243,7 @@ fun CriosRangoIOSRootScreen(
     MaterialTheme {
         androidx.compose.runtime.LaunchedEffect(Unit) { println("KMP_RUNTIME_ROOT_SCREEN_READY") }
         StoreGlobalShell(
-            selectedTab = if (catalogPage == IosCatalogPage.Brands && catalogOriginHome) {
-                StoreMainTab.HOME
-            } else when (section) {
-                IosRootSection.HOME -> StoreMainTab.HOME
-                IosRootSection.CATEGORIES -> StoreMainTab.CATEGORIES
-                IosRootSection.OUTLET -> StoreMainTab.OUTLET
-                IosRootSection.CART -> StoreMainTab.CART
-                IosRootSection.ACCOUNT -> StoreMainTab.ACCOUNT
-            },
+            selectedTab = iosSelectedRootTab(section, catalogOriginHome),
             cartQuantity = cartQuantity,
             onTabSelected = { item ->
                 val destination = when (item) {
@@ -246,17 +254,15 @@ fun CriosRangoIOSRootScreen(
                     StoreMainTab.ACCOUNT -> IosRootSection.ACCOUNT
                 }
                 section = destination
-                if (destination == IosRootSection.CATEGORIES) resetCatalog()
-                if (destination == IosRootSection.OUTLET) {
-                    resetCatalog()
-                    openCatalog(IosCatalogPage.Outlet())
-                }
+                // Every root-tab selection exits the current child route, including Home.
+                resetCatalog()
+                if (destination == IosRootSection.OUTLET) openCatalog(IosCatalogPage.Outlet())
             },
             topBar = {
                 StoreGlobalTopBar(
                     cartQuantity = cartQuantity,
                     onSearch = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Search) },
-                    onCart = { section = IosRootSection.CART }
+                    onCart = { resetCatalog(); section = IosRootSection.CART }
                 )
             },
             bottomNavigationModifier = Modifier.navigationBarsPadding()
@@ -290,6 +296,7 @@ fun CriosRangoIOSRootScreen(
                         onProduct = {
                             section = IosRootSection.CATEGORIES
                             resetCatalog()
+                            catalogOriginHome = true
                             openCatalog(IosCatalogPage.Product(it))
                         },
                         onNovedades = { section = IosRootSection.CATEGORIES; resetCatalog(); catalogOriginHome = true; openCatalog(IosCatalogPage.Novedades) },
@@ -305,9 +312,9 @@ fun CriosRangoIOSRootScreen(
                             catalogOriginHome = true
                             openCatalog(IosCatalogPage.Brands)
                         },
-                        onOutletWinter = { category -> section = IosRootSection.OUTLET; resetCatalog(); openCatalog(iosHomeOutletPage(category)) },
-                        onOutletSummer = { category -> section = IosRootSection.OUTLET; resetCatalog(); openCatalog(iosHomeOutletPage(category)) },
-                        onOutletAll = { section = IosRootSection.OUTLET; resetCatalog(); openCatalog(IosCatalogPage.Outlet()) }
+                        onOutletWinter = { category -> section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(iosHomeOutletPage(category)) },
+                        onOutletSummer = { category -> section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(iosHomeOutletPage(category)) },
+                        onOutletAll = { section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(IosCatalogPage.Outlet()) }
                     )
                     if (catalogOriginHome && catalogPage != IosCatalogPage.Root) {
                         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {

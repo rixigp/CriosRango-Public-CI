@@ -1,6 +1,7 @@
 package es.criosrango.shared
 
 import androidx.compose.foundation.layout.*
+import kotlin.coroutines.cancellation.CancellationException
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.pager.HorizontalPager
@@ -499,10 +500,8 @@ internal fun IosCategoryProducts(
         } else {
             "No hay productos en esta categoría."
         },
-        initialErrorMessage = pagingState.initialError?.message
-            ?: if (pagingState.initialError != null) "No se han podido cargar los productos." else null,
-        appendErrorMessage = pagingState.appendError?.message
-            ?: if (pagingState.appendError != null) "No se han podido cargar más productos." else null,
+        initialErrorMessage = if (pagingState.initialError != null) "No se han podido cargar los productos." else null,
+        appendErrorMessage = if (pagingState.appendError != null) "No se han podido cargar más productos." else null,
         appendRetryLabel = "Reintentar",
         canLoadMore = pagingState.hasMore
     )

@@ -1,5 +1,6 @@
 package es.criosrango.shared
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
@@ -11,6 +12,29 @@ import kotlin.test.assertTrue
 
 class CatalogPaginatorTest {
     private data class Item(val id: Int)
+
+    @Test
+    fun start_rethrows_cancellation_instead_of_publishing_it_as_a_catalog_error() = runTest {
+        val paginator = paginator()
+        val cancellation = CancellationException("The coroutine scope left the composition")
+        val thrown = kotlin.test.assertFailsWith<CancellationException> {
+            paginator.start("category:70") { _, _ -> throw cancellation }
+        }
+        assertEquals(cancellation, thrown)
+        assertEquals(null, paginator.state.value.initialError)
+    }
+
+    @Test
+    fun loadNext_rethrows_cancellation_instead_of_publishing_it_as_a_catalog_error() = runTest {
+        val paginator = paginator()
+        paginator.start("category:70") { _, _ -> CatalogPage((1..12).map(::Item), hasMore = true) }
+        val cancellation = CancellationException("The coroutine scope left the composition")
+        val thrown = kotlin.test.assertFailsWith<CancellationException> {
+            paginator.loadNext { _, _ -> throw cancellation }
+        }
+        assertEquals(cancellation, thrown)
+        assertEquals(null, paginator.state.value.appendError)
+    }
 
     private fun paginator() = CatalogPaginator<Item>(identity = { it.id })
 

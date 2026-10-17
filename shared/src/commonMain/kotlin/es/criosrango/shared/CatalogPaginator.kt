@@ -1,5 +1,6 @@
 package es.criosrango.shared
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -74,6 +75,8 @@ class CatalogPaginator<T>(
                 )
                 requestInFlight = false
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Throwable) {
             mutex.withLock {
                 if (requestGeneration != generation || activeQueryKey != queryKey) return
@@ -119,6 +122,8 @@ class CatalogPaginator<T>(
                 )
                 requestInFlight = false
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Throwable) {
             mutex.withLock {
                 if (requestGeneration != generation || queryKey != activeQueryKey) return
