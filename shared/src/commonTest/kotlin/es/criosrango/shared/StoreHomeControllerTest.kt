@@ -69,6 +69,9 @@ class StoreHomeControllerTest {
             HOME_ROOT_CATEGORIES.map { it.imageKey }
         )
         assertTrue(HOME_ROOT_CATEGORIES.all { it.imageKey.isNotBlank() })
+        assertEquals(HOME_CATEGORY_COUNT, STORE_HOME_CATEGORY_IMAGES.size)
+        assertEquals(HOME_ROOT_CATEGORIES.map { it.imageKey }.toSet(), STORE_HOME_CATEGORY_IMAGES.keys)
+        assertTrue(STORE_HOME_CATEGORY_IMAGES.keys.none { it.startsWith("http", ignoreCase = true) })
         assertEquals(HOME_CATEGORY_COUNT, HOME_ROOT_CATEGORIES.map { it.category.id }.distinct().size)
         assertFalse(HOME_ROOT_CATEGORIES.any { it.category.id == 445 })
         assertTrue(HOME_ROOT_CATEGORIES.all { it.category.parent == 0 })
