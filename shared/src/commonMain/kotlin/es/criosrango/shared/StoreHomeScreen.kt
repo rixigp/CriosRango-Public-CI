@@ -217,11 +217,11 @@ fun StoreHomeScreen(
                 }
             }
             item {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                Column(Modifier.fillMaxWidth()) {
                     StoreHomeSectionHeader("Outlet", "Ver todo", onOutletAll)
                     Spacer(Modifier.height(12.dp))
                     Row(
-                        Modifier.fillMaxWidth(),
+                        Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         StoreHomeOutletCard(
@@ -355,7 +355,7 @@ private fun StoreHomeSectionHeader(
         if (action != null && onAction != null) {
             Box(
                 modifier = Modifier.width(88.dp),
-                contentAlignment = Alignment.CenterStart
+                contentAlignment = Alignment.CenterEnd
             ) {
                 TextButton(
                     onClick = onAction,
@@ -366,7 +366,7 @@ private fun StoreHomeSectionHeader(
                         action,
                         modifier = Modifier.fillMaxWidth(),
                         color = Color(0xFFD18162),
-                        textAlign = TextAlign.Start
+                        textAlign = TextAlign.End
                     )
                 }
             }
