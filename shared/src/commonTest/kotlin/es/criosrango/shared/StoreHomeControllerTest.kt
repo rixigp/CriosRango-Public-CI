@@ -7,6 +7,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -58,7 +59,21 @@ class StoreHomeControllerTest {
             listOf("Bautizo", "Bebe niña", "Bebé niño", "Calzado", "Comunión niña", "Comunión niño", "Hombre", "Mujer", "Niña", "Niño", "Recién nacido"),
             HOME_ROOT_CATEGORIES.map { it.category.name }
         )
+        assertEquals(
+            listOf(
+                "category_bautizo", "category_bebe_nina", "category_bebe_nino",
+                "category_calzado", "category_comunion_nina", "category_comunion_nino",
+                "category_hombre", "category_mujer", "category_nina", "category_nino",
+                "category_recien_nacido"
+            ),
+            HOME_ROOT_CATEGORIES.map { it.imageKey }
+        )
         assertTrue(HOME_ROOT_CATEGORIES.all { it.imageKey.isNotBlank() })
+        assertEquals(HOME_CATEGORY_COUNT, HOME_ROOT_CATEGORIES.map { it.category.id }.distinct().size)
+        assertFalse(HOME_ROOT_CATEGORIES.any { it.category.id == 445 })
+        assertTrue(HOME_ROOT_CATEGORIES.all { it.category.parent == 0 })
+        assertTrue(HOME_ROOT_CATEGORIES.all { it.category.count == 0 })
+        assertTrue(HOME_ROOT_CATEGORIES.all { it.category.slug.isEmpty() })
     }
 
     @Test

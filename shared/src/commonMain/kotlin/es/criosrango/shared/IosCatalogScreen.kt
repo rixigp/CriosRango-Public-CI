@@ -89,7 +89,7 @@ internal fun IosCatalogScreen(
         IosCatalogPage.Novedades -> StoreNovedadesScreen(storeApi, padding, null, onOpenProduct, onBack)
         IosCatalogPage.Search -> IosSearchScreen(storeApi, padding, cartStore, onOpenProduct, onOpenCategory, onBack)
         IosCatalogPage.Brands -> IosBrandsScreen(brandsController, padding, onOpenProduct, onBack)
-        IosCatalogPage.Outlet -> {
+        is IosCatalogPage.Outlet -> {
             var categories by remember { mutableStateOf<List<StoreCategory>?>(null) }
             var loading by remember { mutableStateOf(true) }
             var loadError by remember { mutableStateOf<String?>(null) }
@@ -115,6 +115,7 @@ internal fun IosCatalogScreen(
                 onShowOutletChooserChange = { showOutletChooser = it },
                 gridState = outletGridState,
                 categories = categories,
+                initialCategoryId = page.categoryId,
                 categoriesLoading = loading,
                 categoriesError = loadError,
                 onRetry = { retryToken++ },

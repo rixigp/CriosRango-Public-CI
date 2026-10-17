@@ -284,6 +284,7 @@ internal fun IosOutletScreen(
     onShowOutletChooserChange: (Boolean) -> Unit,
     gridState: LazyGridState,
     categories: List<StoreCategory>?,
+    initialCategoryId: Int?,
     categoriesLoading: Boolean,
     categoriesError: String?,
     onRetry: () -> Unit,
@@ -331,8 +332,13 @@ internal fun IosOutletScreen(
         onShowOutletChooserChange(isRootCategory && controllerState.activeFilterCount == 0)
     }
 
-    LaunchedEffect(controller, categories) {
+    LaunchedEffect(controller, categories, initialCategoryId) {
         controller.updateCategories(categories)
+        if (initialCategoryId != null &&
+            categories.any { it.id == initialCategoryId && it.parent == outlet.id }
+        ) {
+            controller.selectCategory(initialCategoryId)
+        }
     }
     LaunchedEffect(controller, outlet.id) {
         runCatching { storeApi.outletAvailability() }

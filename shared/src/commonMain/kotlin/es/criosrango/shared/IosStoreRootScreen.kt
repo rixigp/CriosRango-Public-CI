@@ -115,12 +115,15 @@ internal sealed class IosCatalogPage {
     data object Novedades : IosCatalogPage()
     data object Search : IosCatalogPage()
     data object Brands : IosCatalogPage()
-    data object Outlet : IosCatalogPage()
+    data class Outlet(val categoryId: Int? = null) : IosCatalogPage()
     data object Root : IosCatalogPage()
     data class RootFilter(val scope: StoreRootFilterScope) : IosCatalogPage()
     data class Category(val category: StoreCategory) : IosCatalogPage()
     data class Product(val product: StoreProduct) : IosCatalogPage()
 }
+
+internal fun iosHomeOutletPage(category: StoreCategory?): IosCatalogPage.Outlet =
+    IosCatalogPage.Outlet(category?.id)
 
 @Composable
 fun CriosRangoIOSRootScreen(
@@ -246,7 +249,7 @@ fun CriosRangoIOSRootScreen(
                 if (destination == IosRootSection.CATEGORIES) resetCatalog()
                 if (destination == IosRootSection.OUTLET) {
                     resetCatalog()
-                    openCatalog(IosCatalogPage.Outlet)
+                    openCatalog(IosCatalogPage.Outlet())
                 }
             },
             topBar = {
@@ -302,8 +305,8 @@ fun CriosRangoIOSRootScreen(
                             catalogOriginHome = true
                             openCatalog(IosCatalogPage.Brands)
                         },
-                        onOutletWinter = { _ -> section = IosRootSection.OUTLET; resetCatalog(); openCatalog(IosCatalogPage.Outlet) },
-                        onOutletSummer = { _ -> section = IosRootSection.OUTLET; resetCatalog(); openCatalog(IosCatalogPage.Outlet) },
+                        onOutletWinter = { category -> section = IosRootSection.OUTLET; resetCatalog(); openCatalog(iosHomeOutletPage(category)) },
+                        onOutletSummer = { category -> section = IosRootSection.OUTLET; resetCatalog(); openCatalog(iosHomeOutletPage(category)) },
                         onOutletAll = { section = IosRootSection.OUTLET; resetCatalog(); openCatalog(IosCatalogPage.Outlet) }
                     )
                     if (catalogOriginHome && catalogPage != IosCatalogPage.Root) {
@@ -320,7 +323,7 @@ fun CriosRangoIOSRootScreen(
                                 onOpenRootFilter = { scope -> rootFilterOwner.open(scope) },
                                 onOpenProduct = { openCatalog(IosCatalogPage.Product(it)) },
                                 onBack = {
-                                    if (section == IosRootSection.OUTLET && catalogPage == IosCatalogPage.Outlet) {
+                                    if (section == IosRootSection.OUTLET && catalogPage is IosCatalogPage.Outlet) {
                                         section = IosRootSection.HOME
                                         resetCatalog()
                                     } else if (catalogPage == IosCatalogPage.Root) {
@@ -357,7 +360,7 @@ fun CriosRangoIOSRootScreen(
                     onOpenRootFilter = { scope -> rootFilterOwner.open(scope) },
                     onOpenProduct = { openCatalog(IosCatalogPage.Product(it)) },
                     onBack = {
-                        if (section == IosRootSection.OUTLET && catalogPage == IosCatalogPage.Outlet) {
+                        if (section == IosRootSection.OUTLET && catalogPage is IosCatalogPage.Outlet) {
                             section = IosRootSection.HOME
                             resetCatalog()
                         } else if (catalogPage == IosCatalogPage.Root) {

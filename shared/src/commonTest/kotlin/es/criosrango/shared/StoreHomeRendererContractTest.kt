@@ -31,5 +31,7 @@ class StoreHomeRendererContractTest {
         val state = StoreHomeState(outletCategories = HOME_OUTLET_SEASON_CATEGORIES)
         assertEquals(HOME_OUTLET_SEASON_CATEGORIES[0], storeHomeOutletSeasonCategory(state, "invierno"))
         assertEquals(HOME_OUTLET_SEASON_CATEGORIES[1], storeHomeOutletSeasonCategory(state, "verano"))
+        assertEquals(446, iosHomeOutletPage(storeHomeOutletSeasonCategory(state, "invierno")).categoryId)
+        assertEquals(475, iosHomeOutletPage(storeHomeOutletSeasonCategory(state, "verano")).categoryId)
     }
 }
