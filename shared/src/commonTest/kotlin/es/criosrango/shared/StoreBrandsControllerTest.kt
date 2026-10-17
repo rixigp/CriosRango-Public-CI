@@ -72,6 +72,15 @@ class StoreBrandsControllerTest {
         val state = controller.state.value
         val error = state.brandsError
         if (error != null) {
+            println("BRANDS_DIAGNOSTIC_BEGIN")
+            println("BRANDS_ERROR_MESSAGE=" + error)
+            println("STATE_BRANDS=" + state.brands)
+            println("STATE_BRANDS_ERROR=" + state.brandsError)
+            println("REQUESTS=" + requests)
+            println("REQUEST_URL=" + requestUrl)
+            println("REQUEST_PAGE=" + requestPage)
+            println("RESPONSE_BODY=" + responseBody)
+            println("BRANDS_DIAGNOSTIC_END")
             throw AssertionError(
                 "BRANDS_LOAD_ERROR\n" +
                     "ERROR_CLASS=UNAVAILABLE: StoreBrandsController stores only Throwable.message in brandsError\n" +
