@@ -434,7 +434,6 @@ fun CriosRangoIOSRootScreen(
 }
 
 @Composable
-@Composable
 internal fun IosProductCard(product: StoreProduct, onClick: (StoreProduct) -> Unit, cartStore: StoreCartStore? = null) {
     Column(Modifier.width(158.dp).clickable { onClick(product) }.semantics { role = Role.Button; contentDescription = "Abrir ${product.name}" }) {
         RemoteStoreImage(
