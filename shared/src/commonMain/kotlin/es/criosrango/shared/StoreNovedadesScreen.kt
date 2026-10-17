@@ -24,8 +24,7 @@ internal fun shouldShowNovedadesCountAndSort(state: StoreNovedadesState): Boolea
 
 @Composable
 fun StoreNovedadesScreen(storeApi:StoreApiClient,padding:PaddingValues,cartStore:StoreCartStore?=null,onProduct:(StoreProduct)->Unit,onBack:()->Unit) {
-    val scope=rememberCoroutineScope()
-    val controller=remember(storeApi){StoreNovedadesController(scope,StoreApiNovedadesDataSource(storeApi))}
+    val controller = StoreScreenOwners.novedades(storeApi)
     val state by controller.state.collectAsState()
     var sortExpanded by remember{mutableStateOf(false)}
     LaunchedEffect(controller){controller.start()}
@@ -61,7 +60,7 @@ fun StoreNovedadesScreen(storeApi:StoreApiClient,padding:PaddingValues,cartStore
                 if(state.selectedAudience==StoreNovedadesAudience.ALL) "No hay novedades." else "No hay productos en esta categoría.",
                 null,
                 null)
-            else -> LazyVerticalGrid(columns=GridCells.Fixed(2),contentPadding=PaddingValues(start=12.dp,top=4.dp,end=12.dp,bottom=28.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+            else -> LazyVerticalGrid(state = StoreScreenOwners.novedadesScrollState, columns=GridCells.Fixed(2),contentPadding=PaddingValues(start=12.dp,top=4.dp,end=12.dp,bottom=28.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 items(state.paging.items,key={it.id}){IosProductCard(it,onProduct,cartStore)}
             }
         }
