@@ -85,6 +85,20 @@ class StoreHomeControllerTest {
     }
 
     @Test
+    fun emptyRemoteHeroResponseUsesFallbackWithEmptyStatus() = runTest {
+        val source = FakeSource().apply {
+            remoteMedia = StoreHomeMediaConfigResponse(heroImages = emptyList())
+        }
+        val controller = StoreHomeController(this, source)
+
+        controller.start()
+        advanceUntilIdle()
+
+        assertEquals(STORE_HOME_FALLBACK_MEDIA_CONFIG, controller.state.value.mediaConfig)
+        assertEquals(StoreHomeMediaStatus.EMPTY, controller.state.value.mediaStatus)
+    }
+
+    @Test
     fun missingOrBlankOutletUrlsUseCompiledFallbacks() {
         val config = resolveHomeMediaConfig(StoreHomeMediaConfigResponse(
             heroImages = listOf("https://cdn.example/hero.jpg"),

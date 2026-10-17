@@ -186,6 +186,8 @@ class StoreHomeController(
     private var mediaGeneration = 0L
     private var refreshJob: Job? = null
     private var refreshGeneration = 0L
+    /** Last successful non-empty remote media config, retained across refresh errors. */
+    private var lastValidRemoteMediaConfig: HomeMediaConfig? = null
 
     fun start() {
         if (mutableState.value.novedadesStatus == StoreHomeSectionStatus.LOADING &&
@@ -205,14 +207,19 @@ class StoreHomeController(
         val brandsRequest = ++brandsGeneration
         val outletRequest = ++outletGeneration
         val mediaRequest = ++mediaGeneration
+        // Snapshot the last known-good remote config before media enters LOADING.
+        val mediaConfigToPreserve = lastValidRemoteMediaConfig
         refreshJob = scope.launch {
-            mutableState.value = mutableState.value.copy(refreshing = showRefreshing)
+            mutableState.value = mutableState.value.copy(
+                refreshing = showRefreshing,
+                mediaStatus = if (showRefreshing) StoreHomeMediaStatus.LOADING else mutableState.value.mediaStatus
+            )
             try {
                 coroutineScope {
                     launch { loadProducts(productsRequest) }
                     launch { loadBrands(brandsRequest) }
                     launch { loadOutletCategories(outletRequest) }
-                    launch { loadHomeMediaConfig(mediaRequest) }
+                    launch { loadHomeMediaConfig(mediaRequest, mediaConfigToPreserve) }
                 }
             } finally {
                 if (refreshRequest == refreshGeneration) {
@@ -296,7 +303,10 @@ class StoreHomeController(
         }
     }
 
-    private suspend fun loadHomeMediaConfig(request: Long) {
+    private suspend fun loadHomeMediaConfig(
+        request: Long,
+        previousValidRemoteConfig: HomeMediaConfig?
+    ) {
         try {
             val remote = source.homeMediaConfig()
                 ?: throw IllegalStateException("Home media configuration is unavailable.")
@@ -304,25 +314,36 @@ class StoreHomeController(
             val remoteHeroImages = remote.heroImages.orEmpty()
                 .mapNotNull(::validHomeMediaUrl)
                 .distinct()
+            val resolvedConfig = resolveHomeMediaConfig(remote)
             val mediaStatus = if (remoteHeroImages.isEmpty()) {
+                lastValidRemoteMediaConfig = null
                 StoreHomeMediaStatus.EMPTY
             } else {
+                lastValidRemoteMediaConfig = resolvedConfig
                 StoreHomeMediaStatus.REMOTE
             }
             // Commit the resolved images and status together so the renderer never observes
             // an intermediate empty/fallback list while switching from loading to the result.
             mutableState.value = mutableState.value.copy(
-                mediaConfig = resolveHomeMediaConfig(remote),
+                mediaConfig = resolvedConfig,
                 mediaStatus = mediaStatus
             )
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
             if (request != mediaGeneration) return
-            mutableState.value = mutableState.value.copy(
-                mediaConfig = STORE_HOME_FALLBACK_MEDIA_CONFIG,
-                mediaStatus = StoreHomeMediaStatus.ERROR
-            )
+            val preservedConfig = previousValidRemoteConfig
+            mutableState.value = if (preservedConfig != null) {
+                mutableState.value.copy(
+                    mediaConfig = preservedConfig,
+                    mediaStatus = StoreHomeMediaStatus.REMOTE
+                )
+            } else {
+                mutableState.value.copy(
+                    mediaConfig = STORE_HOME_FALLBACK_MEDIA_CONFIG,
+                    mediaStatus = StoreHomeMediaStatus.ERROR
+                )
+            }
         }
     }
 
