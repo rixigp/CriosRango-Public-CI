@@ -134,17 +134,21 @@ class StoreHomeController(
         if (mutableState.value.novedadesStatus == StoreHomeSectionStatus.LOADING &&
             mutableState.value.brandsStatus == StoreHomeSectionStatus.LOADING &&
             mutableState.value.outletStatus == StoreHomeSectionStatus.LOADING
-        ) refresh()
+        ) loadSections(showRefreshing = false)
     }
 
     fun refresh() {
+        loadSections(showRefreshing = true)
+    }
+
+    private fun loadSections(showRefreshing: Boolean) {
         refreshJob?.cancel()
         val refreshRequest = ++refreshGeneration
         val productsRequest = ++productsGeneration
         val brandsRequest = ++brandsGeneration
         val outletRequest = ++outletGeneration
         refreshJob = scope.launch {
-            mutableState.value = mutableState.value.copy(refreshing = true)
+            mutableState.value = mutableState.value.copy(refreshing = showRefreshing)
             try {
                 coroutineScope {
                     launch { loadProducts(productsRequest) }
