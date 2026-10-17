@@ -162,6 +162,19 @@ fun CriosRangoIOSRootScreen(
     val outletControllerScope = rememberCoroutineScope()
     val rootFilterOwner = remember(storeApi) { StoreRootFilterOwner(storeApi, outletControllerScope) }
     val brandsController = remember(storeApi) { StoreBrandsController(storeApi, outletControllerScope) }
+    val homeController = remember(storeApi, brandsController) { storeHomeController(storeApi, brandsController) }
+    var startupMinimumDurationReached by remember(homeController) { mutableStateOf(false) }
+    var startupHeroPreparationFinished by remember(homeController) { mutableStateOf(false) }
+    LaunchedEffect(homeController) {
+        homeController.start()
+        homeController.prepareInitialHero()
+        startupHeroPreparationFinished = true
+    }
+    LaunchedEffect(homeController) {
+        delay(2_000)
+        startupMinimumDurationReached = true
+    }
+    val showStartupBranding = !startupMinimumDurationReached || !startupHeroPreparationFinished
     val outletController = remember(storeApi) {
         StoreOutletController(outletControllerScope, storeOutletDataSource(storeApi))
     }
@@ -243,6 +256,7 @@ fun CriosRangoIOSRootScreen(
 
     MaterialTheme {
         androidx.compose.runtime.LaunchedEffect(Unit) { println("KMP_RUNTIME_ROOT_SCREEN_READY") }
+        Box(Modifier.fillMaxSize()) {
         StoreGlobalShell(
             selectedTab = iosSelectedRootTab(section, catalogOriginHome),
             cartQuantity = cartQuantity,
@@ -286,6 +300,7 @@ fun CriosRangoIOSRootScreen(
                     StoreHomeScreen(
                         storeApi = storeApi,
                         brandsController = brandsController,
+                        homeController = homeController,
                         cartStore = cartStore,
                         padding = padding,
                         onCategory = {
@@ -412,6 +427,8 @@ fun CriosRangoIOSRootScreen(
                 )
             }
             }
+        }
+        if (showStartupBranding) StoreStartupBranding()
         }
         postOrderSuccess?.let { success ->
             AlertDialog(

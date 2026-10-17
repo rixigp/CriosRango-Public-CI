@@ -7,15 +7,6 @@ import es.criosrango.shared.loyalty.LoyaltyRepository
 import platform.Foundation.NSURL
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import platform.CoreGraphics.CGRectMake
-import platform.UIKit.UIColor
-import platform.UIKit.UIImage
-import platform.UIKit.UIImageView
-import platform.UIKit.UIView
-import platform.UIKit.UIViewContentModeScaleAspectFit
 import platform.UIKit.UIViewController
 
 private var iosPaymentStore: StorePaymentStore? = null
@@ -57,31 +48,6 @@ fun MainViewController() : UIViewController {
             onPushNavigationConsumed = { iosPushNavigation.value = null }
         )
     }
-    // Keep the native Launch Screen's branding visible while Compose finishes its first frame.
-    // The overlay is created only for this controller's initial launch and is never re-shown on foreground.
-    val splashOverlay = UIView(frame = controller.view.bounds)
-    splashOverlay.backgroundColor = UIColor(
-        red = 250.0 / 255.0,
-        green = 247.0 / 255.0,
-        blue = 240.0 / 255.0,
-        alpha = 1.0
-    )
-    splashOverlay.autoresizingMask = controller.view.autoresizingMask
-    val splashLogo = UIImageView(frame = CGRectMake(
-        (controller.view.bounds.size.width - 240.0) / 2.0,
-        (controller.view.bounds.size.height - 240.0) / 2.0,
-        240.0,
-        240.0
-    ))
-    splashLogo.image = UIImage.imageNamed("SplashLogo")
-    splashLogo.contentMode = UIViewContentModeScaleAspectFit
-    splashOverlay.addSubview(splashLogo)
-    controller.view.addSubview(splashOverlay)
-    MainScope().launch {
-        delay(2_000)
-        splashOverlay.removeFromSuperview()
-    }
-
     iosRootViewController = controller
     return controller
 }

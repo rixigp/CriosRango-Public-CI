@@ -201,6 +201,9 @@ private fun CriosRangoApp(
 ) {
     val rootFilterScope = rememberCoroutineScope()
     val brandsController = remember(sharedCatalogClient) { es.criosrango.shared.StoreBrandsController(sharedCatalogClient, rootFilterScope) }
+    val homeController = remember(sharedCatalogClient, brandsController) {
+        es.criosrango.shared.storeHomeController(sharedCatalogClient, brandsController)
+    }
     val brandControllerState by brandsController.state.collectAsStateWithLifecycle()
     val rootFilterOwner = remember(sharedCatalogClient) { es.criosrango.shared.StoreRootFilterOwner(sharedCatalogClient, rootFilterScope) }
     val accountViewModel: AccountViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
@@ -300,14 +303,25 @@ private fun CriosRangoApp(
     }
 
     var startupMinimumDurationReached by remember(coldStartBranding) { mutableStateOf(!coldStartBranding) }
+    var startupHeroPreparationFinished by remember(coldStartBranding) { mutableStateOf(!coldStartBranding) }
+    LaunchedEffect(homeController, coldStartBranding) {
+        homeController.start()
+        if (coldStartBranding) {
+            homeController.prepareInitialHero()
+            startupHeroPreparationFinished = true
+        }
+    }
     LaunchedEffect(coldStartBranding) {
         if (coldStartBranding) {
             delay(2_000)
             startupMinimumDurationReached = true
         }
     }
-    val startupReady = !initialLoading || error != null
-    val showStartupBranding = shouldShowStartupBranding(coldStartBranding, startupMinimumDurationReached, startupReady)
+    val showStartupBranding = shouldShowStartupBranding(
+        coldStartBranding,
+        startupMinimumDurationReached,
+        startupHeroPreparationFinished
+    )
 
     // Novedades header Back and Android system Back share one navigation callback.
     fun closeNovedades() {
@@ -434,7 +448,7 @@ private fun CriosRangoApp(
                     showAllBrands -> es.criosrango.shared.StoreBrandsScreen(controller = brandsController, padding = padding, onBack = { selectedBrand = null; showAllBrands = false; tab = AppTab.HOME }, onProduct = { viewModel.openProduct(it.toAndroid()) }, onBrandProductsBack = { backFromBrandProducts() })
                     selectedBrand != null -> es.criosrango.shared.StoreBrandsScreen(controller = brandsController, padding = padding, onBack = { selectedBrand = null; showAllBrands = false; tab = AppTab.HOME }, onProduct = { viewModel.openProduct(it.toAndroid()) }, onBrandProductsBack = { backFromBrandProducts() })
                     loading && products.isEmpty() && tab != AppTab.HOME && tab != AppTab.SEARCH && tab != AppTab.CATEGORIES && tab != AppTab.OUTLET -> LoadingState(padding)
-                    tab == AppTab.HOME -> saveableStateHolder.SaveableStateProvider("HOME") { if (homeShowAll) StoreNovedadesScreen(storeApi = sharedCatalogClient, padding = padding, cartStore = null, onProduct = { product -> viewModel.openProduct(product.toAndroid()) }, onBack = { closeNovedades() }) else es.criosrango.shared.StoreHomeScreen(storeApi = sharedCatalogClient, brandsController = brandsController, padding = padding, cartStore = null, onProduct = { viewModel.openProduct(it.toAndroid()) }, onCategory = { category -> categoryPath.clear(); categoryPath += category.id; tab = AppTab.CATEGORIES }, onNovedades = { homeShowAll = true }, onBrand = { brand -> brandOrigin = BrandOrigin.HOME; selectedBrand = BrandTerm(id = brand.id, name = brand.name, slug = brand.slug, count = brand.count, imageUrl = brand.imageUrl, localLogoRes = APP_BRANDS.firstOrNull { it.slug.equals(brand.slug, ignoreCase = true) }?.localLogoRes); showAllBrands = false }, onAllBrands = { brandOrigin = BrandOrigin.HOME; selectedBrand = null; showAllBrands = true; brandsController.backToBrands() }, onOutletWinter = { category -> outletSeasonFilter = if (category != null) HomeOutletSeason.WINTER else null; categoryPath.clear(); categoryPath += (category?.parent ?: 445); tab = AppTab.OUTLET }, onOutletSummer = { category -> outletSeasonFilter = if (category != null) HomeOutletSeason.SUMMER else null; categoryPath.clear(); categoryPath += (category?.parent ?: 445); tab = AppTab.OUTLET }, onOutletAll = { outletSeasonFilter = null; categoryPath.clear(); categoryPath += 445; tab = AppTab.OUTLET }) }
+                    tab == AppTab.HOME -> saveableStateHolder.SaveableStateProvider("HOME") { if (homeShowAll) StoreNovedadesScreen(storeApi = sharedCatalogClient, padding = padding, cartStore = null, onProduct = { product -> viewModel.openProduct(product.toAndroid()) }, onBack = { closeNovedades() }) else es.criosrango.shared.StoreHomeScreen(storeApi = sharedCatalogClient, brandsController = brandsController, homeController = homeController, padding = padding, onProduct = { viewModel.openProduct(it.toAndroid()) }, onCategory = { category -> categoryPath.clear(); categoryPath += category.id; tab = AppTab.CATEGORIES }, onNovedades = { homeShowAll = true }, onBrand = { brand -> brandOrigin = BrandOrigin.HOME; selectedBrand = BrandTerm(id = brand.id, name = brand.name, slug = brand.slug, count = brand.count, imageUrl = brand.imageUrl, localLogoRes = APP_BRANDS.firstOrNull { it.slug.equals(brand.slug, ignoreCase = true) }?.localLogoRes); showAllBrands = false }, onAllBrands = { brandOrigin = BrandOrigin.HOME; selectedBrand = null; showAllBrands = true; brandsController.backToBrands() }, onOutletWinter = { category -> outletSeasonFilter = if (category != null) HomeOutletSeason.WINTER else null; categoryPath.clear(); categoryPath += (category?.parent ?: 445); tab = AppTab.OUTLET }, onOutletSummer = { category -> outletSeasonFilter = if (category != null) HomeOutletSeason.SUMMER else null; categoryPath.clear(); categoryPath += (category?.parent ?: 445); tab = AppTab.OUTLET }, onOutletAll = { outletSeasonFilter = null; categoryPath.clear(); categoryPath += 445; tab = AppTab.OUTLET }) }
                     tab == AppTab.CATEGORIES -> saveableStateHolder.SaveableStateProvider("CATEGORY:${categoryPath.joinToString("/")}") { CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, loadRootCatalog = viewModel::loadRootCatalog, rootFilterOwner = rootFilterOwner, onProduct = viewModel::openProduct, availabilityStore = outletAvailabilityStore, onRootBack = { categoryPath.clear(); tab = AppTab.HOME }, onOpen = { category: ProductCategory -> categoryPath += category.id }, outletSeasonFilter = null,
                         onRootRetry = { viewModel.refreshHome() }) }
                     tab == AppTab.OUTLET -> saveableStateHolder.SaveableStateProvider("OUTLET:${outletSeasonFilter?.name ?: "ALL"}:${categoryPath.joinToString("/")}") { CategoriesScreen(categories = categories, products = activeCategoryProducts, path = categoryPath, padding = padding, loading = loading, categoryPagingState = categoryPagingState, loadNextCategoryPage = viewModel::loadNextCategoryPage, loadCategory = viewModel::loadCategory, loadCategoryTree = viewModel::loadCategoryTree, onProduct = viewModel::openProduct, availabilityStore = outletAvailabilityStore, onRootBack = { categoryPath.clear(); outletSeasonFilter = null; tab = AppTab.HOME }, onOpen = { category: ProductCategory -> categoryPath += category.id; tab = AppTab.OUTLET }, outletSeasonFilter = outletSeasonFilter, outletController = viewModel.outletController, outletProductLookup = viewModel::outletProduct, onSingleLevelBack = if (outletSeasonFilter != null) { { outletSeasonFilter = null } } else { { categoryPath.clear(); tab = AppTab.HOME } }) }

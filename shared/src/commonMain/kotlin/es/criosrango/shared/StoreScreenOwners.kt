@@ -35,3 +35,7 @@ internal object StoreScreenOwners {
         return novedadesController!!
     }
 }
+
+/** Returns the application-lifetime Home owner so startup can warm it before Home is composed. */
+fun storeHomeController(api: StoreApiClient, brands: StoreBrandsController): StoreHomeController =
+    StoreScreenOwners.home(api, brands)

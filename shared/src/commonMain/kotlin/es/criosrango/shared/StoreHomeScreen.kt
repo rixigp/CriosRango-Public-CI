@@ -101,6 +101,7 @@ fun StoreHomeScreen(
     brandsController: StoreBrandsController,
     padding: PaddingValues,
     cartStore: StoreCartStore? = null,
+    homeController: StoreHomeController? = null,
     onProduct: (StoreProduct) -> Unit,
     onCategory: (StoreCategory) -> Unit,
     onNovedades: () -> Unit,
@@ -110,13 +111,13 @@ fun StoreHomeScreen(
     onOutletSummer: (StoreCategory?) -> Unit,
     onOutletAll: () -> Unit
 ) {
-    val controller = StoreScreenOwners.home(storeApi, brandsController)
+    val controller = homeController ?: storeHomeController(storeApi, brandsController)
     val state by controller.state.collectAsState()
     var heroIndex by remember { mutableStateOf(0) }
 
     LaunchedEffect(controller) { controller.start() }
     val heroImages = when (state.mediaStatus) {
-        StoreHomeMediaStatus.LOADING -> emptyList()
+        StoreHomeMediaStatus.LOADING -> state.mediaConfig.heroImages
         StoreHomeMediaStatus.REMOTE,
         StoreHomeMediaStatus.EMPTY,
         StoreHomeMediaStatus.ERROR -> state.mediaConfig.heroImages

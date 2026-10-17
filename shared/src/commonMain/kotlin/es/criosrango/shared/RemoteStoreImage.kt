@@ -65,6 +65,14 @@ internal fun RemoteStoreImage(
     }
 }
 
+internal suspend fun prefetchRemoteStoreImage(url: String): Boolean = try {
+    RemoteStoreImageSessionCache.getOrLoad(url) != null
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (_: Exception) {
+    false
+}
+
 private object RemoteStoreImageSessionCache {
     private const val MAX_ENTRIES = 64
     private const val MAX_CACHED_PIXELS = 24_000_000L
