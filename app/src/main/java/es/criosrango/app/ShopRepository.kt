@@ -336,47 +336,6 @@ class StoreRepository(private val api: StoreApi) {
         return result.distinctBy { it.id }
     }
 
-    suspend fun recentProducts(): List<StoreProduct> {
-        val utc = java.util.TimeZone.getTimeZone("UTC")
-
-        val calendar = java.util.Calendar
-            .getInstance(utc)
-            .apply {
-                add(java.util.Calendar.DAY_OF_YEAR, -60)
-            }
-
-        val formatter = java.text.SimpleDateFormat(
-            "yyyy-MM-dd'T'HH:mm:ss'Z'",
-            java.util.Locale.US
-        ).apply {
-            timeZone = utc
-        }
-
-        val cutoff = formatter.format(calendar.time)
-
-        val homeProductCount = 8
-
-        val recent = api.products(
-            perPage = homeProductCount,
-            orderBy = "date",
-            order = "desc",
-            after = cutoff
-        )
-
-        if (recent.size >= homeProductCount) {
-            return recent.take(homeProductCount)
-        }
-
-        val latest = api.products(
-            perPage = homeProductCount,
-            orderBy = "date",
-            order = "desc"
-        )
-
-        return (recent + latest)
-            .distinctBy { it.id }
-            .take(homeProductCount)
-    }
     suspend fun categories() = api.categories()
     suspend fun outletAvailability() = api.outletAvailability()
     suspend fun product(id: Int) = api.product(id)

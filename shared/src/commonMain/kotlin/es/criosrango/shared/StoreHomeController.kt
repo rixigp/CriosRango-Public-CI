@@ -40,6 +40,12 @@ val HOME_ROOT_CATEGORIES: List<StoreHomeCategory> = listOf(
     StoreHomeCategory(StoreCategory(id = 67, parent = 0, name = "Recién nacido", count = 0, slug = ""), "category_recien_nacido")
 )
 
+ /** Fallback Outlet season destinations already used by Android when Store API omits these child terms. */
+val HOME_OUTLET_SEASON_CATEGORIES: List<StoreCategory> = listOf(
+    StoreCategory(id = 446, parent = 445, name = "Hombre invierno", count = 0, slug = "hombre-invierno-outlet"),
+    StoreCategory(id = 475, parent = 445, name = "Hombre verano", count = 0, slug = "hombre-verano-outlet")
+)
+
 enum class StoreHomeSectionStatus {
     LOADING,
     CONTENT,
@@ -234,7 +240,7 @@ class StoreHomeController(
             outletError = null
         )
         try {
-            val categories = source.outletCategories().distinctBy { it.id }
+            val categories = (source.outletCategories() + HOME_OUTLET_SEASON_CATEGORIES).distinctBy { it.id }
             if (request != outletGeneration) return
             mutableState.value = mutableState.value.copy(
                 outletCategories = categories,

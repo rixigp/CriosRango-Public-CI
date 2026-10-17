@@ -109,7 +109,9 @@ class StoreHomeControllerTest {
         assertEquals(StoreHomeSectionStatus.CONTENT, state.categoriesStatus)
         assertEquals(HOME_CATEGORY_COUNT, state.categories.size)
         assertEquals(StoreHomeSectionStatus.CONTENT, state.outletStatus)
-        assertEquals(445, state.outletCategories.single().id)
+        assertTrue(state.outletCategories.any { it.id == 445 })
+        assertTrue(state.outletCategories.any { it.id == 446 && it.name == "Hombre invierno" })
+        assertTrue(state.outletCategories.any { it.id == 475 && it.name == "Hombre verano" })
     }
 
     @Test

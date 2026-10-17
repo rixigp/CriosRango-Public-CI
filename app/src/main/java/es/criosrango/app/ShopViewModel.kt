@@ -24,6 +24,7 @@ import es.criosrango.shared.CatalogPagingState
 import es.criosrango.shared.StoreOutletController
 import es.criosrango.shared.StoreOutletDataSource
 import es.criosrango.shared.StoreRootFilterScope
+import es.criosrango.shared.HOME_OUTLET_SEASON_CATEGORIES
 
 internal suspend fun clearPendingAfterPaidCartCleanup(clearCart: suspend () -> Boolean, clearPending: () -> Boolean): Boolean {
     if (!clearCart()) return false
@@ -126,19 +127,21 @@ class ShopViewModel(
             supervisorScope {
                 val result = async { runCatching { repository.products() } }
                 val categoryResult = async { runCatching { repository.categories() } }
-                val recentResult = async { runCatching { repository.recentProducts() } }
                 val loadedProductsResult = result.await()
-                val loadedRecentResult = recentResult.await()
                 val loadedProducts = loadedProductsResult.getOrNull()
-                val loadedRecentProducts = loadedRecentResult.getOrNull()
-                if (requestVersion == productsRequestVersion && loadedProducts != null) _products.value = loadedProducts
-                if (requestVersion == productsRequestVersion && loadedRecentProducts != null) _homeProducts.value = loadedRecentProducts
-                if (requestVersion == productsRequestVersion && (!loadedProducts.isNullOrEmpty() || !loadedRecentProducts.isNullOrEmpty())) _initialLoading.value = false
+                if (requestVersion == productsRequestVersion && loadedProducts != null) {
+                    _products.value = loadedProducts
+                    // Home's recent-products preview is owned by StoreHomeController; reuse this
+                    // catalog snapshot for existing local search helpers instead of issuing a
+                    // second Home-specific recentProducts query.
+                    _homeProducts.value = loadedProducts
+                }
+                if (requestVersion == productsRequestVersion && !loadedProducts.isNullOrEmpty()) _initialLoading.value = false
                 if (requestVersion == productsRequestVersion) _isLoading.value = false
                 val loadedCategories = categoryResult.await().getOrNull()?.filter { it.count > 0 } ?: _categories.value
-                _categories.value = (loadedCategories + listOf(ProductCategory(id = 446, parent = 445, name = "Hombre invierno", count = 0, slug = "hombre-invierno-outlet"), ProductCategory(id = 475, parent = 445, name = "Hombre verano", count = 0, slug = "hombre-verano-outlet"))).distinctBy { it.id }
+                _categories.value = (loadedCategories + HOME_OUTLET_SEASON_CATEGORIES.map { category -> ProductCategory(id = category.id, parent = category.parent, name = category.name, count = category.count, slug = category.slug) }).distinctBy { it.id }
                 if (requestVersion == productsRequestVersion && _products.value.isEmpty() && _homeProducts.value.isEmpty()) {
-                    val failure = loadedProductsResult.exceptionOrNull() ?: loadedRecentResult.exceptionOrNull()
+                    val failure = loadedProductsResult.exceptionOrNull()
                     _error.value = (failure as? Exception)?.toStoreUiError() ?: StoreUiError(StoreErrorType.UNEXPECTED)
                 }
             }
