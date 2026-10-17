@@ -3,6 +3,7 @@ package es.criosrango.shared
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreGlobalBrand
 import es.criosrango.shared.model.StoreProduct
+import es.criosrango.shared.api.StoreHomeMediaConfigResponse
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
@@ -18,6 +19,8 @@ class StoreHomeControllerTest {
         var productsFailure = false
         var brandsFailure = false
         var outletFailure = false
+        var mediaFailure = false
+        var remoteMedia: StoreHomeMediaConfigResponse? = null
         var productsGate: CompletableDeferred<Unit>? = null
         var requestedLimit = 0
         var requestedOrderBy = ""
@@ -46,10 +49,96 @@ class StoreHomeControllerTest {
             return brandRows
         }
 
+        override suspend fun homeMediaConfig(): StoreHomeMediaConfigResponse? {
+            if (mediaFailure) error("home media endpoint failed")
+            return remoteMedia
+        }
+
         override suspend fun outletCategories(): List<StoreCategory> {
             if (outletFailure) error("outlet failed")
             return outletRows
         }
+    }
+
+
+    @Test
+    fun remoteHeroAndOutletMediaReplaceCompiledFallbacks() = runTest {
+        val source = FakeSource().apply {
+            remoteMedia = StoreHomeMediaConfigResponse(
+                heroImages = listOf("https://cdn.example/hero-a.jpg", "https://cdn.example/hero-b.jpg"),
+                outletWinterImage = "https://cdn.example/winter.jpg",
+                outletSummerImage = "https://cdn.example/summer.jpg"
+            )
+        }
+        val controller = StoreHomeController(this, source)
+        controller.start()
+        advanceUntilIdle()
+        assertEquals(listOf("https://cdn.example/hero-a.jpg", "https://cdn.example/hero-b.jpg"), controller.state.value.mediaConfig.heroImages)
+        assertEquals("https://cdn.example/winter.jpg", controller.state.value.mediaConfig.outletWinterImage)
+        assertEquals("https://cdn.example/summer.jpg", controller.state.value.mediaConfig.outletSummerImage)
+    }
+
+    @Test
+    fun emptyOrNullRemoteHeroUsesCompiledHeroFallback() {
+        assertEquals(STORE_HOME_HERO_IMAGES, resolveHomeMediaConfig(StoreHomeMediaConfigResponse(heroImages = emptyList())).heroImages)
+        assertEquals(STORE_HOME_HERO_IMAGES, resolveHomeMediaConfig(StoreHomeMediaConfigResponse(heroImages = null)).heroImages)
+    }
+
+    @Test
+    fun missingOrBlankOutletUrlsUseCompiledFallbacks() {
+        val config = resolveHomeMediaConfig(StoreHomeMediaConfigResponse(
+            heroImages = listOf("https://cdn.example/hero.jpg"),
+            outletWinterImage = " ",
+            outletSummerImage = null
+        ))
+        assertEquals(STORE_HOME_OUTLET_WINTER_IMAGE, config.outletWinterImage)
+        assertEquals(STORE_HOME_OUTLET_SUMMER_IMAGE, config.outletSummerImage)
+    }
+
+    @Test
+    fun endpointFailureUsesFallbackInitiallyAndPreservesLastValidConfigOnRefresh() = runTest {
+        val source = FakeSource().apply { mediaFailure = true }
+        val controller = StoreHomeController(this, source)
+        controller.start()
+        advanceUntilIdle()
+        assertEquals(STORE_HOME_FALLBACK_MEDIA_CONFIG, controller.state.value.mediaConfig)
+
+        source.mediaFailure = false
+        source.remoteMedia = StoreHomeMediaConfigResponse(
+            heroImages = listOf("https://cdn.example/valid.jpg"),
+            outletWinterImage = "https://cdn.example/winter.jpg",
+            outletSummerImage = "https://cdn.example/summer.jpg"
+        )
+        controller.refresh()
+        advanceUntilIdle()
+        val validConfig = controller.state.value.mediaConfig
+        assertEquals(listOf("https://cdn.example/valid.jpg"), validConfig.heroImages)
+
+        source.mediaFailure = true
+        source.remoteMedia = null
+        controller.refresh()
+        advanceUntilIdle()
+        assertEquals(validConfig, controller.state.value.mediaConfig)
+    }
+
+    @Test
+    fun refreshUpdatesMediaOnTheExistingHomeController() = runTest {
+        val source = FakeSource().apply {
+            remoteMedia = StoreHomeMediaConfigResponse(heroImages = listOf("https://cdn.example/first.jpg"))
+        }
+        val controller = StoreHomeController(this, source)
+        controller.start()
+        advanceUntilIdle()
+        assertEquals(listOf("https://cdn.example/first.jpg"), controller.state.value.mediaConfig.heroImages)
+
+        source.remoteMedia = StoreHomeMediaConfigResponse(
+            heroImages = listOf("https://cdn.example/second.jpg"),
+            outletWinterImage = "https://cdn.example/winter-v2.jpg"
+        )
+        controller.refresh()
+        advanceUntilIdle()
+        assertEquals(listOf("https://cdn.example/second.jpg"), controller.state.value.mediaConfig.heroImages)
+        assertEquals("https://cdn.example/winter-v2.jpg", controller.state.value.mediaConfig.outletWinterImage)
     }
 
     @Test

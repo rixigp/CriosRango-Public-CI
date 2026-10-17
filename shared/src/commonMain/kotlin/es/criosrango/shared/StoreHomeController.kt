@@ -1,6 +1,7 @@
 package es.criosrango.shared
 
 import es.criosrango.shared.api.StoreApiClient
+import es.criosrango.shared.api.StoreHomeMediaConfigResponse
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreGlobalBrand
 import es.criosrango.shared.model.StoreProduct
@@ -18,6 +19,49 @@ const val HOME_NOVEDADES_LIMIT = 8
 const val HOME_BRANDS_MAX = 16
 const val HOME_BRANDS_VISUAL_PAGE_SIZE = 8
 const val HOME_CATEGORY_COUNT = 11
+
+internal val STORE_HOME_HERO_IMAGES = listOf(
+    "https://images.pexels.com/photos/6617704/pexels-photo-6617704.jpeg?auto=compress&cs=tinysrgb&w=1600",
+    "https://images.pexels.com/photos/19915135/pexels-photo-19915135.jpeg?auto=compress&cs=tinysrgb&w=1600",
+    "https://images.pexels.com/photos/30804210/pexels-photo-30804210.jpeg?auto=compress&cs=tinysrgb&w=1600",
+    "https://images.pexels.com/photos/29614374/pexels-photo-29614374.jpeg?auto=compress&cs=tinysrgb&w=1600"
+)
+
+internal const val STORE_HOME_OUTLET_WINTER_IMAGE =
+    "https://www.criosrango.es/wp-content/uploads/2025/11/208-25TR-JOBIM-1-scaled-reczmlo0rsccbsjo2he9f17qguqnu6a9b27sqk1364.webp"
+internal const val STORE_HOME_OUTLET_SUMMER_IMAGE =
+    "https://www.criosrango.es/wp-content/uploads/2025/05/mayoral-boys-ss-polo-white-3106-select-size-10-yrs-273862-p-1.jpg"
+
+data class HomeMediaConfig(
+    val heroImages: List<String>,
+    val outletWinterImage: String?,
+    val outletSummerImage: String?
+)
+
+val STORE_HOME_FALLBACK_MEDIA_CONFIG = HomeMediaConfig(
+    heroImages = STORE_HOME_HERO_IMAGES,
+    outletWinterImage = STORE_HOME_OUTLET_WINTER_IMAGE,
+    outletSummerImage = STORE_HOME_OUTLET_SUMMER_IMAGE
+)
+
+internal fun resolveHomeMediaConfig(remote: StoreHomeMediaConfigResponse): HomeMediaConfig {
+    val heroes = remote.heroImages.orEmpty().mapNotNull(::validHomeMediaUrl).distinct()
+    return HomeMediaConfig(
+        heroImages = heroes.ifEmpty { STORE_HOME_FALLBACK_MEDIA_CONFIG.heroImages },
+        outletWinterImage = validHomeMediaUrl(remote.outletWinterImage)
+            ?: STORE_HOME_FALLBACK_MEDIA_CONFIG.outletWinterImage,
+        outletSummerImage = validHomeMediaUrl(remote.outletSummerImage)
+            ?: STORE_HOME_FALLBACK_MEDIA_CONFIG.outletSummerImage
+    )
+}
+
+private fun validHomeMediaUrl(value: String?): String? {
+    val url = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return url.takeIf {
+        (it.startsWith("https://", ignoreCase = true) || it.startsWith("http://", ignoreCase = true)) &&
+            it.substringAfter("://").substringBefore('/').isNotBlank()
+    }
+}
 
 /** Shared editorial Home category plus the canonical shared asset key used by the renderer. */
 data class StoreHomeCategory(
@@ -59,6 +103,7 @@ data class StoreHomeState(
     val brands: List<StoreGlobalBrand> = emptyList(),
     /** Full category snapshot used only to resolve Home's Invierno/Verano Outlet destinations. */
     val outletCategories: List<StoreCategory> = emptyList(),
+    val mediaConfig: HomeMediaConfig = STORE_HOME_FALLBACK_MEDIA_CONFIG,
     val novedadesStatus: StoreHomeSectionStatus = StoreHomeSectionStatus.LOADING,
     val categoriesStatus: StoreHomeSectionStatus = StoreHomeSectionStatus.CONTENT,
     val brandsStatus: StoreHomeSectionStatus = StoreHomeSectionStatus.LOADING,
@@ -74,6 +119,7 @@ interface StoreHomeDataSource {
     suspend fun products(perPage: Int, orderBy: String, order: String): List<StoreProduct>
     suspend fun brands(): List<StoreGlobalBrand>
     suspend fun outletCategories(): List<StoreCategory>
+    suspend fun homeMediaConfig(): StoreHomeMediaConfigResponse? = null
     fun retryBrands() = Unit
 }
 
@@ -99,6 +145,8 @@ class StoreApiHomeDataSource(
     override fun retryBrands() {
         brandsController.retryBrands()
     }
+
+    override suspend fun homeMediaConfig(): StoreHomeMediaConfigResponse = api.homeMediaConfig()
 
     override suspend fun outletCategories(): List<StoreCategory> {
         val all = mutableListOf<StoreCategory>()
@@ -127,6 +175,7 @@ class StoreHomeController(
     private var productsGeneration = 0L
     private var brandsGeneration = 0L
     private var outletGeneration = 0L
+    private var mediaGeneration = 0L
     private var refreshJob: Job? = null
     private var refreshGeneration = 0L
 
@@ -147,6 +196,7 @@ class StoreHomeController(
         val productsRequest = ++productsGeneration
         val brandsRequest = ++brandsGeneration
         val outletRequest = ++outletGeneration
+        val mediaRequest = ++mediaGeneration
         refreshJob = scope.launch {
             mutableState.value = mutableState.value.copy(refreshing = showRefreshing)
             try {
@@ -154,6 +204,7 @@ class StoreHomeController(
                     launch { loadProducts(productsRequest) }
                     launch { loadBrands(brandsRequest) }
                     launch { loadOutletCategories(outletRequest) }
+                    launch { loadHomeMediaConfig(mediaRequest) }
                 }
             } finally {
                 if (refreshRequest == refreshGeneration) {
@@ -234,6 +285,18 @@ class StoreHomeController(
                 brandsStatus = if (current.brands.isEmpty()) StoreHomeSectionStatus.ERROR else StoreHomeSectionStatus.CONTENT,
                 brandsError = error.message ?: "No se han podido cargar las marcas."
             )
+        }
+    }
+
+    private suspend fun loadHomeMediaConfig(request: Long) {
+        try {
+            val remote = source.homeMediaConfig() ?: return
+            if (request != mediaGeneration) return
+            mutableState.value = mutableState.value.copy(mediaConfig = resolveHomeMediaConfig(remote))
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // Keep the last valid configuration (or compiled fallbacks on first load).
         }
     }
 

@@ -35,6 +35,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -79,6 +81,13 @@ class InMemoryStoreSessionStore(
 ) : StoreSessionStore
 
 data class StoreApiProductPage(val items: List<StoreProduct>, val totalItems: Int?, val totalPages: Int?)
+
+@Serializable
+data class StoreHomeMediaConfigResponse(
+    @SerialName("hero_images") val heroImages: List<String>? = null,
+    @SerialName("outlet_winter_image") val outletWinterImage: String? = null,
+    @SerialName("outlet_summer_image") val outletSummerImage: String? = null
+)
 
 class StoreApiException(
     val statusCode: Int,
@@ -237,6 +246,14 @@ class StoreApiClient(
                 parameter("key", orderKey)
             }
         }
+
+    suspend fun homeMediaConfig(): StoreHomeMediaConfigResponse {
+        val response = client.get("https://www.criosrango.es/wp-json/criosrango/v1/home-config")
+        if (!response.status.isSuccess()) {
+            error("Home media config HTTP " + response.status.value)
+        }
+        return json.decodeFromString(response.bodyAsText())
+    }
 
     suspend fun outletAvailability(): es.criosrango.shared.model.OutletAvailability =
         executeCart {

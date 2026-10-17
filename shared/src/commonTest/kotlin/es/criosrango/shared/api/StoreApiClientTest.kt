@@ -18,6 +18,26 @@ import kotlin.test.assertTrue
 class StoreApiClientTest {
 
     @Test
+    fun homeMediaConfigUsesSharedWordPressEndpointAndDecodesOptionalFields() = kotlinx.coroutines.test.runTest {
+        var requestedUrl = ""
+        val client = mockClient(HttpStatusCode.OK, """{"hero_images":[],"outlet_winter_image":"https://cdn.example/winter.png","outlet_summer_image":"https://cdn.example/summer.png","updated_at":"2026-10-17"}""") {
+            requestedUrl = it.url.toString()
+        }
+        val config = StoreApiClient(client = client).homeMediaConfig()
+        assertEquals("https://www.criosrango.es/wp-json/criosrango/v1/home-config", requestedUrl)
+        assertEquals(emptyList(), config.heroImages)
+        assertEquals("https://cdn.example/winter.png", config.outletWinterImage)
+        assertEquals("https://cdn.example/summer.png", config.outletSummerImage)
+    }
+
+    @Test
+    fun homeMediaConfigNon2xxFailsSoControllerCanKeepPreviousState() = kotlinx.coroutines.test.runTest {
+        val api = StoreApiClient(client = mockClient(HttpStatusCode.ServiceUnavailable, ""))
+        assertFailsWith<IllegalStateException> { api.homeMediaConfig() }
+    }
+
+
+    @Test
     fun non2xxWooCommerceJsonBecomesStoreApiException() = kotlinx.coroutines.test.runTest {
         val client = mockClient(HttpStatusCode.BadRequest, """{"code":"woocommerce_test_code","message":"Mensaje real de WooCommerce"}""")
         val api = StoreApiClient(client = client)

@@ -64,13 +64,6 @@ import org.jetbrains.compose.resources.painterResource
 import androidx.compose.foundation.Image
 import kotlinx.coroutines.delay
 
-private val STORE_HOME_HERO_IMAGES = listOf(
-    "https://images.pexels.com/photos/6617704/pexels-photo-6617704.jpeg?auto=compress&cs=tinysrgb&w=1600",
-    "https://images.pexels.com/photos/19915135/pexels-photo-19915135.jpeg?auto=compress&cs=tinysrgb&w=1600",
-    "https://images.pexels.com/photos/30804210/pexels-photo-30804210.jpeg?auto=compress&cs=tinysrgb&w=1600",
-    "https://images.pexels.com/photos/29614374/pexels-photo-29614374.jpeg?auto=compress&cs=tinysrgb&w=1600"
-)
-
 internal val STORE_HOME_CATEGORY_IMAGES = mapOf(
     "category_bautizo" to Res.drawable.category_bautizo,
     "category_bebe_nina" to Res.drawable.category_bebe_nina,
@@ -122,10 +115,13 @@ fun StoreHomeScreen(
     var heroIndex by remember { mutableStateOf(0) }
 
     LaunchedEffect(controller) { controller.start() }
-    LaunchedEffect(Unit) {
+    val heroImages = state.mediaConfig.heroImages.ifEmpty { STORE_HOME_HERO_IMAGES }
+
+    LaunchedEffect(heroImages) {
+        heroIndex = 0
         while (true) {
             delay(3500)
-            heroIndex = (heroIndex + 1) % STORE_HOME_HERO_IMAGES.size
+            heroIndex = (heroIndex + 1) % heroImages.size
         }
     }
 
@@ -141,9 +137,9 @@ fun StoreHomeScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             item {
-                Crossfade(targetState = heroIndex) { index ->
+                Crossfade(targetState = heroIndex % heroImages.size) { index ->
                     RemoteStoreImage(
-                        STORE_HOME_HERO_IMAGES[index],
+                        heroImages[index],
                         null,
                         Modifier.fillMaxWidth().aspectRatio(4f / 3f),
                         ContentScale.Crop,
@@ -226,13 +222,13 @@ fun StoreHomeScreen(
                     ) {
                         StoreHomeOutletCard(
                             "Invierno",
-                            "https://www.criosrango.es/wp-content/uploads/2025/11/208-25TR-JOBIM-1-scaled-reczmlo0rsccbsjo2he9f17qguqnu6a9b27sqk1364.webp",
+                            state.mediaConfig.outletWinterImage ?: STORE_HOME_OUTLET_WINTER_IMAGE,
                             { onOutletWinter(storeHomeOutletSeasonCategory(state, "invierno")) },
                             Modifier.weight(1f)
                         )
                         StoreHomeOutletCard(
                             "Verano",
-                            "https://www.criosrango.es/wp-content/uploads/2025/05/mayoral-boys-ss-polo-white-3106-select-size-10-yrs-273862-p-1.jpg",
+                            state.mediaConfig.outletSummerImage ?: STORE_HOME_OUTLET_SUMMER_IMAGE,
                             { onOutletSummer(storeHomeOutletSeasonCategory(state, "verano")) },
                             Modifier.weight(1f)
                         )
