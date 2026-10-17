@@ -16,11 +16,15 @@ class IosRootNavigationTest {
 
     @Test
     fun homeOutletSeasonUsesOutletRootRatherThanSeasonGenderCategory() {
-        val winter = es.criosrango.shared.model.StoreCategory(id = 901, parent = 445, name = "Invierno", slug = "invierno", count = 0)
-        val summer = es.criosrango.shared.model.StoreCategory(id = 902, parent = 445, name = "Verano", slug = "verano", count = 0)
-        assertEquals(445, iosHomeOutletPage(winter).categoryId)
-        assertEquals(445, iosHomeOutletPage(summer).categoryId)
-        assertEquals(null, iosHomeOutletPage(null).categoryId)
+        val winter = iosHomeOutletPage(IosOutletSeason.WINTER)
+        val summer = iosHomeOutletPage(IosOutletSeason.SUMMER)
+        val all = iosHomeOutletPage(null)
+        assertEquals(445, winter.categoryId)
+        assertEquals(IosOutletSeason.WINTER, winter.season)
+        assertEquals(445, summer.categoryId)
+        assertEquals(IosOutletSeason.SUMMER, summer.season)
+        assertEquals(445, all.categoryId)
+        assertEquals(null, all.season)
         assertEquals(StoreMainTab.HOME, iosSelectedRootTab(IosRootSection.OUTLET, catalogOriginHome = true))
     }
 

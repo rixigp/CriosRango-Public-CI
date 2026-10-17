@@ -111,20 +111,21 @@ internal data class IosCatalogRestorationState(
     val firstVisibleItemOffset: Int = 0
 )
 
+internal enum class IosOutletSeason { WINTER, SUMMER }
+
 internal sealed class IosCatalogPage {
     data object Novedades : IosCatalogPage()
     data object Search : IosCatalogPage()
     data object Brands : IosCatalogPage()
-    data class Outlet(val categoryId: Int? = null) : IosCatalogPage()
+    data class Outlet(val categoryId: Int? = 445, val season: IosOutletSeason? = null) : IosCatalogPage()
     data object Root : IosCatalogPage()
     data class RootFilter(val scope: StoreRootFilterScope) : IosCatalogPage()
     data class Category(val category: StoreCategory) : IosCatalogPage()
     data class Product(val product: StoreProduct) : IosCatalogPage()
 }
 
-internal fun iosHomeOutletPage(category: StoreCategory?): IosCatalogPage.Outlet =
-    // Match Android's logical Outlet root; the seasonal category is not a gender destination.
-    IosCatalogPage.Outlet(category?.parent)
+internal fun iosHomeOutletPage(season: IosOutletSeason?): IosCatalogPage.Outlet =
+    IosCatalogPage.Outlet(categoryId = 445, season = season)
 
 internal fun iosSelectedRootTab(section: IosRootSection, catalogOriginHome: Boolean): StoreMainTab =
     if (catalogOriginHome) StoreMainTab.HOME else when (section) {
@@ -312,9 +313,9 @@ fun CriosRangoIOSRootScreen(
                             catalogOriginHome = true
                             openCatalog(IosCatalogPage.Brands)
                         },
-                        onOutletWinter = { category -> section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(iosHomeOutletPage(category)) },
-                        onOutletSummer = { category -> section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(iosHomeOutletPage(category)) },
-                        onOutletAll = { section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(IosCatalogPage.Outlet()) }
+                        onOutletWinter = { _ -> section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(iosHomeOutletPage(IosOutletSeason.WINTER)) },
+                        onOutletSummer = { _ -> section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(iosHomeOutletPage(IosOutletSeason.SUMMER)) },
+                        onOutletAll = { section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(iosHomeOutletPage(null)) }
                     )
                     if (catalogOriginHome && catalogPage != IosCatalogPage.Root) {
                         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {

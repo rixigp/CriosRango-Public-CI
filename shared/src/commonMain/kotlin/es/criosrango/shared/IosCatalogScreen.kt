@@ -117,6 +117,7 @@ internal fun IosCatalogScreen(
                 gridState = outletGridState,
                 categories = categories,
                 initialCategoryId = page.categoryId,
+                season = page.season,
                 categoriesLoading = loading,
                 categoriesError = loadError,
                 onRetry = { retryToken++ },

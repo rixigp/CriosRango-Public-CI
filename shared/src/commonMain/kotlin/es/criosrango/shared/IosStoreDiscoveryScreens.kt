@@ -273,6 +273,19 @@ private fun IosDiscoveryFilterChoices(
     }
 }
 
+internal fun iosOutletVisibleChildren(
+    categories: List<StoreCategory>,
+    rootCategoryId: Int,
+    season: IosOutletSeason?
+): List<StoreCategory> {
+    val rawChildren = categories.filter { it.parent == rootCategoryId }.distinctBy { it.id }
+    return when (season) {
+        IosOutletSeason.WINTER -> rawChildren.filter { it.name.normalizeForIosSearch().contains("invierno") }
+        IosOutletSeason.SUMMER -> rawChildren.filter { it.name.normalizeForIosSearch().contains("verano") }
+        null -> rawChildren
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun IosOutletScreen(
@@ -285,6 +298,7 @@ internal fun IosOutletScreen(
     gridState: LazyGridState,
     categories: List<StoreCategory>?,
     initialCategoryId: Int?,
+    season: IosOutletSeason?,
     categoriesLoading: Boolean,
     categoriesError: String?,
     onRetry: () -> Unit,
@@ -322,7 +336,7 @@ internal fun IosOutletScreen(
         return
     }
 
-    val outletChildren = categories.filter { it.parent == outlet.id }.distinctBy { it.id }
+    val outletChildren = iosOutletVisibleChildren(categories, outlet.id, season)
     val controllerState by controller.state.collectAsState()
     var availabilityError by remember(outlet.id) { mutableStateOf<String?>(null) }
 
