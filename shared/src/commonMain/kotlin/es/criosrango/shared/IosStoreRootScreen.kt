@@ -307,7 +307,7 @@ fun CriosRangoIOSRootScreen(
                         },
                         onOutletWinter = { category -> section = IosRootSection.OUTLET; resetCatalog(); openCatalog(iosHomeOutletPage(category)) },
                         onOutletSummer = { category -> section = IosRootSection.OUTLET; resetCatalog(); openCatalog(iosHomeOutletPage(category)) },
-                        onOutletAll = { section = IosRootSection.OUTLET; resetCatalog(); openCatalog(IosCatalogPage.Outlet) }
+                        onOutletAll = { section = IosRootSection.OUTLET; resetCatalog(); openCatalog(IosCatalogPage.Outlet()) }
                     )
                     if (catalogOriginHome && catalogPage != IosCatalogPage.Root) {
                         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
