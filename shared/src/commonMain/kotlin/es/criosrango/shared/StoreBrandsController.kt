@@ -160,11 +160,11 @@ class StoreBrandsController(
 private fun decodeBrandHtmlEntities(value: String): String = Regex("&(#x[0-9a-fA-F]+|#[0-9]+|amp|quot|apos|lt|gt|nbsp);").replace(value) { match ->
     when (val entity = match.groupValues[1]) {
         "amp" -> "&"
-        "quot" -> "\\\""
+        "quot" -> "\""
         "apos" -> "'"
         "lt" -> "<"
         "gt" -> ">"
-        "nbsp" -> "\\u00A0"
+        "nbsp" -> "\u00A0"
         else -> {
             val codePoint = when {
                 entity.startsWith("#x", ignoreCase = true) -> entity.drop(2).toIntOrNull(16)
