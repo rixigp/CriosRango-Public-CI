@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -352,7 +353,23 @@ private fun StoreHomeSectionHeader(
             color = Color(0xFF183B35)
         )
         if (action != null && onAction != null) {
-            TextButton(onClick = onAction) { Text(action, color = Color(0xFFD18162)) }
+            Box(
+                modifier = Modifier.width(88.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                TextButton(
+                    onClick = onAction,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Text(
+                        action,
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFFD18162),
+                        textAlign = TextAlign.Start
+                    )
+                }
+            }
         }
     }
 }
