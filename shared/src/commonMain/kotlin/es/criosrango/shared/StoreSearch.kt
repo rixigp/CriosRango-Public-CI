@@ -242,12 +242,6 @@ fun StoreSearchScreen(
     val gridState = controller.scrollState
     LaunchedEffect(controller) { controller.loadSuggestions() }
     Column(Modifier.fillMaxSize().padding(padding)) {
-        if (onBack != null) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack) { Text("Atrás") }
-                Text("Buscar", style = MaterialTheme.typography.titleLarge)
-            }
-        }
         OutlinedTextField(
             value = state.query,
             onValueChange = controller::onQueryChanged,
@@ -275,7 +269,7 @@ fun StoreSearchScreen(
                         Text("Marca · ${brand.name}", Modifier.fillMaxWidth().clickable { controller.onQueryChanged(brand.name) }.padding(vertical = 5.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     state.productSuggestions.forEach { product ->
-                        Text("Producto · ${product.name}", Modifier.fillMaxWidth().clickable { onProduct(product) }.padding(vertical = 5.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("Producto · ${normalizeWooPlainText(product.name)}", Modifier.fillMaxWidth().clickable { onProduct(product) }.padding(vertical = 5.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -295,7 +289,7 @@ fun StoreSearchScreen(
                         val price = product.prices.price.toLongOrNull() ?: 0L
                         val regular = product.prices.regularPrice.toLongOrNull() ?: 0L
                         val item = StoreProductItemUi(
-                            id = product.id, nameText = product.name, imageIdentity = product.images.firstOrNull()?.src,
+                            id = product.id, nameText = normalizeWooPlainText(product.name), imageIdentity = product.images.firstOrNull()?.src,
                             displayPriceText = storeSearchPrice(price, product.prices.currencySymbol, product.prices.currencyMinorUnit),
                             regularPriceText = storeSearchPrice(regular, product.prices.currencySymbol, product.prices.currencyMinorUnit),
                             showPrice = price > 0L, isOnSale = product.onSale
