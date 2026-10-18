@@ -78,6 +78,11 @@ class StoreSearchControllerTest {
         assertEquals(listOf(1), storeSearchCategorySuggestions(categories, "camiseta").map { it.id })
         assertEquals(listOf(3), storeSearchBrandSuggestions(brands, "nike").map { it.id })
     }
+    @Test fun productSuggestionsUseSharedRankingAndDeduplicateById() {
+        val products = listOf(StoreProduct(id=2, name="Camiseta azul"), StoreProduct(id=1, name="Camiseta"), StoreProduct(id=1, name="Camiseta duplicada"), StoreProduct(id=3, name="Pantalón"))
+        assertEquals(listOf(1, 2), storeSearchProductSuggestions(products, "camiseta").map { it.id })
+        assertTrue(storeSearchProductSuggestions(products, "").isEmpty())
+    }
     @Test fun staleResponseCannotReplaceLatestQuery() = runTest {
         val source = FakeSource()
         val controller = StoreSearchController(backgroundScope, source, 0)

@@ -46,6 +46,7 @@ data class StoreSearchState(
     val products: List<StoreProduct> = emptyList(),
     val categories: List<StoreCategory> = emptyList(),
     val brands: List<StoreGlobalBrand> = emptyList(),
+    val productSuggestions: List<StoreProduct> = emptyList(),
     val isLoading: Boolean = false,
     val hasSearched: Boolean = false,
     val errorMessage: String? = null
@@ -112,10 +113,10 @@ class StoreSearchController internal constructor(
         requestJob?.cancel()
         val clean = query.trim()
         if (clean.isBlank()) {
-            _state.value = _state.value.copy(query = "", products = emptyList(), isLoading = false, hasSearched = false, errorMessage = null)
+            _state.value = _state.value.copy(query = "", products = emptyList(), productSuggestions = emptyList(), isLoading = false, hasSearched = false, errorMessage = null)
             return
         }
-        _state.value = _state.value.copy(query = query, products = emptyList(), isLoading = true, hasSearched = false, errorMessage = null)
+        _state.value = _state.value.copy(query = query, products = emptyList(), productSuggestions = emptyList(), isLoading = true, hasSearched = false, errorMessage = null)
         debounceJob = scope.launch {
             delay(debounceMillis)
             if (version != generation) return@launch
@@ -123,12 +124,12 @@ class StoreSearchController internal constructor(
                 try {
                     val results = source.search(clean)
                     if (version == generation && normalizeStoreSearch(_state.value.query) == normalizeStoreSearch(clean)) {
-                        _state.value = _state.value.copy(products = rankStoreSearchResults(results, clean), isLoading = false, hasSearched = true, errorMessage = null)
+                        _state.value = _state.value.copy(products = rankStoreSearchResults(results, clean), productSuggestions = storeSearchProductSuggestions(results, clean), isLoading = false, hasSearched = true, errorMessage = null)
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Throwable) {
-                    if (version == generation) _state.value = _state.value.copy(products = emptyList(), isLoading = false, hasSearched = true, errorMessage = error.message ?: "No se ha podido buscar.")
+                    if (version == generation) _state.value = _state.value.copy(products = emptyList(), productSuggestions = emptyList(), isLoading = false, hasSearched = true, errorMessage = error.message ?: "No se ha podido buscar.")
                 }
             }
         }
@@ -142,11 +143,11 @@ class StoreSearchController internal constructor(
             debounceJob?.cancel()
             requestJob?.cancel()
             val version = generation
-            _state.value = _state.value.copy(isLoading = true, errorMessage = null, hasSearched = false, products = emptyList())
+            _state.value = _state.value.copy(isLoading = true, errorMessage = null, hasSearched = false, products = emptyList(), productSuggestions = emptyList())
             requestJob = scope.launch {
                 try {
                     val results = source.search(query.trim())
-                    if (version == generation) _state.value = _state.value.copy(products = rankStoreSearchResults(results, query), isLoading = false, hasSearched = true, errorMessage = null)
+                    if (version == generation) _state.value = _state.value.copy(products = rankStoreSearchResults(results, query), productSuggestions = storeSearchProductSuggestions(results, query), isLoading = false, hasSearched = true, errorMessage = null)
                 } catch (cancelled: CancellationException) { throw cancelled }
                 catch (error: Throwable) {
                     if (version == generation) _state.value = _state.value.copy(isLoading = false, hasSearched = true, errorMessage = error.message ?: "No se ha podido buscar.")
@@ -186,6 +187,10 @@ fun storeSearchBrandSuggestions(brands: List<StoreGlobalBrand>, query: String): 
     return brands.filter { brand -> tokens.any { storeSearchTokenMatches(it, normalizeStoreSearch(brand.name)) } }
         .distinctBy { it.id }.take(2)
 }
+
+/** Top three unique product matches, ordered by the same shared matching/ranking rules as results. */
+fun storeSearchProductSuggestions(products: List<StoreProduct>, query: String): List<StoreProduct> =
+    rankStoreSearchResults(products, query).take(3)
 
 private fun storeSearchDistance(a: String, b: String): Int {
     if (a == b) return 0
@@ -260,7 +265,7 @@ fun StoreSearchScreen(
                 Text("Busca tu próxima prenda favorita")
             }
         } else {
-            if (state.categories.isNotEmpty() || state.brands.isNotEmpty()) {
+            if (state.categories.isNotEmpty() || state.brands.isNotEmpty() || state.productSuggestions.isNotEmpty()) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                     Text("Sugerencias", style = MaterialTheme.typography.titleSmall)
                     storeSearchCategorySuggestions(state.categories, state.query).forEach { category ->
@@ -268,6 +273,9 @@ fun StoreSearchScreen(
                     }
                     storeSearchBrandSuggestions(state.brands, state.query).forEach { brand ->
                         Text("Marca · ${brand.name}", Modifier.fillMaxWidth().clickable { controller.onQueryChanged(brand.name) }.padding(vertical = 5.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    state.productSuggestions.forEach { product ->
+                        Text("Producto · ${product.name}", Modifier.fillMaxWidth().clickable { onProduct(product) }.padding(vertical = 5.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
