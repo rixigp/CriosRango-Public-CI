@@ -21,7 +21,6 @@ const val HOME_BRANDS_MAX = 16
 const val HOME_BRANDS_VISUAL_PAGE_SIZE = 8
 const val HOME_CATEGORY_COUNT = 11
 const val STORE_HOME_HERO_READY_TIMEOUT_MS = 4_000L
-const val STORE_HOME_FALLBACK_HERO_READY_GRACE_MS = 1_000L
 
 internal val STORE_HOME_HERO_IMAGES = listOf(
     "https://images.pexels.com/photos/6617704/pexels-photo-6617704.jpeg?auto=compress&cs=tinysrgb&w=1600",
@@ -178,7 +177,8 @@ class StoreApiHomeDataSource(
  */
 class StoreHomeController(
     private val scope: CoroutineScope,
-    private val source: StoreHomeDataSource
+    private val source: StoreHomeDataSource,
+    private val prefetchHeroImage: suspend (String) -> Boolean = ::prefetchRemoteStoreImage
 ) {
     private val mutableState = MutableStateFlow(StoreHomeState())
     val state: StateFlow<StoreHomeState> = mutableState.asStateFlow()
@@ -189,7 +189,7 @@ class StoreHomeController(
     private var mediaGeneration = 0L
     private var refreshJob: Job? = null
     private var refreshGeneration = 0L
-    /** Last successful non-empty remote media config, retained across refresh errors. */
+    /** Last successful resolved remote media config, retained across refresh errors. */
     private var lastValidRemoteMediaConfig: HomeMediaConfig? = null
 
     fun start() {
@@ -204,38 +204,18 @@ class StoreHomeController(
         loadSections(showRefreshing = true)
     }
 
-    /** Starts Home loading independently, then decodes the first Hero image into the shared session cache. */
-    suspend fun prepareInitialHero(timeoutMillis: Long = STORE_HOME_HERO_READY_TIMEOUT_MS): Boolean {
-        val ready = withTimeoutOrNull(timeoutMillis) {
+    /**
+     * Prefetches the configured first Hero bitmap while startup branding is visible.
+     * This is only a readiness hint: failure or timeout must never mutate or invalidate
+     * a successfully resolved WordPress media configuration.
+     */
+    suspend fun prepareInitialHero(timeoutMillis: Long = STORE_HOME_HERO_READY_TIMEOUT_MS): Boolean =
+        withTimeoutOrNull(timeoutMillis) {
             val loadedState = state.first { it.mediaStatus != StoreHomeMediaStatus.LOADING }
             val firstConfiguredImage = loadedState.mediaConfig.heroImages.firstOrNull()
-                ?: STORE_HOME_FALLBACK_MEDIA_CONFIG.heroImages.first()
-            if (prefetchRemoteStoreImage(firstConfiguredImage)) {
-                true
-            } else {
-                useFallbackHeroForStartup()
-                prefetchRemoteStoreImage(STORE_HOME_FALLBACK_MEDIA_CONFIG.heroImages.first())
-            }
+                ?: return@withTimeoutOrNull false
+            prefetchHeroImage(firstConfiguredImage)
         } ?: false
-        if (ready) return true
-
-        // A slow config or remote image must not strand the app on the splash.
-        // Switch to fallback, invalidate late config commits, and give its first bitmap
-        // a short bounded grace period before allowing the root to reveal.
-        useFallbackHeroForStartup()
-        return withTimeoutOrNull(STORE_HOME_FALLBACK_HERO_READY_GRACE_MS) {
-            prefetchRemoteStoreImage(STORE_HOME_FALLBACK_MEDIA_CONFIG.heroImages.first())
-        } ?: false
-    }
-
-    fun useFallbackHeroForStartup() {
-        // Invalidate an in-flight config request so a timed-out cold start cannot flash fallback -> remote later.
-        mediaGeneration++
-        mutableState.value = mutableState.value.copy(
-            mediaConfig = STORE_HOME_FALLBACK_MEDIA_CONFIG,
-            mediaStatus = StoreHomeMediaStatus.ERROR
-        )
-    }
 
     private fun loadSections(showRefreshing: Boolean) {
         refreshJob?.cancel()
@@ -352,11 +332,13 @@ class StoreHomeController(
                 .mapNotNull(::validHomeMediaUrl)
                 .distinct()
             val resolvedConfig = resolveHomeMediaConfig(remote)
+            // A successful endpoint response is a valid media config even when Hero is empty.
+            // resolveHomeMediaConfig applies the Hero fallback independently and retains valid
+            // remote Outlet URLs; keep the entire resolved object for future refresh failures.
+            lastValidRemoteMediaConfig = resolvedConfig
             val mediaStatus = if (remoteHeroImages.isEmpty()) {
-                lastValidRemoteMediaConfig = null
                 StoreHomeMediaStatus.EMPTY
             } else {
-                lastValidRemoteMediaConfig = resolvedConfig
                 StoreHomeMediaStatus.REMOTE
             }
             // Commit the resolved images and status together so the renderer never observes

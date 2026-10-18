@@ -5,6 +5,7 @@ import es.criosrango.shared.model.StoreGlobalBrand
 import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.api.StoreHomeMediaConfigResponse
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -76,6 +77,70 @@ class StoreHomeControllerTest {
         assertEquals(listOf("https://cdn.example/hero-a.jpg", "https://cdn.example/hero-b.jpg"), controller.state.value.mediaConfig.heroImages)
         assertEquals("https://cdn.example/winter.jpg", controller.state.value.mediaConfig.outletWinterImage)
         assertEquals("https://cdn.example/summer.jpg", controller.state.value.mediaConfig.outletSummerImage)
+    }
+
+    @Test
+    fun remoteConfigSurvivesHeroPrefetchFailureWithoutReplacingOutletUrls() = runTest {
+        val source = FakeSource().apply {
+            remoteMedia = StoreHomeMediaConfigResponse(
+                heroImages = listOf("https://cdn.example/hero.jpg"),
+                outletWinterImage = "https://cdn.example/winter-remote.jpg",
+                outletSummerImage = "https://cdn.example/summer-remote.jpg"
+            )
+        }
+        val controller = StoreHomeController(this, source) { false }
+        controller.start()
+        advanceUntilIdle()
+        val remoteConfig = controller.state.value.mediaConfig
+
+        assertFalse(controller.prepareInitialHero(timeoutMillis = 4_000L))
+        assertEquals(remoteConfig, controller.state.value.mediaConfig)
+        assertEquals(listOf("https://cdn.example/hero.jpg"), controller.state.value.mediaConfig.heroImages)
+        assertEquals("https://cdn.example/winter-remote.jpg", controller.state.value.mediaConfig.outletWinterImage)
+        assertEquals("https://cdn.example/summer-remote.jpg", controller.state.value.mediaConfig.outletSummerImage)
+    }
+
+    @Test
+    fun remoteConfigSurvivesHeroPrefetchTimeoutWithoutInvalidatingConfig() = runTest {
+        val source = FakeSource().apply {
+            remoteMedia = StoreHomeMediaConfigResponse(
+                heroImages = listOf("https://cdn.example/hero-slow.jpg"),
+                outletWinterImage = "https://cdn.example/winter-remote.jpg",
+                outletSummerImage = "https://cdn.example/summer-remote.jpg"
+            )
+        }
+        val controller = StoreHomeController(this, source) {
+            delay(5_000L)
+            true
+        }
+        controller.start()
+        advanceUntilIdle()
+        val remoteConfig = controller.state.value.mediaConfig
+
+        assertFalse(controller.prepareInitialHero(timeoutMillis = 4_000L))
+        assertEquals(remoteConfig, controller.state.value.mediaConfig)
+        assertEquals("https://cdn.example/hero-slow.jpg", controller.state.value.mediaConfig.heroImages.first())
+        assertEquals("https://cdn.example/winter-remote.jpg", controller.state.value.mediaConfig.outletWinterImage)
+        assertEquals("https://cdn.example/summer-remote.jpg", controller.state.value.mediaConfig.outletSummerImage)
+    }
+
+    @Test
+    fun emptyRemoteHeroUsesHeroFallbackAndPreservesValidRemoteOutletUrls() = runTest {
+        val source = FakeSource().apply {
+            remoteMedia = StoreHomeMediaConfigResponse(
+                heroImages = emptyList(),
+                outletWinterImage = "https://cdn.example/winter-remote.jpg",
+                outletSummerImage = "https://cdn.example/summer-remote.jpg"
+            )
+        }
+        val controller = StoreHomeController(this, source)
+        controller.start()
+        advanceUntilIdle()
+
+        assertEquals(STORE_HOME_HERO_IMAGES, controller.state.value.mediaConfig.heroImages)
+        assertEquals("https://cdn.example/winter-remote.jpg", controller.state.value.mediaConfig.outletWinterImage)
+        assertEquals("https://cdn.example/summer-remote.jpg", controller.state.value.mediaConfig.outletSummerImage)
+        assertEquals(StoreHomeMediaStatus.EMPTY, controller.state.value.mediaStatus)
     }
 
     @Test
