@@ -191,6 +191,7 @@ class StoreHomeController(
     private var refreshGeneration = 0L
     /** Last successful resolved remote media config, retained across refresh errors. */
     private var lastValidRemoteMediaConfig: HomeMediaConfig? = null
+    private var heroPrefetchJob: Job? = null
 
     fun start() {
         if (refreshJob?.isActive == true) return
@@ -209,13 +210,39 @@ class StoreHomeController(
      * This is only a readiness hint: failure or timeout must never mutate or invalidate
      * a successfully resolved WordPress media configuration.
      */
-    suspend fun prepareInitialHero(timeoutMillis: Long = STORE_HOME_HERO_READY_TIMEOUT_MS): Boolean =
-        withTimeoutOrNull(timeoutMillis) {
+    suspend fun prepareInitialHero(timeoutMillis: Long = STORE_HOME_HERO_READY_TIMEOUT_MS): Boolean {
+        var configuredImages: List<String> = emptyList()
+        val firstReady = withTimeoutOrNull(timeoutMillis) {
             val loadedState = state.first { it.mediaStatus != StoreHomeMediaStatus.LOADING }
-            val firstConfiguredImage = loadedState.mediaConfig.heroImages.firstOrNull()
+            configuredImages = loadedState.mediaConfig.heroImages.distinct()
+            val firstConfiguredImage = configuredImages.firstOrNull()
                 ?: return@withTimeoutOrNull false
             prefetchHeroImage(firstConfiguredImage)
         } ?: false
+
+        if (configuredImages.isEmpty() && state.value.mediaStatus == StoreHomeMediaStatus.LOADING) {
+            // If startup readiness times out before WordPress responds, continue warming the
+            // eventual config in the background; this work never extends the splash wait.
+            if (heroPrefetchJob?.isActive != true) {
+                heroPrefetchJob = scope.launch {
+                    val images = state.first { it.mediaStatus != StoreHomeMediaStatus.LOADING }
+                        .mediaConfig.heroImages.distinct()
+                    images.forEach { prefetchHeroImage(it) }
+                }
+            }
+        } else {
+            prefetchRemainingHeroImages(configuredImages)
+        }
+        return firstReady
+    }
+
+    private fun prefetchRemainingHeroImages(images: List<String>) {
+        val remainingImages = images.distinct().drop(1)
+        if (remainingImages.isEmpty() || heroPrefetchJob?.isActive == true) return
+        heroPrefetchJob = scope.launch {
+            remainingImages.forEach { prefetchHeroImage(it) }
+        }
+    }
 
     private fun loadSections(showRefreshing: Boolean) {
         refreshJob?.cancel()

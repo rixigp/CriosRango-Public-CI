@@ -80,6 +80,38 @@ class StoreHomeControllerTest {
     }
 
     @Test
+    fun initialHeroPrefetchStartsRemainingHeroImagesInBackground() = runTest {
+        val source = FakeSource().apply {
+            remoteMedia = StoreHomeMediaConfigResponse(
+                heroImages = listOf(
+                    "https://cdn.example/hero-a.jpg",
+                    "https://cdn.example/hero-b.jpg",
+                    "https://cdn.example/hero-c.jpg"
+                )
+            )
+        }
+        val prefetched = mutableListOf<String>()
+        val controller = StoreHomeController(this, source) { url ->
+            prefetched += url
+            true
+        }
+        controller.start()
+        advanceUntilIdle()
+
+        assertTrue(controller.prepareInitialHero())
+        runCurrent()
+
+        assertEquals(
+            listOf(
+                "https://cdn.example/hero-a.jpg",
+                "https://cdn.example/hero-b.jpg",
+                "https://cdn.example/hero-c.jpg"
+            ),
+            prefetched
+        )
+    }
+
+    @Test
     fun remoteConfigSurvivesHeroPrefetchFailureWithoutReplacingOutletUrls() = runTest {
         val source = FakeSource().apply {
             remoteMedia = StoreHomeMediaConfigResponse(

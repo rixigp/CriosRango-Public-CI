@@ -127,8 +127,14 @@ fun StoreHomeScreen(
         if (heroImages.isNotEmpty()) {
             heroIndex = heroIndex.coerceIn(0, heroImages.lastIndex)
             while (heroImages.size > 1) {
+                // Keep the currently displayed bitmap until the next one is in the shared
+                // RemoteStoreImage cache. Only then change the Crossfade target.
                 delay(3500)
-                heroIndex = (heroIndex + 1) % heroImages.size
+                val nextIndex = (heroIndex + 1) % heroImages.size
+                while (!prefetchRemoteStoreImage(heroImages[nextIndex])) {
+                    delay(1_000)
+                }
+                heroIndex = nextIndex
             }
         }
     }
