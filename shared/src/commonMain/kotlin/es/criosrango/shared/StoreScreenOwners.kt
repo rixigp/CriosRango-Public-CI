@@ -17,6 +17,8 @@ internal object StoreScreenOwners {
     private var homeController: StoreHomeController? = null
     private var novedadesApi: StoreApiClient? = null
     private var novedadesController: StoreNovedadesController? = null
+    private var searchApi: StoreApiClient? = null
+    private var searchController: StoreSearchController? = null
 
     fun home(api: StoreApiClient, brands: StoreBrandsController): StoreHomeController {
         if (homeController == null || homeApi !== api || homeBrands !== brands) {
@@ -34,8 +36,19 @@ internal object StoreScreenOwners {
         }
         return novedadesController!!
     }
+
+    fun search(api: StoreApiClient): StoreSearchController {
+        if (searchController == null || searchApi !== api) {
+            searchApi = api
+            searchController = StoreSearchController(scope, StoreApiSearchDataSource(api))
+        }
+        return searchController!!
+    }
 }
 
 /** Returns the application-lifetime Home owner so startup can warm it before Home is composed. */
 fun storeHomeController(api: StoreApiClient, brands: StoreBrandsController): StoreHomeController =
     StoreScreenOwners.home(api, brands)
+
+/** Returns the application-lifetime Search owner so results survive Product Detail navigation. */
+fun storeSearchController(api: StoreApiClient): StoreSearchController = StoreScreenOwners.search(api)

@@ -88,7 +88,7 @@ internal fun IosCatalogScreen(
         )
         is IosCatalogPage.Product -> IosProductDetail(storeApi, padding, page.product, onBack, cartStore, onShareProductText, onReserveProductMessage)
         IosCatalogPage.Novedades -> StoreNovedadesScreen(storeApi, padding, null, onOpenProduct, onBack)
-        IosCatalogPage.Search -> IosSearchScreen(storeApi, padding, cartStore, onOpenProduct, onOpenCategory, onBack)
+        IosCatalogPage.Search -> StoreSearchScreen(storeApi = storeApi, controller = storeSearchController(storeApi), padding = padding, onProduct = onOpenProduct, onCategory = onOpenCategory, onBack = onBack)
         IosCatalogPage.Brands -> IosBrandsScreen(brandsController, padding, onOpenProduct, onBack)
         is IosCatalogPage.Outlet -> {
             var categories by remember { mutableStateOf<List<StoreCategory>?>(null) }
