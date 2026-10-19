@@ -911,6 +911,8 @@ fun StoreCartScreen(
                     }
                 }
 
+                if (!couponError.isNullOrBlank()) Text(couponError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+
                 if (!couponExpanded) {
                     Row(Modifier.fillMaxWidth().clickable(enabled=!couponLoading) { couponExpanded=true }.padding(vertical=8.dp), verticalAlignment=Alignment.CenterVertically) { Text("+", fontWeight=FontWeight.Bold, color=Color(0xFF0F5C4D)); Spacer(Modifier.width(8.dp)); Text("Tengo otro código de descuento", Modifier.weight(1f), fontWeight=FontWeight.Medium); Text("⌄", color=Color(0xFF5F6368)) }
                 } else {
@@ -941,7 +943,6 @@ fun StoreCartScreen(
                         )
                         IosCartApplyButton({ cartController.applyCoupon(couponCode.trim()) }, enabled=couponCode.trim().isNotEmpty() && !couponLoading, loading=couponLoading, modifier=Modifier.height(54.dp))
                     }
-                    if (!couponError.isNullOrBlank()) Text("🔴 Este cupón no es válido.", color=MaterialTheme.colorScheme.error, style=MaterialTheme.typography.bodySmall)
                 }
 
                 if (cart.coupons.isNotEmpty()) {

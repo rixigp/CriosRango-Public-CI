@@ -15,6 +15,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -180,6 +181,98 @@ class StoreCartStoreTest {
         assertTrue(store.cart.value.items.isEmpty())
     }
 
+    @Test
+    fun appliesValidCouponOnlyWhenServerReturnsItAndUsesServerTotals() = runTest {
+        val store = StoreCartStore(apiWithResponses(
+            HttpStatusCode.OK to cartWithCoupon("SAVE10", "429", "38571")
+        ), this)
+        assertTrue(store.applyCouponAwait("save10"))
+        assertEquals("SAVE10", store.cart.value.coupons.single().code)
+        assertEquals("429", store.cart.value.totals.totalDiscount)
+        assertEquals("38571", store.cart.value.totals.totalPrice)
+        assertNull(store.couponError.value)
+    }
+
+    @Test
+    fun validNewCouponReplacesPreviousOnlyWhenServerConfirmsNewCoupon() = runTest {
+        val store = StoreCartStore(apiWithResponses(
+            HttpStatusCode.OK to cartWithCoupon("WELCOME10", "429", "38571"),
+            HttpStatusCode.OK to cartWithCoupon("BF20", "858", "38142")
+        ), this)
+        store.refreshAwait()
+        assertTrue(store.applyCouponAwait("BF20"))
+        assertEquals(listOf("BF20"), store.cart.value.coupons.map { it.code })
+        assertEquals("858", store.cart.value.totals.totalDiscount)
+        assertEquals("38142", store.cart.value.totals.totalPrice)
+        assertNull(store.couponError.value)
+    }
+
+    @Test
+    fun rejectedNewCouponRestoresPreviousCouponAndExposesFriendlyError() = runTest {
+        val store = StoreCartStore(apiWithResponses(
+            HttpStatusCode.OK to cartWithCoupon("WELCOME10", "429", "38571"),
+            HttpStatusCode.BadRequest to """{"code":"woocommerce_rest_invalid_coupon","message":"Rejected"}""",
+            HttpStatusCode.OK to emptyCartJson,
+            HttpStatusCode.OK to cartWithCoupon("WELCOME10", "429", "38571")
+        ), this)
+        store.refreshAwait()
+        assertTrue(!store.applyCouponAwait("BF20"))
+        assertEquals(listOf("WELCOME10"), store.cart.value.coupons.map { it.code })
+        assertEquals("429", store.cart.value.totals.totalDiscount)
+        assertEquals("38571", store.cart.value.totals.totalPrice)
+        assertTrue(store.couponError.value.orEmpty().contains("no se puede aplicar"))
+        assertTrue(store.couponError.value.orEmpty().contains("recuperar"))
+    }
+
+    @Test
+    fun successfulHttpResponseWithoutRequestedCouponIsNotReportedAsApplied() = runTest {
+        val store = StoreCartStore(apiWithResponses(
+            HttpStatusCode.OK to cartWithCoupon("WELCOME10", "429", "38571"),
+            HttpStatusCode.OK to cartWithCoupon("WELCOME10", "429", "38571")
+        ), this)
+        store.refreshAwait()
+        assertTrue(!store.applyCouponAwait("BF20"))
+        assertEquals(listOf("WELCOME10"), store.cart.value.coupons.map { it.code })
+        assertNotNull(store.couponError.value)
+    }
+
+    @Test
+    fun concurrentCouponResponsesAreSerializedAndCannotOverwriteNewerCart() = runTest {
+        val firstStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        var applyCount = 0
+        val api = StoreApiClient(client = HttpClient(MockEngine { request ->
+            if (request.url.encodedPath.endsWith("/cart/apply-coupon")) {
+                if (applyCount++ == 0) {
+                    firstStarted.complete(Unit)
+                    releaseFirst.await()
+                    respond(cartWithCoupon("FIRST", "100", "39900"), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                } else {
+                    respond(cartWithCoupon("SECOND", "200", "39800"), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                }
+            } else {
+                respond(emptyCartJson, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+            }
+        }))
+        val store = StoreCartStore(api, this)
+        val first = async { store.applyCouponAwait("FIRST") }
+        runCurrent()
+        assertTrue(firstStarted.isCompleted)
+        val second = async { store.applyCouponAwait("SECOND") }
+        runCurrent()
+        releaseFirst.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(first.await())
+        assertTrue(second.await())
+        assertEquals(listOf("SECOND"), store.cart.value.coupons.map { it.code })
+        assertEquals("39800", store.cart.value.totals.totalPrice)
+    }
+
+    private val emptyCartJson: String
+        get() = """{"items":[],"coupons":[],"totals":{"total_items":"39000","total_items_tax":"0","total_discount":"0","total_discount_tax":"0","total_price":"39000","total_price_tax":"0","currency_symbol":"€","currency_minor_unit":2}}"""
+
+    private fun cartWithCoupon(code: String, discount: String, total: String): String =
+        """{"items":[{"key":"line-1","id":1,"name":"Camisa","quantity":1}],"coupons":[{"code":"$code","label":"$code","totals":{"total_discount":"$discount","total_discount_tax":"0"}}],"totals":{"total_items":"39000","total_items_tax":"0","total_discount":"$discount","total_discount_tax":"0","total_price":"$total","total_price_tax":"0","currency_symbol":"€","currency_minor_unit":2}}"""
     private fun apiWithResponses(vararg responses: Pair<HttpStatusCode, String>): StoreApiClient {
         var index = 0
         val client = HttpClient(MockEngine {

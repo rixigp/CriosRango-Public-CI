@@ -1,6 +1,7 @@
 package es.criosrango.shared
 
 import es.criosrango.shared.api.StoreApiClient
+import es.criosrango.shared.api.StoreApiException
 import es.criosrango.shared.model.StoreCart
 import es.criosrango.shared.model.StoreCartLine
 import es.criosrango.shared.model.StoreCartRequest
@@ -39,39 +40,84 @@ class StoreCartStore(
     private val scope = scope
 
     fun applyCoupon(code: String) {
-        scope.launch {
-            mutex.withLock {
-                if (_couponLoading.value) return@withLock
-                val normalizedCode = code.trim()
-                if (normalizedCode.isEmpty()) {
-                    _couponError.value = "No se ha podido aplicar este código de descuento."
-                    return@withLock
+        scope.launch { mutex.withLock { applyCouponLocked(code) } }
+    }
+
+    suspend fun applyCouponAwait(code: String): Boolean =
+        mutex.withLock { applyCouponLocked(code) }
+
+    private suspend fun applyCouponLocked(code: String): Boolean {
+        val normalizedCode = code.trim()
+        if (normalizedCode.isEmpty()) {
+            _couponError.value = "No se ha podido aplicar este código de descuento."
+            return false
+        }
+
+        val previousCart = _cart.value
+        _couponLoading.value = true
+        _couponError.value = null
+        try {
+            val responseCart = api.applyCoupon(normalizedCode)
+            if (responseCart.hasCoupon(normalizedCode)) {
+                accept(responseCart)
+                return true
+            }
+
+            // HTTP success alone is insufficient: the authoritative cart must contain the coupon.
+            accept(responseCart)
+            restorePreviousCoupons(previousCart, responseCart)
+            _couponError.value = couponApplyFailureMessage(null, previousCart.coupons.isNotEmpty())
+            return false
+        } catch (failure: Throwable) {
+            if (failure is CancellationException && failure !is TimeoutCancellationException) throw failure
+
+            // Woo may include the authoritative cart in an error. Otherwise refresh once.
+            val serverCart = (failure as? StoreApiException)?.updatedCart
+                ?: runCatching { api.cart() }.getOrNull()
+            if (serverCart != null) {
+                accept(serverCart)
+                restorePreviousCoupons(previousCart, serverCart)
+            }
+            _couponError.value = couponApplyFailureMessage(failure, previousCart.coupons.isNotEmpty())
+            return false
+        } finally {
+            _couponLoading.value = false
+        }
+    }
+
+    private suspend fun restorePreviousCoupons(previousCart: StoreCart, serverCart: StoreCart) {
+        var currentCart = serverCart
+        previousCart.coupons.forEach { previousCoupon ->
+            if (currentCart.hasCoupon(previousCoupon.code)) return@forEach
+            try {
+                val restoredCart = api.applyCoupon(previousCoupon.code)
+                currentCart = restoredCart
+                accept(restoredCart)
+            } catch (failure: Throwable) {
+                if (failure is CancellationException && failure !is TimeoutCancellationException) throw failure
+                val errorCart = (failure as? StoreApiException)?.updatedCart
+                if (errorCart != null) {
+                    currentCart = errorCart
+                    accept(errorCart)
                 }
-                _couponLoading.value = true
-                _couponError.value = null
-                runCatching { api.applyCoupon(normalizedCode) }
-                    .onSuccess { accept(it) }
-                    .onFailure { _couponError.value = it.message?.takeIf(String::isNotBlank) ?: "No se ha podido aplicar este código de descuento." }
-                _couponLoading.value = false
             }
         }
     }
 
-    suspend fun applyCouponAwait(code: String): Boolean = mutex.withLock {
-        if (_couponLoading.value) return@withLock false
-        val normalizedCode = code.trim()
-        if (normalizedCode.isEmpty()) {
-            _couponError.value = "No se ha podido aplicar este código de descuento."
-            return@withLock false
+    private fun StoreCart.hasCoupon(code: String): Boolean =
+        coupons.any { it.code.equals(code, ignoreCase = true) }
+
+    private fun couponApplyFailureMessage(failure: Throwable?, hadPreviousCoupons: Boolean): String {
+        val code = (failure as? StoreApiException)?.apiCode.orEmpty().lowercase()
+        val rejectedCoupon = code.contains("invalid_coupon") || code.contains("coupon_invalid") ||
+            code.contains("coupon_not_applicable") || code.contains("coupon_expired") ||
+            code.contains("coupon_usage_limit")
+        val baseMessage = when {
+            failure == null -> "El servidor no ha confirmado este descuento."
+            rejectedCoupon -> "Este descuento no se puede aplicar a este carrito."
+            else -> "No se ha podido aplicar el descuento. Comprueba las condiciones de la promoción e inténtalo de nuevo."
         }
-        _couponLoading.value = true
-        _couponError.value = null
-        val applied = runCatching { api.applyCoupon(normalizedCode) }
-            .onSuccess { accept(it) }
-            .onFailure { _couponError.value = it.message?.takeIf(String::isNotBlank) ?: "No se ha podido aplicar este código de descuento." }
-            .isSuccess
-        _couponLoading.value = false
-        applied
+        return if (hadPreviousCoupons) "$baseMessage Se ha intentado conservar o recuperar el descuento anterior." else baseMessage
     }
 
     fun removeCoupon(code: String) {

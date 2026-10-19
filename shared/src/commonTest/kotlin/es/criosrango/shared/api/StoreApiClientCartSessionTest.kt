@@ -14,6 +14,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import es.criosrango.shared.model.StoreCartRequest
+import es.criosrango.shared.account.AccountTokenStore
 
 class StoreApiClientCartSessionTest {
     private val cartJson = """
@@ -87,6 +88,32 @@ class StoreApiClientCartSessionTest {
         client.close()
     }
 
+    @Test
+    fun applyCouponPreservesAuthenticatedAccountBearerToken() = runTest {
+        var authorization: String? = null
+        val client = HttpClient(MockEngine { request ->
+            authorization = request.headers[HttpHeaders.Authorization]
+            respond(
+                """{"items":[],"coupons":[{"code":"PERSONAL","label":"Personal","totals":{"total_discount":"100","total_discount_tax":"0"}}],"totals":{"total_discount":"100","total_discount_tax":"0","total_price":"900","total_price_tax":"0"}}""",
+                HttpStatusCode.OK,
+                headersOf(HttpHeaders.ContentType to listOf("application/json"))
+            )
+        })
+        val tokenStore = object : AccountTokenStore {
+            override fun load() = "account-token-test"
+            override fun save(token: String) = true
+            override fun clear() = Unit
+        }
+        val api = StoreApiClient(
+            baseUrl = "https://example.test/wp-json/wc/store/v1/",
+            client = client,
+            session = InMemoryStoreSessionStore(),
+            accountTokenStore = tokenStore
+        )
+        api.applyCoupon("PERSONAL")
+        assertEquals("Bearer account-token-test", authorization)
+        client.close()
+    }
     @Test
     fun recreatedClient_reusesPersistedWooSessionIdentity() = runTest {
         val requests = mutableListOf<io.ktor.client.request.HttpRequestData>()
