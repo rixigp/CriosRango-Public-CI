@@ -106,10 +106,51 @@ class StoreApiClient(
     private val accountTokenStore: AccountTokenStore? = null
 ) {
     private val json = Json { ignoreUnknownKeys = true }
+    private var lastCartHttpStatus: Int? = null
+
+    /** Temporary, non-secret diagnostics for the most recent applyCoupon request. */
+    var lastApplyCouponDiagnostic: String? = null
+        private set
+
+    private fun couponDiagnostic(
+        requestedCode: String,
+        status: Int?,
+        errorCode: String?,
+        errorMessage: String?,
+        cart: StoreCart?,
+        removedCoupons: Map<String, JsonElement> = emptyMap(),
+        requestHeaders: String
+    ): String {
+        fun safe(value: String?): String = value.orEmpty().replace("\n", " ").replace("\r", " ").take(600)
+        val coupons = cart?.coupons.orEmpty().joinToString(prefix = "[", postfix = "]") { safe(it.code) }
+        val errors = cart?.errors.orEmpty().joinToString(prefix = "[", postfix = "]") {
+            "${safe(it.code)}: ${safe(it.message)}"
+        }
+        val removed = removedCoupons.entries.joinToString(prefix = "[", postfix = "]") {
+            "${safe(it.key)}=${safe(it.value.toString())}"
+        }
+        val codePresent = cart?.coupons.orEmpty().any { it.code.equals(requestedCode, ignoreCase = true) }
+        return listOf(
+            "REQUESTED_COUPON_CODE=${safe(requestedCode)}",
+            "HTTP_STATUS=${status ?: "NOT_CAPTURED"}",
+            "WOO_ERROR_CODE=${safe(errorCode).ifBlank { "NONE" }}",
+            "WOO_ERROR_MESSAGE=${safe(errorMessage).ifBlank { "NONE" }}",
+            "UPDATED_CART_PRESENT=${if (cart != null) "YES" else "NO"}",
+            "UPDATED_CART_COUPONS=$coupons",
+            "UPDATED_CART_ERRORS=$errors",
+            "REMOVED_COUPONS=$removed",
+            "RESPONSE_CART_ERRORS=$errors",
+            "RESPONSE_CART_COUPONS=$coupons",
+            "REQUESTED_COUPON_PRESENT_IN_RESPONSE=${if (codePresent) "YES" else "NO"}",
+            requestHeaders
+        ).joinToString("\n")
+    }
+
     private suspend inline fun <reified T> executeCart(
         request: suspend () -> io.ktor.client.statement.HttpResponse
     ): T {
         val response = request()
+        lastCartHttpStatus = response.status.value
         session.updateFromResponse(response.headers)
         val raw = response.bodyAsText()
         // Parse the top-level error independently from its optional cart payload.
@@ -185,11 +226,51 @@ class StoreApiClient(
     suspend fun applyCoupon(code: String): StoreCart {
         val normalizedCode = code.trim()
         require(normalizedCode.isNotEmpty()) { "El código del cupón no puede estar vacío." }
-        return executeCart {
-            client.post(baseUrl + "cart/apply-coupon") {
-                sessionHeaders()
-                url { parameter("code", normalizedCode) }
+        val headerPresence = listOf(
+            "ACCOUNT_BEARER_PRESENT=${if (accountTokenStore?.load()?.isNotBlank() == true) "YES" else "NO"}",
+            "CART_TOKEN_PRESENT=${if (session.cartToken?.isNotBlank() == true) "YES" else "NO"}",
+            "NONCE_PRESENT=${if (session.nonce?.isNotBlank() == true) "YES" else "NO"}",
+            "COOKIE_PRESENT=${if (session.cookieHeader?.isNotBlank() == true) "YES" else "NO"}"
+        ).joinToString("\n")
+        lastApplyCouponDiagnostic = null
+        lastCartHttpStatus = null
+        return try {
+            val cart = executeCart {
+                client.post(baseUrl + "cart/apply-coupon") {
+                    sessionHeaders()
+                    url { parameter("code", normalizedCode) }
+                }
             }
+            lastApplyCouponDiagnostic = couponDiagnostic(
+                requestedCode = normalizedCode,
+                status = lastCartHttpStatus,
+                errorCode = cart.errors.firstOrNull()?.code,
+                errorMessage = cart.errors.firstOrNull()?.message,
+                cart = cart,
+                requestHeaders = headerPresence
+            )
+            cart
+        } catch (failure: StoreApiException) {
+            lastApplyCouponDiagnostic = couponDiagnostic(
+                requestedCode = normalizedCode,
+                status = failure.statusCode,
+                errorCode = failure.apiCode,
+                errorMessage = failure.message,
+                cart = failure.updatedCart,
+                removedCoupons = failure.removedCoupons,
+                requestHeaders = headerPresence
+            )
+            throw failure
+        } catch (failure: Throwable) {
+            lastApplyCouponDiagnostic = couponDiagnostic(
+                requestedCode = normalizedCode,
+                status = lastCartHttpStatus,
+                errorCode = null,
+                errorMessage = failure.message,
+                cart = null,
+                requestHeaders = headerPresence
+            )
+            throw failure
         }
     }
 

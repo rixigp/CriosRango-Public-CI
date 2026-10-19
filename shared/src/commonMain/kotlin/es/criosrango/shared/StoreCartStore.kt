@@ -58,12 +58,13 @@ class StoreCartStore(
         _couponError.value = null
         try {
             val responseCart = api.applyCoupon(normalizedCode)
+            val diagnostic = api.lastApplyCouponDiagnostic.orEmpty()
             if (responseCart.errors.isNotEmpty()) {
                 _couponError.value = couponApplyFailureMessage(
                     failure = null,
                     hadPreviousCoupons = previousCart.coupons.isNotEmpty(),
                     responseErrorCode = responseCart.errors.first().code
-                )
+                ) + "\n" + diagnostic
                 return false
             }
             if (responseCart.hasCoupon(normalizedCode)) {
@@ -74,10 +75,11 @@ class StoreCartStore(
             // HTTP success alone is insufficient: the authoritative cart must contain the coupon.
             accept(responseCart)
             restorePreviousCoupons(previousCart, responseCart)
-            _couponError.value = couponApplyFailureMessage(null, previousCart.coupons.isNotEmpty())
+            _couponError.value = couponApplyFailureMessage(null, previousCart.coupons.isNotEmpty()) + "\n" + diagnostic
             return false
         } catch (failure: Throwable) {
             if (failure is CancellationException && failure !is TimeoutCancellationException) throw failure
+            val diagnostic = api.lastApplyCouponDiagnostic.orEmpty()
 
             // Match the Android golden master: a failed request without a server cart
             // keeps the last confirmed snapshot. Reconcile only when Woo supplies one.
@@ -86,7 +88,7 @@ class StoreCartStore(
                 accept(serverCart)
                 restorePreviousCoupons(previousCart, serverCart)
             }
-            _couponError.value = couponApplyFailureMessage(failure, previousCart.coupons.isNotEmpty())
+            _couponError.value = couponApplyFailureMessage(failure, previousCart.coupons.isNotEmpty()) + "\n" + diagnostic
             return false
         } finally {
             _couponLoading.value = false
