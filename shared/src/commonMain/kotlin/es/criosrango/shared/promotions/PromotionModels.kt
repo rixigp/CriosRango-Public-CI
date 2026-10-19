@@ -34,6 +34,10 @@ class PromotionApiException(
     val code: String,
     override val message: String
 ) : Exception(message)
+/** Same eligibility list is consumed by the Cart UI on both platforms. */
+fun cartVisiblePromotions(promotions: List<Promotion>, authenticated: Boolean): List<Promotion> =
+    if (authenticated) promotions else promotions.filter { it.isVisibleToAnonymous() }
+
 /** Promotions offered to guests must not depend on an account or personal eligibility. */
 fun Promotion.isVisibleToAnonymous(): Boolean {
     if (personal || requiresLogin) return false

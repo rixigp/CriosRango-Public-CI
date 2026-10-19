@@ -36,7 +36,8 @@ fun MainViewController() : UIViewController {
         CriosRangoIOSRootScreen(
         storeApi = storeApi,
         accountRepository = accountRepository,
-        loyaltyRepository = loyaltyRepository,
+         accountTokenStore = accountTokenStore,
+         loyaltyRepository = loyaltyRepository,
         cartStore = cartStore,
         checkoutStore = StoreCheckoutStore(storeApi, cartStore, accountRepository),
         paymentStore = paymentStore,

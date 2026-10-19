@@ -254,8 +254,23 @@ private fun CriosRangoApp(
     val initialLoading by viewModel.initialLoading.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(AppTab.HOME) }
-    LaunchedEffect(tab) { if (tab == AppTab.CART) sharedCartController.refresh() }
-    LaunchedEffect(remoteCart) { sharedCartController.refresh() }
+    LaunchedEffect(Unit) {
+        viewModel.refreshCartForSharedState()
+        sharedCartController.refreshAwait()
+    }
+    LaunchedEffect(tab) {
+        if (tab == AppTab.CART) {
+            viewModel.refreshCartForSharedState()
+            sharedCartController.refreshAwait()
+        }
+    }
+    LaunchedEffect(sharedCartUiState.loadState, sharedCartUiState.cart) {
+        when (sharedCartUiState.loadState) {
+            es.criosrango.shared.StoreCartLoadState.SUCCESS_EMPTY -> viewModel.clearLegacySnapshotForSharedEmpty()
+            es.criosrango.shared.StoreCartLoadState.SUCCESS_ITEMS -> viewModel.refreshCartForSharedState()
+            else -> Unit
+        }
+    }
     var utilityReturnTab by remember { mutableStateOf<AppTab?>(null) }
     var accountRootBackAvailable by remember { mutableStateOf(false) }
     var returnToCartAfterLogin by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
@@ -406,7 +421,7 @@ private fun CriosRangoApp(
                     onBack = viewModel::closeProduct,
                     onCart = { openUtilityTab(AppTab.CART); viewModel.closeProduct() },
                     onSearch = { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH; viewModel.closeProduct() },
-                    onAdd = viewModel::addToCart
+                    onAdd = { item -> viewModel.addToSharedCart(item, sharedCartController) }
                 )
             } else {
                 es.criosrango.shared.StoreGlobalShell(
@@ -468,10 +483,10 @@ private fun CriosRangoApp(
                         openPromotionsOnStart = openPromotionsOnStart,
                         onPromotionsOpened = { openPromotionsOnStart = false },
                         onRootBackAvailable = { accountRootBackAvailable = it },
-                        onBeforeLogout = { viewModel.cartStore.clearForLogoutAwait(); viewModel.resetForLogout() },
-                        loyaltyViewModel = loyaltyViewModel,
-                        applyWalletCoupon = viewModel.cartStore::applyCoupon,
-                        cartCouponCodes = remoteCart.coupons.map { it.code }.toSet(),
+                        onBeforeLogout = { viewModel.cartStore.clearForLogoutAwait(); sharedCartStore.clearForLogoutAwait(); viewModel.resetForLogout() },
+                         loyaltyViewModel = loyaltyViewModel,
+                         applyWalletCoupon = sharedCartController::applyCoupon,
+                         cartCouponCodes = sharedCartUiState.cart.coupons.map { it.code }.toSet(),
                         onAuthenticated = {
                             if (returnToCartAfterLogin) {
                                 returnToCartAfterLogin = false
@@ -494,6 +509,8 @@ private fun CriosRangoApp(
                             padding = padding,
                             onCheckout = { viewModel.refreshCart(); checkoutOpen = true },
                             onOpenProduct = { viewModel.openProduct(it.toAndroid()) },
+                            promotionBearerTokenProvider = { accountTokenStore.load() },
+                            refreshOnEnter = false,
                             accountUserId = accountUser?.id,
                             onLogin = {
                                 returnToCartAfterLogin = true

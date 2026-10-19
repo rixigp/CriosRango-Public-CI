@@ -410,6 +410,18 @@ class ShopViewModel(
             if (!accepted && _selectedProduct.value?.id == item.productId) _selectedProduct.value = runCatching { repository.productWithVariationAvailability(item.productId) }.getOrNull()
         }
     }
+
+    fun addToSharedCart(item: CartItem, controller: es.criosrango.shared.StoreCartController) {
+        invalidateCheckout()
+        val id = item.variationId ?: item.productId
+        val variation = item.selectedAttributes.map { (attribute, value) ->
+            es.criosrango.shared.model.StoreCartVariation("pa_${normalizeAttributeValue(attribute)}", value)
+        }
+        controller.add(id, item.quantity, variation)
+    }
+
+    suspend fun refreshCartForSharedState() = cartStore.refresh()
+    suspend fun clearLegacySnapshotForSharedEmpty() = cartStore.clearSnapshotAfterSharedEmpty()
     fun canIncreaseCart(item: CartLine): Boolean = item.quantityLimits?.maximum?.takeUnless { it == 9999 }?.let { item.quantity < it } ?: true
     fun cartIncrement(item: CartLine): Int = item.quantityLimits?.multipleOf?.takeIf { it > 0 } ?: 1
     fun removeCartLine(item: CartLine) { invalidateCheckout(); viewModelScope.launch { cartStore.remove(item) } }

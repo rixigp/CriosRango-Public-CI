@@ -84,7 +84,7 @@ import es.criosrango.shared.loyalty.addMoneyAmounts
 import es.criosrango.shared.loyalty.subtractMoneyAmounts
 import es.criosrango.shared.promotions.Promotion
 import es.criosrango.shared.promotions.PromotionRepository
-import es.criosrango.shared.promotions.isVisibleToAnonymous
+import es.criosrango.shared.promotions.cartVisiblePromotions
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.model.StoreCartVariation
@@ -145,6 +145,7 @@ internal fun iosSelectedRootTab(section: IosRootSection, catalogOriginHome: Bool
 fun CriosRangoIOSRootScreen(
     storeApi: es.criosrango.shared.api.StoreApiClient,
     accountRepository: AccountRepository,
+    accountTokenStore: es.criosrango.shared.account.AccountTokenStore,
     loyaltyRepository: LoyaltyRepository,
     cartStore: StoreCartStore,
     checkoutStore: StoreCheckoutStore,
@@ -418,7 +419,8 @@ fun CriosRangoIOSRootScreen(
                     walletEnabled = accountRepository.hasSession,
                     padding = padding,
                     onCheckout = { checkoutOpen = true },
-                    onOpenProduct = { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) }
+                    onOpenProduct = { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) },
+                    promotionBearerTokenProvider = { accountTokenStore.load() }
                 )
                 IosRootSection.ACCOUNT -> CriosRangoIOSAccountScreen(
                     repository = accountRepository,
@@ -539,6 +541,7 @@ private val IosCartDiscountLineIcon = iosBuildLineIcon("IosCartDiscountLineIcon"
 private val IosCartTagLineIcon = iosBuildLineIcon("IosCartTagLineIcon") { moveTo(3.5f,11f); lineTo(11f,3.5f); lineTo(20f,12.5f); lineTo(12.5f,20f); close(); moveTo(8f,8f); lineTo(8f,8f) }
 private val IosCartCakeLineIcon = iosBuildLineIcon("IosCartCakeLineIcon") { moveTo(4f,10f); lineTo(20f,10f); lineTo(20f,19f); lineTo(4f,19f); close(); moveTo(4f,14f); lineTo(20f,14f); moveTo(8f,10f); lineTo(8f,7f); moveTo(12f,10f); lineTo(12f,6f); moveTo(16f,10f); lineTo(16f,7f) }
 private val IosCartCloseLineIcon = iosBuildLineIcon("IosCartCloseLineIcon") { moveTo(7f,7f); lineTo(17f,17f); moveTo(17f,7f); lineTo(7f,17f) }
+private val IosCartDeleteLineIcon = iosBuildLineIcon("IosCartDeleteLineIcon") { moveTo(4f,7f); lineTo(20f,7f); moveTo(9f,7f); lineTo(9f,19f); moveTo(15f,7f); lineTo(15f,19f); moveTo(6f,7f); lineTo(7f,21f); lineTo(17f,21f); lineTo(18f,7f); moveTo(9f,4f); lineTo(15f,4f) }
 @Composable private fun IosCartAppliedCouponIcon(kind:String) { val icon=when(kind){"wallet"->IosCartWalletLineIcon;"credit"->IosCartWalletLineIcon;"discount"->IosCartDiscountLineIcon;"cake"->IosCartCakeLineIcon;else->IosCartTagLineIcon}; androidx.compose.material3.Icon(icon,null,tint=Color(0xFF0F5C4D),modifier=Modifier.size(20.dp)) }
 
 @Composable
@@ -551,12 +554,15 @@ fun StoreCartScreen(
     onCheckout: () -> Unit,
     onOpenProduct: (StoreProduct) -> Unit,
     accountUserId: Int? = null,
-    onLogin: (() -> Unit)? = null
+    onLogin: (() -> Unit)? = null,
+    promotionBearerTokenProvider: (() -> String?)? = null,
+    refreshOnEnter: Boolean = true
 ) {
     var loyaltyWallet by remember { mutableStateOf<LoyaltyWallet?>(null) }
     var loyaltyLoading by remember { mutableStateOf(false) }
     var loyaltyError by remember { mutableStateOf<String?>(null) }
     var showWalletDialog by remember { mutableStateOf(false) }
+    var showWalletInfoDialog by remember { mutableStateOf(false) }
     var pendingRedeemPoints by remember { mutableStateOf<Int?>(null) }
     var pendingRequestId by remember { mutableStateOf<String?>(null) }
     val loyaltyScope = rememberCoroutineScope()
@@ -635,7 +641,7 @@ fun StoreCartScreen(
     var clearCartConfirm by remember { mutableStateOf(false) }
     var couponExpanded by remember { mutableStateOf(false) }
     var couponCode by remember { mutableStateOf("") }
-    val promotionRepository = remember { PromotionRepository() }
+    val promotionRepository = remember(promotionBearerTokenProvider) { PromotionRepository(bearerTokenProvider = promotionBearerTokenProvider) }
     var promotions by remember { mutableStateOf(emptyList<Promotion>()) }
     var promotionsLoading by remember { mutableStateOf(true) }
     var promotionsError by remember { mutableStateOf<String?>(null) }
@@ -643,7 +649,7 @@ fun StoreCartScreen(
     var productOpenError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        cartController.refresh()
+        if (refreshOnEnter) cartController.refresh()
         promotionsLoading = true
         promotionsError = null
         try {
@@ -703,8 +709,8 @@ fun StoreCartScreen(
                 tonalElevation = 1.dp
             ) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RemoteStoreImage(line.images.firstOrNull()?.src, line.name, Modifier.size(84.dp), ContentScale.Crop)
-                    Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    RemoteStoreImage(line.images.firstOrNull()?.src, line.name, Modifier.size(78.dp), ContentScale.Crop)
+                    Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                         Text(normalizeWooPlainText(line.name), fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         if (openingProductKey == line.key) Text("Abriendo producto…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (line.variation.isNotEmpty()) Text(
@@ -729,7 +735,9 @@ fun StoreCartScreen(
                             ) { Text("+", style = MaterialTheme.typography.titleLarge) }
                         }
                     }
-                    IconButton(onClick = { cartController.remove(line) }) { Text("×", style = MaterialTheme.typography.titleLarge) }
+                    IconButton(onClick = { cartController.remove(line) }, modifier = Modifier.size(40.dp)) {
+                        androidx.compose.material3.Icon(IosCartDeleteLineIcon, contentDescription = "Eliminar", tint = Color(0xFF5F6368), modifier = Modifier.size(20.dp))
+                    }
                 }
             }
         }
@@ -768,6 +776,11 @@ fun StoreCartScreen(
                                 )
                             }
                             if (walletOptions.isNotEmpty()) IosCartApplyButton({ showWalletDialog=true }, enabled=!loyaltyLoading)
+                            TextButton(
+                                onClick = { showWalletInfoDialog = true },
+                                modifier = Modifier.size(30.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) { Text("i", color = Color(0xFF0F5C4D), fontWeight = FontWeight.Bold, modifier = Modifier.semantics { contentDescription = "Información del monedero" }) }
                         }
                     }
 
@@ -819,7 +832,7 @@ fun StoreCartScreen(
                     }
                 }
 
-                val visiblePromotions = if (walletEnabled) promotions else promotions.filter { it.isVisibleToAnonymous() }
+                val visiblePromotions = cartVisiblePromotions(promotions, authenticated = walletEnabled)
                 when {
                     promotionsLoading -> CircularProgressIndicator(Modifier.size(20.dp))
                     !promotionsError.isNullOrBlank() -> Text(promotionsError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -1016,6 +1029,14 @@ fun StoreCartScreen(
             dismissButton = {
                 TextButton(onClick = { clearCartConfirm = false }) { Text("Cancelar") }
             }
+        )
+    }
+    if (showWalletInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showWalletInfoDialog = false },
+            title = { Text("¿Cómo funciona tu monedero?", fontWeight = FontWeight.SemiBold) },
+            text = { Text("1 € gastado = 1 punto.\n\nCuando acumules 100 puntos, podrás convertirlos en 5 € de saldo para tus compras.\n\nLa barra te indica cuánto te falta para desbloquear el saldo.\n\nCuando tengas saldo disponible, pulsa “Usar” para elegir cuánto quieres aplicar a tu compra.") },
+            confirmButton = { Button(onClick = { showWalletInfoDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F5C4D), contentColor = Color.White)) { Text("Entendido") } }
         )
     }
     if (showWalletDialog && loyaltyWallet != null) {

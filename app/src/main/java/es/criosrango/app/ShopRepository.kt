@@ -398,6 +398,16 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
     private val couponMutationMutex = Mutex()
     private val addGate = CartAddGate()
 
+    suspend fun clearSnapshotAfterSharedEmpty() {
+        cartMutex.withLock {
+            preferences.edit().remove("cart_snapshot").remove("cart_line_parents").apply()
+            confirmedCart = WooCart()
+            _cart.value = confirmedCart
+            _state.value = CartLoadState.SUCCESS_EMPTY
+            _error.value = null
+        }
+    }
+
     suspend fun refresh() {
         cartMutex.withLock {
             _state.value = CartLoadState.LOADING

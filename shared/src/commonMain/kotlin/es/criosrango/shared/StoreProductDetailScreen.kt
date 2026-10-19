@@ -136,13 +136,13 @@ fun StoreProductDetailScreen(
                 color = Color.Transparent
             ) {
                 Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onShare, enabled = state.shareEnabled, modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    TextButton(onClick = onShare, enabled = state.shareEnabled, modifier = Modifier.weight(1f).fillMaxHeight(), colors = androidx.compose.material3.TextButtonDefaults.textButtonColors(contentColor = Color(0xFF183B35))) {
                         Icon(Icons.Outlined.Share, contentDescription = null)
                         Spacer(Modifier.width(7.dp))
                         Text("Compartir")
                     }
                     VerticalDivider(Modifier.height(24.dp), color = Color(0xFFD8D4D7))
-                    TextButton(onClick = onReserve, enabled = state.reserveEnabled, modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    TextButton(onClick = onReserve, enabled = state.reserveEnabled, modifier = Modifier.weight(1f).fillMaxHeight(), colors = androidx.compose.material3.TextButtonDefaults.textButtonColors(contentColor = Color(0xFF183B35))) {
                         Icon(Icons.AutoMirrored.Outlined.Chat, contentDescription = null)
                         Spacer(Modifier.width(7.dp))
                         Text("Reservarlo")

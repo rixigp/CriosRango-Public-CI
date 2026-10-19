@@ -36,6 +36,7 @@ class StoreCartController(
     }.stateIn(scope, SharingStarted.Eagerly, StoreCartState())
 
     fun refresh() = store.refresh()
+    suspend fun refreshAwait() = store.refreshAwait()
     fun add(productId: Int, quantity: Int = 1, variation: List<StoreCartVariation> = emptyList()) =
         store.add(productId, quantity, variation)
     fun update(line: StoreCartLine, quantity: Int) = store.update(line, quantity)
