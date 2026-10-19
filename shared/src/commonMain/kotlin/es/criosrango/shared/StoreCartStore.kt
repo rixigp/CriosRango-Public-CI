@@ -57,6 +57,23 @@ class StoreCartStore(
         }
     }
 
+    suspend fun applyCouponAwait(code: String): Boolean = mutex.withLock {
+        if (_couponLoading.value) return@withLock false
+        val normalizedCode = code.trim()
+        if (normalizedCode.isEmpty()) {
+            _couponError.value = "No se ha podido aplicar este código de descuento."
+            return@withLock false
+        }
+        _couponLoading.value = true
+        _couponError.value = null
+        val applied = runCatching { api.applyCoupon(normalizedCode) }
+            .onSuccess { accept(it) }
+            .onFailure { _couponError.value = it.message?.takeIf(String::isNotBlank) ?: "No se ha podido aplicar este código de descuento." }
+            .isSuccess
+        _couponLoading.value = false
+        applied
+    }
+
     fun removeCoupon(code: String) {
         scope.launch {
             mutex.withLock {
