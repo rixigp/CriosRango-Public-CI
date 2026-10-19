@@ -149,7 +149,7 @@ class MainActivity : ComponentActivity() {
         )[ShopViewModel::class.java]
         val coldStartBranding = !startupBrandingShownInProcess
         startupBrandingShownInProcess = true
-        setContent { CriosRangoApp(shopViewModel, categoryCache, outletAvailabilityStore, coldStartBranding, sharedCatalogClient) }
+        setContent { CriosRangoApp(shopViewModel, categoryCache, outletAvailabilityStore, coldStartBranding, sharedCatalogClient, accountTokenStore) }
     }
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
@@ -197,9 +197,14 @@ private fun CriosRangoApp(
     categoryCache: CategoryCatalogCache,
     outletAvailabilityStore: OutletAvailabilityStore,
     coldStartBranding: Boolean,
-    sharedCatalogClient: es.criosrango.shared.api.StoreApiClient
+    sharedCatalogClient: es.criosrango.shared.api.StoreApiClient,
+    accountTokenStore: es.criosrango.shared.account.AccountTokenStore
 ) {
     val rootFilterScope = rememberCoroutineScope()
+    val sharedCartStore = remember(sharedCatalogClient) { es.criosrango.shared.StoreCartStore(sharedCatalogClient) }
+    val sharedCartController = remember(sharedCartStore) { es.criosrango.shared.StoreCartController(sharedCartStore) }
+    val sharedLoyaltyRepository = remember(accountTokenStore) { es.criosrango.shared.loyalty.LoyaltyRepository(accountTokenStore) }
+    val sharedCartUiState by sharedCartController.state.collectAsStateWithLifecycle()
     val brandsController = remember(sharedCatalogClient) { es.criosrango.shared.StoreBrandsController(sharedCatalogClient, rootFilterScope) }
     val homeController = remember(sharedCatalogClient, brandsController) {
         es.criosrango.shared.storeHomeController(sharedCatalogClient, brandsController)
@@ -219,7 +224,7 @@ private fun CriosRangoApp(
     val selectedProduct by viewModel.selectedProduct.collectAsStateWithLifecycle()
     val selectedVariation by viewModel.selectedVariation.collectAsStateWithLifecycle()
     val remoteCart by viewModel.cartStore.cart.collectAsStateWithLifecycle()
-    val cartQuantity = cartUnitCount(remoteCart.items.map { it.quantity })
+    val cartQuantity = cartUnitCount(sharedCartUiState.cart.items.map { it.quantity })
     val cartState by viewModel.cartStore.state.collectAsStateWithLifecycle()
     val cartError by viewModel.cartStore.error.collectAsStateWithLifecycle()
     val couponLoading by viewModel.cartStore.couponLoading.collectAsStateWithLifecycle()
@@ -249,6 +254,8 @@ private fun CriosRangoApp(
     val initialLoading by viewModel.initialLoading.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(AppTab.HOME) }
+    LaunchedEffect(tab) { if (tab == AppTab.CART) sharedCartController.refresh() }
+    LaunchedEffect(remoteCart) { sharedCartController.refresh() }
     var utilityReturnTab by remember { mutableStateOf<AppTab?>(null) }
     var accountRootBackAvailable by remember { mutableStateOf(false) }
     var returnToCartAfterLogin by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
@@ -478,31 +485,22 @@ private fun CriosRangoApp(
                             }
                         } else null
                     )
-                    else -> saveableStateHolder.SaveableStateProvider("CART") { CartScreen(
-                        cart = remoteCart,
-                        state = cartState,
-                        error = cartError,
-                        padding = padding,
-                        updateQuantity = viewModel::updateCartQuantity,
-                        canIncrease = viewModel::canIncreaseCart,
-                        increment = viewModel::cartIncrement,
-                        removeLine = viewModel::removeCartLine,
-                        clearCart = viewModel::clearCart,
-                        openLine = viewModel::openCartLine,
-                        retry = viewModel::refreshCart,
-                        onCheckout = { checkoutOpen = true },
-                        couponLoading = couponLoading,
-                        couponError = couponError,
-                        applyCoupon = viewModel::applyCoupon,
-                        removeCoupon = viewModel::removeCoupon,
-                        loyaltyViewModel = loyaltyViewModel,
-                        applyWalletCoupon = viewModel.cartStore::applyCoupon,
-                        accountUserId = accountUser?.id,
-                        onLogin = {
-                            returnToCartAfterLogin = true
-                            openUtilityTab(AppTab.ACCOUNT)
-                        },
-                    ) }
+                    else -> saveableStateHolder.SaveableStateProvider("CART") {
+                        es.criosrango.shared.StoreCartScreen(
+                            storeApi = sharedCatalogClient,
+                            cartController = sharedCartController,
+                            loyaltyRepository = sharedLoyaltyRepository,
+                            walletEnabled = accountUser?.id != null,
+                            padding = padding,
+                            onCheckout = { viewModel.refreshCart(); checkoutOpen = true },
+                            onOpenProduct = { viewModel.openProduct(it.toAndroid()) },
+                            accountUserId = accountUser?.id,
+                            onLogin = {
+                                returnToCartAfterLogin = true
+                                openUtilityTab(AppTab.ACCOUNT)
+                            }
+                        )
+                    }
                 }
             }
             }

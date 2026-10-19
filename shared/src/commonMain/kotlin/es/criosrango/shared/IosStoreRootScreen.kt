@@ -89,6 +89,11 @@ import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.model.StoreCartVariation
 import es.criosrango.shared.model.consumerDiscount
+import es.criosrango.shared.model.consumerUnitPrice
+import es.criosrango.shared.model.consumerLineTotal
+import es.criosrango.shared.model.consumerSubtotal
+import es.criosrango.shared.model.consumerShipping
+import es.criosrango.shared.model.consumerTotal
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
@@ -222,6 +227,7 @@ fun CriosRangoIOSRootScreen(
         onPushNavigationConsumed()
     }
 
+    val cartController = remember(cartStore) { StoreCartController(cartStore) }
     val observedCart by cartStore.cart.collectAsState()
     val cartQuantity = cartUnitCount(observedCart.items.map { it.quantity })
     val createdOrder by checkoutStore.createdOrder.collectAsState()
@@ -405,9 +411,9 @@ fun CriosRangoIOSRootScreen(
                     categorySnapshotError = categorySnapshotError,
                     onRetryCategorySnapshot = ::retryCategorySnapshot
                 )
-                IosRootSection.CART -> IosCartScreen(
+                IosRootSection.CART -> StoreCartScreen(
                     storeApi = storeApi,
-                    cartStore = cartStore,
+                    cartController = cartController,
                     loyaltyRepository = loyaltyRepository,
                     walletEnabled = accountRepository.hasSession,
                     padding = padding,
@@ -535,14 +541,16 @@ private val IosCartCloseLineIcon = iosBuildLineIcon("IosCartCloseLineIcon") { mo
 @Composable private fun IosCartAppliedCouponIcon(kind:String) { val icon=when(kind){"wallet"->IosCartWalletLineIcon;"credit"->IosCartWalletLineIcon;"discount"->IosCartDiscountLineIcon;"cake"->IosCartCakeLineIcon;else->IosCartTagLineIcon}; androidx.compose.material3.Icon(icon,null,tint=Color(0xFF0F5C4D),modifier=Modifier.size(20.dp)) }
 
 @Composable
-private fun IosCartScreen(
+fun StoreCartScreen(
     storeApi: es.criosrango.shared.api.StoreApiClient,
-    cartStore: StoreCartStore,
+    cartController: StoreCartController,
     loyaltyRepository: LoyaltyRepository,
     walletEnabled: Boolean,
     padding: PaddingValues,
     onCheckout: () -> Unit,
-    onOpenProduct: (StoreProduct) -> Unit
+    onOpenProduct: (StoreProduct) -> Unit,
+    accountUserId: Int? = null,
+    onLogin: (() -> Unit)? = null
 ) {
     var loyaltyWallet by remember { mutableStateOf<LoyaltyWallet?>(null) }
     var loyaltyLoading by remember { mutableStateOf(false) }
@@ -587,7 +595,7 @@ private fun IosCartScreen(
                 if (coupon == null) {
                     loyaltyError = "El canje no ha devuelto un cupón utilizable."
                 } else {
-                    cartStore.applyCoupon(coupon.code)
+                    cartController.applyCoupon(coupon.code)
                 }
                 pendingRedeemPoints = null
                 pendingRequestId = null
@@ -606,7 +614,7 @@ private fun IosCartScreen(
             loyaltyLoading = true
             loyaltyError = null
             try {
-                cartStore.applyCoupon(reward.code)
+                cartController.applyCoupon(reward.code)
                 loyaltyWallet = loyaltyRepository.getWallet()
             } catch (e: CancellationException) {
                 throw e
@@ -617,11 +625,12 @@ private fun IosCartScreen(
             }
         }
     }
-    val cart by cartStore.cart.collectAsState()
-    val state by cartStore.state.collectAsState()
-    val error by cartStore.error.collectAsState()
-    val couponLoading by cartStore.couponLoading.collectAsState()
-    val couponError by cartStore.couponError.collectAsState()
+    val cartUiState by cartController.state.collectAsState()
+    val cart = cartUiState.cart
+    val state = cartUiState.loadState
+    val error = cartUiState.error
+    val couponLoading = cartUiState.couponLoading
+    val couponError = cartUiState.couponError
     var clearCartConfirm by remember { mutableStateOf(false) }
     var couponExpanded by remember { mutableStateOf(false) }
     var couponCode by remember { mutableStateOf("") }
@@ -633,7 +642,7 @@ private fun IosCartScreen(
     var productOpenError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        cartStore.refresh()
+        cartController.refresh()
         promotionsLoading = true
         promotionsError = null
         try {
@@ -652,9 +661,14 @@ private fun IosCartScreen(
         contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item { Text("Tu carrito", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Tu carrito", modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                if (cart.items.isNotEmpty()) TextButton(onClick = { clearCartConfirm = true }) { Text("Vaciar") }
+            }
+        }
         if (state == StoreCartLoadState.LOADING && cart.items.isEmpty()) item { IosStoreLoading() }
-        if (!error.isNullOrBlank()) item { IosStoreError(error!!, cartStore::refresh) }
+        if (!error.isNullOrBlank()) item { IosStoreError(error!!, cartController::refresh) }
         if (!productOpenError.isNullOrBlank()) item {
             IosStoreError(productOpenError!!) { productOpenError = null }
         }
@@ -696,25 +710,25 @@ private fun IosCartScreen(
                             line.variation.joinToString(" · ") { "${it.attribute.removePrefix("pa_")}: ${it.value}" },
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(formatStorePrice(line.prices.price, line.prices.currencyMinorUnit, line.prices.currencySymbol) + " / ud.", fontWeight = FontWeight.Bold)
+                        Text(formatStorePrice(line.consumerUnitPrice(), line.prices.currencyMinorUnit, line.prices.currencySymbol) + " / ud.", fontWeight = FontWeight.Bold)
                         Text(
-                            "Subtotal: " + formatStorePrice(line.totals.lineTotal, line.prices.currencyMinorUnit, line.prices.currencySymbol),
+                            "Subtotal: " + formatStorePrice(line.consumerLineTotal(), line.prices.currencyMinorUnit, line.prices.currencySymbol),
                             style = MaterialTheme.typography.bodySmall
                         )
                         val increment = line.quantityLimits?.multipleOf?.takeIf { it > 0 } ?: 1
                         val maximum = line.quantityLimits?.maximum?.takeUnless { it == 9999 }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(
-                                onClick = { cartStore.update(line, line.quantity - increment) }
+                                onClick = { cartController.update(line, line.quantity - increment) }
                             ) { Text("−", style = MaterialTheme.typography.titleLarge) }
                             Text(line.quantity.toString(), modifier = Modifier.padding(horizontal = 8.dp), fontWeight = FontWeight.SemiBold)
                             IconButton(
-                                onClick = { cartStore.update(line, line.quantity + increment) },
+                                onClick = { cartController.update(line, line.quantity + increment) },
                                 enabled = maximum == null || line.quantity < maximum
                             ) { Text("+", style = MaterialTheme.typography.titleLarge) }
                         }
                     }
-                    IconButton(onClick = { cartStore.remove(line) }) { Text("×", style = MaterialTheme.typography.titleLarge) }
+                    IconButton(onClick = { cartController.remove(line) }) { Text("×", style = MaterialTheme.typography.titleLarge) }
                 }
             }
         }
@@ -840,7 +854,7 @@ private fun IosCartScreen(
                                             }
                                         }
                                         if (code.isNotBlank()) {
-                                            IosCartApplyButton({ cartStore.applyCoupon(code) }, enabled=!applied && !couponLoading)
+                                            IosCartApplyButton({ cartController.applyCoupon(code) }, enabled=!applied && !couponLoading)
                                         }
                                     }
                             }
@@ -878,7 +892,7 @@ private fun IosCartScreen(
                                 }
                             }
                         )
-                        IosCartApplyButton({ cartStore.applyCoupon(couponCode.trim()) }, enabled=couponCode.trim().isNotEmpty() && !couponLoading, loading=couponLoading, modifier=Modifier.height(54.dp))
+                        IosCartApplyButton({ cartController.applyCoupon(couponCode.trim()) }, enabled=couponCode.trim().isNotEmpty() && !couponLoading, loading=couponLoading, modifier=Modifier.height(54.dp))
                     }
                     if (!couponError.isNullOrBlank()) Text("🔴 Este cupón no es válido.", color=MaterialTheme.colorScheme.error, style=MaterialTheme.typography.bodySmall)
                 }
@@ -902,7 +916,7 @@ private fun IosCartScreen(
                                         Spacer(Modifier.width(4.dp))
                                         Text(name, fontWeight=FontWeight.Medium, style=MaterialTheme.typography.labelSmall, modifier=Modifier.weight(1f), maxLines=1, overflow=TextOverflow.Clip)
                                         Text("-" + formatStorePrice(coupon.totals.consumerDiscount(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol), fontWeight=FontWeight.SemiBold, style=MaterialTheme.typography.labelSmall, color=Color(0xFF0F5C4D), modifier=Modifier.padding(start=3.dp))
-                                        IconButton({ cartStore.removeCoupon(coupon.code) }, enabled=!couponLoading, modifier=Modifier.size(28.dp)) { androidx.compose.material3.Icon(IosCartCloseLineIcon, "Quitar", tint=Color(0xFF5F6368), modifier=Modifier.size(18.dp)) }
+                                        IconButton({ cartController.removeCoupon(coupon.code) }, enabled=!couponLoading, modifier=Modifier.size(28.dp)) { androidx.compose.material3.Icon(IosCartCloseLineIcon, "Quitar", tint=Color(0xFF5F6368), modifier=Modifier.size(18.dp)) }
                                     }
                                     if (index < cart.coupons.lastIndex) HorizontalDivider(Modifier.padding(start=28.dp), color=Color(0xFFE8E8E3), thickness=1.dp)
                                 }
@@ -923,7 +937,7 @@ private fun IosCartScreen(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Subtotal", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        formatStorePrice(cart.totals.totalItems, cart.totals.currencyMinorUnit, cart.totals.currencySymbol),
+                        formatStorePrice(cart.totals.consumerSubtotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol),
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -942,17 +956,17 @@ private fun IosCartScreen(
                 }
 
                 when {
-                    cart.totals.totalShipping == null -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    cart.totals.consumerShipping() == null -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Envío", modifier = Modifier.weight(1f), color = Color.Gray)
                         Text("Se calcula en el checkout", color = Color.Gray)
                     }
-                    cart.totals.totalShipping == "0" || cart.totals.totalShipping == "0.00" -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    cart.totals.consumerShipping() == "0" -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Envío", modifier = Modifier.weight(1f))
                         Text("Gratis")
                     }
                     else -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Envío", modifier = Modifier.weight(1f))
-                        Text(formatStorePrice(cart.totals.totalShipping.orEmpty(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
+                        Text(formatStorePrice(cart.totals.consumerShipping().orEmpty(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
                     }
                 }
 
@@ -964,7 +978,7 @@ private fun IosCartScreen(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Total", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(
-                        formatStorePrice(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol),
+                        formatStorePrice(cart.totals.consumerTotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -979,8 +993,26 @@ private fun IosCartScreen(
                 ) {
                     Text("Continuar compra")
                 }
+                if (accountUserId == null && onLogin != null) {
+                    OutlinedButton(onClick = onLogin, modifier = Modifier.fillMaxWidth()) {
+                        Text("Inicia sesión para consultar tu cuenta")
+                    }
+                }
             }
         }
+    }
+    if (clearCartConfirm) {
+        AlertDialog(
+            onDismissRequest = { clearCartConfirm = false },
+            title = { Text("Vaciar carrito") },
+            text = { Text("¿Quieres quitar todos los productos del carrito?") },
+            confirmButton = {
+                TextButton(onClick = { clearCartConfirm = false; cartController.clear() }) { Text("Vaciar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { clearCartConfirm = false }) { Text("Cancelar") }
+            }
+        )
     }
     if (showWalletDialog && loyaltyWallet != null) {
         val eligibleSubtotal = subtractMoneyAmounts(
@@ -1015,7 +1047,7 @@ private fun IosCartScreen(
         onDismissRequest = { clearCartConfirm = false },
         title = { Text("Vaciar carrito") },
         text = { Text("¿Quieres eliminar todos los productos del carrito?") },
-        confirmButton = { TextButton(onClick = { clearCartConfirm = false; cartStore.clear() }) { Text("Vaciar") } },
+        confirmButton = { TextButton(onClick = { clearCartConfirm = false; cartController.clear() }) { Text("Vaciar") } },
         dismissButton = { TextButton(onClick = { clearCartConfirm = false }) { Text("Cancelar") } }
     )
 }

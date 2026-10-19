@@ -51,6 +51,7 @@ data class StoreCartTotals(
     @SerialName("total_shipping") val totalShipping: String? = null,
     @SerialName("total_shipping_tax") val totalShippingTax: String? = null,
     @SerialName("total_price") val totalPrice: String = "0",
+    @SerialName("total_price_tax") val totalPriceTax: String = "0",
     @SerialName("total_tax") val totalTax: String = "0",
     @SerialName("currency_symbol") val currencySymbol: String = "€",
     @SerialName("currency_minor_unit") val currencyMinorUnit: Int = 2
@@ -142,3 +143,23 @@ data class StoreCartApiErrorData(
     @SerialName("removed_coupons") val removedCoupons: Map<String, kotlinx.serialization.json.JsonElement> = emptyMap(),
     val cart: StoreCart? = null
 )
+
+
+/** Consumer-facing prices include VAT. Woo Store API amounts are expressed in currency minor units. */
+private fun addCartAmounts(first: String, second: String): String =
+    ((first.toLongOrNull() ?: 0L) + (second.toLongOrNull() ?: 0L)).toString()
+
+fun StoreCartLine.consumerUnitPrice(): String =
+    prices.price.takeIf { it.isNotBlank() } ?: totals.linePrice
+
+fun StoreCartLine.consumerLineTotal(): String =
+    addCartAmounts(totals.lineTotal, totals.lineTotalTax)
+
+fun StoreCartTotals.consumerSubtotal(): String =
+    addCartAmounts(totalItems, totalItemsTax)
+
+fun StoreCartTotals.consumerShipping(): String? =
+    totalShipping?.let { addCartAmounts(it, totalShippingTax.orEmpty()) }
+
+fun StoreCartTotals.consumerTotal(): String =
+    addCartAmounts(totalPrice, totalPriceTax)
