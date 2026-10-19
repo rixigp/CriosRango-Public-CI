@@ -58,6 +58,14 @@ class StoreCartStore(
         _couponError.value = null
         try {
             val responseCart = api.applyCoupon(normalizedCode)
+            if (responseCart.errors.isNotEmpty()) {
+                _couponError.value = couponApplyFailureMessage(
+                    failure = null,
+                    hadPreviousCoupons = previousCart.coupons.isNotEmpty(),
+                    responseErrorCode = responseCart.errors.first().code
+                )
+                return false
+            }
             if (responseCart.hasCoupon(normalizedCode)) {
                 accept(responseCart)
                 return true
@@ -71,9 +79,9 @@ class StoreCartStore(
         } catch (failure: Throwable) {
             if (failure is CancellationException && failure !is TimeoutCancellationException) throw failure
 
-            // Woo may include the authoritative cart in an error. Otherwise refresh once.
+            // Match the Android golden master: a failed request without a server cart
+            // keeps the last confirmed snapshot. Reconcile only when Woo supplies one.
             val serverCart = (failure as? StoreApiException)?.updatedCart
-                ?: runCatching { api.cart() }.getOrNull()
             if (serverCart != null) {
                 accept(serverCart)
                 restorePreviousCoupons(previousCart, serverCart)
@@ -91,6 +99,9 @@ class StoreCartStore(
             if (currentCart.hasCoupon(previousCoupon.code)) return@forEach
             try {
                 val restoredCart = api.applyCoupon(previousCoupon.code)
+                if (restoredCart.errors.isNotEmpty() || !restoredCart.hasCoupon(previousCoupon.code)) {
+                    return@forEach
+                }
                 currentCart = restoredCart
                 accept(restoredCart)
             } catch (failure: Throwable) {
@@ -107,8 +118,12 @@ class StoreCartStore(
     private fun StoreCart.hasCoupon(code: String): Boolean =
         coupons.any { it.code.equals(code, ignoreCase = true) }
 
-    private fun couponApplyFailureMessage(failure: Throwable?, hadPreviousCoupons: Boolean): String {
-        val code = (failure as? StoreApiException)?.apiCode.orEmpty().lowercase()
+    private fun couponApplyFailureMessage(
+        failure: Throwable?,
+        hadPreviousCoupons: Boolean,
+        responseErrorCode: String? = null
+    ): String {
+        val code = ((failure as? StoreApiException)?.apiCode ?: responseErrorCode).orEmpty().lowercase()
         val rejectedCoupon = code.contains("invalid_coupon") || code.contains("coupon_invalid") ||
             code.contains("coupon_not_applicable") || code.contains("coupon_expired") ||
             code.contains("coupon_usage_limit")
@@ -131,10 +146,25 @@ class StoreCartStore(
                 }
                 _couponLoading.value = true
                 _couponError.value = null
-                runCatching { api.removeCoupon(normalizedCode) }
-                    .onSuccess { accept(it) }
-                    .onFailure { _couponError.value = it.message?.takeIf(String::isNotBlank) ?: "No se ha podido quitar este código de descuento." }
-                _couponLoading.value = false
+                try {
+                    val responseCart = api.removeCoupon(normalizedCode)
+                    if (responseCart.errors.isNotEmpty()) {
+                        _couponError.value = couponApplyFailureMessage(
+                            failure = null,
+                            hadPreviousCoupons = _cart.value.coupons.isNotEmpty(),
+                            responseErrorCode = responseCart.errors.first().code
+                        )
+                    } else {
+                        accept(responseCart)
+                    }
+                } catch (failure: Throwable) {
+                    if (failure is CancellationException && failure !is TimeoutCancellationException) throw failure
+                    val serverCart = (failure as? StoreApiException)?.updatedCart
+                    if (serverCart != null) accept(serverCart)
+                    _couponError.value = couponApplyFailureMessage(failure, _cart.value.coupons.isNotEmpty())
+                } finally {
+                    _couponLoading.value = false
+                }
             }
         }
     }

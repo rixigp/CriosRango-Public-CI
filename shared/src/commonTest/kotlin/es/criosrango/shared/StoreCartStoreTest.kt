@@ -208,12 +208,10 @@ class StoreCartStoreTest {
     }
 
     @Test
-    fun rejectedNewCouponRestoresPreviousCouponAndExposesFriendlyError() = runTest {
+    fun rejectedNewCouponKeepsLastConfirmedWelcomeCouponAndExposesFriendlyError() = runTest {
         val store = StoreCartStore(apiWithResponses(
             HttpStatusCode.OK to cartWithCoupon("WELCOME10", "429", "38571"),
-            HttpStatusCode.BadRequest to """{"code":"woocommerce_rest_invalid_coupon","message":"Rejected"}""",
-            HttpStatusCode.OK to emptyCartJson,
-            HttpStatusCode.OK to cartWithCoupon("WELCOME10", "429", "38571")
+            HttpStatusCode.BadRequest to """{"code":"woocommerce_rest_invalid_coupon","message":"Rejected"}"""
         ), this)
         store.refreshAwait()
         assertTrue(!store.applyCouponAwait("BF20"))
@@ -221,7 +219,35 @@ class StoreCartStoreTest {
         assertEquals("429", store.cart.value.totals.totalDiscount)
         assertEquals("38571", store.cart.value.totals.totalPrice)
         assertTrue(store.couponError.value.orEmpty().contains("no se puede aplicar"))
-        assertTrue(store.couponError.value.orEmpty().contains("recuperar"))
+        assertTrue(store.couponError.value.orEmpty().contains("conservar o recuperar"))
+    }
+
+    @Test
+    fun successfulHttpResponseWithWooErrorsDoesNotReplaceConfirmedCart() = runTest {
+        val store = StoreCartStore(apiWithResponses(
+            HttpStatusCode.OK to cartWithCoupon("WELCOME10", "429", "38571"),
+            HttpStatusCode.OK to """{"items":[{"key":"line-1","id":1,"name":"Camisa","quantity":1}],"coupons":[{"code":"BF20","label":"BF20","totals":{"total_discount":"858","total_discount_tax":"0"}}],"totals":{"total_items":"39000","total_discount":"858","total_price":"38142"},"errors":[{"code":"woocommerce_rest_invalid_coupon","message":"Rejected"}]}"""
+        ), this)
+        store.refreshAwait()
+        assertTrue(!store.applyCouponAwait("BF20"))
+        assertEquals(listOf("WELCOME10"), store.cart.value.coupons.map { it.code })
+        assertEquals("429", store.cart.value.totals.totalDiscount)
+        assertNotNull(store.couponError.value)
+    }
+
+    @Test
+    fun removeCouponResponseWithWooErrorsKeepsConfirmedCart() = runTest {
+        val store = StoreCartStore(apiWithResponses(
+            HttpStatusCode.OK to cartWithCoupon("WELCOME10", "429", "38571"),
+            HttpStatusCode.OK to """{"items":[{"key":"line-1","id":1,"name":"Camisa","quantity":1}],"coupons":[],"totals":{"total_items":"39000","total_discount":"0","total_price":"39000"},"errors":[{"code":"woocommerce_rest_invalid_coupon","message":"Rejected"}]}"""
+        ), this)
+        store.refreshAwait()
+        store.removeCoupon("WELCOME10")
+        runCurrent()
+        advanceUntilIdle()
+        assertEquals(listOf("WELCOME10"), store.cart.value.coupons.map { it.code })
+        assertEquals("429", store.cart.value.totals.totalDiscount)
+        assertNotNull(store.couponError.value)
     }
 
     @Test
