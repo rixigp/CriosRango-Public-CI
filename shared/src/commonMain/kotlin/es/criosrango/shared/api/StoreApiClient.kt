@@ -235,7 +235,7 @@ class StoreApiClient(
         lastApplyCouponDiagnostic = null
         lastCartHttpStatus = null
         return try {
-            val cart = executeCart {
+            val cart = executeCart<StoreCart> {
                 client.post(baseUrl + "cart/apply-coupon") {
                     sessionHeaders()
                     url { parameter("code", normalizedCode) }
