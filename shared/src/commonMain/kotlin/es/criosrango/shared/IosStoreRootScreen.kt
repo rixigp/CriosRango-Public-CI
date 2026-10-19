@@ -1041,7 +1041,10 @@ fun StoreCartScreen(
                     Text("Continuar compra")
                 }
                 if (shouldShowCartLoginCta(isAuthenticated, onLogin != null)) {
-                    OutlinedButton(onClick = onLogin, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { onLogin?.invoke() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Text("Inicia sesión para consultar tu cuenta")
                     }
                 }
