@@ -485,7 +485,7 @@ private fun CriosRangoApp(
                         onRootBackAvailable = { accountRootBackAvailable = it },
                         onBeforeLogout = { viewModel.cartStore.clearForLogoutAwait(); sharedCartStore.clearForLogoutAwait(); viewModel.resetForLogout() },
                          loyaltyViewModel = loyaltyViewModel,
-                         applyWalletCoupon = sharedCartController::applyCoupon,
+                         applyWalletCoupon = { code -> sharedCartController.applyCouponAwait(code) },
                          cartCouponCodes = sharedCartUiState.cart.coupons.map { it.code }.toSet(),
                         onAuthenticated = {
                             if (returnToCartAfterLogin) {
