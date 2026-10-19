@@ -43,5 +43,6 @@ class StoreCartController(
     fun remove(line: StoreCartLine) = store.remove(line)
     fun clear() = store.clear()
     fun applyCoupon(code: String) = store.applyCoupon(code)
+    suspend fun applyCouponAwait(code: String): Boolean = store.applyCouponAwait(code)
     fun removeCoupon(code: String) = store.removeCoupon(code)
 }
