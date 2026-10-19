@@ -721,7 +721,7 @@ fun StoreCartScreen(
                         line.images.firstOrNull()?.src,
                         line.name,
                         modifier = Modifier.size(84.dp).clip(RoundedCornerShape(10.dp)),
-                        contentScale = ContentScale.Fit,
+                        contentScale = ContentScale.Crop,
                         backgroundColor = MaterialTheme.colorScheme.surface
                     )
                     Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
