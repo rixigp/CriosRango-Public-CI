@@ -413,10 +413,9 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
             _state.value = CartLoadState.LOADING
             try {
                 val remote = withTimeout(18_000) { api.cart() }
-                val snapshot = localSnapshot()
-                val fallbackUsed = remote.items.isEmpty() && snapshot.isNotEmpty()
-                val restored = if (fallbackUsed) rebuildRemote(snapshot) else remote
-                accept(restored)
+                // A successful empty Store API response is authoritative. Local recovery
+                // snapshots must never resurrect lines the server has removed.
+                accept(remote)
             } catch (exception: Exception) {
                 _cart.value = confirmedCart
                 _state.value = CartLoadState.ERROR

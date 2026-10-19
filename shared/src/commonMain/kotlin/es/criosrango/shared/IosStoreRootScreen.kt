@@ -230,6 +230,9 @@ fun CriosRangoIOSRootScreen(
     }
 
     val cartController = remember(cartStore) { StoreCartController(cartStore) }
+    LaunchedEffect(cartController) {
+        runCatching { cartController.refreshAwait() }
+    }
     val observedCart by cartStore.cart.collectAsState()
     val cartQuantity = cartUnitCount(observedCart.items.map { it.quantity })
     val createdOrder by checkoutStore.createdOrder.collectAsState()
@@ -421,7 +424,10 @@ fun CriosRangoIOSRootScreen(
                     padding = padding,
                     onCheckout = { checkoutOpen = true },
                     onOpenProduct = { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) },
-                    promotionBearerTokenProvider = { accountTokenStore.load() }
+                    isAuthenticated = accountRepository.hasSession,
+                    onLogin = { resetCatalog(); section = IosRootSection.ACCOUNT },
+                    promotionBearerTokenProvider = { accountTokenStore.load() },
+                    refreshOnEnter = false
                 )
                 IosRootSection.ACCOUNT -> CriosRangoIOSAccountScreen(
                     repository = accountRepository,
@@ -557,6 +563,7 @@ fun StoreCartScreen(
     onOpenProduct: (StoreProduct) -> Unit,
     accountUserId: Int? = null,
     onLogin: (() -> Unit)? = null,
+    isAuthenticated: Boolean = accountUserId != null,
     promotionBearerTokenProvider: (() -> String?)? = null,
     refreshOnEnter: Boolean = true
 ) {
@@ -712,7 +719,7 @@ fun StoreCartScreen(
                     }
                 },
                 shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surface,
+                color = Color(0xFFF3FAF7),
                 tonalElevation = 0.dp,
                 shadowElevation = 1.dp
             ) {
@@ -722,9 +729,9 @@ fun StoreCartScreen(
                         line.name,
                         modifier = Modifier.size(84.dp).clip(RoundedCornerShape(10.dp)),
                         contentScale = ContentScale.Crop,
-                        backgroundColor = MaterialTheme.colorScheme.surface
+                        backgroundColor = Color(0xFFF3FAF7)
                     )
-                    Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+                    Column(Modifier.weight(1f).padding(start = 8.dp, end = 4.dp)) {
                         Text(normalizeWooPlainText(line.name), fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         if (openingProductKey == line.key) Text("Abriendo producto…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (line.variation.isNotEmpty()) Text(
@@ -736,16 +743,19 @@ fun StoreCartScreen(
                             "Subtotal: " + formatStorePrice(line.consumerLineTotal(), line.prices.currencyMinorUnit, line.prices.currencySymbol),
                             style = MaterialTheme.typography.bodySmall
                         )
-                        val increment = line.quantityLimits?.multipleOf?.takeIf { it > 0 } ?: 1
-                        val maximum = line.quantityLimits?.maximum?.takeUnless { it == 9999 }
+                        val increment = line.quantityStep()
+                        val nextLowerQuantity = line.quantityAfterDecrement()
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(
-                                onClick = { cartController.update(line, line.quantity - increment) }
+                                onClick = {
+                                    if (nextLowerQuantity == null) cartController.remove(line)
+                                    else cartController.update(line, nextLowerQuantity)
+                                }
                             ) { Text("−", style = MaterialTheme.typography.titleLarge) }
                             Text(line.quantity.toString(), modifier = Modifier.padding(horizontal = 8.dp), fontWeight = FontWeight.SemiBold)
                             IconButton(
                                 onClick = { cartController.update(line, line.quantity + increment) },
-                                enabled = maximum == null || line.quantity < maximum
+                                enabled = line.canIncreaseQuantity()
                             ) { Text("+", style = MaterialTheme.typography.titleLarge) }
                         }
                     }
@@ -852,7 +862,7 @@ fun StoreCartScreen(
                     }
                 }
 
-                val visiblePromotions = cartVisiblePromotions(promotions, authenticated = walletEnabled)
+                val visiblePromotions = cartVisiblePromotions(promotions, authenticated = isAuthenticated)
                 when {
                     promotionsLoading -> CircularProgressIndicator(Modifier.size(20.dp))
                     !promotionsError.isNullOrBlank() -> Text(promotionsError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -1030,7 +1040,7 @@ fun StoreCartScreen(
                 ) {
                     Text("Continuar compra")
                 }
-                if (accountUserId == null && onLogin != null) {
+                if (shouldShowCartLoginCta(isAuthenticated, onLogin != null)) {
                     OutlinedButton(onClick = onLogin, modifier = Modifier.fillMaxWidth()) {
                         Text("Inicia sesión para consultar tu cuenta")
                     }
@@ -1088,13 +1098,6 @@ fun StoreCartScreen(
             )
         }
     }
-    if (clearCartConfirm) AlertDialog(
-        onDismissRequest = { clearCartConfirm = false },
-        title = { Text("Vaciar carrito") },
-        text = { Text("¿Quieres eliminar todos los productos del carrito?") },
-        confirmButton = { TextButton(onClick = { clearCartConfirm = false; cartController.clear() }) { Text("Vaciar") } },
-        dismissButton = { TextButton(onClick = { clearCartConfirm = false }) { Text("Cancelar") } }
-    )
 }
 @Composable
 private fun IosSectionHeader(title: String) {

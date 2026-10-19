@@ -255,13 +255,13 @@ private fun CriosRangoApp(
     val error by viewModel.error.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(AppTab.HOME) }
     LaunchedEffect(Unit) {
-        viewModel.refreshCartForSharedState()
-        sharedCartController.refreshAwait()
+        launch { runCatching { viewModel.refreshCartForSharedState() } }
+        runCatching { sharedCartController.refreshAwait() }
     }
     LaunchedEffect(tab) {
         if (tab == AppTab.CART) {
-            viewModel.refreshCartForSharedState()
-            sharedCartController.refreshAwait()
+            launch { runCatching { viewModel.refreshCartForSharedState() } }
+            runCatching { sharedCartController.refreshAwait() }
         }
     }
     LaunchedEffect(sharedCartUiState.loadState, sharedCartUiState.cart) {

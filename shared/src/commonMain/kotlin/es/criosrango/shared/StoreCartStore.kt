@@ -123,10 +123,13 @@ class StoreCartStore(
     }
 
     fun update(line: StoreCartLine, quantity: Int) {
-        if (quantity <= 0) {
+        val minimum = line.quantityLimits?.minimum ?: 1
+        if (quantity <= 0 || quantity < minimum) {
             remove(line)
             return
         }
+        val maximum = line.quantityLimits?.maximum?.takeUnless { it == 9999 }
+        if ((quantity - line.quantity) % line.quantityStep() != 0 || (maximum != null && quantity > maximum)) return
         scope.launch {
             mutex.withLock {
                 _error.value = null
