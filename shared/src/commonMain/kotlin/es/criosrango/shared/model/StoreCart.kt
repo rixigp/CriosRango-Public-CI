@@ -161,5 +161,5 @@ fun StoreCartTotals.consumerSubtotal(): String =
 fun StoreCartTotals.consumerShipping(): String? =
     totalShipping?.let { addCartAmounts(it, totalShippingTax.orEmpty()) }
 
-fun StoreCartTotals.consumerTotal(): String =
-    addCartAmounts(totalPrice, totalPriceTax)
+/** Woo Store API total_price is the authoritative final amount, IVA incluido. */
+fun StoreCartTotals.consumerTotal(): String = totalPrice

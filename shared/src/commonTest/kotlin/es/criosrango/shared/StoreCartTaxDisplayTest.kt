@@ -26,7 +26,7 @@ class StoreCartTaxDisplayTest {
     }
 
     @Test
-    fun totalsIncludeTaxExactlyOnce() {
+    fun finalTotalUsesAuthoritativeTotalPriceWithoutAddingTaxAgain() {
         val totals = StoreCartTotals(
             totalItems = "10000",
             totalItemsTax = "2100",
@@ -35,12 +35,13 @@ class StoreCartTaxDisplayTest {
             totalShipping = "500",
             totalShippingTax = "105",
             totalPrice = "9500",
-            totalPriceTax = "1995"
+            totalPriceTax = "1995",
+            totalTax = "1995"
         )
 
         assertEquals("12100", totals.consumerSubtotal())
         assertEquals("605", totals.consumerShipping())
-        assertEquals("11495", totals.consumerTotal())
+        assertEquals("9500", totals.consumerTotal())
     }
 
     @Test
