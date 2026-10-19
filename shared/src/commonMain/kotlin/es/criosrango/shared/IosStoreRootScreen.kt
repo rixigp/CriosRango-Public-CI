@@ -542,6 +542,7 @@ private val IosCartTagLineIcon = iosBuildLineIcon("IosCartTagLineIcon") { moveTo
 private val IosCartCakeLineIcon = iosBuildLineIcon("IosCartCakeLineIcon") { moveTo(4f,10f); lineTo(20f,10f); lineTo(20f,19f); lineTo(4f,19f); close(); moveTo(4f,14f); lineTo(20f,14f); moveTo(8f,10f); lineTo(8f,7f); moveTo(12f,10f); lineTo(12f,6f); moveTo(16f,10f); lineTo(16f,7f) }
 private val IosCartCloseLineIcon = iosBuildLineIcon("IosCartCloseLineIcon") { moveTo(7f,7f); lineTo(17f,17f); moveTo(17f,7f); lineTo(7f,17f) }
 private val IosCartDeleteLineIcon = iosBuildLineIcon("IosCartDeleteLineIcon") { moveTo(4f,7f); lineTo(20f,7f); moveTo(9f,7f); lineTo(9f,19f); moveTo(15f,7f); lineTo(15f,19f); moveTo(6f,7f); lineTo(7f,21f); lineTo(17f,21f); lineTo(18f,7f); moveTo(9f,4f); lineTo(15f,4f) }
+private val IosCartInfoLineIcon = iosBuildLineIcon("IosCartInfoLineIcon") { moveTo(12f,21f); cubicTo(16.9706f,21f,21f,16.9706f,21f,12f); cubicTo(21f,7.0294f,16.9706f,3f,12f,3f); cubicTo(7.0294f,3f,3f,7.0294f,3f,12f); cubicTo(3f,16.9706f,7.0294f,21f,12f,21f); moveTo(12f,11f); lineTo(12f,16f); moveTo(12f,8f); lineTo(12f,8.1f) }
 @Composable private fun IosCartAppliedCouponIcon(kind:String) { val icon=when(kind){"wallet"->IosCartWalletLineIcon;"credit"->IosCartWalletLineIcon;"discount"->IosCartDiscountLineIcon;"cake"->IosCartCakeLineIcon;else->IosCartTagLineIcon}; androidx.compose.material3.Icon(icon,null,tint=Color(0xFF0F5C4D),modifier=Modifier.size(20.dp)) }
 
 @Composable
@@ -666,12 +667,16 @@ fun StoreCartScreen(
     LazyColumn(
         Modifier.fillMaxSize().padding(padding),
         contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Tu carrito", modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                if (cart.items.isNotEmpty()) TextButton(onClick = { clearCartConfirm = true }) { Text("Vaciar") }
+                if (cart.items.isNotEmpty()) TextButton(onClick = { clearCartConfirm = true }) {
+                    androidx.compose.material3.Icon(IosCartDeleteLineIcon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Vaciar carrito")
+                }
             }
         }
         if (state == StoreCartLoadState.LOADING && cart.items.isEmpty()) item { IosStoreLoading() }
@@ -706,12 +711,20 @@ fun StoreCartScreen(
                     }
                 },
                 shape = RoundedCornerShape(12.dp),
-                tonalElevation = 1.dp
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 0.dp,
+                shadowElevation = 1.dp
             ) {
-                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RemoteStoreImage(line.images.firstOrNull()?.src, line.name, Modifier.size(78.dp), ContentScale.Crop)
-                    Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                        Text(normalizeWooPlainText(line.name), fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RemoteStoreImage(
+                        line.images.firstOrNull()?.src,
+                        line.name,
+                        modifier = Modifier.size(84.dp).clip(RoundedCornerShape(10.dp)),
+                        contentScale = ContentScale.Fit,
+                        backgroundColor = MaterialTheme.colorScheme.surface
+                    )
+                    Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+                        Text(normalizeWooPlainText(line.name), fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         if (openingProductKey == line.key) Text("Abriendo producto…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (line.variation.isNotEmpty()) Text(
                             line.variation.joinToString(" · ") { "${it.attribute.removePrefix("pa_")}: ${it.value}" },
@@ -776,11 +789,17 @@ fun StoreCartScreen(
                                 )
                             }
                             if (walletOptions.isNotEmpty()) IosCartApplyButton({ showWalletDialog=true }, enabled=!loyaltyLoading)
-                            TextButton(
+                            IconButton(
                                 onClick = { showWalletInfoDialog = true },
-                                modifier = Modifier.size(30.dp),
-                                contentPadding = PaddingValues(0.dp)
-                            ) { Text("i", color = Color(0xFF0F5C4D), fontWeight = FontWeight.Bold, modifier = Modifier.semantics { contentDescription = "Información del monedero" }) }
+                                modifier = Modifier.size(40.dp).semantics { contentDescription = "Información del monedero" }
+                            ) {
+                                androidx.compose.material3.Icon(
+                                    IosCartInfoLineIcon,
+                                    contentDescription = null,
+                                    tint = Color(0xFF0F5C4D),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
 
