@@ -25,6 +25,7 @@ class StoreCartStore(
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 ) {
     private val mutex = Mutex()
+    private var hasResolvedCart = false
     private val _cart = MutableStateFlow(StoreCart())
     val cart: StateFlow<StoreCart> = _cart.asStateFlow()
     private val _state = MutableStateFlow(StoreCartLoadState.LOADING)
@@ -78,14 +79,17 @@ class StoreCartStore(
     fun refresh() {
         scope.launch {
             mutex.withLock {
-                _state.value = StoreCartLoadState.LOADING
+                // Keep a confirmed snapshot visible while refreshing. LOADING is only
+                // meaningful before the first successful cart response.
+                if (!hasResolvedCart) _state.value = StoreCartLoadState.LOADING
                 _error.value = null
-                runCatching { api.cart() }
-                    .onSuccess { accept(it) }
-                    .onFailure {
-                        _state.value = StoreCartLoadState.ERROR
-                        _error.value = it.message ?: "No se ha podido recuperar el carrito."
-                    }
+                try {
+                    accept(api.cart())
+                } catch (failure: Throwable) {
+                    if (failure is CancellationException && failure !is TimeoutCancellationException) throw failure
+                    if (!hasResolvedCart) _state.value = StoreCartLoadState.ERROR
+                    _error.value = failure.message ?: "No se ha podido recuperar el carrito."
+                }
             }
         }
     }
@@ -144,6 +148,7 @@ class StoreCartStore(
     }
 
     private fun accept(cart: StoreCart) {
+        hasResolvedCart = true
         _cart.value = cart
         _state.value = if (cart.items.isEmpty()) StoreCartLoadState.SUCCESS_EMPTY else StoreCartLoadState.SUCCESS_ITEMS
         _error.value = null
@@ -169,6 +174,7 @@ class StoreCartStore(
         } finally {
             api.clearSession()
             _cart.value = StoreCart()
+            hasResolvedCart = true
             _state.value = StoreCartLoadState.SUCCESS_EMPTY
             _error.value = null
             _couponError.value = null
@@ -200,6 +206,7 @@ class StoreCartStore(
     }
 
     private fun resetLocalCartAfterConfirmedPaymentFailure() {
+        hasResolvedCart = true
         _cart.value = StoreCart()
         _state.value = StoreCartLoadState.SUCCESS_EMPTY
         _error.value = null
@@ -209,16 +216,21 @@ class StoreCartStore(
 
     suspend fun refreshAwait() {
         mutex.withLock {
-            _state.value = StoreCartLoadState.LOADING
+            if (!hasResolvedCart) _state.value = StoreCartLoadState.LOADING
             _error.value = null
-            runCatching { api.cart() }
-                .onSuccess { accept(it) }
-                .onFailure { throw it }
+            try {
+                accept(api.cart())
+            } catch (failure: Throwable) {
+                if (failure is CancellationException && failure !is TimeoutCancellationException) throw failure
+                if (!hasResolvedCart) _state.value = StoreCartLoadState.ERROR
+                _error.value = failure.message ?: "No se ha podido recuperar el carrito."
+                throw failure
+            }
         }
     }
 
     private fun fail(error: Throwable) {
-        _state.value = StoreCartLoadState.ERROR
+        if (!hasResolvedCart) _state.value = StoreCartLoadState.ERROR
         _error.value = error.message ?: "No se ha podido actualizar el carrito."
     }
 

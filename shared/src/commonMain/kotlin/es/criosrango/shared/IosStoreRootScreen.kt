@@ -673,7 +673,7 @@ fun StoreCartScreen(
         if (!productOpenError.isNullOrBlank()) item {
             IosStoreError(productOpenError!!) { productOpenError = null }
         }
-        if (state == StoreCartLoadState.SUCCESS_EMPTY && error == null) item {
+        if (state == StoreCartLoadState.SUCCESS_EMPTY) item {
             Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Tu carrito está vacío", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -734,7 +734,10 @@ fun StoreCartScreen(
             }
         }
         if (cart.items.isNotEmpty()) item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(horizontal = 20.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Text("Promociones y descuentos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
 
                 if (walletEnabled && loyaltyWallet != null) {
