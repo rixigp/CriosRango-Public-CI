@@ -417,8 +417,9 @@ fun CriosRangoIOSRootScreen(
                     loyaltyRepository = loyaltyRepository,
                     walletEnabled = accountRepository.hasSession,
                     padding = padding,
-                    onCheckout = { checkoutOpen = true }
-                ) { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) }
+                    onCheckout = { checkoutOpen = true },
+                    onOpenProduct = { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) }
+                )
                 IosRootSection.ACCOUNT -> CriosRangoIOSAccountScreen(
                     repository = accountRepository,
                     loyaltyRepository = loyaltyRepository,
