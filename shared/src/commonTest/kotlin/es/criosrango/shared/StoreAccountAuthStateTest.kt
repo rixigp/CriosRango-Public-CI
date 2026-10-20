@@ -25,7 +25,7 @@ class StoreAccountAuthStateTest {
     }
 
     @Test
-    fun loginRequiresBothFieldsAndPreservesPasswordWhitespace() = runBlocking {
+    fun loginRequiresBothFieldsAndNormalizesServerErrors() = runBlocking {
         val state = StoreAccountSessionState(AccountRepository(MemoryTokenStore()))
         assertNull(state.login(" ", "password"))
         assertEquals("Introduce tu correo y contraseña.", state.snapshot.value.error)
