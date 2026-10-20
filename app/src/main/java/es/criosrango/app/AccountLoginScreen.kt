@@ -264,8 +264,7 @@ fun AccountLoginScreen(
                 onBack = { selectedOrderId = null; selectedOrderFromShared = null },
                 onRequestReturn = { order ->
                     if (order.items.size == 1) {
-                        val message = "Hola, quiero solicitar la devolución de un producto de mi pedido #" + order.number + ". ¿Podéis indicarme cómo proceder?"
-                        notificationContext.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/34633246788?text=" + Uri.encode(message))))
+                        requestReturnViaWhatsApp(notificationContext, order, order.items.first())
                     } else if (order.items.isNotEmpty()) returnPickerOrder = order
                 }
             )
