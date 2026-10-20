@@ -288,11 +288,12 @@ fun AccountLoginScreen(
             Column(
                 Modifier.fillMaxSize().padding(padding)
                     .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.DATA, AccountSection.ADDRESSES)) Modifier else Modifier.verticalScroll(rememberScrollState()))
-                    .then(if (accountSection == AccountSection.HELP) Modifier else Modifier.padding(horizontal = 24.dp))
+                    .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.HELP)) Modifier else Modifier.padding(horizontal = 24.dp))
             ) {
-                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection in setOf(AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) 8.dp else 20.dp))
+                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection == AccountSection.HOME) 0.dp else if (accountSection in setOf(AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) 8.dp else 20.dp))
                 when (accountSection) {
                     AccountSection.HOME -> StoreAccountRootScreen(
+                        contentHorizontalPadding = 24.dp,
                         fullName = fullName,
                         email = currentUser.email,
                         appVersion = BuildConfig.VERSION_NAME,
