@@ -62,6 +62,12 @@ enum class AccountInfoPage(val title: String, val slug: String) {
 }
 
 
+class StoreAccountActionGate {
+    private val mutex = Mutex()
+    fun tryAcquire(): Boolean = mutex.tryLock()
+    fun release() = mutex.unlock()
+}
+
 data class StoreAccountAuthSnapshot(
     val status: StoreAccountAuthStatus = StoreAccountAuthStatus.CHECKING,
     val user: AccountUser? = null,
@@ -79,7 +85,7 @@ fun normalizeStoreLoginError(statusCode: Int?): String = when (statusCode) {
 class StoreAccountSessionState(private val repository: AccountRepository) {
     private val mutableSnapshot = MutableStateFlow(StoreAccountAuthSnapshot())
     val snapshot: StateFlow<StoreAccountAuthSnapshot> = mutableSnapshot.asStateFlow()
-    private val actionMutex = Mutex()
+    private val actionGate = StoreAccountActionGate()
 
     suspend fun restore() {
         if (!repository.hasSession) {
@@ -114,7 +120,7 @@ class StoreAccountSessionState(private val repository: AccountRepository) {
             mutableSnapshot.value = mutableSnapshot.value.copy(error = "Introduce tu correo y contraseña.")
             return null
         }
-        if (!actionMutex.tryLock()) return null
+        if (!actionGate.tryAcquire()) return null
         mutableSnapshot.value = mutableSnapshot.value.copy(loading = true, error = null)
         try {
             val user = repository.login(login.trim(), password)
@@ -136,7 +142,7 @@ class StoreAccountSessionState(private val repository: AccountRepository) {
             )
             return null
         } finally {
-            actionMutex.unlock()
+            actionGate.release()
         }
     }
 
