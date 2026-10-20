@@ -161,7 +161,27 @@ fun StoreCheckoutScreen(
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.secondaryContainer
             ) {
-                Text("🚚  " + freeShippingMessage, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.onSecondaryContainer)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Outlined.LocalShipping,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = freeShippingMessage,
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 2,
+                        softWrap = true,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Clip
+                    )
+                }
             }
         }
         if (phase == StoreCheckoutPhase.LOADING && checkout == null) item {
