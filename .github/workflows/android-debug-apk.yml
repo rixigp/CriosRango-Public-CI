@@ -24,6 +24,7 @@ on:
       - "gradle/**"
       - "gradle.properties"
       - ".github/workflows/android-debug-apk.yml"
+      - ".github/workflows/ios-fast-simulator-debug.yml"
 
 concurrency:
   group: android-debug-apk-${{ github.ref }}
