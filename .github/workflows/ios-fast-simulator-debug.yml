@@ -12,6 +12,7 @@ on:
       - "settings.gradle.kts"
       - "build.gradle.kts"
       - ".github/workflows/ios-fast-simulator-debug.yml"
+      - ".github/workflows/android-debug-apk.yml"
   workflow_dispatch:
     inputs:
       target_sha:
