@@ -193,7 +193,7 @@ fun StoreAccountRootScreen(
     }.ifBlank { "CR" }
     Column(modifier.fillMaxWidth()) {
         Text("Cuenta", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color(0xFF183B35))
-        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         Spacer(Modifier.height(20.dp))
         if (authenticated) {
             Row(verticalAlignment = Alignment.CenterVertically) {
