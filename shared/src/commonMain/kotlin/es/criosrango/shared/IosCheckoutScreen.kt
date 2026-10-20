@@ -164,8 +164,8 @@ fun StoreCheckoutScreen(
         StoreCatalogHeader(title = "Finalizar compra", showBack = true, onBack = onBack)
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 72.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
         item {
             Surface(
