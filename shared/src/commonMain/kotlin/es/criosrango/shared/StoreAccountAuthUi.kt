@@ -16,6 +16,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Cookie
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.PrivacyTip
+import androidx.compose.material.icons.outlined.Restore
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Sell
@@ -223,14 +229,13 @@ fun StoreAccountRootScreen(
             AccountRootAccess("Ayuda", Icons.AutoMirrored.Outlined.HelpOutline, Modifier.weight(1f), onHelp)
         }
         Spacer(Modifier.height(28.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Información", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text("Cambios y devoluciones", Modifier.fillMaxWidth().clickable { onInfoPage(StoreAccountInfoPage.RETURNS) }.padding(vertical = 6.dp))
-            Text("Condiciones de contratación", Modifier.fillMaxWidth().clickable { onInfoPage(StoreAccountInfoPage.TERMS) }.padding(vertical = 6.dp))
-            Text("Política de privacidad", Modifier.fillMaxWidth().clickable { onInfoPage(StoreAccountInfoPage.PRIVACY) }.padding(vertical = 6.dp))
-            Text("Aviso legal", Modifier.fillMaxWidth().clickable { onInfoPage(StoreAccountInfoPage.LEGAL) }.padding(vertical = 6.dp))
-            Text("Política de cookies", Modifier.fillMaxWidth().clickable { onInfoPage(StoreAccountInfoPage.COOKIES) }.padding(vertical = 6.dp))
-        }
+        Text("Información", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.height(6.dp))
+        StoreAccountInformationRow("Cambios y devoluciones", Icons.Outlined.Restore) { onInfoPage(StoreAccountInfoPage.RETURNS) }
+        StoreAccountInformationRow("Condiciones de contratación", Icons.Outlined.Description) { onInfoPage(StoreAccountInfoPage.TERMS) }
+        StoreAccountInformationRow("Política de privacidad", Icons.Outlined.PrivacyTip) { onInfoPage(StoreAccountInfoPage.PRIVACY) }
+        StoreAccountInformationRow("Aviso legal", Icons.Outlined.Description) { onInfoPage(StoreAccountInfoPage.LEGAL) }
+        StoreAccountInformationRow("Política de cookies", Icons.Outlined.Cookie) { onInfoPage(StoreAccountInfoPage.COOKIES) }
         Spacer(Modifier.height(20.dp))
         if (appVersion.isNotBlank()) Text("Versión $appVersion", Modifier.align(Alignment.CenterHorizontally), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
@@ -251,6 +256,24 @@ private fun AccountRootAccess(label: String, icon: ImageVector, modifier: Modifi
         }
         Spacer(Modifier.width(12.dp))
         Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 2)
+    }
+}
+
+@Composable
+private fun StoreAccountInformationRow(title: String, icon: ImageVector, onClick: () -> Unit) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = null)
+            }
+            Spacer(Modifier.width(14.dp))
+            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(20.dp))
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
