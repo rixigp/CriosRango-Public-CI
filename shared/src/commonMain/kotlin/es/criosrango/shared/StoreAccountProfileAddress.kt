@@ -1,14 +1,20 @@
 package es.criosrango.shared
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -36,6 +42,18 @@ import kotlinx.coroutines.launch
 object StoreAccountFormValidation {
     val spanishProvinceCodes: Set<String> = setOf(
         "C","VI","AB","A","AL","O","AV","BA","B","BI","BU","CC","CA","S","CS","CE","CR","CO","CU","GI","GR","GU","SS","H","HU","J","LE","L","LO","LU","M","MA","ML","MU","NA","OR","P","GC","PO","SA","TF","SG","SE","SO","T","TE","TO","V","VA","ZA","Z"
+    )
+    val provinceOptions: List<Pair<String, String>> = listOf(
+        "C" to "A Coruña", "VI" to "Araba/Álava", "AB" to "Albacete", "A" to "Alicante", "AL" to "Almería",
+        "O" to "Asturias", "AV" to "Ávila", "BA" to "Badajoz", "B" to "Barcelona", "BI" to "Bizkaia",
+        "BU" to "Burgos", "CC" to "Cáceres", "CA" to "Cádiz", "S" to "Cantabria", "CS" to "Castellón",
+        "CE" to "Ceuta", "CR" to "Ciudad Real", "CO" to "Córdoba", "CU" to "Cuenca", "GI" to "Girona",
+        "GR" to "Granada", "GU" to "Guadalajara", "SS" to "Gipuzkoa", "H" to "Huelva", "HU" to "Huesca",
+        "J" to "Jaén", "LE" to "León", "L" to "Lleida", "LO" to "La Rioja", "LU" to "Lugo",
+        "M" to "Madrid", "MA" to "Málaga", "ML" to "Melilla", "MU" to "Murcia", "NA" to "Navarra",
+        "OR" to "Ourense", "P" to "Palencia", "GC" to "Las Palmas", "PO" to "Pontevedra", "SA" to "Salamanca",
+        "TF" to "Santa Cruz de Tenerife", "SG" to "Segovia", "SE" to "Sevilla", "SO" to "Soria", "T" to "Tarragona",
+        "TE" to "Teruel", "TO" to "Toledo", "V" to "Valencia", "VA" to "Valladolid", "ZA" to "Zamora", "Z" to "Zaragoza"
     )
 
     fun profileError(firstName: String, lastName: String): String? =
@@ -192,7 +210,7 @@ fun StoreProfileScreen(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.Top) {
+    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Top) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Datos personales", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             TextButton(onClick = onBack) { Text("Volver") }
@@ -243,7 +261,8 @@ fun StoreAddressScreen(
         try { addressOwner.load() }
         catch (_: Exception) { if (!repository.hasSession) onSessionExpired() }
     }
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.Top) {
+    var provinceExpanded by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Top) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Dirección de entrega", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             TextButton(onClick = onBack) { Text("Volver") }
@@ -262,7 +281,23 @@ fun StoreAddressScreen(
             field("Dirección adicional / Piso, puerta, etc. (opcional)", a.address2) { addressOwner.edit(a.copy(address2 = it)) }
             field("Código postal", a.postcode) { addressOwner.edit(a.copy(postcode = it)) }
             field("Ciudad", a.city) { addressOwner.edit(a.copy(city = it)) }
-            field("Provincia", a.state) { addressOwner.edit(a.copy(state = it)) }
+            Box(Modifier.fillMaxWidth()) {
+                val provinceLabel = StoreAccountFormValidation.provinceOptions.firstOrNull { it.first == a.state.uppercase() }?.second ?: a.state
+                OutlinedTextField(
+                    provinceLabel, {}, label = { Text("Provincia") }, readOnly = true,
+                    enabled = !snapshot.saving,
+                    modifier = Modifier.fillMaxWidth().clickable(enabled = !snapshot.saving) { provinceExpanded = true }
+                )
+                DropdownMenu(expanded = provinceExpanded, onDismissRequest = { provinceExpanded = false }) {
+                    StoreAccountFormValidation.provinceOptions.forEach { (code, name) ->
+                        DropdownMenuItem(text = { Text(name) }, onClick = {
+                            addressOwner.edit(a.copy(state = code))
+                            provinceExpanded = false
+                        })
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
             field("País", "España") {}
             snapshot.notice?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
             snapshot.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
