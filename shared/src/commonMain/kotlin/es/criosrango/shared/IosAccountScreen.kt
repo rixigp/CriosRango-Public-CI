@@ -99,6 +99,7 @@ fun CriosRangoIOSAccountScreen(
     var user by remember(sessionState) { mutableStateOf(sessionState.snapshot.value.user) }
     var error by remember { mutableStateOf<String?>(null) }
     var selectedOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
+    val ordersOwner = remember(repository, sessionState) { StoreOrdersOwner(repository, sessionState) }
     var pendingPushOrderId by remember { mutableStateOf(initialOrderId) }
     var selectedInfoPage by remember { mutableStateOf<AccountInfoPage?>(null) }
     var forgotReturnPage by remember { mutableStateOf(IosAccountPage.LOGIN) }
@@ -121,9 +122,17 @@ fun CriosRangoIOSAccountScreen(
     LaunchedEffect(user?.id, pendingPushOrderId) {
         val id = pendingPushOrderId ?: return@LaunchedEffect
         if (user == null) return@LaunchedEffect
-        selectedOrder = runCatching { repository.orders().orders }.getOrNull()?.firstOrNull { it.id == id }
-        if (selectedOrder != null) page = IosAccountPage.ORDER_DETAIL
-        pendingPushOrderId = null
+        try {
+            ordersOwner.onSessionChanged(user?.id)
+            ordersOwner.load()
+            selectedOrder = ordersOwner.findById(id)
+            if (selectedOrder != null) { page = IosAccountPage.ORDER_DETAIL; pendingPushOrderId = null }
+            else if (ordersOwner.state.value.error == null) pendingPushOrderId = null
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Retain the pending ID after a transient failure so it can be resolved on remount.
+        }
     }
 
     fun finishAuthentication(authenticatedUser: AccountUser) {
@@ -219,7 +228,7 @@ fun CriosRangoIOSAccountScreen(
                     onSessionExpired = ::invalidateExpiredSession,
                     onBack = { page = addressReturnPage }
                 )
-                IosAccountPage.ORDERS -> IosOrdersScreen(repository, { selectedOrder = it; page = IosAccountPage.ORDER_DETAIL }, ::invalidateExpiredSession) { page = IosAccountPage.HOME }
+                IosAccountPage.ORDERS -> StoreOrdersScreen(ordersOwner, sessionState, onBack = { page = IosAccountPage.HOME }, onOpenOrder = { selectedOrder = it; page = IosAccountPage.ORDER_DETAIL }, onSessionExpired = ::invalidateExpiredSession)
                 IosAccountPage.WALLET -> IosWalletScreen(
                     authenticated = user != null,
                     repository = loyaltyRepository,
@@ -230,7 +239,7 @@ fun CriosRangoIOSAccountScreen(
                 )
                 IosAccountPage.INFO -> selectedInfoPage?.let { infoPage -> IosInformationPageScreen(infoPage) { page = IosAccountPage.HOME } }
                 IosAccountPage.HELP -> IosHelpScreen { page = IosAccountPage.HOME }
-                IosAccountPage.ORDER_DETAIL -> selectedOrder?.let { IosOrderDetailScreen(it) { page = IosAccountPage.ORDERS } }
+                IosAccountPage.ORDER_DETAIL -> selectedOrder?.let { order -> StoreOrderDetailScreen(order, onBack = { page = IosAccountPage.ORDERS }, onRequestReturn = { selected -> onOpenExternalUrl("https://wa.me/34633246788?text=Hola%2C%20quiero%20solicitar%20la%20devoluci%C3%B3n%20de%20mi%20pedido%20%23" + selected.number + "%20%3FPod%C3%A9is%20indicarme%20c%C3%B3mo%20proceder%3F") }) }
             }
         }
         }
@@ -1232,196 +1241,6 @@ private fun AccountAddressFields(address: AccountCustomerAddress, onChange: (Acc
 }
 
 @Composable
-private fun IosOrdersScreen(
-    repository: AccountRepository,
-    onOpenOrder: (AccountOrderSummary) -> Unit,
-    onSessionExpired: () -> Unit,
-    onBack: () -> Unit
-) {
-    var loading by remember { mutableStateOf(true) }
-    var orders by remember { mutableStateOf(emptyList<AccountOrderSummary>()) }
-    var error by remember { mutableStateOf<String?>(null) }
-    fun retry() { loading = true }
-    LaunchedEffect(loading) {
-        if (!loading) return@LaunchedEffect
-        runCatching { repository.orders().orders }
-            .onSuccess { orders = it; error = null; loading = false }
-            .onFailure {
-                if (!repository.hasSession) {
-                    onSessionExpired()
-                    return@onFailure
-                }
-                error = it.message ?: "No se han podido cargar tus pedidos."
-                loading = false
-            }
-    }
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack) { Text("Atrás") }
-                Spacer(Modifier.width(8.dp))
-                Text("Mis pedidos", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            }
-        }
-        when {
-            loading -> item { FullScreenLoading("Cargando pedidos") }
-            error != null -> item {
-                Column(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(error!!, color = MaterialTheme.colorScheme.error)
-                    Spacer(Modifier.height(12.dp))
-                    OutlinedButton(onClick = { error = null; retry() }) { Text("Reintentar") }
-                }
-            }
-            orders.isEmpty() -> item {
-                Column(Modifier.fillMaxWidth().padding(top = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Todavía no tienes pedidos.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            else -> items(orders, key = { it.id }) { order ->
-                Card(Modifier.fillMaxWidth().clickable { onOpenOrder(order) }, shape = RoundedCornerShape(18.dp)) {
-                    Column(Modifier.padding(16.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("Pedido #${order.number.ifBlank { order.id.toString() }}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-                            IosOrderStatusBadge(order.status, order.statusLabel)
-                        }
-                        order.dateCreated?.takeIf { it.isNotBlank() }?.let { rawDate ->
-                            Spacer(Modifier.height(8.dp))
-                            Text("Fecha: ${formatOrderDate(rawDate)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        if (order.items.isNotEmpty()) {
-                            Spacer(Modifier.height(10.dp))
-                            order.items.forEach { item ->
-                                Text("${item.quantity} × ${normalizeWooPlainText(item.name)}")
-                                val variationText = item.variations.filter { it.name.isNotBlank() && it.value.isNotBlank() }
-                                    .joinToString(" · ") { "${if (it.name.equals("Tallas", true)) "Talla" else it.name}: ${it.value}" }
-                                if (variationText.isNotBlank()) Text(variationText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Spacer(Modifier.height(4.dp))
-                            }
-                        }
-                        if (order.paymentMethodTitle.isNotBlank()) {
-                            Spacer(Modifier.height(6.dp))
-                            Text(if (order.paymentMethodTitle.contains("bizum", true)) "Pago con Bizum" else "Pago con tarjeta", style = MaterialTheme.typography.bodySmall)
-                        }
-                        if (order.total.isNotBlank()) {
-                            Spacer(Modifier.height(8.dp))
-                            Text("Total: ${formatAccountAmount(order.total, order.currency)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-                        }
-                    }
-                }
-            }
-        }
-        if (!loading && error == null && orders.isNotEmpty()) {
-            item { OutlinedButton(onClick = { retry() }, modifier = Modifier.fillMaxWidth()) { Text("Actualizar pedidos") } }
-        }
-    }
-}
-
-@Composable
-private fun IosOrderStatusBadge(status: String, label: String) {
-    val visible = label.ifBlank { status }
-    val combined = "$status $label".lowercase()
-    val background = when {
-        "complet" in combined -> Color(0xFFE3F1E8)
-        "proces" in combined || "prepar" in combined -> Color(0xFFF4EAD3)
-        "enviad" in combined || "shipped" in combined -> Color(0xFFE4EFF8)
-        "cancel" in combined || "fallid" in combined || "reembols" in combined -> Color(0xFFF8E3E1)
-        else -> Color(0xFFE9E9E7)
-    }
-    val foreground = when {
-        "complet" in combined -> Color(0xFF285C3B)
-        "proces" in combined || "prepar" in combined -> Color(0xFF76591F)
-        "enviad" in combined || "shipped" in combined -> Color(0xFF245579)
-        "cancel" in combined || "fallid" in combined || "reembols" in combined -> Color(0xFF8A332D)
-        else -> Color(0xFF5C5C58)
-    }
-    Surface(shape = RoundedCornerShape(50), color = background, contentColor = foreground) {
-        Text(visible, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
-    }
-}
-
-private fun formatOrderDate(value: String): String {
-    val date = value.take(10)
-    val parts = date.split("-")
-    return if (parts.size == 3) "${parts[2]}-${parts[1]}-${parts[0]}" else date
-}
-
-private fun formatAccountAmount(value: String, currency: String): String {
-    val amount = value.replace('.', ',')
-    return if (currency.equals("EUR", true)) "$amount €" else "$amount $currency"
-}
-@Composable
-private fun IosOrderDetailScreen(order: AccountOrderSummary, onBack: () -> Unit) {
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack) { Text("Atrás") }
-                Spacer(Modifier.width(8.dp))
-                Text("Pedido #${order.number}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            }
-            Spacer(Modifier.height(4.dp))
-            IosOrderStatusBadge(order.status, order.statusLabel)
-            order.dateCreated?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.height(8.dp))
-                Text("Fecha: ${formatOrderDate(it)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        item {
-            AccountDetailCard("Productos") {
-                order.items.forEachIndexed { index, item ->
-                    Text("${item.quantity} × ${normalizeWooPlainText(item.name)}", fontWeight = FontWeight.Medium)
-                    item.variations.filter { it.name.isNotBlank() && it.value.isNotBlank() }.forEach {
-                        Text("${if (it.name.equals("Tallas", true)) "Talla" else it.name}: ${it.value}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (index != order.items.lastIndex) Spacer(Modifier.height(10.dp))
-                }
-            }
-        }
-        item {
-            AccountDetailCard("Pago") {
-                Text(if (order.paymentMethodTitle.contains("bizum", true)) "Pago con Bizum" else "Pago con tarjeta")
-            }
-        }
-        val a = order.shippingAddress
-        if (a.address1.isNotBlank() || a.city.isNotBlank() || a.postcode.isNotBlank()) {
-            item {
-                AccountDetailCard("Entrega") {
-                    if (a.address1.isNotBlank()) Text(a.address1)
-                    if (a.address2.isNotBlank()) Text(a.address2)
-                    val location = listOf(a.postcode, a.city, a.state).filter { it.isNotBlank() }.joinToString(" · ")
-                    if (location.isNotBlank()) Text(location)
-                    if (a.country.isNotBlank()) Text(if (a.country == "ES") "España" else a.country)
-                    if (order.shippingMethod.isNotBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(order.shippingMethod, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-        item {
-            AccountDetailCard("Resumen") {
-                Text("Subtotal: ${formatAccountAmount(order.subtotal, order.currency)}")
-                Text(if (order.shippingTotal.isBlank() || order.shippingTotal == "0" || order.shippingTotal == "0.00") "Envío: Gratis" else "Envío: ${formatAccountAmount(order.shippingTotal, order.currency)}")
-                Spacer(Modifier.height(8.dp))
-                Text("Total: ${formatAccountAmount(order.total, order.currency)}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-@Composable
-private fun AccountDetailCard(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-            content()
-        }
-    }
-}
-
 @Composable
 private fun AccountForm(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
