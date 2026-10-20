@@ -701,7 +701,7 @@ fun StoreCartScreen(
             StoreCatalogHeader(title = "Tu carrito", horizontalPadding = 0.dp)
         }
         if (cart.items.isNotEmpty()) item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = { clearCartConfirm = true }) {
                     androidx.compose.material3.Icon(IosCartDeleteLineIcon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
