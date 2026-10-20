@@ -298,7 +298,11 @@ fun StoreAddressScreen(
                 }
             }
             Spacer(Modifier.height(12.dp))
-            field("País", "España") {}
+            OutlinedTextField(
+                "España", {}, label = { Text("País") }, readOnly = true,
+                enabled = !snapshot.saving, singleLine = true, modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(12.dp))
             snapshot.notice?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
             snapshot.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Button(
