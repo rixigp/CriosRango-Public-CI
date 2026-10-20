@@ -74,7 +74,6 @@ class StoreAccountSessionState(private val repository: AccountRepository) {
             mutableSnapshot.value = StoreAccountAuthSnapshot(
                 status = StoreAccountAuthStatus.AUTHENTICATED, user = user, loading = false
             )
-            runCatching { repository.claimPendingOrder() }
         } catch (failure: Exception) {
             if (!repository.hasSession) {
                 mutableSnapshot.value = StoreAccountAuthSnapshot(
@@ -105,7 +104,6 @@ class StoreAccountSessionState(private val repository: AccountRepository) {
             mutableSnapshot.value = StoreAccountAuthSnapshot(
                 status = StoreAccountAuthStatus.AUTHENTICATED, user = user, loading = false
             )
-            runCatching { repository.claimPendingOrder() }
             return user
         } catch (failure: Exception) {
             val status = (failure as? ResponseException)?.response?.status?.value
