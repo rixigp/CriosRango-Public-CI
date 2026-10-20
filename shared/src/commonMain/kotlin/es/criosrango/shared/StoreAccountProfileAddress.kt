@@ -36,6 +36,7 @@ import es.criosrango.shared.account.AccountUser
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.launch
 
 /** Account-specific validation. Deliberately independent from checkout's geographic rules. */
@@ -89,14 +90,10 @@ class StoreProfileOwner(
     private val repository: AccountRepository,
     private val sessionState: StoreAccountSessionState
 ) {
-    private var inFlight = false
+    private val actionMutex = Mutex()
 
-    @Synchronized private fun acquire(): Boolean {
-        if (inFlight) return false
-        inFlight = true
-        return true
-    }
-    @Synchronized private fun release() { inFlight = false }
+    private fun acquire(): Boolean = actionMutex.tryLock()
+    private fun release() = actionMutex.unlock()
 
     suspend fun save(user: AccountUser, firstName: String, lastName: String): AccountUser? {
         if (!acquire()) return null
@@ -136,19 +133,19 @@ class StoreAddressOwner(private val repository: AccountRepository) {
     private val mutableSnapshot = MutableStateFlow(StoreAddressSnapshot())
     val snapshot: StateFlow<StoreAddressSnapshot> = mutableSnapshot.asStateFlow()
     private var loadStarted = false
-    private var inFlight = false
+    private val actionMutex = Mutex()
+    private val loadMutex = Mutex()
 
-    @Synchronized private fun acquire(): Boolean {
-        if (inFlight) return false
-        inFlight = true
-        return true
-    }
-    @Synchronized private fun release() { inFlight = false }
+    private fun acquire(): Boolean = actionMutex.tryLock()
+    private fun release() = actionMutex.unlock()
 
     suspend fun load(force: Boolean = false) {
-        synchronized(this) {
+        if (!loadMutex.tryLock()) return
+        try {
             if (loadStarted && !force) return
             loadStarted = true
+        } finally {
+            loadMutex.unlock()
         }
         mutableSnapshot.value = mutableSnapshot.value.copy(loading = true, error = null)
         try {
