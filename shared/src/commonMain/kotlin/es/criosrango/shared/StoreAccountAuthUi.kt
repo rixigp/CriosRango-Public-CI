@@ -75,6 +75,8 @@ data class StoreAccountAuthSnapshot(
     val error: String? = null
 )
 
+fun normalizeStoreLoginCredentials(login: String, password: String): Pair<String, String> = login.trim() to password
+
 fun normalizeStoreLoginError(statusCode: Int?): String = when (statusCode) {
     401 -> "Correo electrónico o contraseña incorrectos."
     429 -> "Demasiados intentos. Espera unos minutos."
@@ -123,7 +125,8 @@ class StoreAccountSessionState(private val repository: AccountRepository) {
         if (!actionGate.tryAcquire()) return null
         mutableSnapshot.value = mutableSnapshot.value.copy(loading = true, error = null)
         try {
-            val user = repository.login(login.trim(), password)
+            val credentials = normalizeStoreLoginCredentials(login, password)
+            val user = repository.login(credentials.first, credentials.second)
             mutableSnapshot.value = StoreAccountAuthSnapshot(
                 status = StoreAccountAuthStatus.AUTHENTICATED, user = user, loading = false
             )
