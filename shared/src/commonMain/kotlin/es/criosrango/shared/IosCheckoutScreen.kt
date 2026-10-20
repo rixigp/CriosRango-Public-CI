@@ -78,6 +78,7 @@ fun StoreCheckoutScreen(
     var addressError by remember { mutableStateOf<String?>(null) }
     var selectedPayment by remember { mutableStateOf("") }
     var selectedShipping by remember { mutableStateOf<Pair<Int, String>?>(null) }
+    var countryOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { checkoutStore.load() }
     LaunchedEffect(accountAddress, initialAddress) {
@@ -206,10 +207,14 @@ fun StoreCheckoutScreen(
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 CheckoutField("Código postal", postcode, KeyboardType.Number, modifier = Modifier.weight(1f)) { postcode = it.filter(Char::isDigit).take(5) }
-                Column(Modifier.weight(1f)) {
-                    Text("País", style = MaterialTheme.typography.labelMedium)
-                    Text("España", modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp))
-                }
+                CheckoutCountry(
+                    value = country,
+                    expanded = countryOpen,
+                    onExpandedChange = { countryOpen = it },
+                    onSelected = { country = it; countryOpen = false },
+                    error = if (country == "ES") null else "Selecciona un país válido.",
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
         addressError?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
@@ -394,54 +399,82 @@ private fun CheckoutField(
     modifier: Modifier = Modifier,
     onValueChange: (String) -> Unit
 ) {
-    CheckoutFieldFrame(label, modifier) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        modifier = Modifier.fillMaxWidth().height(58.dp),
+        modifier = modifier.fillMaxWidth().height(58.dp),
+        label = { Text(label, fontSize = 13.sp) },
         textStyle = MaterialTheme.typography.bodyLarge,
         singleLine = true,
         shape = RoundedCornerShape(3.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Color(0xFF183B35),
-            unfocusedBorderColor = Color(0xFF8A858A),
-            focusedLabelColor = Color.Transparent,
-            unfocusedLabelColor = Color.Transparent,
-            cursorColor = Color(0xFF183B35)
-        )
+        colors = checkoutFieldColors()
     )
-    }
 }
 
 @Composable
 private fun CheckoutProvinceSelector(selectedCode: String, modifier: Modifier = Modifier, onSelect: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    val selectedName = CHECKOUT_SPANISH_PROVINCES.firstOrNull { it.code == selectedCode }?.name ?: "Selecciona provincia"
-    Column(modifier = modifier) {
-        Text("Provincia", style = MaterialTheme.typography.labelMedium)
-        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(3.dp)) { Text(selectedName, maxLines = 1) }
-        androidx.compose.material3.DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            CHECKOUT_SPANISH_PROVINCES.forEach { province -> androidx.compose.material3.DropdownMenuItem(text = { Text(province.name) }, onClick = { expanded = false; onSelect(province.code) }) }
+    val selectedName = CHECKOUT_SPANISH_PROVINCES.firstOrNull { it.code == selectedCode }?.name.orEmpty()
+    Column(modifier = modifier.fillMaxWidth()) {
+        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }, modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                label = { Text("Provincia", fontSize = 13.sp) }, value = selectedName, onValueChange = {}, readOnly = true,
+                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth().height(58.dp),
+                textStyle = MaterialTheme.typography.bodyLarge, singleLine = true,
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                colors = checkoutFieldColors(), shape = RoundedCornerShape(3.dp)
+            )
+            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                CHECKOUT_SPANISH_PROVINCES.distinctBy { it.code }.forEach { province ->
+                    DropdownMenuItem(text = { Text(province.name) }, onClick = { expanded = false; onSelect(province.code) })
+                }
+            }
         }
     }
 }
 
+@Composable
+private fun CheckoutCountry(
+    value: String,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onSelected: (String) -> Unit,
+    error: String?,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = onExpandedChange, modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                label = { Text("País", fontSize = 13.sp) }, value = if (value == "ES") "España" else value,
+                onValueChange = {}, readOnly = true,
+                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth().height(58.dp),
+                textStyle = MaterialTheme.typography.bodyLarge, singleLine = true, isError = error != null,
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                colors = checkoutFieldColors(), shape = RoundedCornerShape(3.dp)
+            )
+            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }) {
+                DropdownMenuItem(text = { Text("España") }, onClick = { onSelected("ES") })
+            }
+        }
+        if (error != null) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun checkoutFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = Color(0xFF183B35), unfocusedBorderColor = Color(0xFF8A858A),
+    focusedLabelColor = Color(0xFF183B35), unfocusedLabelColor = Color(0xFF777277), cursorColor = Color(0xFF183B35)
+)
+
 
 @Composable
 private fun CheckoutSection(number: Int, title: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        androidx.compose.foundation.layout.Box(
-            modifier = Modifier.size(28.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(number.toString(), color = MaterialTheme.colorScheme.onPrimary)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.size(28.dp).background(Color(0xFF183B35), RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
+            Text(number.toString(), color = Color.White, fontWeight = FontWeight.Bold)
         }
-        Text(title, style = MaterialTheme.typography.titleLarge)
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color(0xFF183B35))
     }
 }
 
