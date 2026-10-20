@@ -158,7 +158,7 @@ fun CriosRangoIOSAccountScreen(
         } else {
             when (page) {
                 IosAccountPage.HOME -> Column(Modifier.fillMaxSize().padding(24.dp)) {
-                    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    (error ?: authSnapshot.error)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     StoreAccountRootScreen(
                         fullName = user?.let { it.displayName.ifBlank { it.email } },
                         email = user?.email,
