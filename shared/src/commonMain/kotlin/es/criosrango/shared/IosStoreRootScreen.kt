@@ -147,6 +147,7 @@ fun CriosRangoIOSRootScreen(
     storeApi: es.criosrango.shared.api.StoreApiClient,
     accountRepository: AccountRepository,
     accountTokenStore: es.criosrango.shared.account.AccountTokenStore,
+    accountAppVersion: String = "",
     loyaltyRepository: LoyaltyRepository,
     cartStore: StoreCartStore,
     checkoutStore: StoreCheckoutStore,
@@ -436,6 +437,7 @@ fun CriosRangoIOSRootScreen(
                 IosRootSection.ACCOUNT -> CriosRangoIOSAccountScreen(
                     repository = accountRepository,
                     loyaltyRepository = loyaltyRepository,
+                    appVersion = accountAppVersion,
                     cartCouponCodes = cartStore.cart.collectAsState().value.coupons.map { it.code }.toSet(),
                     onApplyWalletCoupon = { code -> cartStore.applyCoupon(code) },
                     modifier = Modifier.padding(padding),
