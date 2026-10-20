@@ -279,7 +279,7 @@ fun StoreOrderDetailScreen(
                 }
             }
         }
-        item { StoreOrderDetailCard("Pago") { Text(if (order.paymentMethodTitle.contains("bizum", true)) "Pago con Bizum" else "Pago con tarjeta") } }
+        item { StoreOrderDetailCard("Pago") { Text(if (order.paymentMethodTitle.contains("bizum", true)) "Bizum" else "Pago con tarjeta") } }
         if (a.address1.isNotBlank() || a.city.isNotBlank() || a.postcode.isNotBlank()) item {
             StoreOrderDetailCard("Entrega") {
                 if (a.address1.isNotBlank()) Text(a.address1)
