@@ -163,12 +163,7 @@ class StoreAddressOwner(private val repository: AccountRepository) {
         } catch (cancelled: CancellationException) {
             // A screen leaving composition is normal cancellation, not a user-facing load failure.
             // Clear the started flag so a later remount can perform a fresh load.
-            loadMutex.lock()
-            try {
-                loadStarted = false
-            } finally {
-                loadMutex.unlock()
-            }
+            loadStarted = false
             throw cancelled
         } catch (failure: Exception) {
             mutableSnapshot.value = mutableSnapshot.value.copy(
