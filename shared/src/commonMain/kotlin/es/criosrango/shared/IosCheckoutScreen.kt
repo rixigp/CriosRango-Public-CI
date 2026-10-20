@@ -185,7 +185,7 @@ fun StoreCheckoutScreen(
                     )
                     Spacer(Modifier.width(12.dp))
                     Text(
-                        text = "🚚  " + freeShippingMessage,
+                        text = freeShippingMessage,
                         style = MaterialTheme.typography.bodyMedium,
                         color = CheckoutUiGreen
                     )
