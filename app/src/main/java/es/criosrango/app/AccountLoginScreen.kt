@@ -268,7 +268,7 @@ fun AccountLoginScreen(
                     .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.DATA, AccountSection.ADDRESSES)) Modifier else Modifier.verticalScroll(rememberScrollState()))
                     .then(if (accountSection == AccountSection.HELP) Modifier else Modifier.padding(horizontal = 24.dp))
             ) {
-                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection == AccountSection.PROFILE) 8.dp else 20.dp))
+                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection in setOf(AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) 8.dp else 20.dp))
                 when (accountSection) {
                     AccountSection.HOME -> StoreAccountRootScreen(
                         fullName = fullName,
@@ -332,7 +332,7 @@ fun AccountLoginScreen(
                     .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.DATA, AccountSection.ADDRESSES)) Modifier else Modifier.verticalScroll(rememberScrollState()))
                 .then(if (accountSection == AccountSection.HELP) Modifier else Modifier.padding(horizontal = 24.dp))
         ) {
-            if (accountSection != AccountSection.HELP) Spacer(Modifier.height(20.dp))
+            if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection in setOf(AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) 8.dp else 20.dp))
             when (accountSection) {
                 AccountSection.HELP -> AccountHelpContent { accountSection = AccountSection.HOME }
                 else -> StoreAccountRootScreen(
@@ -1189,7 +1189,9 @@ private fun AccountAddressContent(vm: AccountViewModel, address: AccountCustomer
 private fun AccountAddressField(label: String, value: String, enabled: Boolean, onValueChange: (String) -> Unit) { OutlinedTextField(value, onValueChange, label = { Text(label) }, singleLine = true, enabled = enabled, modifier = Modifier.fillMaxWidth()) }
 
 @Composable
-fun AccountSectionHeader(title: String, onBack: () -> Unit) { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver") }; Spacer(Modifier.width(6.dp)); Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color(0xFF183B35)) } }
+fun AccountSectionHeader(title: String, onBack: () -> Unit) {
+    es.criosrango.shared.StoreAccountSectionHeader(title, onBack)
+}
 
 @Composable
 private fun AccountRegisterDialog(initialEmail: String, loading: Boolean, error: String?, onDismiss: () -> Unit, onCreate: (String, String, String, String, String, String?) -> Unit) {
