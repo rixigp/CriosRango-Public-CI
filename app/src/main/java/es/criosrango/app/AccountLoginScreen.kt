@@ -60,7 +60,6 @@ import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.loyalty.redeemableOptions
 import es.criosrango.shared.loyalty.subtractMoneyAmounts
 import es.criosrango.shared.StoreAccountRootScreen
-import es.criosrango.shared.StoreAccountInfoPage
 import es.criosrango.shared.StoreLoginScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
