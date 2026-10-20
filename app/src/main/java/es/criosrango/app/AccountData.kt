@@ -138,7 +138,7 @@ class AccountRepository(context: Context) {
         sharedRepository.customerAddress()
 
     suspend fun saveCustomerAddress(address: AccountCustomerAddress) {
-        sharedAccountRepository.saveCustomerAddress(address)
+        sharedRepository.saveCustomerAddress(address)
     }
 
     suspend fun updateAccountDetails(firstName: String, lastName: String) {
@@ -153,31 +153,31 @@ class AccountRepository(context: Context) {
     }
 
     suspend fun orders(): List<AccountOrderSummary> =
-        sharedAccountRepository.orders(20).orders
+        sharedRepository.orders(20).orders
 
     fun prepareClaimOrder(orderId: Int, orderKey: String): Boolean =
-        sharedAccountRepository.prepareClaimOrder(orderId, orderKey)
+        sharedRepository.prepareClaimOrder(orderId, orderKey)
 
     fun pendingClaimOrder() =
-        sharedAccountRepository.pendingClaimOrder()
+        sharedRepository.pendingClaimOrder()
 
     suspend fun claimOrder(orderId: Int, orderKey: String): AccountClaimOrderResponse =
-        sharedAccountRepository.claimOrder(orderId, orderKey)
+        sharedRepository.claimOrder(orderId, orderKey)
 
     suspend fun claimPendingOrder(): AccountClaimOrderResponse? =
-        sharedAccountRepository.claimPendingOrder()
+        sharedRepository.claimPendingOrder()
 
     suspend fun logout() {
         try {
             runCatching { PushNotificationController.unregister(application) }
-            sharedAccountRepository.logout()
+            sharedRepository.logout()
         } finally {
-            sharedAccountRepository.clearLocalSession()
+            sharedRepository.clearLocalSession()
         }
     }
 
     fun clearLocalSession() {
-        sharedAccountRepository.clearLocalSession()
+        sharedRepository.clearLocalSession()
     }
 }
 
