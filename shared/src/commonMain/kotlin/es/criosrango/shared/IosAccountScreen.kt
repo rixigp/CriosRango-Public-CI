@@ -107,6 +107,7 @@ fun CriosRangoIOSAccountScreen(
     val scope = rememberCoroutineScope()
     val sharedAddressOwner = remember(repository) { StoreAddressOwner(repository) }
     val authSnapshot by sessionState.snapshot.collectAsState()
+    LaunchedEffect(authSnapshot.user?.id) { ordersOwner.onSessionChanged(authSnapshot.user?.id) }
     val promotionRepository = remember(repository) {
         PromotionRepository(bearerTokenProvider = { repository.currentToken() })
     }
