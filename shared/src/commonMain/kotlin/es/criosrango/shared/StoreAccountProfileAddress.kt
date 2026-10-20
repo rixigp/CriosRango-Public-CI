@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import es.criosrango.shared.account.AccountCustomerAddress
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.account.AccountUser
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -159,6 +160,16 @@ class StoreAddressOwner(private val repository: AccountRepository) {
         try {
             val address = repository.customerAddress()
             mutableSnapshot.value = StoreAddressSnapshot(address = address, loading = false, loaded = true)
+        } catch (cancelled: CancellationException) {
+            // A screen leaving composition is normal cancellation, not a user-facing load failure.
+            // Clear the started flag so a later remount can perform a fresh load.
+            loadMutex.lock()
+            try {
+                loadStarted = false
+            } finally {
+                loadMutex.unlock()
+            }
+            throw cancelled
         } catch (failure: Exception) {
             mutableSnapshot.value = mutableSnapshot.value.copy(
                 loading = false, loaded = true,
@@ -187,6 +198,9 @@ class StoreAddressOwner(private val repository: AccountRepository) {
                 address = clean, saving = false, loaded = true, notice = "Dirección actualizada", error = null
             )
             return true
+        } catch (cancelled: CancellationException) {
+            mutableSnapshot.value = mutableSnapshot.value.copy(saving = false, error = null, notice = null)
+            throw cancelled
         } catch (failure: Exception) {
             mutableSnapshot.value = mutableSnapshot.value.copy(
                 saving = false, error = failure.message ?: "No se ha podido guardar la dirección.", notice = null
@@ -261,8 +275,13 @@ fun StoreAddressScreen(
     val snapshot by addressOwner.snapshot.collectAsState()
     val scope = rememberCoroutineScope()
     LaunchedEffect(addressOwner) {
-        try { addressOwner.load() }
-        catch (_: Exception) { if (!repository.hasSession) onSessionExpired() }
+        try {
+            addressOwner.load()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            if (!repository.hasSession) onSessionExpired()
+        }
     }
     var provinceExpanded by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Top) {
@@ -312,8 +331,13 @@ fun StoreAddressScreen(
                 onClick = {
                     if (snapshot.saving) return@Button
                     scope.launch {
-                        try { addressOwner.save() }
-                        catch (_: Exception) { if (!repository.hasSession) onSessionExpired() }
+                        try {
+                            addressOwner.save()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            if (!repository.hasSession) onSessionExpired()
+                        }
                     }
                 }
             ) { if (snapshot.saving) CircularProgressIndicator() else Text("Guardar dirección") }
@@ -324,7 +348,7 @@ fun StoreAddressScreen(
 
 /** Shared equivalent of the Android AccountSectionHeader golden. */
 @Composable
-private fun StoreAccountSectionHeader(title: String, onBack: () -> Unit) {
+fun StoreAccountSectionHeader(title: String, onBack: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         TextButton(
             onClick = onBack,
