@@ -161,43 +161,7 @@ fun StoreCheckoutScreen(
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.secondaryContainer
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val truckColor = MaterialTheme.colorScheme.onSecondaryContainer
-                    androidx.compose.foundation.Canvas(Modifier.size(24.dp)) {
-                        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(
-                            width = 1.8.dp.toPx(),
-                            cap = androidx.compose.ui.graphics.StrokeCap.Round,
-                            join = androidx.compose.ui.graphics.StrokeJoin.Round
-                        )
-                        val ink = truckColor
-                        drawRoundRect(
-                            color = ink,
-                            topLeft = androidx.compose.ui.geometry.Offset(2.dp.toPx(), 5.dp.toPx()),
-                            size = androidx.compose.ui.geometry.Size(12.dp.toPx(), 11.dp.toPx()),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.dp.toPx()),
-                            style = stroke
-                        )
-                        drawLine(ink, androidx.compose.ui.geometry.Offset(14.dp.toPx(), 9.dp.toPx()), androidx.compose.ui.geometry.Offset(18.dp.toPx(), 9.dp.toPx()), stroke.width, stroke.cap)
-                        drawLine(ink, androidx.compose.ui.geometry.Offset(18.dp.toPx(), 9.dp.toPx()), androidx.compose.ui.geometry.Offset(21.dp.toPx(), 12.dp.toPx()), stroke.width, stroke.cap)
-                        drawLine(ink, androidx.compose.ui.geometry.Offset(21.dp.toPx(), 12.dp.toPx()), androidx.compose.ui.geometry.Offset(21.dp.toPx(), 16.dp.toPx()), stroke.width, stroke.cap)
-                        drawLine(ink, androidx.compose.ui.geometry.Offset(21.dp.toPx(), 16.dp.toPx()), androidx.compose.ui.geometry.Offset(2.dp.toPx(), 16.dp.toPx()), stroke.width, stroke.cap)
-                        drawCircle(ink, radius = 1.8.dp.toPx(), center = androidx.compose.ui.geometry.Offset(7.dp.toPx(), 17.dp.toPx()))
-                        drawCircle(ink, radius = 1.8.dp.toPx(), center = androidx.compose.ui.geometry.Offset(17.dp.toPx(), 17.dp.toPx()))
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        text = freeShippingMessage,
-                        modifier = Modifier.weight(1f),
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 2,
-                        softWrap = true,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Clip
-                    )
-                }
+                Text("🚚  " + freeShippingMessage, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.onSecondaryContainer)
             }
         }
         if (phase == StoreCheckoutPhase.LOADING && checkout == null) item {
