@@ -25,6 +25,16 @@ class StoreAccountAuthStateTest {
     }
 
     @Test
+    fun loginActionGateRejectsDuplicateSubmissionsUntilReleased() {
+        val gate = StoreAccountActionGate()
+        assertEquals(true, gate.tryAcquire())
+        assertEquals(false, gate.tryAcquire())
+        gate.release()
+        assertEquals(true, gate.tryAcquire())
+        gate.release()
+    }
+
+    @Test
     fun loginRequiresBothFieldsAndNormalizesServerErrors() = runBlocking {
         val state = StoreAccountSessionState(AccountRepository(MemoryTokenStore()))
         assertNull(state.login(" ", "password"))
