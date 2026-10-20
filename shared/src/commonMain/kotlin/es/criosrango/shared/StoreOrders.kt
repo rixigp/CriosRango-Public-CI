@@ -37,7 +37,6 @@ import es.criosrango.shared.account.AccountRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -205,10 +204,11 @@ fun StoreOrdersScreen(
             catch (_: Exception) { if (!sessionState.snapshot.value.user.let { it != null }) onSessionExpired() }
         }
     }
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         StoreAccountSectionHeader("Pedidos", onBack)
         when {
             auth.user == null -> Unit
+            state.authenticatedUserId != auth.user?.id -> Box(Modifier.fillMaxWidth().padding(top = 36.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             state.loading && state.orders.isEmpty() -> Box(Modifier.fillMaxWidth().padding(top = 36.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             state.error != null && state.orders.isEmpty() -> Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(state.error.orEmpty(), style = MaterialTheme.typography.bodyLarge)
@@ -218,7 +218,7 @@ fun StoreOrdersScreen(
             state.orders.isEmpty() -> Text("Todavía no tienes pedidos.", modifier = Modifier.padding(20.dp), style = MaterialTheme.typography.bodyLarge)
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(state.orders, key = { it.id }) { order ->
