@@ -23,17 +23,18 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun StoreCatalogHeader(
     title: String,
-    showBack: Boolean,
-    onBack: () -> Unit,
+    showBack: Boolean = false,
+    onBack: (() -> Unit)? = null,
     trailing: @Composable RowScope.() -> Unit = {},
     subtitle: String? = null,
-    titleFontWeight: FontWeight = FontWeight.Normal
+    titleFontWeight: FontWeight = FontWeight.Normal,
+    horizontalPadding: androidx.compose.ui.unit.Dp = 20.dp
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp).padding(bottom = 2.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = horizontalPadding, vertical = 2.dp).padding(bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (showBack) {
+        if (showBack && onBack != null) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
             }
