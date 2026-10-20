@@ -60,6 +60,9 @@ import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.loyalty.redeemableOptions
 import es.criosrango.shared.loyalty.subtractMoneyAmounts
 import es.criosrango.shared.StoreAccountRootScreen
+import es.criosrango.shared.StoreOrdersOwner
+import es.criosrango.shared.StoreOrdersScreen
+import es.criosrango.shared.StoreOrderDetailScreen
 import es.criosrango.shared.StoreLoginScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -124,6 +127,8 @@ fun AccountLoginScreen(
         }
     }
     var selectedOrderId by remember { mutableStateOf<Int?>(initialOrderId) }
+    val sharedOrdersOwner = remember(vm.sharedRepository, vm.sharedAuthSession) { StoreOrdersOwner(vm.sharedRepository, vm.sharedAuthSession) }
+    LaunchedEffect(currentUser?.id) { sharedOrdersOwner.onSessionChanged(currentUser?.id) }
     val selectedOrder = orders.firstOrNull { it.id == selectedOrderId }
     val accountRootBackAvailable = selectedInfoPage == null && selectedOrder == null && !showLogin && accountSection == AccountSection.HOME
     SideEffect { onRootBackAvailable(accountRootBackAvailable) }
@@ -173,9 +178,6 @@ fun AccountLoginScreen(
     }
 
     LaunchedEffect(currentUser?.id, accountSection) {
-        if (currentUser != null && accountSection == AccountSection.ORDERS) {
-            vm.refreshOrders()
-        }
         if (currentUser != null && accountSection == AccountSection.WALLET) {
             loyaltyViewModel.refresh()
             promotionsLoading = true
@@ -243,25 +245,28 @@ fun AccountLoginScreen(
     }
 
     if (currentUser != null && selectedOrder != null) {
-        AccountOrderDetailScreenV2(padding, selectedOrder) { selectedOrderId = null }
+        StoreOrderDetailScreen(
+            order = selectedOrder,
+            onBack = { selectedOrderId = null },
+            onRequestReturn = { order ->
+                val message = "Hola, quiero solicitar la devolución de un producto de mi pedido #" + order.number + ". ¿Podéis indicarme cómo proceder?"
+                val uri = Uri.parse("https://wa.me/34633246788?text=" + Uri.encode(message))
+                notificationContext.startActivity(Intent(Intent.ACTION_VIEW, uri))
+            }
+        )
         return
     }
 
     if (currentUser != null) {
         val fullName = listOf(currentUser.firstName, currentUser.lastName).filter { it.isNotBlank() }.joinToString(" ")
         if (accountSection == AccountSection.ORDERS) {
-            PullToRefreshBox(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                isRefreshing = ordersRefreshing,
-                onRefresh = vm::refreshOrders
-            ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
-                    contentPadding = PaddingValues(top = 20.dp, bottom = 24.dp)
-                ) {
-                    AccountOrdersContent(orders, loading, accountError, { accountSection = AccountSection.HOME }, { selectedOrderId = it }, vm::refreshOrders)
-                }
-            }
+            StoreOrdersScreen(
+                owner = sharedOrdersOwner,
+                sessionState = vm.sharedAuthSession,
+                onBack = { accountSection = AccountSection.HOME },
+                onOpenOrder = { selectedOrderId = it.id },
+                onSessionExpired = { vm.retrySession() }
+            )
         } else {
             Column(
                 Modifier.fillMaxSize().padding(padding)
@@ -1018,81 +1023,6 @@ private fun HelpContactRow(title: String, value: String, icon: ImageVector, onCl
     }
 }
 
-private fun LazyListScope.AccountOrdersContent(
-    orders: List<AccountOrderSummary>,
-    loading: Boolean,
-    accountError: StoreUiError?,
-    onBack: () -> Unit,
-    onOrderClick: (Int) -> Unit,
-    onRefresh: () -> Unit
-) {
-    item {
-        AccountSectionHeader("Pedidos", onBack)
-        Spacer(Modifier.height(16.dp))
-    }
-    if (loading && orders.isEmpty()) {
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                CircularProgressIndicator()
-            }
-        }
-    } else if (accountError != null && accountError.type != StoreErrorType.SESSION_EXPIRED && orders.isEmpty()) {
-        item {
-            StoreErrorState(accountError, PaddingValues(0.dp), onRefresh)
-        }
-    } else if (orders.isEmpty()) {
-        item {
-            Text("Todavía no tienes pedidos.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    } else if (accountError != null && accountError.type != StoreErrorType.SESSION_EXPIRED) {
-        item {
-            Text(accountError.title, color = MaterialTheme.colorScheme.error)
-            Text(accountError.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton(onClick = onRefresh, enabled = !loading) { Text("Reintentar") }
-        }
-    } else {
-        items(orders.size) { index ->
-            val order = orders[index]
-            Card(Modifier.fillMaxWidth().clickable { onOrderClick(order.id) }) {
-                Column(Modifier.padding(16.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Pedido #${order.number.ifBlank { order.id.toString() }}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-                        OrderStatusBadge(order.status, order.statusLabel)
-                    }
-                    order.dateCreated?.takeIf { it.isNotBlank() }?.let { rawDate ->
-                        val p = rawDate.take(10).split("-")
-                        Spacer(Modifier.height(8.dp))
-                        Text("Fecha: ${if (p.size == 3) "${p[2]}-${p[1]}-${p[0]}" else rawDate.take(10)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (order.items.isNotEmpty()) {
-                        Spacer(Modifier.height(10.dp))
-                        order.items.forEach { item ->
-                            Text("${item.quantity} × ${item.name}")
-                            val variationText = item.variations.filter { it.name.isNotBlank() && it.value.isNotBlank() }.joinToString(" · ") {
-                                "${if (it.name.equals("Tallas", true)) "Talla" else it.name}: ${it.value}"
-                            }
-                            if (variationText.isNotBlank()) Text(variationText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.height(5.dp))
-                        }
-                    }
-                    if (order.paymentMethodTitle.isNotBlank()) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(if (order.paymentMethodTitle.contains("bizum", true)) "Pago con Bizum" else "Pago con tarjeta")
-                    }
-                    if (order.total.isNotBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            if (order.currency == "EUR") "Total: ${order.total.replace('.', ',')} €" else "${order.total} ${order.currency}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-        }
-    }
-}
 
 @Composable
 private fun AccountProfileContent(loading: Boolean, onBack: () -> Unit, onPersonalData: () -> Unit, onAddress: () -> Unit, onPassword: () -> Unit, onLogout: () -> Unit) {
