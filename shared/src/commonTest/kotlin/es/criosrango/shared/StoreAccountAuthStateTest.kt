@@ -5,7 +5,6 @@ import es.criosrango.shared.account.AccountTokenStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertEquals
 import kotlinx.coroutines.runBlocking
 
 class StoreAccountAuthStateTest {
