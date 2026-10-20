@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,6 +60,7 @@ import es.criosrango.shared.account.AccountOrderSummary
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.account.AccountUser
 import es.criosrango.shared.StoreAccountRootScreen
+import es.criosrango.shared.StoreAccountSessionState
 import es.criosrango.shared.StoreLoginScreen
 import es.criosrango.shared.normalizeStoreLoginError
 import es.criosrango.shared.loyalty.LoyaltyRepository
@@ -102,6 +104,8 @@ fun CriosRangoIOSAccountScreen(
     var forgotReturnPage by remember { mutableStateOf(IosAccountPage.LOGIN) }
     var addressReturnPage by remember { mutableStateOf(IosAccountPage.HOME) }
     val scope = rememberCoroutineScope()
+    val sessionState = remember(repository) { StoreAccountSessionState(repository) }
+    val authSnapshot by sessionState.snapshot.collectAsState()
     val promotionRepository = remember(repository) {
         PromotionRepository(bearerTokenProvider = { repository.currentToken() })
     }
@@ -138,26 +142,11 @@ fun CriosRangoIOSAccountScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        println("KMP_RUNTIME_ACCOUNT_SCREEN_READY")
-        println("KMP_ACCOUNT_SESSION_PRESENT=" + repository.hasSession)
-        if (repository.hasSession) {
-            runCatching { repository.me() }
-                .onSuccess {
-                    user = it
-                    error = null
-                    runCatching { repository.claimPendingOrder() }
-                        .onFailure { claimError -> println("KMP_ACCOUNT_CLAIM_FAILED=${claimError.message}") }
-                    if (!repository.hasSession) {
-                        user = null
-                        error = "La sesión ha caducado. Vuelve a iniciar sesión."
-                    }
-                }
-                .onFailure {
-                    user = null
-                    error = it.message ?: "No se ha podido recuperar la sesión."
-                }
-        }
+    LaunchedEffect(sessionState) {
+        sessionState.restore()
+        val restored = sessionState.snapshot.value
+        user = restored.user
+        error = restored.error
         startup = false
     }
 
@@ -168,6 +157,7 @@ fun CriosRangoIOSAccountScreen(
         } else {
             when (page) {
                 IosAccountPage.HOME -> Column(Modifier.fillMaxSize().padding(24.dp)) {
+                    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     StoreAccountRootScreen(
                         fullName = user?.let { it.displayName.ifBlank { it.email } },
                         email = user?.email,
@@ -182,6 +172,7 @@ fun CriosRangoIOSAccountScreen(
                 }
                 IosAccountPage.LOGIN -> IosLoginScreen(
                     repository,
+                    sessionState,
                     onAuthenticated = ::finishAuthentication,
                     onRegister = { page = IosAccountPage.REGISTER },
                     onForgot = { forgotReturnPage = IosAccountPage.LOGIN; page = IosAccountPage.FORGOT },
@@ -948,6 +939,7 @@ private fun IosAccountHome(
 @Composable
 private fun IosLoginScreen(
     repository: AccountRepository,
+    sessionState: StoreAccountSessionState,
     onAuthenticated: (AccountUser) -> Unit,
     onRegister: () -> Unit,
     onForgot: () -> Unit,
@@ -973,11 +965,9 @@ private fun IosLoginScreen(
                 error = null
                 scope.launch {
                     try {
-                        onAuthenticated(repository.login(submittedLogin.trim(), submittedPassword))
-                    } catch (failure: Exception) {
-                        val status = (failure as? io.ktor.client.plugins.ResponseException)?.response?.status?.value
-                        error = if (failure is IllegalStateException && failure.message == "No se ha podido guardar la sesión de cuenta.")
-                            failure.message else if (status == null) "No hemos podido conectar con la tienda." else normalizeStoreLoginError(status)
+                        val authenticatedUser = sessionState.login(submittedLogin.trim(), submittedPassword)
+                        if (authenticatedUser != null) onAuthenticated(authenticatedUser)
+                        else error = sessionState.snapshot.value.error ?: "No hemos podido iniciar sesión."
                     } finally {
                         busy = false
                     }
