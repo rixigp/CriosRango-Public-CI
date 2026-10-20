@@ -701,7 +701,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 // network errors, or a restored token that is already invalid.
                 ++accountGeneration
                 restoreJob?.cancel()
-                repository.clearLocalSession()
+                sharedAuthSession.logout()
                 _user.value = null
                 _address.value = null
                 _orders.value = emptyList()
