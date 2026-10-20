@@ -192,16 +192,6 @@ fun StoreCheckoutScreen(
                 }
             }
         }
-        if (phase == StoreCheckoutPhase.LOADING && checkout == null) item {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                CircularProgressIndicator(color = CheckoutUiGreen)
-                Text("Cargando checkout…", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
         if (cart.items.isEmpty() && phase != StoreCheckoutPhase.LOADING) item {
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), tonalElevation = 1.dp) {
                 Column(
