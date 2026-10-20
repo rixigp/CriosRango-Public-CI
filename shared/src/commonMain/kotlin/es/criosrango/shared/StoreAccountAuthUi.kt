@@ -156,10 +156,12 @@ class StoreAccountSessionState(private val repository: AccountRepository) {
 
     /** Publish profile edits immediately to every consumer of the authenticated account. */
     fun publishAuthenticatedUser(user: AccountUser) {
-        val current = mutableSnapshot.value
-        if (current.status == StoreAccountAuthStatus.AUTHENTICATED) {
-            mutableSnapshot.value = current.copy(user = user, loading = false, error = null, cause = null)
-        }
+        if (!repository.hasSession) return
+        mutableSnapshot.value = StoreAccountAuthSnapshot(
+            status = StoreAccountAuthStatus.AUTHENTICATED,
+            user = user,
+            loading = false
+        )
     }
 
     fun logout() {
