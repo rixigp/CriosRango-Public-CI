@@ -229,6 +229,7 @@ private fun CriosRangoApp(
     val loyaltyViewModel: LoyaltyViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val loyaltyWallet by loyaltyViewModel.wallet.collectAsStateWithLifecycle()
     val accountUser by accountViewModel.user.collectAsStateWithLifecycle()
+    val knownAccountAddress by accountViewModel.address.collectAsStateWithLifecycle()
     val products by viewModel.products.collectAsStateWithLifecycle()
     val activeCategoryProducts by viewModel.activeCategoryProducts.collectAsStateWithLifecycle()
     val categoryPagingState by viewModel.categoryPagingState.collectAsStateWithLifecycle()
@@ -412,7 +413,22 @@ private fun CriosRangoApp(
             if (checkoutOpen) {
                 es.criosrango.shared.StoreCheckoutScreen(
                     checkoutStore = sharedCheckoutStore, paymentStore = sharedPaymentStore,
-                    accountRepository = sharedAccountRepository, padding = PaddingValues(0.dp),
+                    accountRepository = sharedAccountRepository,
+                    initialAddress = knownAccountAddress?.let { address ->
+                        es.criosrango.shared.model.CustomerAddress(
+                            firstName = address.firstName,
+                            lastName = address.lastName,
+                            email = address.email,
+                            phone = address.phone,
+                            address1 = address.address1,
+                            address2 = address.address2,
+                            postcode = address.postcode,
+                            city = address.city,
+                            state = address.state,
+                            country = address.country.ifBlank { "ES" }
+                        )
+                    },
+                    padding = PaddingValues(0.dp),
                     onBack = { checkoutOpen = false },
                     onOpenPayment = { url ->
                         val opened = runCatching { androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(false).setUrlBarHidingEnabled(true).build().launchUrl(context, Uri.parse(url)) }.isSuccess

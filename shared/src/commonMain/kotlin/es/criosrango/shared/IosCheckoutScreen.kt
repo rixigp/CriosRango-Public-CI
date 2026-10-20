@@ -38,6 +38,7 @@ fun StoreCheckoutScreen(
     checkoutStore: StoreCheckoutStore,
     paymentStore: StorePaymentStore,
     accountRepository: AccountRepository,
+    initialAddress: CustomerAddress? = null,
     padding: PaddingValues,
     onBack: () -> Unit,
     onOpenPayment: (String) -> Unit,
@@ -61,23 +62,26 @@ fun StoreCheckoutScreen(
         pendingRewards = if (walletEnabled) runCatching { loyaltyRepository.getWallet().pendingRewards }.getOrDefault(emptyList()) else emptyList()
     }
 
-    var firstName by remember { mutableStateOf("") }
-    var lastName by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var address by remember { mutableStateOf("") }
-    var address2 by remember { mutableStateOf("") }
-    var postcode by remember { mutableStateOf("") }
-    var city by remember { mutableStateOf("") }
-    var state by remember { mutableStateOf("") }
-    var country by remember { mutableStateOf("ES") }
+    // Seed from any address already held by the store or the platform account adapter.
+    // This keeps known customer data visible while the checkout quote is loading.
+    val knownAddress = accountAddress ?: initialAddress
+    var firstName by remember { mutableStateOf(knownAddress?.firstName.orEmpty()) }
+    var lastName by remember { mutableStateOf(knownAddress?.lastName.orEmpty()) }
+    var email by remember { mutableStateOf(knownAddress?.email.orEmpty()) }
+    var phone by remember { mutableStateOf(knownAddress?.phone.orEmpty()) }
+    var address by remember { mutableStateOf(knownAddress?.address1.orEmpty()) }
+    var address2 by remember { mutableStateOf(knownAddress?.address2.orEmpty()) }
+    var postcode by remember { mutableStateOf(knownAddress?.postcode.orEmpty()) }
+    var city by remember { mutableStateOf(knownAddress?.city.orEmpty()) }
+    var state by remember { mutableStateOf(knownAddress?.state.orEmpty()) }
+    var country by remember { mutableStateOf(knownAddress?.country?.ifBlank { "ES" } ?: "ES") }
     var addressError by remember { mutableStateOf<String?>(null) }
     var selectedPayment by remember { mutableStateOf("") }
     var selectedShipping by remember { mutableStateOf<Pair<Int, String>?>(null) }
 
     LaunchedEffect(Unit) { checkoutStore.load() }
-    LaunchedEffect(accountAddress) {
-        accountAddress?.let {
+    LaunchedEffect(accountAddress, initialAddress) {
+        (accountAddress ?: initialAddress)?.let {
             firstName = it.firstName
             lastName = it.lastName
             email = it.email
@@ -196,12 +200,12 @@ fun StoreCheckoutScreen(
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 CheckoutProvinceSelector(state, modifier = Modifier.weight(1f)) { selected -> state = selected; city = ""; postcode = "" }
-                CheckoutField("Localidad", city) { city = it }
+                CheckoutField("Localidad", city, modifier = Modifier.weight(1f)) { city = it }
             }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                CheckoutField("Código postal", postcode, KeyboardType.Number) { postcode = it.filter(Char::isDigit).take(5) }
+                CheckoutField("Código postal", postcode, KeyboardType.Number, modifier = Modifier.weight(1f)) { postcode = it.filter(Char::isDigit).take(5) }
                 Column(Modifier.weight(1f)) {
                     Text("País", style = MaterialTheme.typography.labelMedium)
                     Text("España", modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp))
@@ -383,8 +387,14 @@ fun StoreCheckoutScreen(
 }
 
 @Composable
-private fun CheckoutField(label: String, value: String, keyboardType: KeyboardType = KeyboardType.Text, onValueChange: (String) -> Unit) {
-    CheckoutFieldFrame(label) {
+private fun CheckoutField(
+    label: String,
+    value: String,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    modifier: Modifier = Modifier,
+    onValueChange: (String) -> Unit
+) {
+    CheckoutFieldFrame(label, modifier) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
