@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -80,10 +83,13 @@ fun normalizeStoreLoginError(statusCode: Int?): String = when (statusCode) {
 /** Shared observable auth/session state. Platform token stores remain injected through AccountRepository. */
 class StoreAccountSessionState(private val repository: AccountRepository) {
     private val mutableSnapshot = MutableStateFlow(StoreAccountAuthSnapshot())
+    private var restoreStarted = false
     val snapshot: StateFlow<StoreAccountAuthSnapshot> = mutableSnapshot.asStateFlow()
     private val actionGate = StoreAccountActionGate()
 
     suspend fun restore() {
+        if (restoreStarted) return
+        restoreStarted = true
         if (!repository.hasSession) {
             mutableSnapshot.value = StoreAccountAuthSnapshot(
                 status = StoreAccountAuthStatus.UNAUTHENTICATED, loading = false
@@ -178,6 +184,7 @@ fun StoreAccountRootScreen(
     }.ifBlank { "CR" }
     Column(modifier.fillMaxWidth()) {
         Text("Cuenta", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color(0xFF183B35))
+        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
         Spacer(Modifier.height(20.dp))
         if (authenticated) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -232,6 +239,7 @@ fun StoreAccountRootScreen(
         Spacer(Modifier.height(20.dp))
         if (appVersion.isNotBlank()) Text("Versión $appVersion", Modifier.align(Alignment.CenterHorizontally), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
+        }
     }
 }
 

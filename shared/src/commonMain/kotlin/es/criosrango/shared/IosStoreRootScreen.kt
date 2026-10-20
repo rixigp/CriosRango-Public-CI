@@ -169,6 +169,8 @@ fun CriosRangoIOSRootScreen(
     val catalogHistory = remember { mutableStateListOf<IosCatalogPage>() }
     val catalogRestoration = remember { mutableStateMapOf<Long, IosCatalogRestorationState>() }
     val outletControllerScope = rememberCoroutineScope()
+    val accountSessionState = remember(accountRepository) { StoreAccountSessionState(accountRepository) }
+    LaunchedEffect(accountSessionState) { accountSessionState.restore() }
     val rootFilterOwner = remember(storeApi) { StoreRootFilterOwner(storeApi, outletControllerScope) }
     val brandsController = remember(storeApi) { StoreBrandsController(storeApi, outletControllerScope) }
     val homeController = remember(storeApi, brandsController) { storeHomeController(storeApi, brandsController) }
@@ -436,6 +438,7 @@ fun CriosRangoIOSRootScreen(
                 )
                 IosRootSection.ACCOUNT -> CriosRangoIOSAccountScreen(
                     repository = accountRepository,
+                    sessionState = accountSessionState,
                     loyaltyRepository = loyaltyRepository,
                     appVersion = accountAppVersion,
                     cartCouponCodes = cartStore.cart.collectAsState().value.coupons.map { it.code }.toSet(),

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -78,6 +79,7 @@ private enum class IosAccountPage { HOME, LOGIN, REGISTER, FORGOT, PROFILE, DATA
 @Composable
 fun CriosRangoIOSAccountScreen(
     repository: AccountRepository,
+    sessionState: StoreAccountSessionState,
     loyaltyRepository: LoyaltyRepository,
     appVersion: String = "",
     cartCouponCodes: Set<String> = emptySet(),
@@ -95,8 +97,7 @@ fun CriosRangoIOSAccountScreen(
     var page by remember {
         mutableStateOf(if (openPromotionsOnStart) IosAccountPage.WALLET else if (openLoginOnStart) IosAccountPage.LOGIN else IosAccountPage.HOME)
     }
-    var user by remember { mutableStateOf<AccountUser?>(null) }
-    var startup by remember { mutableStateOf(true) }
+    var user by remember(sessionState) { mutableStateOf(sessionState.snapshot.value.user) }
     var error by remember { mutableStateOf<String?>(null) }
     var selectedOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
     var pendingPushOrderId by remember { mutableStateOf(initialOrderId) }
@@ -104,7 +105,6 @@ fun CriosRangoIOSAccountScreen(
     var forgotReturnPage by remember { mutableStateOf(IosAccountPage.LOGIN) }
     var addressReturnPage by remember { mutableStateOf(IosAccountPage.HOME) }
     val scope = rememberCoroutineScope()
-    val sessionState = remember(repository) { StoreAccountSessionState(repository) }
     val authSnapshot by sessionState.snapshot.collectAsState()
     val promotionRepository = remember(repository) {
         PromotionRepository(bearerTokenProvider = { repository.currentToken() })
@@ -143,23 +143,25 @@ fun CriosRangoIOSAccountScreen(
         }
     }
 
-    LaunchedEffect(sessionState) {
-        sessionState.restore()
-        val restored = sessionState.snapshot.value
-        user = restored.user
-        error = restored.error
-        startup = false
+    LaunchedEffect(authSnapshot.status, authSnapshot.user, authSnapshot.error) {
+        when (authSnapshot.status) {
+            StoreAccountAuthStatus.AUTHENTICATED -> user = authSnapshot.user
+            StoreAccountAuthStatus.UNAUTHENTICATED -> user = null
+            StoreAccountAuthStatus.CHECKING -> Unit
+        }
+        error = authSnapshot.error
     }
 
     MaterialTheme {
         androidx.compose.foundation.layout.Box(modifier.fillMaxSize()) {
-        if (startup) {
+        if (authSnapshot.status == StoreAccountAuthStatus.CHECKING && authSnapshot.loading) {
             FullScreenLoading("Comprobando sesión")
         } else {
             when (page) {
                 IosAccountPage.HOME -> Column(Modifier.fillMaxSize().padding(24.dp)) {
                     (error ?: authSnapshot.error)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     StoreAccountRootScreen(
+                        modifier = Modifier.weight(1f),
                         fullName = user?.let { it.displayName.ifBlank { it.email } },
                         email = user?.email,
                         appVersion = appVersion,

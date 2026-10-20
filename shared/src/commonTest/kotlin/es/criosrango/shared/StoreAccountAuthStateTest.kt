@@ -36,9 +36,11 @@ class StoreAccountAuthStateTest {
     private fun repository(
         tokenStore: MemoryTokenStore,
         responseBody: String,
-        status: HttpStatusCode = HttpStatusCode.OK
+        status: HttpStatusCode = HttpStatusCode.OK,
+        onRequest: () -> Unit = {}
     ): AccountRepository {
         val client = HttpClient(MockEngine {
+            onRequest()
             respond(
                 content = responseBody,
                 status = status,
@@ -65,6 +67,21 @@ class StoreAccountAuthStateTest {
         state.restore()
         assertEquals(StoreAccountAuthStatus.UNAUTHENTICATED, state.snapshot.value.status)
         assertEquals(false, state.snapshot.value.loading)
+    }
+
+    @Test
+    fun restoringSessionMoreThanOnceOnlyPerformsOneValidationRequest() = runBlocking {
+        var requests = 0
+        val state = StoreAccountSessionState(
+            repository(MemoryTokenStore(initialToken = "session-token"), meResponse, onRequest = { requests++ })
+        )
+
+        state.restore()
+        assertEquals(StoreAccountAuthStatus.AUTHENTICATED, state.snapshot.value.status)
+        state.restore()
+
+        assertEquals(1, requests, "Account remounts must not revalidate the session repeatedly")
+        assertEquals(StoreAccountAuthStatus.AUTHENTICATED, state.snapshot.value.status)
     }
 
     @Test
