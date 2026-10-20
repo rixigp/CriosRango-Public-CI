@@ -423,6 +423,7 @@ fun StoreCheckoutScreen(
         }
         }
     }
+}
 
 @Composable
 private fun CheckoutField(
