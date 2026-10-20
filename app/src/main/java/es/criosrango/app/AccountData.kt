@@ -185,7 +185,16 @@ typealias AccountAuthState = StoreAccountAuthStatus
 
 class AccountViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = AccountRepository(application)
-    private val sharedAuthSession = StoreAccountSessionState(repository.sharedRepository)
+    internal val sharedRepository get() = repository.sharedRepository
+    internal val sharedAuthSession = StoreAccountSessionState(repository.sharedRepository)
+    internal val sharedAddressOwner by lazy { es.criosrango.shared.StoreAddressOwner(repository.sharedRepository) }
+
+    fun publishProfileUser(user: AccountUser) {
+        _user.value = user
+        sharedAuthSession.publishAuthenticatedUser(user)
+        _accountDataError.value = null
+        _accountDataNotice.value = "Datos actualizados"
+    }
 
     private val _authState = MutableStateFlow(AccountAuthState.CHECKING)
     val authState = _authState.asStateFlow()
