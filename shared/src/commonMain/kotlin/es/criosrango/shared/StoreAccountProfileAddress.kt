@@ -344,19 +344,9 @@ fun StoreAddressScreen(
 /** Shared equivalent of the Android AccountSectionHeader golden. */
 @Composable
 fun StoreAccountSectionHeader(title: String, onBack: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        TextButton(
-            onClick = onBack,
-            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)
-        ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
-        }
-        Spacer(Modifier.width(6.dp))
-        Text(
-            title,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF183B35)
-        )
-    }
+    StoreCatalogHeader(
+        title = title,
+        showBack = true,
+        onBack = onBack
+    )
 }
