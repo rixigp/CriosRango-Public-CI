@@ -67,7 +67,7 @@ class StoreOrdersOwner(
         } else if (mutableState.value.authenticatedUserId != userId) {
             generation++
             loadedForUser = null
-            mutableState.value = StoreOrdersState(authenticatedUserId = userId)
+            mutableState.value = StoreOrdersState(loading = true, authenticatedUserId = userId)
         }
     }
 
