@@ -263,3 +263,35 @@ private fun orderAmount(value: String, currency: String): String {
     val amount = value.replace('.', ',')
     return if (currency.equals("EUR", true)) "$amount €" else "$amount $currency"
 }
+
+
+@Composable
+fun AccountReturnProductPicker(order: AccountOrderSummary, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("¿Qué producto quieres devolver?") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                order.items.forEachIndexed { index, item ->
+                    val details = returnVariationDetails(item)
+                    OutlinedButton(
+                        onClick = {
+                            onDismiss()
+                            openWhatsAppReturnRequest(context, order, item)
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = if (index == order.items.lastIndex) 0.dp else 8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.Transparent, contentColor = Color(0xFF183B35))
+                    ) {
+                        Column(Modifier.fillMaxWidth()) {
+                            Text(item.name.cleanWooText(), fontWeight = FontWeight.Medium)
+                            Text("Cantidad: ${item.quantity}", style = MaterialTheme.typography.bodySmall)
+                            details.forEach { (label, value) -> Text("$label: $value", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
+}
