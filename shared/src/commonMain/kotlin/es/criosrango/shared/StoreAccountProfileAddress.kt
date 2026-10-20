@@ -215,7 +215,8 @@ fun StoreProfileScreen(
     user: AccountUser?,
     onUserChanged: (AccountUser) -> Unit,
     onSessionExpired: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    headerHorizontalPadding: androidx.compose.ui.unit.Dp = 20.dp
 ) {
     val owner = remember(repository, sessionState) { StoreProfileOwner(repository, sessionState) }
     val scope = rememberCoroutineScope()
@@ -225,7 +226,7 @@ fun StoreProfileScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Top) {
-        StoreAccountSectionHeader("Datos personales", onBack)
+        StoreAccountSectionHeader("Datos personales", onBack, headerHorizontalPadding)
         Spacer(Modifier.height(20.dp))
         OutlinedTextField(firstName, { firstName = it; error = null }, label = { Text("Nombre") }, singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(14.dp))
@@ -265,7 +266,8 @@ fun StoreAddressScreen(
     repository: AccountRepository,
     addressOwner: StoreAddressOwner,
     onSessionExpired: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    headerHorizontalPadding: androidx.compose.ui.unit.Dp = 20.dp
 ) {
     val snapshot by addressOwner.snapshot.collectAsState()
     val scope = rememberCoroutineScope()
@@ -280,7 +282,7 @@ fun StoreAddressScreen(
     }
     var provinceExpanded by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Top) {
-        StoreAccountSectionHeader("Dirección de entrega", onBack)
+        StoreAccountSectionHeader("Dirección de entrega", onBack, headerHorizontalPadding)
         if (snapshot.loading && !snapshot.loaded) {
             CircularProgressIndicator()
         } else {
