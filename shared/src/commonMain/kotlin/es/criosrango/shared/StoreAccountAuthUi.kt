@@ -222,7 +222,7 @@ fun StoreAccountRootScreen(
             Text("Política de cookies", Modifier.fillMaxWidth().clickable { onInfoPage(StoreAccountInfoPage.COOKIES) }.padding(vertical = 6.dp))
         }
         Spacer(Modifier.height(20.dp))
-        Text("Versión $appVersion", Modifier.align(Alignment.CenterHorizontally), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (appVersion.isNotBlank()) Text("Versión $appVersion", Modifier.align(Alignment.CenterHorizontally), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
     }
 }
