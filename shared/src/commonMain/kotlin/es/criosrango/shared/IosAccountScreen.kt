@@ -167,7 +167,7 @@ fun CriosRangoIOSAccountScreen(
                         onProfile = { if (user == null) page = IosAccountPage.LOGIN else page = IosAccountPage.PROFILE },
                         onLogin = { error = null; page = IosAccountPage.LOGIN },
                         onHelp = { error = null; page = IosAccountPage.HELP },
-                        onInfoPage = { selectedInfoPage = it; error = null; page = IosAccountPage.INFO }
+                        onInfoPage = { selectedInfoPage = AccountInfoPage.valueOf(it.name); error = null; page = IosAccountPage.INFO }
                     )
                 }
                 IosAccountPage.LOGIN -> IosLoginScreen(
