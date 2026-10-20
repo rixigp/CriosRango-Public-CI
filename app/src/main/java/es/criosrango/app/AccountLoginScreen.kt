@@ -59,6 +59,8 @@ import es.criosrango.shared.promotions.isVisibleToAnonymous
 import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.loyalty.redeemableOptions
 import es.criosrango.shared.loyalty.subtractMoneyAmounts
+import es.criosrango.shared.StoreAccountRootScreen
+import es.criosrango.shared.StoreLoginScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -267,9 +269,10 @@ fun AccountLoginScreen(
             ) {
                 if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection == AccountSection.PROFILE) 8.dp else 20.dp))
                 when (accountSection) {
-                    AccountSection.HOME -> AccountHomeContentV2(
+                    AccountSection.HOME -> StoreAccountRootScreen(
                         fullName = fullName,
                         email = currentUser.email,
+                        appVersion = BuildConfig.VERSION_NAME,
                         onOrders = { accountSection = AccountSection.ORDERS },
                         onWallet = { accountSection = AccountSection.WALLET },
                         onProfile = { accountSection = AccountSection.PROFILE },
@@ -318,9 +321,10 @@ fun AccountLoginScreen(
             if (accountSection != AccountSection.HELP) Spacer(Modifier.height(20.dp))
             when (accountSection) {
                 AccountSection.HELP -> AccountHelpContent { accountSection = AccountSection.HOME }
-                else -> AccountHomeContentV2(
+                else -> StoreAccountRootScreen(
                     fullName = null,
                     email = null,
+                    appVersion = BuildConfig.VERSION_NAME,
                     onOrders = { showLogin = true },
                     onWallet = { showLogin = true },
                     onProfile = { showLogin = true },
@@ -333,23 +337,18 @@ fun AccountLoginScreen(
         }
     } else {
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
-            CatalogScreenHeader(
-                title = "Iniciar sesión",
-                onBack = leaveLogin,
-                bottomPadding = 4.dp
+            StoreLoginScreen(
+                login = login,
+                password = password,
+                loading = loading,
+                error = error,
+                onLoginChanged = { login = it },
+                onPasswordChanged = { password = it },
+                onSubmit = { submittedLogin, submittedPassword -> vm.login(submittedLogin, submittedPassword) },
+                onForgotPassword = { vm.clearAccountMessages(); showForgot = true },
+                onRegister = { vm.clearAccountMessages(); showRegister = true },
+                onBack = leaveLogin
             )
-            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                Spacer(Modifier.height(4.dp))
-                OutlinedTextField(login, { login = it }, label = { Text("Correo electrónico") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(12.dp))
-                OutlinedTextField(password, { password = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
-                error?.let { Spacer(Modifier.height(12.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
-                Spacer(Modifier.height(20.dp))
-                Button({ vm.login(login.trim(), password) }, enabled = !loading, modifier = Modifier.fillMaxWidth()) { if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Iniciar sesión") }
-                Spacer(Modifier.height(8.dp))
-                TextButton({ vm.clearAccountMessages(); showForgot = true }, modifier = Modifier.fillMaxWidth()) { Text("He olvidado mi contraseña") }
-                OutlinedButton({ vm.clearAccountMessages(); showRegister = true }, modifier = Modifier.fillMaxWidth()) { Text("Crear cuenta") }
-            }
             if (showRegister) AccountRegisterDialog(login, loading, error, dismissRegister, vm::createAccount)
             if (showForgot) AccountForgotPasswordDialog(login, forgotPasswordLoading, error, notice, dismissForgot, vm::forgotPassword)
         }
