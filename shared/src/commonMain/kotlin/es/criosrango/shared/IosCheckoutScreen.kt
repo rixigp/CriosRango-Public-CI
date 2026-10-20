@@ -412,6 +412,7 @@ private fun CheckoutField(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CheckoutProvinceSelector(selectedCode: String, modifier: Modifier = Modifier, onSelect: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
@@ -434,6 +435,7 @@ private fun CheckoutProvinceSelector(selectedCode: String, modifier: Modifier = 
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CheckoutCountry(
     value: String,
