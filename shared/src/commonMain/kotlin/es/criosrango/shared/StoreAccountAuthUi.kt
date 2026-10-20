@@ -41,6 +41,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 enum class StoreAccountAuthStatus { CHECKING, AUTHENTICATED, UNAUTHENTICATED }
+enum class StoreAccountInfoPage { RETURNS, TERMS, PRIVACY, LEGAL, COOKIES }
 
 data class StoreAccountAuthSnapshot(
     val status: StoreAccountAuthStatus = StoreAccountAuthStatus.CHECKING,
@@ -141,7 +142,7 @@ fun StoreAccountRootScreen(
     onProfile: () -> Unit,
     onLogin: () -> Unit,
     onHelp: () -> Unit,
-    onInfoPage: (AccountInfoPage) -> Unit,
+    onInfoPage: (StoreAccountInfoPage) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val authenticated = !fullName.isNullOrBlank() && !email.isNullOrBlank()
@@ -198,11 +199,11 @@ fun StoreAccountRootScreen(
         Spacer(Modifier.height(28.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Información", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text("Cambios y devoluciones", Modifier.fillMaxWidth().clickable { onInfoPage(AccountInfoPage.RETURNS) }.padding(vertical = 6.dp))
-            Text("Condiciones de contratación", Modifier.fillMaxWidth().clickable { onInfoPage(AccountInfoPage.TERMS) }.padding(vertical = 6.dp))
-            Text("Política de privacidad", Modifier.fillMaxWidth().clickable { onInfoPage(AccountInfoPage.PRIVACY) }.padding(vertical = 6.dp))
-            Text("Aviso legal", Modifier.fillMaxWidth().clickable { onInfoPage(AccountInfoPage.LEGAL) }.padding(vertical = 6.dp))
-            Text("Política de cookies", Modifier.fillMaxWidth().clickable { onInfoPage(AccountInfoPage.COOKIES) }.padding(vertical = 6.dp))
+            Text("Cambios y devoluciones", Modifier.fillMaxWidth().clickable { onInfoPage(StoreAccountInfoPage.RETURNS) }.padding(vertical = 6.dp))
+            Text("Condiciones de contratación", Modifier.fillMaxWidth().clickable { onInfoPage(StoreAccountInfoPage.TERMS) }.padding(vertical = 6.dp))
+            Text("Política de privacidad", Modifier.fillMaxWidth().clickable { onInfoPage(StoreAccountInfoPage.PRIVACY) }.padding(vertical = 6.dp))
+            Text("Aviso legal", Modifier.fillMaxWidth().clickable { onInfoPage(StoreAccountInfoPage.LEGAL) }.padding(vertical = 6.dp))
+            Text("Política de cookies", Modifier.fillMaxWidth().clickable { onInfoPage(StoreAccountInfoPage.COOKIES) }.padding(vertical = 6.dp))
         }
         Spacer(Modifier.height(20.dp))
         Text("Versión $appVersion", Modifier.align(Alignment.CenterHorizontally), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
