@@ -53,13 +53,6 @@ import kotlinx.coroutines.sync.Mutex
 
 enum class StoreAccountAuthStatus { CHECKING, AUTHENTICATED, UNAUTHENTICATED }
 enum class StoreAccountInfoPage { RETURNS, TERMS, PRIVACY, LEGAL, COOKIES }
-enum class AccountInfoPage(val title: String, val slug: String) {
-    RETURNS("Cambios y devoluciones", "cambios-y-devoluciones"),
-    TERMS("Condiciones de contratación", "condiciones-generales-de-contratacion"),
-    PRIVACY("Política de privacidad", "politica-de-privacidad"),
-    LEGAL("Aviso legal", "aviso-legal"),
-    COOKIES("Política de cookies", "politica-de-cookies")
-}
 
 
 class StoreAccountActionGate {
