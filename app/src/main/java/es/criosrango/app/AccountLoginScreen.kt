@@ -408,66 +408,6 @@ private fun AccountCompactAccess(
     }
 }
 
-@Composable
-private fun AccountHomeContentV2(
-    fullName: String?,
-    email: String?,
-    onOrders: () -> Unit,
-    onWallet: () -> Unit,
-    onProfile: () -> Unit,
-    onLogin: () -> Unit,
-    onHelp: () -> Unit,
-    onInfoPage: (AccountInfoPage) -> Unit
-) {
-    val isAuthenticated = !fullName.isNullOrBlank() && !email.isNullOrBlank()
-    val nameParts = fullName.orEmpty().trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-    val initials = buildString { nameParts.firstOrNull()?.firstOrNull()?.let { append(it.uppercaseChar()) }; nameParts.drop(1).firstOrNull()?.firstOrNull()?.let { append(it.uppercaseChar()) } }.ifBlank { "CR" }
-    Column(Modifier.fillMaxWidth()) {
-        Text("Cuenta", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color(0xFF183B35))
-        Spacer(Modifier.height(20.dp))
-        if (isAuthenticated) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Surface(Modifier.size(60.dp), shape = CircleShape, color = Color(0xFFE9E6EA)) { Box(contentAlignment = Alignment.Center) { Text(initials, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = Color(0xFF183B35)) } }
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) { Text(fullName.orEmpty(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium); Spacer(Modifier.height(3.dp)); Text(email.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onLogin).padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier.size(60.dp).background(Color(0xFFE3EFEB), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Outlined.Person, contentDescription = null, tint = Color(0xFF183B35), modifier = Modifier.size(30.dp))
-                }
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Inicia sesión o regístrate", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-                    Spacer(Modifier.height(3.dp))
-                    Text("Accede a tu cuenta", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        Spacer(Modifier.height(if (isAuthenticated) 24.dp else 12.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            AccountCompactAccess(Modifier.weight(1f), "Pedidos", Icons.Outlined.History, onOrders)
-            AccountCompactAccess(Modifier.weight(1f), "Cupones y promociones", Icons.Outlined.Sell, onWallet)
-        }
-        Spacer(Modifier.height(12.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            AccountCompactAccess(Modifier.weight(1f), "Perfil", Icons.Outlined.Person, onProfile)
-            AccountCompactAccess(Modifier.weight(1f), "Ayuda", Icons.AutoMirrored.Outlined.HelpOutline, onHelp)
-        }
-        Spacer(Modifier.height(28.dp))
-        AccountInformationHomeSection(onInfoPage)
-        Spacer(Modifier.height(20.dp))
-        Text("Versión ${BuildConfig.VERSION_NAME}", Modifier.align(Alignment.CenterHorizontally), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(16.dp))
-    }
-}
-
 private fun buildLineIcon(name: String, content: androidx.compose.ui.graphics.vector.PathBuilder.() -> Unit): ImageVector =
     ImageVector.Builder(
         name = name,
