@@ -75,6 +75,11 @@ class StoreAccountProfileAddressTest {
         )
         assertNull(StoreAccountFormValidation.addressError(valid))
         assertEquals("Completa todos los campos obligatorios.", StoreAccountFormValidation.addressError(valid.copy(address1 = " ")))
+        assertEquals("Completa todos los campos obligatorios.", StoreAccountFormValidation.addressError(valid.copy(firstName = " ")))
+        assertEquals("Completa todos los campos obligatorios.", StoreAccountFormValidation.addressError(valid.copy(lastName = " ")))
+        assertEquals("Completa todos los campos obligatorios.", StoreAccountFormValidation.addressError(valid.copy(postcode = " ")))
+        assertEquals("Completa todos los campos obligatorios.", StoreAccountFormValidation.addressError(valid.copy(city = " ")))
+        assertEquals("Completa todos los campos obligatorios.", StoreAccountFormValidation.addressError(valid.copy(state = " ")))
         assertEquals("Selecciona una provincia.", StoreAccountFormValidation.addressError(valid.copy(state = "XX")))
         // Account validation intentionally does not apply checkout's province/postcode locality mapping.
         assertNull(StoreAccountFormValidation.addressError(valid.copy(postcode = "08001", city = "Madrid", state = "M")))
