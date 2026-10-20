@@ -289,8 +289,20 @@ fun AccountLoginScreen(
                             accountSection = AccountSection.HOME
                             vm.clearAccountMessages()
                         } })
-                    AccountSection.DATA -> AccountPersonalDataContent(vm, currentUser) { accountSection = AccountSection.PROFILE }
-                    AccountSection.ADDRESSES -> AccountAddressContent(vm, address) { accountSection = AccountSection.PROFILE }
+                    AccountSection.DATA -> es.criosrango.shared.StoreProfileScreen(
+                        repository = vm.sharedRepository,
+                        sessionState = vm.sharedAuthSession,
+                        user = currentUser,
+                        onUserChanged = vm::publishProfileUser,
+                        onSessionExpired = { vm.retrySession() },
+                        onBack = { accountSection = AccountSection.PROFILE }
+                    )
+                    AccountSection.ADDRESSES -> es.criosrango.shared.StoreAddressScreen(
+                        repository = vm.sharedRepository,
+                        addressOwner = vm.sharedAddressOwner,
+                        onSessionExpired = { vm.retrySession() },
+                        onBack = { accountSection = AccountSection.PROFILE }
+                    )
                     AccountSection.HELP -> AccountHelpContent { accountSection = AccountSection.HOME }
                     AccountSection.WALLET -> AccountWalletContent(
                         authenticated = currentUser != null,
