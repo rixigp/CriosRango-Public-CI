@@ -290,7 +290,7 @@ fun AccountLoginScreen(
                     .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.DATA, AccountSection.ADDRESSES)) Modifier else Modifier.verticalScroll(rememberScrollState()))
                     .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.HELP)) Modifier else Modifier.padding(horizontal = 24.dp))
             ) {
-                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection == AccountSection.HOME) 0.dp else if (accountSection in setOf(AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) 8.dp else 20.dp))
+                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection in setOf(AccountSection.HOME, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) 0.dp else 20.dp))
                 when (accountSection) {
                     AccountSection.HOME -> StoreAccountRootScreen(
                         contentHorizontalPadding = 24.dp,
@@ -1138,7 +1138,7 @@ private fun AccountAddressField(label: String, value: String, enabled: Boolean, 
 
 @Composable
 fun AccountSectionHeader(title: String, onBack: () -> Unit) {
-    es.criosrango.shared.StoreAccountSectionHeader(title, onBack)
+    es.criosrango.shared.StoreAccountSectionHeader(title, onBack, horizontalPadding = 0.dp)
 }
 
 @Composable
