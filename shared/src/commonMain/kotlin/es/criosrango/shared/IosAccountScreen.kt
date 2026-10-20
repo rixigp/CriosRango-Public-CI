@@ -80,6 +80,7 @@ private enum class IosAccountPage { HOME, LOGIN, REGISTER, FORGOT, PROFILE, DATA
 fun CriosRangoIOSAccountScreen(
     repository: AccountRepository,
     loyaltyRepository: LoyaltyRepository,
+    appVersion: String = "",
     cartCouponCodes: Set<String> = emptySet(),
     onApplyWalletCoupon: suspend (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -161,7 +162,7 @@ fun CriosRangoIOSAccountScreen(
                     StoreAccountRootScreen(
                         fullName = user?.let { it.displayName.ifBlank { it.email } },
                         email = user?.email,
-                        appVersion = "iOS",
+                        appVersion = appVersion,
                         onOrders = { if (user == null) page = IosAccountPage.LOGIN else page = IosAccountPage.ORDERS },
                         onWallet = { if (user == null) page = IosAccountPage.LOGIN else page = IosAccountPage.WALLET },
                         onProfile = { if (user == null) page = IosAccountPage.LOGIN else page = IosAccountPage.PROFILE },
