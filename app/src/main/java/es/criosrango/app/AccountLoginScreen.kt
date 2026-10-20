@@ -264,7 +264,8 @@ fun AccountLoginScreen(
             }
         } else {
             Column(
-                Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
+                Modifier.fillMaxSize().padding(padding)
+                    .then(if (accountSection == AccountSection.HOME) Modifier else Modifier.verticalScroll(rememberScrollState()))
                     .then(if (accountSection == AccountSection.HELP) Modifier else Modifier.padding(horizontal = 24.dp))
             ) {
                 if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection == AccountSection.PROFILE) 8.dp else 20.dp))
@@ -327,7 +328,8 @@ fun AccountLoginScreen(
         if (showForgot) AccountForgotPasswordDialog(login, forgotPasswordLoading, error, notice, { showForgot = false; vm.clearAccountMessages() }, vm::forgotPassword)
     } else if (!showLogin) {
         Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
+            Modifier.fillMaxSize().padding(padding)
+                    .then(if (accountSection == AccountSection.HOME) Modifier else Modifier.verticalScroll(rememberScrollState()))
                 .then(if (accountSection == AccountSection.HELP) Modifier else Modifier.padding(horizontal = 24.dp))
         ) {
             if (accountSection != AccountSection.HELP) Spacer(Modifier.height(20.dp))
