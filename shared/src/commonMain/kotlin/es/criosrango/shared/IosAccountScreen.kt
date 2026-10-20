@@ -58,6 +58,9 @@ import es.criosrango.shared.account.AccountCustomerAddress
 import es.criosrango.shared.account.AccountOrderSummary
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.account.AccountUser
+import es.criosrango.shared.StoreAccountRootScreen
+import es.criosrango.shared.StoreLoginScreen
+import es.criosrango.shared.normalizeStoreLoginError
 import es.criosrango.shared.loyalty.LoyaltyRepository
 import es.criosrango.shared.promotions.Promotion
 import es.criosrango.shared.promotions.PromotionRepository
@@ -81,11 +84,14 @@ fun CriosRangoIOSAccountScreen(
     onOpenExternalUrl: (String) -> Unit,
     initialOrderId: Int? = null,
     openPromotionsOnStart: Boolean = false,
+    openLoginOnStart: Boolean = false,
+    onBackFromLogin: (() -> Unit)? = null,
+    onAuthenticated: (() -> Unit)? = null,
     onPromotionsOpened: () -> Unit = {},
     onBeforeLogout: suspend () -> Unit = {}
 ) {
     var page by remember {
-        mutableStateOf(if (openPromotionsOnStart) IosAccountPage.WALLET else IosAccountPage.HOME)
+        mutableStateOf(if (openPromotionsOnStart) IosAccountPage.WALLET else if (openLoginOnStart) IosAccountPage.LOGIN else IosAccountPage.HOME)
     }
     var user by remember { mutableStateOf<AccountUser?>(null) }
     var startup by remember { mutableStateOf(true) }
@@ -120,6 +126,7 @@ fun CriosRangoIOSAccountScreen(
         user = authenticatedUser
         error = null
         page = if (openPromotionsOnStart) IosAccountPage.WALLET else IosAccountPage.HOME
+        onAuthenticated?.invoke()
         scope.launch {
             runCatching { repository.claimPendingOrder() }
                 .onFailure { println("KMP_ACCOUNT_CLAIM_FAILED=${it.message}") }
@@ -160,26 +167,25 @@ fun CriosRangoIOSAccountScreen(
             FullScreenLoading("Comprobando sesión")
         } else {
             when (page) {
-                IosAccountPage.HOME -> IosAccountHome(
-                    user, error,
-                    onLogin = { error = null; page = IosAccountPage.LOGIN },
-                    onRegister = { error = null; page = IosAccountPage.REGISTER },
-                    onProfile = { error = null; page = IosAccountPage.PROFILE },
-                    onAddress = { error = null; addressReturnPage = IosAccountPage.HOME; page = IosAccountPage.ADDRESS },
-                    onOrders = { error = null; page = IosAccountPage.ORDERS },
-                    onWallet = { error = null; page = IosAccountPage.WALLET },
-                    onInfoPage = { selectedInfoPage = it; error = null; page = IosAccountPage.INFO },
-                    onHelp = { error = null; page = IosAccountPage.HELP },
-                    onLogout = { user = null; error = null; page = IosAccountPage.HOME },
-                    repository = repository,
-                    onBeforeLogout = onBeforeLogout
-                )
+                IosAccountPage.HOME -> Column(Modifier.fillMaxSize().padding(24.dp)) {
+                    StoreAccountRootScreen(
+                        fullName = user?.let { it.displayName.ifBlank { it.email } },
+                        email = user?.email,
+                        appVersion = "iOS",
+                        onOrders = { if (user == null) page = IosAccountPage.LOGIN else page = IosAccountPage.ORDERS },
+                        onWallet = { if (user == null) page = IosAccountPage.LOGIN else page = IosAccountPage.WALLET },
+                        onProfile = { if (user == null) page = IosAccountPage.LOGIN else page = IosAccountPage.PROFILE },
+                        onLogin = { error = null; page = IosAccountPage.LOGIN },
+                        onHelp = { error = null; page = IosAccountPage.HELP },
+                        onInfoPage = { selectedInfoPage = it; error = null; page = IosAccountPage.INFO }
+                    )
+                }
                 IosAccountPage.LOGIN -> IosLoginScreen(
                     repository,
                     onAuthenticated = ::finishAuthentication,
                     onRegister = { page = IosAccountPage.REGISTER },
                     onForgot = { forgotReturnPage = IosAccountPage.LOGIN; page = IosAccountPage.FORGOT },
-                    onBack = { page = IosAccountPage.HOME }
+                    onBack = { if (onBackFromLogin != null) onBackFromLogin() else page = IosAccountPage.HOME }
                 )
                 IosAccountPage.REGISTER -> IosRegisterScreen(
                     repository,
@@ -952,29 +958,39 @@ private fun IosLoginScreen(
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    AccountForm("Iniciar sesión", onBack) {
-        OutlinedTextField(login, { login = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(password, { password = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Button(
-            enabled = !busy && login.isNotBlank() && password.isNotBlank(),
-            onClick = {
-                busy = true; error = null
+    StoreLoginScreen(
+        login = login,
+        password = password,
+        loading = busy,
+        error = error,
+        onLoginChanged = { login = it; error = null },
+        onPasswordChanged = { password = it; error = null },
+        onSubmit = { submittedLogin, submittedPassword ->
+            if (submittedLogin.isBlank() || submittedPassword.isBlank()) {
+                error = "Introduce tu correo y contraseña."
+            } else if (!busy) {
+                busy = true
+                error = null
                 scope.launch {
-                    runCatching { repository.login(login, password) }
-                        .onSuccess(onAuthenticated)
-                        .onFailure { error = it.message ?: "No se ha podido iniciar sesión." }
-                    busy = false
+                    try {
+                        onAuthenticated(repository.login(submittedLogin.trim(), submittedPassword))
+                    } catch (failure: Exception) {
+                        val status = (failure as? io.ktor.client.plugins.ResponseException)?.response?.status?.value
+                        error = if (failure is IllegalStateException && failure.message == "No se ha podido guardar la sesión de cuenta.")
+                            failure.message else if (status == null) "No hemos podido conectar con la tienda." else normalizeStoreLoginError(status)
+                    } finally {
+                        busy = false
+                    }
                 }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) { Text(if (busy) "Entrando…" else "Iniciar sesión") }
-        TextButton(onClick = onForgot) { Text("He olvidado mi contraseña") }
-        TextButton(onClick = onRegister) { Text("Crear una cuenta") }
-    }
+            }
+        },
+        onForgotPassword = onForgot,
+        onRegister = onRegister,
+        onBack = onBack,
+        modifier = Modifier.fillMaxSize()
+    )
 }
 
-@Composable
 private fun IosRegisterScreen(
     repository: AccountRepository,
     onAuthenticated: (AccountUser) -> Unit,
