@@ -10,6 +10,8 @@ import es.criosrango.shared.model.SelectShippingRateRequest
 import es.criosrango.shared.model.StoreCart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,6 +47,9 @@ class StoreCheckoutStore(
     private val scope = scope
     private val mutex = Mutex()
     private val submissionGate = StoreCheckoutSubmissionGate()
+    private val checkoutGeneration = CheckoutOperationGeneration()
+    private var activeCheckoutJob: Job? = null
+    private fun beginCheckoutOperation(): Long { val token = checkoutGeneration.next(); activeCheckoutJob?.cancel(); return token }
 
     private val _checkout = MutableStateFlow<CheckoutResponse?>(null)
     val checkout: StateFlow<CheckoutResponse?> = _checkout.asStateFlow()
@@ -60,8 +65,10 @@ class StoreCheckoutStore(
     val createdOrder: StateFlow<CheckoutResponse?> = _createdOrder.asStateFlow()
 
     fun load() {
-        scope.launch {
+        val generation = beginCheckoutOperation()
+        activeCheckoutJob = scope.launch {
             mutex.withLock {
+                if (!checkoutGeneration.isCurrent(generation)) return@withLock
                 _phase.value = StoreCheckoutPhase.LOADING
                 _error.value = null
                 runCatching {
@@ -93,19 +100,21 @@ class StoreCheckoutStore(
                         }
                         requoted
                     } else checkoutResponse
+                    if (!checkoutGeneration.isCurrent(generation)) throw CancellationException("Stale checkout response")
                     _cart.value = currentCart
                     finalCheckout
                 }.onSuccess {
-                    _checkout.value = it
-                    _phase.value = StoreCheckoutPhase.READY
-                }.onFailure { fail(it) }
+                    if (checkoutGeneration.isCurrent(generation)) { _checkout.value = it; _phase.value = StoreCheckoutPhase.READY }
+                }.onFailure { if (checkoutGeneration.isCurrent(generation) && it !is CancellationException) fail(it) }
             }
         }
     }
 
     fun updateCustomer(address: CustomerAddress) {
-        scope.launch {
+        val generation = beginCheckoutOperation()
+        activeCheckoutJob = scope.launch {
             mutex.withLock {
+                if (!checkoutGeneration.isCurrent(generation)) return@withLock
                 _phase.value = StoreCheckoutPhase.LOADING
                 _error.value = null
                 runCatching {
@@ -134,6 +143,7 @@ class StoreCheckoutStore(
                     if (checkoutResponse.errors.isNotEmpty()) {
                         throw IllegalStateException(checkoutResponse.errors.joinToString("\n") { it.message })
                     }
+                    if (!checkoutGeneration.isCurrent(generation)) throw CancellationException("Stale checkout response")
                     _cart.value = updatedCart
                     checkoutResponse
                 }.onSuccess {
@@ -145,8 +155,10 @@ class StoreCheckoutStore(
     }
 
     fun selectShipping(packageId: Int, rateId: String) {
-        scope.launch {
+        val generation = beginCheckoutOperation()
+        activeCheckoutJob = scope.launch {
             mutex.withLock {
+                if (!checkoutGeneration.isCurrent(generation)) return@withLock
                 _phase.value = StoreCheckoutPhase.LOADING
                 _error.value = null
                 runCatching {
@@ -154,11 +166,12 @@ class StoreCheckoutStore(
                     if (updatedCart.errors.isNotEmpty()) {
                         throw IllegalStateException(updatedCart.errors.joinToString("\n") { it.message })
                     }
-                    _cart.value = updatedCart
                     val checkoutResponse = api.checkout()
                     if (checkoutResponse.errors.isNotEmpty()) {
                         throw IllegalStateException(checkoutResponse.errors.joinToString("\n") { it.message })
                     }
+                    if (!checkoutGeneration.isCurrent(generation)) throw CancellationException("Stale shipping response")
+                    _cart.value = updatedCart
                     checkoutResponse
                 }.onSuccess {
                     _checkout.value = it
@@ -230,7 +243,7 @@ class StoreCheckoutStore(
         }
     }
 
-    fun resetForLogout() {
+    fun resetForLogout() { checkoutGeneration.next(); activeCheckoutJob?.cancel()
         _checkout.value = null
         _cart.value = StoreCart()
         _phase.value = StoreCheckoutPhase.IDLE
@@ -242,7 +255,7 @@ class StoreCheckoutStore(
 
     fun clearCreatedOrder() { _createdOrder.value = null }
 
-    fun clearForNewProcess() {
+    fun clearForNewProcess() { checkoutGeneration.next(); activeCheckoutJob?.cancel()
         _createdOrder.value = null
         _checkout.value = null
         _cart.value = StoreCart()

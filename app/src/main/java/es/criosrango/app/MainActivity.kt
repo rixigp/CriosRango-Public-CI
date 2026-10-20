@@ -98,6 +98,7 @@ import kotlinx.coroutines.launch
 enum class BrandOrigin { HOME, ALL_BRANDS }
 enum class AppTab(val label: String) { HOME("Inicio"), CATEGORIES("Categorías"), OUTLET("Outlet"), SEARCH("Buscar"), CART("Carrito"), ACCOUNT("Cuenta") }
 private val paymentReturnUriState = androidx.compose.runtime.mutableStateOf<android.net.Uri?>(null)
+private var activeAndroidCheckoutPaymentStore: es.criosrango.shared.StorePaymentStore? = null
 private val pushTypeState = androidx.compose.runtime.mutableStateOf<String?>(null)
 private val pushOrderIdState = androidx.compose.runtime.mutableStateOf<Int?>(null)
 private const val NOTIFICATION_PERMISSION_REQUESTED_KEY = "notification_permission_requested"
@@ -149,7 +150,7 @@ class MainActivity : ComponentActivity() {
         )[ShopViewModel::class.java]
         val coldStartBranding = !startupBrandingShownInProcess
         startupBrandingShownInProcess = true
-        setContent { CriosRangoApp(shopViewModel, categoryCache, outletAvailabilityStore, coldStartBranding, sharedCatalogClient, accountTokenStore) }
+        setContent { CriosRangoApp(shopViewModel, categoryCache, outletAvailabilityStore, coldStartBranding, sharedCatalogClient, accountTokenStore, pendingCardPaymentStore) }
     }
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
@@ -158,7 +159,7 @@ class MainActivity : ComponentActivity() {
         pushTypeState.value = intent.getStringExtra(PushNotificationContract.TYPE_KEY)
         pushOrderIdState.value = PushNotificationContract.parseOrderId(intent.getStringExtra(PushNotificationContract.ORDER_ID_KEY))
     }
-    override fun onResume() { super.onResume(); PushNotificationController.initialize(this) }
+    override fun onResume() { super.onResume(); PushNotificationController.initialize(this); activeAndroidCheckoutPaymentStore?.onForeground() }
 }
 
 @Composable
@@ -198,11 +199,24 @@ private fun CriosRangoApp(
     outletAvailabilityStore: OutletAvailabilityStore,
     coldStartBranding: Boolean,
     sharedCatalogClient: es.criosrango.shared.api.StoreApiClient,
-    accountTokenStore: es.criosrango.shared.account.AccountTokenStore
+    accountTokenStore: es.criosrango.shared.account.AccountTokenStore,
+    androidPendingPaymentStore: PendingCardPaymentStore
 ) {
     val rootFilterScope = rememberCoroutineScope()
     val sharedCartStore = remember(sharedCatalogClient) { es.criosrango.shared.StoreCartStore(sharedCatalogClient) }
     val sharedCartController = remember(sharedCartStore) { es.criosrango.shared.StoreCartController(sharedCartStore) }
+    val sharedAccountRepository = remember(accountTokenStore) { es.criosrango.shared.account.AccountRepository(accountTokenStore) }
+    val sharedCheckoutStore = remember(sharedCatalogClient, sharedCartStore, sharedAccountRepository) {
+        es.criosrango.shared.StoreCheckoutStore(sharedCatalogClient, sharedCartStore, sharedAccountRepository)
+    }
+    val sharedPaymentStore = remember(sharedCatalogClient, sharedCartStore, androidPendingPaymentStore) {
+        es.criosrango.shared.StorePaymentStore(sharedCatalogClient, sharedCartStore, object : es.criosrango.shared.PendingCardPaymentStore {
+            override fun save(payment: es.criosrango.shared.StorePendingCardPayment): Boolean = androidPendingPaymentStore.save(LastCheckout(payment.orderId, payment.orderKey, payment.paymentUrl))
+            override fun load(): es.criosrango.shared.StorePendingCardPayment? = androidPendingPaymentStore.load()?.let { es.criosrango.shared.StorePendingCardPayment(it.orderId, it.orderKey, it.paymentUrl) }
+            override fun clear(): Boolean = androidPendingPaymentStore.clear()
+        })
+    }
+    SideEffect { activeAndroidCheckoutPaymentStore = sharedPaymentStore }
     val sharedLoyaltyRepository = remember(accountTokenStore) { es.criosrango.shared.loyalty.LoyaltyRepository(accountTokenStore) }
     val sharedCartUiState by sharedCartController.state.collectAsStateWithLifecycle()
     val brandsController = remember(sharedCatalogClient) { es.criosrango.shared.StoreBrandsController(sharedCatalogClient, rootFilterScope) }
@@ -396,21 +410,18 @@ private fun CriosRangoApp(
                 StartupBranding()
             } else Surface(Modifier.fillMaxSize(), color = Color(0xFFFCFAF7)) {
             if (checkoutOpen) {
-                RedesignedCheckoutScreen(
-                    remoteCart,
-                    checkout,
-                    checkoutLoading,
-                    checkoutError,
-                    checkoutPhase,
-                    { checkoutOpen = false; viewModel.abandonCheckout() },
-                    cartQuantity,
-                    { checkoutOpen = false; viewModel.abandonCheckout(); tab = AppTab.SEARCH },
-                    { checkoutOpen = false; viewModel.abandonCheckout(); tab = AppTab.CART },
-                    viewModel::loadCheckout,
-                    viewModel::selectShippingRate,
-                    viewModel::createOrder,
-                    viewModel.deliveryAddressStore,
-                    loyaltyWallet
+                es.criosrango.shared.StoreCheckoutScreen(
+                    checkoutStore = sharedCheckoutStore, paymentStore = sharedPaymentStore,
+                    accountRepository = sharedAccountRepository, padding = PaddingValues(0.dp),
+                    onBack = { checkoutOpen = false },
+                    onOpenPayment = { url ->
+                        val opened = runCatching { androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(false).setUrlBarHidingEnabled(true).build().launchUrl(context, Uri.parse(url)) }.isSuccess
+                        if (opened) sharedPaymentStore.markPaymentOpened() else sharedPaymentStore.handlePaymentOpenFailure()
+                    },
+                    loyaltyRepository = sharedLoyaltyRepository, walletEnabled = sharedAccountRepository.hasSession,
+                    cartQuantity = cartQuantity,
+                    onSearch = { checkoutOpen = false; tab = AppTab.SEARCH },
+                    onCart = { checkoutOpen = false; tab = AppTab.CART }
                 )
             } else if (selectedProduct != null) {
                 ProductDetail(
@@ -558,12 +569,12 @@ private fun CriosRangoApp(
             when (result) {
                 "cancel" -> {
                     if (orderId != null) {
-                        viewModel.handleCardPaymentCancelled(orderId)
+                        sharedPaymentStore.cancel(orderId)
                         checkoutOpen = false
                         tab = AppTab.CART
                     }
                 }
-                "ok" -> viewModel.verifyCardPaymentReturn()
+                "ok" -> sharedPaymentStore.handlePaymentReturn("ok", orderId)
             }
         }
         val isProductLink = (uri.scheme == "https" || uri.scheme == "http") && (host == "criosrango.es" || host == "www.criosrango.es") && uri.pathSegments.firstOrNull()?.equals("producto", ignoreCase = true) == true

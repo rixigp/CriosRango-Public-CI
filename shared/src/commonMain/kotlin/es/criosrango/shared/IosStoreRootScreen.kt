@@ -285,7 +285,7 @@ fun CriosRangoIOSRootScreen(
                 if (destination == IosRootSection.OUTLET) openCatalog(IosCatalogPage.Outlet())
             },
             topBar = {
-                StoreGlobalTopBar(
+                if (!checkoutOpen) StoreGlobalTopBar(
                     cartQuantity = cartQuantity,
                     onSearch = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Search) },
                     onCart = { resetCatalog(); section = IosRootSection.CART }
@@ -296,7 +296,7 @@ fun CriosRangoIOSRootScreen(
             val padding = paddingValues
             Column(Modifier.fillMaxSize()) {
             if (checkoutOpen && postOrderSuccess == null) {
-                IosCheckoutScreen(
+                StoreCheckoutScreen(
                     checkoutStore = checkoutStore,
                     paymentStore = paymentStore,
                     accountRepository = accountRepository,
@@ -304,7 +304,10 @@ fun CriosRangoIOSRootScreen(
                     onBack = { checkoutOpen = false },
                     onOpenPayment = onOpenPayment,
                     loyaltyRepository = loyaltyRepository,
-                    walletEnabled = accountRepository.hasSession
+                    walletEnabled = accountRepository.hasSession,
+                    cartQuantity = cartQuantity,
+                    onSearch = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Search) },
+                    onCart = { resetCatalog(); section = IosRootSection.CART }
                 )
             } else if (!checkoutOpen) when (section) {
                 IosRootSection.HOME -> Box(Modifier.fillMaxSize()) {

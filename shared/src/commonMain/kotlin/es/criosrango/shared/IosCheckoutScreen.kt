@@ -22,6 +22,11 @@ import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.model.CustomerAddress
 import es.criosrango.shared.model.supportedPaymentOptions
 import es.criosrango.shared.model.consumerDiscount
+import es.criosrango.shared.validateCheckoutAddress
+import es.criosrango.shared.CHECKOUT_SPANISH_PROVINCES
+import es.criosrango.shared.model.normalizePaymentGatewayIds
+import es.criosrango.shared.model.rawPaymentGatewayIds
+import es.criosrango.shared.model.consumerShipping
 import es.criosrango.shared.model.consumerSubtotal
 import es.criosrango.shared.checkoutFreeShippingProgress
 import es.criosrango.shared.loyalty.LoyaltyRepository
@@ -29,7 +34,7 @@ import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.resolveCouponPresentation
 
 @Composable
-fun IosCheckoutScreen(
+fun StoreCheckoutScreen(
     checkoutStore: StoreCheckoutStore,
     paymentStore: StorePaymentStore,
     accountRepository: AccountRepository,
@@ -37,7 +42,10 @@ fun IosCheckoutScreen(
     onBack: () -> Unit,
     onOpenPayment: (String) -> Unit,
     loyaltyRepository: LoyaltyRepository,
-    walletEnabled: Boolean
+    walletEnabled: Boolean,
+    cartQuantity: Int = 0,
+    onSearch: () -> Unit = {},
+    onCart: () -> Unit = {}
 ) {
     val checkout by checkoutStore.checkout.collectAsState()
     val cart by checkoutStore.cart.collectAsState()
@@ -82,7 +90,7 @@ fun IosCheckoutScreen(
         }
     }
 
-    val paymentOptions = checkout?.supportedPaymentOptions().orEmpty()
+    val paymentOptions = normalizePaymentGatewayIds(checkout?.rawPaymentGatewayIds().orEmpty() + cart.paymentMethods)
     LaunchedEffect(paymentOptions) {
         if (selectedPayment !in paymentOptions.map { it.gatewayId }) {
             selectedPayment = paymentOptions.firstOrNull()?.gatewayId.orEmpty()
@@ -104,7 +112,7 @@ fun IosCheckoutScreen(
 
     val addressValue = CustomerAddress(
         firstName.trim(), lastName.trim(), email.trim(), phone.trim(),
-        address.trim(), address2.trim(), postcode.trim(), city.trim(), state.trim(), country.trim()
+        address.trim(), address2.trim(), postcode.trim(), city.trim(), state.trim().uppercase(), country.trim().uppercase()
     )
     val shippingOptions = cart.shippingRates.flatMap { pack -> pack.rates.map { pack to it } }
     val paymentInProgress = paymentState in setOf(
@@ -136,12 +144,13 @@ fun IosCheckoutScreen(
         contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 72.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        item { StoreGlobalTopBar(cartQuantity = cartQuantity, onSearch = onSearch, onCart = onCart) }
         item {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 0.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onBack, enabled = !checkoutBusy && !paymentInProgress) { Text("← Carrito") }
+                TextButton(onClick = onBack, enabled = !checkoutBusy && !paymentInProgress) { Text("←") }
                 Text("Finalizar compra", style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.weight(1f))
             }
         }
@@ -183,16 +192,26 @@ fun IosCheckoutScreen(
         item { CheckoutField("Email", email, KeyboardType.Email) { email = it } }
         item { CheckoutField("Teléfono", phone, KeyboardType.Phone) { phone = it } }
         item { CheckoutField("Dirección", address) { address = it } }
-        item { CheckoutField("Piso / puerta (opcional)", address2) { address2 = it } }
-        item { CheckoutField("Código postal", postcode, KeyboardType.Number) { postcode = it.filter(Char::isDigit).take(5) } }
-        item { CheckoutField("Localidad", city) { city = it } }
-        item { CheckoutField("Provincia", state) { state = it } }
-        item { CheckoutField("País", country) { country = it.uppercase().take(2) } }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                CheckoutProvinceSelector(state, modifier = Modifier.weight(1f)) { selected -> state = selected; city = ""; postcode = "" }
+                CheckoutField("Localidad", city) { city = it }
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                CheckoutField("Código postal", postcode, KeyboardType.Number) { postcode = it.filter(Char::isDigit).take(5) }
+                Column(Modifier.weight(1f)) {
+                    Text("País", style = MaterialTheme.typography.labelMedium)
+                    Text("España", modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp))
+                }
+            }
+        }
         addressError?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
         item {
             Button(
                 onClick = {
-                    addressError = validateIosCheckoutAddress(addressValue)
+                    addressError = validateCheckoutAddress(addressValue)
                     if (addressError == null) checkoutStore.updateCustomer(addressValue)
                 },
                 enabled = phase != StoreCheckoutPhase.LOADING && phase != StoreCheckoutPhase.CREATING_ORDER,
@@ -224,6 +243,45 @@ fun IosCheckoutScreen(
                 }
             }
         }
+        item {
+            CheckoutSection(3, "Resumen")
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text(
+                    if (cart.items.size == 1) "1 producto" else cart.items.size.toString() + " productos",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                cart.items.forEach { line ->
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(normalizeWooPlainText(line.name), Modifier.weight(1f))
+                        Text("×" + line.quantity, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                HorizontalDivider()
+                CheckoutAmount("Subtotal", formatStorePrice(cart.totals.consumerSubtotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
+                if (cart.coupons.isNotEmpty()) {
+                    Text("Cupones aplicados", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    cart.coupons.forEach { coupon ->
+                        Text("• " + resolveCouponPresentation(coupon, pendingRewards).title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                val discount = cart.totals.consumerDiscount()
+                if (discount.toLongOrNull()?.let { it > 0L } == true) {
+                    CheckoutAmount("Descuentos", "-" + formatStorePrice(discount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
+                }
+                val shipping = cart.totals.consumerShipping()
+                CheckoutAmount(
+                    "Envío",
+                    when {
+                        checkoutBusy -> "Calculando…"
+                        selectedShipping == null -> "Pendiente"
+                        shipping == null -> "Pendiente"
+                        shipping == "0" -> "Gratis"
+                        else -> formatStorePrice(shipping, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)
+                    }
+                )
+                CheckoutAmount("Total (IVA incluido)", formatStorePrice(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), true)
+            }
+        }
         item { CheckoutSection(4, "Pago") }
         if (paymentOptions.isEmpty() && checkout != null) item { Text("No hay métodos de pago disponibles.") }
         items(paymentOptions) { option ->
@@ -240,46 +298,25 @@ fun IosCheckoutScreen(
                 )
             }
         }
-        item {
-            CheckoutSection(3, "Resumen")
-            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text(
-                    if (cart.items.size == 1) "1 producto" else cart.items.size.toString() + " productos",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                cart.items.forEach { line ->
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(normalizeWooPlainText(line.name), Modifier.weight(1f))
-                        Text("×" + line.quantity, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+
+
+        if (createdOrder != null && (createdOrder.paymentMethod.equals("bizum", true) || createdOrder.paymentMethod.equals("cheque", true))) item {
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Pedido recibido", style = MaterialTheme.typography.titleMedium)
+                    Text("Hemos recibido tu pedido. Sigue las instrucciones de Bizum para completar el pago.")
+                    Text("Pedido #${createdOrder.orderNumber ?: createdOrder.orderId ?: ""}")
                 }
-                HorizontalDivider()
-                CheckoutAmount("Subtotal", formatStorePrice(cart.totals.totalItems, cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
-                if (cart.coupons.isNotEmpty()) {
-                    Text("Cupones aplicados", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    cart.coupons.forEach { coupon ->
-                        Text("• " + resolveCouponPresentation(coupon, pendingRewards).title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                val discount = cart.totals.consumerDiscount()
-                if (discount.toLongOrNull()?.let { it > 0L } == true) {
-                    CheckoutAmount("Descuentos", "-" + formatStorePrice(discount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
-                }
-                val shipping = cart.totals.totalShipping
-                CheckoutAmount(
-                    "Envío",
-                    when {
-                        checkoutBusy -> "Calculando…"
-                        selectedShipping == null -> "Pendiente"
-                        shipping == null -> "Pendiente"
-                        shipping == "0" -> "Gratis"
-                        else -> formatStorePrice(shipping, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)
-                    }
-                )
-                CheckoutAmount("Total", formatStorePrice(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), true)
             }
         }
-
+        if (paymentState == StoreCardPaymentState.PAID) item {
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Pago confirmado", style = MaterialTheme.typography.titleMedium)
+                    Text("Tu pedido se ha pagado correctamente.")
+                }
+            }
+        }
         if (paymentState == StoreCardPaymentState.NOT_PAID) item {
             Text("El pago no se ha completado.", color = MaterialTheme.colorScheme.error)
             Button(
@@ -366,18 +403,19 @@ private fun CheckoutField(label: String, value: String, keyboardType: KeyboardTy
     }
 }
 
-private fun validateIosCheckoutAddress(address: CustomerAddress): String? = when {
-    address.firstName.isBlank() -> "Indica tu nombre."
-    address.lastName.isBlank() -> "Indica tus apellidos."
-    !Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$").matches(address.email) -> "Introduce un email válido."
-    address.phone.isBlank() -> "Indica un teléfono."
-    address.address1.isBlank() -> "Indica una dirección."
-    address.postcode.length != 5 || address.postcode.any { !it.isDigit() } -> "Introduce un código postal de 5 cifras."
-    address.city.isBlank() -> "Indica una localidad."
-    address.state.isBlank() -> "Indica una provincia."
-    address.country != "ES" -> "Selecciona España."
-    else -> null
+@Composable
+private fun CheckoutProvinceSelector(selectedCode: String, modifier: Modifier = Modifier, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedName = CHECKOUT_SPANISH_PROVINCES.firstOrNull { it.code == selectedCode }?.name ?: "Selecciona provincia"
+    Column(modifier = modifier) {
+        Text("Provincia", style = MaterialTheme.typography.labelMedium)
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth().height(58.dp), shape = RoundedCornerShape(3.dp)) { Text(selectedName, maxLines = 1) }
+        androidx.compose.material3.DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            CHECKOUT_SPANISH_PROVINCES.forEach { province -> androidx.compose.material3.DropdownMenuItem(text = { Text(province.name) }, onClick = { expanded = false; onSelect(province.code) }) }
+        }
+    }
 }
+
 
 @Composable
 private fun CheckoutSection(number: Int, title: String) {
