@@ -127,6 +127,7 @@ fun AccountLoginScreen(
         }
     }
     var selectedOrderId by remember { mutableStateOf<Int?>(initialOrderId) }
+    var returnPickerOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
     val sharedOrdersOwner = remember(vm.sharedRepository, vm.sharedAuthSession) { StoreOrdersOwner(vm.sharedRepository, vm.sharedAuthSession) }
     LaunchedEffect(currentUser?.id) { sharedOrdersOwner.onSessionChanged(currentUser?.id) }
     val selectedOrder = orders.firstOrNull { it.id == selectedOrderId }
@@ -245,28 +246,33 @@ fun AccountLoginScreen(
     }
 
     if (currentUser != null && selectedOrder != null) {
-        StoreOrderDetailScreen(
-            order = selectedOrder,
-            onBack = { selectedOrderId = null },
-            onRequestReturn = { order ->
-                val message = "Hola, quiero solicitar la devolución de un producto de mi pedido #" + order.number + ". ¿Podéis indicarme cómo proceder?"
-                val uri = Uri.parse("https://wa.me/34633246788?text=" + Uri.encode(message))
-                notificationContext.startActivity(Intent(Intent.ACTION_VIEW, uri))
-            }
-        )
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            StoreOrderDetailScreen(
+                order = selectedOrder,
+                onBack = { selectedOrderId = null },
+                onRequestReturn = { order ->
+                    if (order.items.size == 1) {
+                        val message = "Hola, quiero solicitar la devolución de un producto de mi pedido #" + order.number + ". ¿Podéis indicarme cómo proceder?"
+                        notificationContext.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/34633246788?text=" + Uri.encode(message))))
+                    } else if (order.items.isNotEmpty()) returnPickerOrder = order
+                }
+            )
+        }
+        returnPickerOrder?.let { order -> AccountReturnProductPicker(order) { returnPickerOrder = null } }
         return
     }
-
     if (currentUser != null) {
         val fullName = listOf(currentUser.firstName, currentUser.lastName).filter { it.isNotBlank() }.joinToString(" ")
         if (accountSection == AccountSection.ORDERS) {
-            StoreOrdersScreen(
-                owner = sharedOrdersOwner,
-                sessionState = vm.sharedAuthSession,
-                onBack = { accountSection = AccountSection.HOME },
-                onOpenOrder = { selectedOrderId = it.id },
-                onSessionExpired = { vm.retrySession() }
-            )
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                StoreOrdersScreen(
+                    owner = sharedOrdersOwner,
+                    sessionState = vm.sharedAuthSession,
+                    onBack = { accountSection = AccountSection.HOME },
+                    onOpenOrder = { selectedOrderId = it.id },
+                    onSessionExpired = { vm.retrySession() }
+                )
+            }
         } else {
             Column(
                 Modifier.fillMaxSize().padding(padding)
