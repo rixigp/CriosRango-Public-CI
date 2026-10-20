@@ -127,10 +127,11 @@ fun AccountLoginScreen(
         }
     }
     var selectedOrderId by remember { mutableStateOf<Int?>(initialOrderId) }
+    var selectedOrderFromShared by remember { mutableStateOf<AccountOrderSummary?>(null) }
     var returnPickerOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
     val sharedOrdersOwner = remember(vm.sharedRepository, vm.sharedAuthSession) { StoreOrdersOwner(vm.sharedRepository, vm.sharedAuthSession) }
-    LaunchedEffect(currentUser?.id) { sharedOrdersOwner.onSessionChanged(currentUser?.id) }
-    val selectedOrder = orders.firstOrNull { it.id == selectedOrderId }
+    LaunchedEffect(currentUser?.id) { sharedOrdersOwner.onSessionChanged(currentUser?.id); selectedOrderFromShared = null }
+    val selectedOrder = selectedOrderFromShared ?: orders.firstOrNull { it.id == selectedOrderId }
     val accountRootBackAvailable = selectedInfoPage == null && selectedOrder == null && !showLogin && accountSection == AccountSection.HOME
     SideEffect { onRootBackAvailable(accountRootBackAvailable) }
     val leaveLogin: () -> Unit = {
@@ -166,7 +167,18 @@ fun AccountLoginScreen(
     }
 
     LaunchedEffect(currentUser?.id, initialOrderId) {
-        if (currentUser != null && initialOrderId != null) selectedOrderId = initialOrderId
+        val orderId = initialOrderId ?: return@LaunchedEffect
+        if (currentUser == null) return@LaunchedEffect
+        selectedOrderId = orderId
+        try {
+            sharedOrdersOwner.load()
+            sharedOrdersOwner.findById(orderId)?.let { selectedOrderFromShared = it }
+            if (sharedOrdersOwner.state.value.error == null && sharedOrdersOwner.findById(orderId) == null) selectedOrderId = null
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Keep the initial ID so a later remount can retry resolution.
+        }
     }
 
     LaunchedEffect(currentUser?.id) {
@@ -249,7 +261,7 @@ fun AccountLoginScreen(
         Box(Modifier.fillMaxSize().padding(padding)) {
             StoreOrderDetailScreen(
                 order = selectedOrder,
-                onBack = { selectedOrderId = null },
+                onBack = { selectedOrderId = null; selectedOrderFromShared = null },
                 onRequestReturn = { order ->
                     if (order.items.size == 1) {
                         val message = "Hola, quiero solicitar la devolución de un producto de mi pedido #" + order.number + ". ¿Podéis indicarme cómo proceder?"
@@ -269,7 +281,7 @@ fun AccountLoginScreen(
                     owner = sharedOrdersOwner,
                     sessionState = vm.sharedAuthSession,
                     onBack = { accountSection = AccountSection.HOME },
-                    onOpenOrder = { selectedOrderId = it.id },
+                    onOpenOrder = { selectedOrderFromShared = it; selectedOrderId = it.id },
                     onSessionExpired = { vm.retrySession() }
                 )
             }
