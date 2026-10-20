@@ -62,7 +62,6 @@ import es.criosrango.shared.account.AccountUser
 import es.criosrango.shared.StoreAccountRootScreen
 import es.criosrango.shared.StoreAccountSessionState
 import es.criosrango.shared.StoreLoginScreen
-import es.criosrango.shared.normalizeStoreLoginError
 import es.criosrango.shared.loyalty.LoyaltyRepository
 import es.criosrango.shared.promotions.Promotion
 import es.criosrango.shared.promotions.PromotionRepository
@@ -131,7 +130,6 @@ fun CriosRangoIOSAccountScreen(
         user = authenticatedUser
         error = null
         page = if (openPromotionsOnStart) IosAccountPage.WALLET else IosAccountPage.HOME
-        onAuthenticated?.invoke()
         scope.launch {
             runCatching { repository.claimPendingOrder() }
                 .onFailure { println("KMP_ACCOUNT_CLAIM_FAILED=${it.message}") }
@@ -139,6 +137,8 @@ fun CriosRangoIOSAccountScreen(
                 user = null
                 error = "La sesión ha caducado. Vuelve a iniciar sesión."
                 page = IosAccountPage.HOME
+            } else {
+                onAuthenticated?.invoke()
             }
         }
     }
