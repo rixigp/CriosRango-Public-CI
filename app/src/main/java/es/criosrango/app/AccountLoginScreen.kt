@@ -60,6 +60,7 @@ import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.loyalty.redeemableOptions
 import es.criosrango.shared.loyalty.subtractMoneyAmounts
 import es.criosrango.shared.StoreAccountRootScreen
+import es.criosrango.shared.StoreAccountInfoPage
 import es.criosrango.shared.StoreLoginScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -278,7 +279,7 @@ fun AccountLoginScreen(
                         onProfile = { accountSection = AccountSection.PROFILE },
                         onLogin = { showLogin = true },
                         onHelp = { accountSection = AccountSection.HELP },
-                        onInfoPage = { selectedInfoPage = it }
+                        onInfoPage = { selectedInfoPage = AccountInfoPage.valueOf(it.name) }
                     )
                     AccountSection.PROFILE -> AccountProfileContent(loading, { accountSection = AccountSection.HOME }, { accountSection = AccountSection.DATA }, { accountSection = AccountSection.ADDRESSES }, { vm.clearAccountMessages(); showForgot = true }, { vm.logout(onBeforeLogout) {
                             showLogin = true
