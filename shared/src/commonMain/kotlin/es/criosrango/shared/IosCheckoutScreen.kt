@@ -251,7 +251,7 @@ fun StoreCheckoutScreen(
                 modifier = Modifier.fillMaxWidth().clickable {
                     selectedShipping = pack.packageId to rate.rateId
                     checkoutStore.selectShipping(pack.packageId, rate.rateId)
-                }.padding(vertical = 8.dp),
+                }.padding(vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RadioButton(
