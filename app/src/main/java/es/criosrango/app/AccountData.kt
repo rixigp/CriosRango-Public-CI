@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import es.criosrango.shared.AndroidClaimOrderStore
 import es.criosrango.shared.StoreAccountAuthStatus
+import es.criosrango.shared.StoreAccountSessionState
 import es.criosrango.shared.account.AccountClaimOrderResponse
 import es.criosrango.shared.account.AccountCustomerAddress
 import es.criosrango.shared.account.AccountOrderItem
@@ -106,16 +107,16 @@ class AccountRepository(context: Context) {
     private val application = context.applicationContext
     private val session = AccountSessionStore.shared(context.applicationContext)
     private val claimOrderStore = AndroidClaimOrderStore(context.applicationContext)
-    private val sharedAccountRepository = SharedAccountRepository(
+    internal val sharedRepository = SharedAccountRepository(
         tokenStore = session,
         claimOrderStore = claimOrderStore
     )
 
     val hasSession: Boolean
-        get() = sharedAccountRepository.hasSession
+        get() = sharedRepository.hasSession
 
     suspend fun login(login: String, password: String): AccountUser =
-        sharedAccountRepository.login(login, password)
+        sharedRepository.login(login, password)
 
     suspend fun registerAccount(
         email: String,
@@ -125,16 +126,16 @@ class AccountRepository(context: Context) {
         phone: String,
         birthDate: String? = null
     ): AccountUser =
-        sharedAccountRepository.register(email, password, firstName, lastName, phone, birthDate)
+        sharedRepository.register(email, password, firstName, lastName, phone, birthDate)
 
     suspend fun forgotPassword(login: String): String =
-        sharedAccountRepository.forgotPassword(login)
+        sharedRepository.forgotPassword(login)
 
     suspend fun me(): AccountUser =
-        sharedAccountRepository.me()
+        sharedRepository.me()
 
     suspend fun customerAddress(): AccountCustomerAddress =
-        sharedAccountRepository.customerAddress()
+        sharedRepository.customerAddress()
 
     suspend fun saveCustomerAddress(address: AccountCustomerAddress) {
         sharedAccountRepository.saveCustomerAddress(address)
@@ -184,6 +185,7 @@ typealias AccountAuthState = StoreAccountAuthStatus
 
 class AccountViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = AccountRepository(application)
+    private val sharedAuthSession = StoreAccountSessionState(repository.sharedRepository)
 
     private val _authState = MutableStateFlow(AccountAuthState.CHECKING)
     val authState = _authState.asStateFlow()
@@ -514,7 +516,13 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
             _error.value = null
             _notice.value = null
             try {
-                val loggedUser = repository.login(login, password)
+                val loggedUser = sharedAuthSession.login(login, password)
+                if (loggedUser == null) {
+                    val authSnapshot = sharedAuthSession.snapshot.value
+                    _authState.value = authSnapshot.status
+                    _error.value = authSnapshot.error ?: "No hemos podido iniciar sesión."
+                    return@launch
+                }
                 _user.value = loggedUser
                 _authState.value = AccountAuthState.AUTHENTICATED
                 val loadedAddress = repository.customerAddress()
