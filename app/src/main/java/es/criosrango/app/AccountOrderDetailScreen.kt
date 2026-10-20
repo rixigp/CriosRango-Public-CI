@@ -295,3 +295,7 @@ fun AccountReturnProductPicker(order: AccountOrderSummary, onDismiss: () -> Unit
         confirmButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
     )
 }
+
+fun requestReturnViaWhatsApp(context: Context, order: AccountOrderSummary, item: AccountOrderItem) {
+    openWhatsAppReturnRequest(context, order, item)
+}
