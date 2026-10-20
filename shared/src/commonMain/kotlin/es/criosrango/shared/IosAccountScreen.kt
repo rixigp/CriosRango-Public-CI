@@ -1027,7 +1027,7 @@ private fun IosProfileMenuScreen(
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(24.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
