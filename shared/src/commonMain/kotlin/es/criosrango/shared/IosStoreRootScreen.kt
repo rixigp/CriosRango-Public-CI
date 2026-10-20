@@ -694,13 +694,16 @@ fun StoreCartScreen(
 
     LazyColumn(
         Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 20.dp, top = 0.dp, end = 20.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Tu carrito", modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                if (cart.items.isNotEmpty()) TextButton(onClick = { clearCartConfirm = true }) {
+            StoreCatalogHeader(title = "Tu carrito", horizontalPadding = 0.dp)
+        }
+        if (cart.items.isNotEmpty()) item {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { clearCartConfirm = true }) {
                     androidx.compose.material3.Icon(IosCartDeleteLineIcon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Vaciar carrito")
