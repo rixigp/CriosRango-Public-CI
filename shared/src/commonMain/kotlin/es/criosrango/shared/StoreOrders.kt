@@ -108,16 +108,14 @@ class StoreOrdersOwner(
                 }
                 throw cancelled
             } catch (_: Exception) {
-                if (requestGeneration == generation &&
-                    repository.hasSession &&
-                    sessionState.snapshot.value.user?.id == userId
-                ) {
+                if (requestGeneration == generation && sessionState.snapshot.value.user?.id == userId) {
                     mutableState.value = mutableState.value.copy(
                         loading = false,
                         refreshing = false,
-                        error = "No se han podido cargar los pedidos."
+                        error = if (repository.hasSession) "No se han podido cargar los pedidos." else null
                     )
                 }
+                if (!repository.hasSession) throw IllegalStateException("La sesión de cuenta ha caducado.")
             }
         } finally {
             loadMutex.unlock()
@@ -125,6 +123,8 @@ class StoreOrdersOwner(
     }
 
     suspend fun refresh() = load(force = true)
+
+    fun hasActiveSession(): Boolean = repository.hasSession
 
     fun findById(orderId: Int): AccountOrderSummary? =
         mutableState.value.orders.firstOrNull { it.id == orderId }
@@ -201,7 +201,7 @@ fun StoreOrdersScreen(
         if (auth.user != null) {
             try { owner.load() }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { if (!sessionState.snapshot.value.user.let { it != null }) onSessionExpired() }
+            catch (_: Exception) { if (!owner.hasActiveSession()) onSessionExpired() }
         }
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
@@ -213,7 +213,7 @@ fun StoreOrdersScreen(
             state.error != null && state.orders.isEmpty() -> Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(state.error.orEmpty(), style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.height(16.dp))
-                OutlinedButton(onClick = { scope.launch { try { owner.refresh() } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { onSessionExpired() } } }) { Text("Reintentar") }
+                OutlinedButton(onClick = { scope.launch { try { owner.refresh() } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { if (!owner.hasActiveSession()) onSessionExpired() } } }) { Text("Reintentar") }
             }
             state.orders.isEmpty() -> Text("Todavía no tienes pedidos.", modifier = Modifier.padding(20.dp), style = MaterialTheme.typography.bodyLarge)
             else -> LazyColumn(
