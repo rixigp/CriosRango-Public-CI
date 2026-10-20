@@ -185,7 +185,8 @@ fun StoreAccountRootScreen(
     onInfoPage: (StoreAccountInfoPage) -> Unit,
     modifier: Modifier = Modifier,
     contentHorizontalPadding: androidx.compose.ui.unit.Dp = 0.dp,
-    contentTopSpacing: androidx.compose.ui.unit.Dp = 34.dp
+    contentTopSpacing: androidx.compose.ui.unit.Dp = 34.dp,
+    headerHorizontalPadding: androidx.compose.ui.unit.Dp = 20.dp
 ) {
     val authenticated = !fullName.isNullOrBlank() && !email.isNullOrBlank()
     val parts = fullName.orEmpty().trim().split(Regex("\\s+")).filter(String::isNotBlank)
@@ -194,7 +195,7 @@ fun StoreAccountRootScreen(
         parts.drop(1).firstOrNull()?.firstOrNull()?.let { append(it.uppercaseChar()) }
     }.ifBlank { "CR" }
     Column(modifier.fillMaxWidth()) {
-        StoreCatalogHeader(title = "Cuenta", horizontalPadding = 20.dp)
+        StoreCatalogHeader(title = "Cuenta", horizontalPadding = headerHorizontalPadding)
         Column(Modifier.fillMaxWidth().padding(horizontal = contentHorizontalPadding).verticalScroll(rememberScrollState())) {
         Spacer(Modifier.height(contentTopSpacing))
         if (authenticated) {
