@@ -5,6 +5,7 @@ import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.api.StoreApiClient
 import es.criosrango.shared.loyalty.LoyaltyRepository
 import platform.Foundation.NSURL
+import platform.Foundation.NSBundle
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
 import platform.UIKit.UIViewController
@@ -37,6 +38,7 @@ fun MainViewController() : UIViewController {
         storeApi = storeApi,
         accountRepository = accountRepository,
          accountTokenStore = accountTokenStore,
+         accountAppVersion = NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String ?: "",
          loyaltyRepository = loyaltyRepository,
         cartStore = cartStore,
         checkoutStore = StoreCheckoutStore(storeApi, cartStore, accountRepository),
