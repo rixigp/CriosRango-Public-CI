@@ -314,6 +314,7 @@ fun AccountLoginScreen(
                             vm.clearAccountMessages()
                         } })
                     AccountSection.DATA -> es.criosrango.shared.StoreProfileScreen(
+                        headerHorizontalPadding = 0.dp,
                         repository = vm.sharedRepository,
                         sessionState = vm.sharedAuthSession,
                         user = currentUser,
@@ -322,6 +323,7 @@ fun AccountLoginScreen(
                         onBack = { accountSection = AccountSection.PROFILE }
                     )
                     AccountSection.ADDRESSES -> es.criosrango.shared.StoreAddressScreen(
+                        headerHorizontalPadding = 0.dp,
                         repository = vm.sharedRepository,
                         addressOwner = vm.sharedAddressOwner,
                         onSessionExpired = { vm.retrySession() },
