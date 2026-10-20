@@ -165,13 +165,14 @@ fun StoreCheckoutScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val truckColor = MaterialTheme.colorScheme.onSecondaryContainer
                     androidx.compose.foundation.Canvas(Modifier.size(24.dp)) {
                         val stroke = androidx.compose.ui.graphics.drawscope.Stroke(
                             width = 1.8.dp.toPx(),
                             cap = androidx.compose.ui.graphics.StrokeCap.Round,
                             join = androidx.compose.ui.graphics.StrokeJoin.Round
                         )
-                        val ink = MaterialTheme.colorScheme.onSecondaryContainer
+                        val ink = truckColor
                         drawRoundRect(
                             color = ink,
                             topLeft = androidx.compose.ui.geometry.Offset(2.dp.toPx(), 5.dp.toPx()),
