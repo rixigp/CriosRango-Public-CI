@@ -23,6 +23,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -34,13 +35,12 @@ import es.criosrango.shared.account.AccountOrderItem
 import es.criosrango.shared.account.AccountOrderSummary
 import es.criosrango.shared.account.AccountRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.math.BigDecimal
-import java.util.Locale
 
 data class StoreOrdersState(
     val loading: Boolean = false,
@@ -196,6 +196,7 @@ fun StoreOrdersScreen(
 ) {
     val state by owner.state.collectAsState()
     val auth by sessionState.snapshot.collectAsState()
+    val scope = rememberCoroutineScope()
     LaunchedEffect(auth.user?.id) {
         owner.onSessionChanged(auth.user?.id)
         if (auth.user != null) {
@@ -212,7 +213,7 @@ fun StoreOrdersScreen(
             state.error != null && state.orders.isEmpty() -> Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(state.error.orEmpty(), style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.height(16.dp))
-                OutlinedButton(onClick = { kotlinx.coroutines.GlobalScope /* no-op */ }) { Text("Reintentar") }
+                OutlinedButton(onClick = { scope.launch { try { owner.refresh() } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { onSessionExpired() } } }) { Text("Reintentar") }
             }
             state.orders.isEmpty() -> Text("Todavía no tienes pedidos.", modifier = Modifier.padding(20.dp), style = MaterialTheme.typography.bodyLarge)
             else -> LazyColumn(
@@ -255,7 +256,7 @@ fun StoreOrderDetailScreen(
     val city = if (a.city.equals("tarancon", true)) "Tarancón" else a.city
     val shipping = storeDecimal(order.shippingTotal)
     val total = storeDecimal(order.total)
-    val products = (total - shipping).coerceAtLeast(BigDecimal.ZERO)
+    val products = (total - shipping).coerceAtLeast(0.0)
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 0.dp),
@@ -295,7 +296,7 @@ fun StoreOrderDetailScreen(
         item {
             StoreOrderDetailCard("Resumen") {
                 Text("Productos: ${formatStoreDecimal(products, order.currency)}")
-                Text(if (shipping.compareTo(BigDecimal.ZERO) == 0) "Envío: Gratis" else "Envío: ${formatStoreAmount(order.shippingTotal, order.currency)}")
+                Text(if (shipping == 0.0) "Envío: Gratis" else "Envío: ${formatStoreAmount(order.shippingTotal, order.currency)}")
                 Spacer(Modifier.height(8.dp))
                 Text("Total: ${formatStoreAmount(order.total, order.currency)}", style = MaterialTheme.typography.titleLarge)
             }
@@ -334,12 +335,10 @@ private fun formatStoreOrderDate(value: String): String {
     return if (raw.size == 3 && raw[0].length == 4) "${raw[2]}-${raw[1]}-${raw[0]}" else value.take(10)
 }
 
-private fun storeDecimal(value: String): BigDecimal = try {
-    BigDecimal(value.trim().replace(",", "."))
-} catch (_: Exception) { BigDecimal.ZERO }
+private fun storeDecimal(value: String): Double = value.trim().replace(",", ".").toDoubleOrNull() ?: 0.0
 
-private fun formatStoreDecimal(value: BigDecimal, currency: String): String {
-    val amount = value.stripTrailingZeros().toPlainString().replace('.', ',')
+private fun formatStoreDecimal(value: Double, currency: String): String {
+    val amount = value.toString().replace('.', ',').ifBlank { "0" }
     return if (currency.equals("EUR", true)) "$amount €" else "$amount $currency"
 }
 
