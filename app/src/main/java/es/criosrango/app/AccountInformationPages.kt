@@ -1,5 +1,7 @@
 package es.criosrango.app
 
+import es.criosrango.shared.StorePageHeader
+
 import android.text.Html
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
@@ -152,7 +154,7 @@ fun AccountInformationPageContent(page: AccountInfoPage, onBack: () -> Unit) {
     BackHandler(onBack = onBack)
 
     Column(modifier = Modifier.fillMaxSize()) {
-        CatalogScreenHeader(title = page.title, onBack = onBack, bottomPadding = 4.dp)
+        StorePageHeader(title = page.title, onBack = onBack)
         Spacer(Modifier.height(4.dp))
         when (val current = state) {
             InfoPageUiState.Loading -> Box(

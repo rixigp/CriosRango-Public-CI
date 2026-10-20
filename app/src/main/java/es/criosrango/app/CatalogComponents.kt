@@ -1,5 +1,7 @@
 package es.criosrango.app
 
+import es.criosrango.shared.StorePageHeader
+
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.graphics.graphicsLayer
@@ -96,39 +98,6 @@ internal object CatalogHeaderGeometry {
     val controlsVerticalPadding = 2.dp
 }
 
-@Composable
-internal fun CatalogScreenHeader(
-    title: String,
-    onBack: () -> Unit,
-    trailing: @Composable RowScope.() -> Unit = {},
-    bottomPadding: androidx.compose.ui.unit.Dp = CatalogHeaderGeometry.bottomPadding
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(
-                horizontal = CatalogHeaderGeometry.horizontalPadding,
-                vertical = CatalogHeaderGeometry.topPadding
-            )
-            .padding(bottom = bottomPadding),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
-        }
-        Text(
-            text = title,
-            modifier = Modifier
-                .weight(1f),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Normal,
-            color = Color(0xFF183B35),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Row(verticalAlignment = Alignment.CenterVertically, content = trailing)
-    }
-}
 
 @Composable
 internal fun CatalogProductControlsRow(
@@ -160,13 +129,11 @@ internal fun CatalogProductListHeader(
     title: String,
     onBack: () -> Unit,
     activeFilters: Int,
-    onOpenFilters: () -> Unit,
-    bottomPadding: androidx.compose.ui.unit.Dp = CatalogHeaderGeometry.bottomPadding
+    onOpenFilters: () -> Unit
 ) {
-    CatalogScreenHeader(
+    StorePageHeader(
         title = title,
         onBack = onBack,
-        bottomPadding = bottomPadding,
         trailing = {
             OutlinedButton(onClick = onOpenFilters, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
                 Text(if (activeFilters == 0) "Filtros" else "Filtros ($activeFilters)")

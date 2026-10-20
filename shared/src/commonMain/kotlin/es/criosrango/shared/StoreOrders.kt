@@ -205,7 +205,7 @@ fun StoreOrdersScreen(
         }
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-        StoreAccountSectionHeader("Pedidos", onBack)
+        StorePageHeader(title = "Pedidos", onBack = onBack, horizontalPadding = 0.dp)
         when {
             auth.user == null -> Unit
             state.authenticatedUserId != auth.user?.id -> Box(Modifier.fillMaxWidth().padding(top = 36.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -262,7 +262,7 @@ fun StoreOrderDetailScreen(
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         item {
-            StoreAccountSectionHeader("Pedido #${order.number}", onBack)
+            StorePageHeader(title = "Pedido #${order.number}", onBack = onBack, horizontalPadding = 0.dp)
             Spacer(Modifier.height(8.dp))
             StoreOrderStatusBadge(order.status, order.statusLabel)
             val date = formatStoreOrderDate(order.dateCreated.orEmpty())

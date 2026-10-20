@@ -216,7 +216,7 @@ fun StoreProfileScreen(
     onUserChanged: (AccountUser) -> Unit,
     onSessionExpired: () -> Unit,
     onBack: () -> Unit,
-    headerHorizontalPadding: androidx.compose.ui.unit.Dp = 20.dp
+    bodyHorizontalPadding: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val owner = remember(repository, sessionState) { StoreProfileOwner(repository, sessionState) }
     val scope = rememberCoroutineScope()
@@ -226,8 +226,9 @@ fun StoreProfileScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Top) {
-        StoreAccountSectionHeader("Datos personales", onBack, headerHorizontalPadding)
+        StorePageHeader(title = "Datos personales", onBack = onBack)
         Spacer(Modifier.height(20.dp))
+        Column(Modifier.fillMaxWidth().padding(horizontal = bodyHorizontalPadding)) {
         OutlinedTextField(firstName, { firstName = it; error = null }, label = { Text("Nombre") }, singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(14.dp))
         OutlinedTextField(lastName, { lastName = it; error = null }, label = { Text("Apellidos") }, singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
@@ -258,6 +259,7 @@ fun StoreProfileScreen(
                 }
             }
         ) { if (busy) CircularProgressIndicator() else Text("Guardar cambios") }
+        }
     }
 }
 
@@ -267,7 +269,7 @@ fun StoreAddressScreen(
     addressOwner: StoreAddressOwner,
     onSessionExpired: () -> Unit,
     onBack: () -> Unit,
-    headerHorizontalPadding: androidx.compose.ui.unit.Dp = 20.dp
+    bodyHorizontalPadding: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val snapshot by addressOwner.snapshot.collectAsState()
     val scope = rememberCoroutineScope()
@@ -282,7 +284,8 @@ fun StoreAddressScreen(
     }
     var provinceExpanded by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Top) {
-        StoreAccountSectionHeader("Dirección de entrega", onBack, headerHorizontalPadding)
+        StorePageHeader(title = "Dirección de entrega", onBack = onBack)
+        Column(Modifier.fillMaxWidth().padding(horizontal = bodyHorizontalPadding)) {
         if (snapshot.loading && !snapshot.loaded) {
             CircularProgressIndicator()
         } else {
@@ -339,21 +342,8 @@ fun StoreAddressScreen(
                 }
             ) { if (snapshot.saving) CircularProgressIndicator() else Text("Guardar dirección") }
         }
+        }
     }
 }
 
 
-/** Shared equivalent of the Android AccountSectionHeader golden. */
-@Composable
-fun StoreAccountSectionHeader(
-    title: String,
-    onBack: () -> Unit,
-    horizontalPadding: androidx.compose.ui.unit.Dp = 20.dp
-) {
-    StoreCatalogHeader(
-        title = title,
-        showBack = true,
-        onBack = onBack,
-        horizontalPadding = horizontalPadding
-    )
-}

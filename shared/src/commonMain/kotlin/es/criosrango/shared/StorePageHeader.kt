@@ -21,53 +21,31 @@ import androidx.compose.ui.unit.dp
 
 /** Shared Android-baseline catalog title row; hosts retain their existing back callbacks. */
 @Composable
-fun StoreCatalogHeader(
+fun StorePageHeader(
     title: String,
-    showBack: Boolean = false,
     onBack: (() -> Unit)? = null,
+    backEnabled: Boolean = true,
     trailing: @Composable RowScope.() -> Unit = {},
-    subtitle: String? = null,
-    titleFontWeight: FontWeight = FontWeight.Normal,
     horizontalPadding: androidx.compose.ui.unit.Dp = 20.dp
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = horizontalPadding, vertical = 2.dp).padding(bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (showBack && onBack != null) {
-            IconButton(onClick = onBack) {
+        if (onBack != null) {
+            IconButton(onClick = onBack, enabled = backEnabled) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
             }
         }
-        if (subtitle == null) {
-            Text(
-                text = title,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = titleFontWeight,
-                color = Color(0xFF183B35),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        } else {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = titleFontWeight,
-                    color = Color(0xFF183B35),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
+        Text(
+            text = title,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Normal,
+            color = Color(0xFF183B35),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
         Row(verticalAlignment = Alignment.CenterVertically, content = trailing)
     }
 }

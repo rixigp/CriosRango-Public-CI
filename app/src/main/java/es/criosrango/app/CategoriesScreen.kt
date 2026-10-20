@@ -1082,7 +1082,7 @@ internal fun CatalogFilteredProductGrid(
     } else {
         Column(modifier) {
             if (headerTitle != null && headerOnBack != null) {
-                CatalogProductListHeader(title = headerTitle, onBack = headerOnBack, activeFilters = active, onOpenFilters = { filtersOpen = true }, bottomPadding = if (compactHeaderSpacing) 0.dp else CatalogHeaderGeometry.bottomPadding)
+                CatalogProductListHeader(title = headerTitle, onBack = headerOnBack, activeFilters = active, onOpenFilters = { filtersOpen = true })
             }
             headerContent?.invoke(this)
 
@@ -1368,9 +1368,8 @@ internal fun CategoryParentWithFilters(
         }
     } else {
         Column(Modifier.fillMaxSize().padding(padding)) {
-            es.criosrango.shared.StoreCatalogHeader(
+            es.criosrango.shared.StorePageHeader(
                 title = title,
-                showBack = true,
                 onBack = onBack,
                 trailing = {
                     es.criosrango.shared.StoreCatalogFilterButton(

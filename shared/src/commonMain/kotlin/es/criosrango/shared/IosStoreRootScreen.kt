@@ -698,7 +698,7 @@ fun StoreCartScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            StoreCatalogHeader(title = "Tu carrito", horizontalPadding = 0.dp)
+            StorePageHeader(title = "Tu carrito", horizontalPadding = 0.dp)
         }
         if (cart.items.isNotEmpty()) item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

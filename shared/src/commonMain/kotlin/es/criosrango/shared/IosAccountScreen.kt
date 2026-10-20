@@ -506,28 +506,12 @@ private fun IosWalletScreen(
 
     val options = wallet?.redeemableOptions() ?: emptyList()
 
-    Column(
-        Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 0.dp).offset(y = (-14).dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+    Column(Modifier.fillMaxSize()) {
+        StorePageHeader(title = "Cupones y promociones", onBack = onBack, backEnabled = !loading)
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp).offset(y = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            TextButton(
-                onClick = onBack,
-                enabled = !loading,
-                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-            ) { Text("←", style = MaterialTheme.typography.titleLarge) }
-            Spacer(Modifier.width(5.dp))
-            Text(
-                "Cupones y promociones",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-            )
-        }
 
         when {
             authenticated && loading && wallet == null -> FullScreenLoading("Cargando monedero")
@@ -767,6 +751,8 @@ Card(
         }
     }
 
+    }
+
     if (showWalletInfo) {
         AlertDialog(
             onDismissRequest = { showWalletInfo = false },
@@ -847,13 +833,10 @@ private fun IosInformationPageScreen(page: AccountInfoPage, onBack: () -> Unit) 
             .onSuccess { loaded -> if (loaded == null) notFound = true else result = loaded; loading = false }
             .onFailure { error = "No se ha podido cargar esta información."; loading = false }
     }
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("Atrás") }
-            Spacer(Modifier.width(8.dp))
-            Text(page.title, style = MaterialTheme.typography.titleLarge)
-        }
-        Spacer(Modifier.height(16.dp))
+    Column(Modifier.fillMaxSize()) {
+        StorePageHeader(title = page.title, onBack = onBack)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+            Spacer(Modifier.height(24.dp))
         when {
             loading -> FullScreenLoading("Cargando información")
             notFound -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -876,18 +859,16 @@ private fun IosInformationPageScreen(page: AccountInfoPage, onBack: () -> Unit) 
             }
         }
 
+        }
     }
 }
 
 @Composable
 private fun IosHelpScreen(onBack: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("Atrás") }
-            Spacer(Modifier.width(8.dp))
-            Text("Ayuda", style = MaterialTheme.typography.titleLarge)
-        }
-        Spacer(Modifier.height(20.dp))
+    Column(Modifier.fillMaxSize()) {
+        StorePageHeader(title = "Ayuda", onBack = onBack)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+            Spacer(Modifier.height(28.dp))
         Text("Contacta con nosotros", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(12.dp))
         Text("WhatsApp: 633 246 788")
@@ -899,6 +880,7 @@ private fun IosHelpScreen(onBack: () -> Unit) {
         Text("Lunes a viernes: 10:00–13:30 · 17:30–21:00")
         Text("Sábado: 10:00–13:30")
         Text("Domingo: Cerrado")
+        }
     }
 }
 
@@ -1031,7 +1013,7 @@ private fun IosProfileMenuScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            StoreCatalogHeader(title = "Perfil", showBack = true, onBack = onBack, horizontalPadding = 0.dp)
+            StorePageHeader(title = "Perfil", showBack = true, onBack = onBack, horizontalPadding = 0.dp)
             Spacer(Modifier.height(10.dp))
             IosProfileActionRow("Datos personales", "👤", onPersonalData)
             IosProfileActionRow("Dirección de entrega", "⌖", onAddress)

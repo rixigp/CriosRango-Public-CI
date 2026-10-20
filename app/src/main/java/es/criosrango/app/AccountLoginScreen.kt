@@ -60,6 +60,7 @@ import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.loyalty.redeemableOptions
 import es.criosrango.shared.loyalty.subtractMoneyAmounts
 import es.criosrango.shared.StoreAccountRootScreen
+import es.criosrango.shared.StorePageHeader
 import es.criosrango.shared.StoreOrdersOwner
 import es.criosrango.shared.StoreOrdersScreen
 import es.criosrango.shared.StoreOrderDetailScreen
@@ -288,9 +289,9 @@ fun AccountLoginScreen(
             Column(
                 Modifier.fillMaxSize().padding(padding)
                     .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.DATA, AccountSection.ADDRESSES)) Modifier else Modifier.verticalScroll(rememberScrollState()))
-                    .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.HELP)) Modifier else Modifier.padding(horizontal = 24.dp))
+                    .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.HELP, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES, AccountSection.WALLET)) Modifier else Modifier.padding(horizontal = 24.dp))
             ) {
-                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection in setOf(AccountSection.HOME, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) 0.dp else 20.dp))
+                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection in setOf(AccountSection.HOME, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES, AccountSection.WALLET)) 0.dp else 20.dp))
                 when (accountSection) {
                     AccountSection.HOME -> StoreAccountRootScreen(
                         contentHorizontalPadding = 24.dp,
@@ -314,20 +315,20 @@ fun AccountLoginScreen(
                             vm.clearAccountMessages()
                         } })
                     AccountSection.DATA -> es.criosrango.shared.StoreProfileScreen(
-                        headerHorizontalPadding = 0.dp,
                         repository = vm.sharedRepository,
                         sessionState = vm.sharedAuthSession,
                         user = currentUser,
                         onUserChanged = vm::publishProfileUser,
                         onSessionExpired = { vm.retrySession() },
-                        onBack = { accountSection = AccountSection.PROFILE }
+                        onBack = { accountSection = AccountSection.PROFILE },
+                        bodyHorizontalPadding = 24.dp
                     )
                     AccountSection.ADDRESSES -> es.criosrango.shared.StoreAddressScreen(
-                        headerHorizontalPadding = 0.dp,
                         repository = vm.sharedRepository,
                         addressOwner = vm.sharedAddressOwner,
                         onSessionExpired = { vm.retrySession() },
-                        onBack = { accountSection = AccountSection.PROFILE }
+                        onBack = { accountSection = AccountSection.PROFILE },
+                        bodyHorizontalPadding = 24.dp
                     )
                     AccountSection.HELP -> AccountHelpContent { accountSection = AccountSection.HOME }
                     AccountSection.WALLET -> AccountWalletContent(
@@ -564,25 +565,12 @@ fun AccountWalletContent(
     val scope = rememberCoroutineScope()
     val options = wallet?.redeemableOptions() ?: emptyList()
 
-    Column(
-        Modifier.fillMaxWidth().offset(y = (-32).dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+    Column(Modifier.fillMaxWidth()) {
+        StorePageHeader(title = "Cupones y promociones", onBack = onBack, backEnabled = !loading)
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp).offset(y = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            IconButton(onClick = onBack, enabled = !loading, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
-            }
-            Text(
-                "Cupones y promociones",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-            )
-        }
 
         when {
             authenticated && loading && wallet == null -> CircularProgressIndicator(modifier = Modifier.padding(vertical = 12.dp))
@@ -876,6 +864,8 @@ Card(
         }
     }
 
+    }
+
     if (showWalletInfo) {
         AlertDialog(
             onDismissRequest = { showWalletInfo = false },
@@ -944,7 +934,7 @@ private fun formatPromotionExpiry(value: String): String {
 private fun AccountHelpContent(onBack: () -> Unit) {
     val context = LocalContext.current
     Column(Modifier.fillMaxWidth()) {
-        CatalogScreenHeader(title = "Ayuda", onBack = onBack, bottomPadding = 4.dp)
+        StorePageHeader(title = "Ayuda", onBack = onBack)
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             Spacer(Modifier.height(4.dp))
             Text("Contacta con nosotros", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = Color(0xFF183B35))
@@ -1049,7 +1039,8 @@ private fun AccountProfileContent(loading: Boolean, onBack: () -> Unit, onPerson
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    AccountSectionHeader("Perfil", onBack)
+    StorePageHeader(title = "Perfil", onBack = onBack)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
     Spacer(Modifier.height(8.dp))
     ProfileMenuRow("Datos personales", Icons.Outlined.Person, onPersonalData)
     Spacer(Modifier.height(8.dp))
@@ -1095,6 +1086,7 @@ private fun AccountProfileContent(loading: Boolean, onBack: () -> Unit, onPerson
             }
         )
     }
+    }
 }
 
 @Composable
@@ -1125,23 +1117,19 @@ private fun ProfileMenuRow(
 @Composable
 private fun AccountPersonalDataContent(vm: AccountViewModel, user: AccountUser, onBack: () -> Unit) {
     val saving by vm.savingAccountDetails.collectAsStateWithLifecycle(); val saveError by vm.accountDataError.collectAsStateWithLifecycle(); val saveNotice by vm.accountDataNotice.collectAsStateWithLifecycle(); var firstName by remember(user.id) { mutableStateOf(user.firstName) }; var lastName by remember(user.id) { mutableStateOf(user.lastName) }
-    AccountSectionHeader("Datos personales", onBack); Spacer(Modifier.height(20.dp)); OutlinedTextField(firstName, { firstName = it; vm.clearAccountDataMessages() }, label = { Text("Nombre") }, singleLine = true, enabled = !saving, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(14.dp)); OutlinedTextField(lastName, { lastName = it; vm.clearAccountDataMessages() }, label = { Text("Apellidos") }, singleLine = true, enabled = !saving, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(14.dp)); OutlinedTextField(user.email.ifBlank { "—" }, {}, label = { Text("Correo electrónico") }, readOnly = true, singleLine = true, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(14.dp)); OutlinedTextField(formatBirthDateForDisplay(user.birthDate).ifBlank { "No indicada" }, {}, label = { Text("Fecha de nacimiento") }, readOnly = true, singleLine = true, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(20.dp)); Button({ vm.updateAccountDetails(firstName.trim(), lastName.trim()) }, enabled = !saving, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))) { if (saving) Text("Guardando...") else Text("Guardar cambios") }; saveError?.let { Spacer(Modifier.height(10.dp)); Text(it, color = MaterialTheme.colorScheme.error) }; saveNotice?.let { Spacer(Modifier.height(10.dp)); Text(it, color = Color(0xFF183B35)) }
+    StorePageHeader(title = "Datos personales", onBack = onBack); Spacer(Modifier.height(20.dp)); OutlinedTextField(firstName, { firstName = it; vm.clearAccountDataMessages() }, label = { Text("Nombre") }, singleLine = true, enabled = !saving, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(14.dp)); OutlinedTextField(lastName, { lastName = it; vm.clearAccountDataMessages() }, label = { Text("Apellidos") }, singleLine = true, enabled = !saving, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(14.dp)); OutlinedTextField(user.email.ifBlank { "—" }, {}, label = { Text("Correo electrónico") }, readOnly = true, singleLine = true, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(14.dp)); OutlinedTextField(formatBirthDateForDisplay(user.birthDate).ifBlank { "No indicada" }, {}, label = { Text("Fecha de nacimiento") }, readOnly = true, singleLine = true, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(20.dp)); Button({ vm.updateAccountDetails(firstName.trim(), lastName.trim()) }, enabled = !saving, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))) { if (saving) Text("Guardando...") else Text("Guardar cambios") }; saveError?.let { Spacer(Modifier.height(10.dp)); Text(it, color = MaterialTheme.colorScheme.error) }; saveNotice?.let { Spacer(Modifier.height(10.dp)); Text(it, color = Color(0xFF183B35)) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AccountAddressContent(vm: AccountViewModel, address: AccountCustomerAddress?, onBack: () -> Unit) {
     val saving by vm.savingAddress.collectAsStateWithLifecycle(); val saveError by vm.addressSaveError.collectAsStateWithLifecycle(); val saveNotice by vm.addressSaveNotice.collectAsStateWithLifecycle(); var firstName by remember(address) { mutableStateOf(address?.firstName.orEmpty()) }; var lastName by remember(address) { mutableStateOf(address?.lastName.orEmpty()) }; var address1 by remember(address) { mutableStateOf(address?.address1.orEmpty()) }; var address2 by remember(address) { mutableStateOf(address?.address2.orEmpty()) }; var postcode by remember(address) { mutableStateOf(address?.postcode.orEmpty()) }; var city by remember(address) { mutableStateOf(address?.city.orEmpty()) }; var state by remember(address) { mutableStateOf(address?.state.orEmpty()) }; var provinceExpanded by remember { mutableStateOf(false) }; val provinceName = SPANISH_PROVINCES.firstOrNull { it.code.equals(state, true) }?.name.orEmpty()
-    AccountSectionHeader("Dirección de entrega", onBack); Spacer(Modifier.height(20.dp)); AccountAddressField("Nombre", firstName, !saving) { firstName = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Apellidos", lastName, !saving) { lastName = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Dirección", address1, !saving) { address1 = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Dirección adicional / Piso, puerta, etc. (opcional)", address2, !saving) { address2 = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Código postal", postcode, !saving) { postcode = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Localidad", city, !saving) { city = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); ExposedDropdownMenuBox(expanded = provinceExpanded, onExpandedChange = { if (!saving) provinceExpanded = it }) { OutlinedTextField(provinceName.ifBlank { state }, {}, label = { Text("Provincia") }, readOnly = true, enabled = !saving, singleLine = true, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = provinceExpanded) }, modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = !saving).fillMaxWidth()); ExposedDropdownMenu(expanded = provinceExpanded, onDismissRequest = { provinceExpanded = false }) { SPANISH_PROVINCES.distinctBy { it.code }.forEach { province -> DropdownMenuItem(text = { Text(province.name) }, onClick = { state = province.code; provinceExpanded = false; vm.clearAddressSaveMessages() }) } } }; Spacer(Modifier.height(14.dp)); OutlinedTextField("España", {}, label = { Text("País") }, readOnly = true, enabled = !saving, singleLine = true, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(20.dp)); Button({ vm.saveAddress(AccountCustomerAddress(firstName = firstName, lastName = lastName, email = address?.email.orEmpty(), phone = address?.phone.orEmpty(), address1 = address1, address2 = address2, postcode = postcode, city = city, state = state, country = "ES")) }, enabled = !saving, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))) { if (saving) Text("Guardando...") else Text("Guardar dirección") }; saveError?.let { Spacer(Modifier.height(10.dp)); Text(it, color = MaterialTheme.colorScheme.error) }; saveNotice?.let { Spacer(Modifier.height(10.dp)); Text(it) }
+    StorePageHeader(title = "Dirección de entrega", onBack = onBack); Spacer(Modifier.height(20.dp)); AccountAddressField("Nombre", firstName, !saving) { firstName = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Apellidos", lastName, !saving) { lastName = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Dirección", address1, !saving) { address1 = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Dirección adicional / Piso, puerta, etc. (opcional)", address2, !saving) { address2 = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Código postal", postcode, !saving) { postcode = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Localidad", city, !saving) { city = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); ExposedDropdownMenuBox(expanded = provinceExpanded, onExpandedChange = { if (!saving) provinceExpanded = it }) { OutlinedTextField(provinceName.ifBlank { state }, {}, label = { Text("Provincia") }, readOnly = true, enabled = !saving, singleLine = true, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = provinceExpanded) }, modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = !saving).fillMaxWidth()); ExposedDropdownMenu(expanded = provinceExpanded, onDismissRequest = { provinceExpanded = false }) { SPANISH_PROVINCES.distinctBy { it.code }.forEach { province -> DropdownMenuItem(text = { Text(province.name) }, onClick = { state = province.code; provinceExpanded = false; vm.clearAddressSaveMessages() }) } } }; Spacer(Modifier.height(14.dp)); OutlinedTextField("España", {}, label = { Text("País") }, readOnly = true, enabled = !saving, singleLine = true, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(20.dp)); Button({ vm.saveAddress(AccountCustomerAddress(firstName = firstName, lastName = lastName, email = address?.email.orEmpty(), phone = address?.phone.orEmpty(), address1 = address1, address2 = address2, postcode = postcode, city = city, state = state, country = "ES")) }, enabled = !saving, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))) { if (saving) Text("Guardando...") else Text("Guardar dirección") }; saveError?.let { Spacer(Modifier.height(10.dp)); Text(it, color = MaterialTheme.colorScheme.error) }; saveNotice?.let { Spacer(Modifier.height(10.dp)); Text(it) }
 }
 
 @Composable
 private fun AccountAddressField(label: String, value: String, enabled: Boolean, onValueChange: (String) -> Unit) { OutlinedTextField(value, onValueChange, label = { Text(label) }, singleLine = true, enabled = enabled, modifier = Modifier.fillMaxWidth()) }
 
-@Composable
-fun AccountSectionHeader(title: String, onBack: () -> Unit) {
-    es.criosrango.shared.StoreAccountSectionHeader(title, onBack, horizontalPadding = 0.dp)
-}
 
 @Composable
 private fun AccountRegisterDialog(initialEmail: String, loading: Boolean, error: String?, onDismiss: () -> Unit, onCreate: (String, String, String, String, String, String?) -> Unit) {

@@ -59,9 +59,8 @@ fun StoreProductListScreen(
     headerContent: @Composable ColumnScope.() -> Unit = {}
 ) {
     Column(modifier) {
-        StoreCatalogHeader(
+        StorePageHeader(
             title = state.title,
-            showBack = true,
             onBack = onBack,
             trailing = {
                 StoreCatalogFilterButton(

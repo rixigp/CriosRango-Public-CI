@@ -195,7 +195,7 @@ fun StoreAccountRootScreen(
         parts.drop(1).firstOrNull()?.firstOrNull()?.let { append(it.uppercaseChar()) }
     }.ifBlank { "CR" }
     Column(modifier.fillMaxWidth()) {
-        StoreCatalogHeader(title = "Cuenta", horizontalPadding = headerHorizontalPadding)
+        StorePageHeader(title = "Cuenta", horizontalPadding = headerHorizontalPadding)
         Column(Modifier.fillMaxWidth().padding(horizontal = contentHorizontalPadding).verticalScroll(rememberScrollState())) {
         Spacer(Modifier.height(contentTopSpacing))
         if (authenticated) {
@@ -305,11 +305,7 @@ fun StoreLoginScreen(
     modifier: Modifier = Modifier
 ) {
     Column(modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás") }
-            Spacer(Modifier.width(8.dp))
-            Text("Iniciar sesión", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color(0xFF183B35))
-        }
+        StorePageHeader(title = "Iniciar sesión", onBack = onBack)
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             Spacer(Modifier.height(4.dp))
             OutlinedTextField(
