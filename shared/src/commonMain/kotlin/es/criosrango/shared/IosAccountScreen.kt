@@ -920,6 +920,7 @@ private fun IosLoginScreen(
     )
 }
 
+@Composable
 private fun IosRegisterScreen(
     repository: AccountRepository,
     onAuthenticated: (AccountUser) -> Unit,
