@@ -124,11 +124,15 @@ class StoreAccountSessionState(private val repository: AccountRepository) {
             return user
         } catch (failure: Exception) {
             val status = (failure as? ResponseException)?.response?.status?.value
+            val message = when {
+                failure is IllegalStateException && failure.message == "No se ha podido guardar la sesión de cuenta." -> failure.message
+                status != null -> normalizeStoreLoginError(status)
+                else -> "No hemos podido conectar con la tienda."
+            }
             mutableSnapshot.value = StoreAccountAuthSnapshot(
                 status = if (repository.hasSession) StoreAccountAuthStatus.CHECKING else StoreAccountAuthStatus.UNAUTHENTICATED,
                 loading = false,
-                error = if (failure is IllegalStateException && failure.message == "No se ha podido guardar la sesión de cuenta.")
-                    failure.message else normalizeStoreLoginError(status)
+                error = message
             )
             return null
         } finally {
