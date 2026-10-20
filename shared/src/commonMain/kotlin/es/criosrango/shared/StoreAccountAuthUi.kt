@@ -13,6 +13,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Sell
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -181,7 +191,7 @@ fun StoreAccountRootScreen(
             ) {
                 Surface(Modifier.size(60.dp), shape = CircleShape, color = androidx.compose.ui.graphics.Color(0xFFE3EFEB)) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text("♙", style = MaterialTheme.typography.headlineMedium)
+                        Icon(Icons.Outlined.Person, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFF183B35), modifier = Modifier.size(30.dp))
                     }
                 }
                 Spacer(Modifier.width(16.dp))
@@ -194,13 +204,13 @@ fun StoreAccountRootScreen(
         }
         Spacer(Modifier.height(if (authenticated) 24.dp else 12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            AccountRootAccess("Pedidos", Modifier.weight(1f), onOrders)
-            AccountRootAccess("Cupones y promociones", Modifier.weight(1f), onWallet)
+            AccountRootAccess("Pedidos", Icons.Outlined.History, Modifier.weight(1f), onOrders)
+            AccountRootAccess("Cupones y promociones", Icons.Outlined.Sell, Modifier.weight(1f), onWallet)
         }
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            AccountRootAccess("Perfil", Modifier.weight(1f), onProfile)
-            AccountRootAccess("Ayuda", Modifier.weight(1f), onHelp)
+            AccountRootAccess("Perfil", Icons.Outlined.Person, Modifier.weight(1f), onProfile)
+            AccountRootAccess("Ayuda", Icons.AutoMirrored.Outlined.HelpOutline, Modifier.weight(1f), onHelp)
         }
         Spacer(Modifier.height(28.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -218,11 +228,19 @@ fun StoreAccountRootScreen(
 }
 
 @Composable
-private fun AccountRootAccess(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Surface(modifier.clickable(onClick = onClick), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant) {
-        Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 18.dp), contentAlignment = Alignment.Center) {
-            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
+private fun AccountRootAccess(label: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Row(
+        modifier = modifier.heightIn(min = 72.dp).clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.size(42.dp).background(androidx.compose.ui.graphics.Color(0xFFE3EFEB), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFF183B35), modifier = Modifier.size(26.dp))
         }
+        Spacer(Modifier.width(12.dp))
+        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 2)
     }
 }
 
@@ -242,7 +260,7 @@ fun StoreLoginScreen(
 ) {
     Column(modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("‹ Atrás") }
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás") }
             Spacer(Modifier.width(8.dp))
             Text("Iniciar sesión", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
