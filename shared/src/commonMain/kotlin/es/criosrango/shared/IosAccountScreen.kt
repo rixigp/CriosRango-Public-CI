@@ -1242,7 +1242,6 @@ private fun AccountAddressFields(address: AccountCustomerAddress, onChange: (Acc
 }
 
 @Composable
-@Composable
 private fun AccountForm(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
