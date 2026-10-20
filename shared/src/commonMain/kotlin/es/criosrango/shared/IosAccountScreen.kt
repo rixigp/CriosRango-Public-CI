@@ -109,7 +109,7 @@ fun CriosRangoIOSAccountScreen(
     val promotionRepository = remember(repository) {
         PromotionRepository(bearerTokenProvider = { repository.currentToken() })
     }
-    fun invalidateExpiredSession() { repository.clearLocalSession(); user = null; selectedOrder = null; error = null; page = IosAccountPage.HOME }
+    fun invalidateExpiredSession() { sessionState.logout(); user = null; selectedOrder = null; error = null; page = IosAccountPage.HOME }
 
     LaunchedEffect(openPromotionsOnStart, user?.id) {
         if (openPromotionsOnStart && user != null) {
@@ -195,6 +195,7 @@ fun CriosRangoIOSAccountScreen(
                         scope.launch {
                             runCatching { onBeforeLogout() }
                             runCatching { repository.logout() }
+                            sessionState.logout()
                             user = null
                             error = null
                             page = IosAccountPage.HOME
