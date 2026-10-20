@@ -29,3 +29,13 @@ fun checkoutFreeShippingProgress(
         reached = subtotal >= threshold
     )
 }
+
+/** Monotonic tokens ensure a late quote/rate response cannot overwrite a newer intent. */
+class CheckoutOperationGeneration {
+    private var generation: Long = 0L
+    fun next(): Long {
+        generation += 1L
+        return generation
+    }
+    fun isCurrent(token: Long): Boolean = token == generation
+}

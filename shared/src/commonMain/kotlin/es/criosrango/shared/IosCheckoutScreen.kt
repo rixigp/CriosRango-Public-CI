@@ -53,6 +53,7 @@ fun StoreCheckoutScreen(
     val error by checkoutStore.error.collectAsState()
     val accountAddress by checkoutStore.accountAddress.collectAsState()
     val createdOrder by checkoutStore.createdOrder.collectAsState()
+    val stableCreatedOrder = createdOrder
     val paymentState by paymentStore.state.collectAsState()
     val paymentError by paymentStore.error.collectAsState()
     var pendingRewards by remember { mutableStateOf<List<LoyaltyReward>>(emptyList()) }
@@ -300,12 +301,12 @@ fun StoreCheckoutScreen(
         }
 
 
-        if (createdOrder != null && (createdOrder.paymentMethod.equals("bizum", true) || createdOrder.paymentMethod.equals("cheque", true))) item {
+        if (stableCreatedOrder != null && (stableCreatedOrder.paymentMethod.equals("bizum", true) || stableCreatedOrder.paymentMethod.equals("cheque", true))) item {
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Pedido recibido", style = MaterialTheme.typography.titleMedium)
                     Text("Hemos recibido tu pedido. Sigue las instrucciones de Bizum para completar el pago.")
-                    Text("Pedido #${createdOrder.orderNumber ?: createdOrder.orderId ?: ""}")
+                    Text("Pedido #${stableCreatedOrder.orderNumber ?: stableCreatedOrder.orderId ?: ""}")
                 }
             }
         }

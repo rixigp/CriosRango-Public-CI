@@ -41,4 +41,12 @@ class CheckoutFreeShippingTest {
         assertEquals(50L, checkoutFreeShippingProgress("0", 0).thresholdMinorUnits)
         assertEquals(50000L, checkoutFreeShippingProgress("0", 3).thresholdMinorUnits)
     }
+    @Test fun newerCheckoutIntentInvalidatesOlderResponse() {
+        val generation = CheckoutOperationGeneration()
+        val addressRequest = generation.next()
+        val laterRateSelection = generation.next()
+        assertFalse(generation.isCurrent(addressRequest))
+        assertTrue(generation.isCurrent(laterRateSelection))
+    }
+
 }
