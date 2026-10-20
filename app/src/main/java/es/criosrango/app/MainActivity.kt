@@ -430,6 +430,11 @@ private fun CriosRangoApp(
                     },
                     padding = PaddingValues(0.dp),
                     onBack = { checkoutOpen = false },
+                    onManualOrderCompleted = {
+                        checkoutOpen = false
+                        tab = AppTab.HOME
+                        sharedCartController.refresh()
+                    },
                     onOpenPayment = { url ->
                         val opened = runCatching { androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(false).setUrlBarHidingEnabled(true).build().launchUrl(context, Uri.parse(url)) }.isSuccess
                         if (opened) sharedPaymentStore.markPaymentOpened() else sharedPaymentStore.handlePaymentOpenFailure()

@@ -56,6 +56,7 @@ fun StoreCheckoutScreen(
     padding: PaddingValues,
     onBack: () -> Unit,
     onOpenPayment: (String) -> Unit,
+    onManualOrderCompleted: () -> Unit = onBack,
     loyaltyRepository: LoyaltyRepository,
     walletEnabled: Boolean,
     cartQuantity: Int = 0,
@@ -70,6 +71,7 @@ fun StoreCheckoutScreen(
     val createdOrder by checkoutStore.createdOrder.collectAsState()
     val stableCreatedOrder = createdOrder
     val paymentState by paymentStore.state.collectAsState()
+    val postOrderState = resolveStoreCheckoutPostOrderState(stableCreatedOrder?.paymentMethod, stableCreatedOrder?.orderId, paymentState)
     val paymentError by paymentStore.error.collectAsState()
     var pendingRewards by remember { mutableStateOf<List<LoyaltyReward>>(emptyList()) }
     LaunchedEffect(walletEnabled) {
@@ -325,15 +327,6 @@ fun StoreCheckoutScreen(
         }
 
 
-        if (stableCreatedOrder != null && (stableCreatedOrder.paymentMethod.equals("bizum", true) || stableCreatedOrder.paymentMethod.equals("cheque", true))) item {
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = CheckoutUiSoftGreen) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Pedido recibido", style = MaterialTheme.typography.titleMedium)
-                    Text("Hemos recibido tu pedido. Sigue las instrucciones de Bizum para completar el pago.")
-                    Text("Pedido #${stableCreatedOrder.orderNumber ?: stableCreatedOrder.orderId ?: ""}")
-                }
-            }
-        }
         if (paymentState == StoreCardPaymentState.PAID) item {
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = CheckoutUiSoftGreen) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -382,7 +375,7 @@ fun StoreCheckoutScreen(
             }
         }
 
-        item {
+        if (postOrderState != StoreCheckoutPostOrderState.MANUAL_ORDER_CREATED) item {
             Button(
                 onClick = { if (canSubmit) checkoutStore.createOrder(addressValue, selectedPayment, selectedShipping!!.second) },
                 enabled = canSubmit,
@@ -412,6 +405,28 @@ fun StoreCheckoutScreen(
             }
         }
         }
+    }
+
+    if (postOrderState == StoreCheckoutPostOrderState.MANUAL_ORDER_CREATED && stableCreatedOrder?.orderId != null) {
+        val orderId = stableCreatedOrder.orderId!!
+        val closeBizumConfirmation = {
+            checkoutStore.clearCreatedOrder()
+            onManualOrderCompleted()
+        }
+        AlertDialog(
+            onDismissRequest = closeBizumConfirmation,
+            title = { Text("Pedido recibido") },
+            text = {
+                Text(
+                    "Tu pedido #$orderId ha sido recibido.\n\n" +
+                        "Realiza el pago por Bizum al 679 97 28 88 y utiliza el número de pedido como referencia de pago.\n\n" +
+                        "Tu pedido no se procesará hasta que se haya recibido el importe."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = closeBizumConfirmation) { Text("Seguir comprando") }
+            }
+        )
     }
 }
 

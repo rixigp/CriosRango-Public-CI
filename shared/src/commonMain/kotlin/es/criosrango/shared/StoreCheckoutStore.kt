@@ -21,6 +21,25 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 enum class StoreCheckoutPhase { IDLE, LOADING, READY, CREATING_ORDER, ORDER_CREATED, ERROR }
+enum class StoreCheckoutPostOrderState {
+    NONE, CARD_PAID, MANUAL_ORDER_CREATED, TERMINAL_UNPAID_CANCELLED, UNKNOWN
+}
+
+fun resolveStoreCheckoutPostOrderState(
+    paymentMethod: String?,
+    orderId: Int?,
+    paymentState: StoreCardPaymentState
+): StoreCheckoutPostOrderState {
+    if (orderId == null) return StoreCheckoutPostOrderState.NONE
+    if (paymentMethod.equals("bizum", ignoreCase = true) ||
+        paymentMethod.equals("cheque", ignoreCase = true)
+    ) return StoreCheckoutPostOrderState.MANUAL_ORDER_CREATED
+    return when (paymentState) {
+        StoreCardPaymentState.PAID -> StoreCheckoutPostOrderState.CARD_PAID
+        StoreCardPaymentState.NOT_PAID -> StoreCheckoutPostOrderState.TERMINAL_UNPAID_CANCELLED
+        else -> StoreCheckoutPostOrderState.UNKNOWN
+    }
+}
 
 class StoreCheckoutSubmissionGate {
     private val mutex = Mutex()
