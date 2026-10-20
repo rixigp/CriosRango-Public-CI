@@ -72,7 +72,8 @@ data class StoreAccountAuthSnapshot(
     val status: StoreAccountAuthStatus = StoreAccountAuthStatus.CHECKING,
     val user: AccountUser? = null,
     val loading: Boolean = true,
-    val error: String? = null
+    val error: String? = null,
+    val cause: Throwable? = null
 )
 
 fun normalizeStoreLoginCredentials(login: String, password: String): Pair<String, String> = login.trim() to password
@@ -111,7 +112,8 @@ class StoreAccountSessionState(private val repository: AccountRepository) {
                 mutableSnapshot.value = StoreAccountAuthSnapshot(
                     status = StoreAccountAuthStatus.CHECKING,
                     loading = false,
-                    error = "No hemos podido recuperar la sesión."
+                    error = "No hemos podido recuperar la sesión.",
+                    cause = failure
                 )
             }
         }
@@ -141,7 +143,8 @@ class StoreAccountSessionState(private val repository: AccountRepository) {
             mutableSnapshot.value = StoreAccountAuthSnapshot(
                 status = if (repository.hasSession) StoreAccountAuthStatus.CHECKING else StoreAccountAuthStatus.UNAUTHENTICATED,
                 loading = false,
-                error = message
+                error = message,
+                cause = failure
             )
             return null
         } finally {
