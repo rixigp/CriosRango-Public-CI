@@ -38,10 +38,19 @@ import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.launch
 
 enum class StoreAccountAuthStatus { CHECKING, AUTHENTICATED, UNAUTHENTICATED }
 enum class StoreAccountInfoPage { RETURNS, TERMS, PRIVACY, LEGAL, COOKIES }
+enum class AccountInfoPage(val title: String, val slug: String) {
+    RETURNS("Cambios y devoluciones", "cambios-y-devoluciones"),
+    TERMS("Condiciones de contratación", "condiciones-generales-de-contratacion"),
+    PRIVACY("Política de privacidad", "politica-de-privacidad"),
+    LEGAL("Aviso legal", "aviso-legal"),
+    COOKIES("Política de cookies", "politica-de-cookies")
+}
+
 
 data class StoreAccountAuthSnapshot(
     val status: StoreAccountAuthStatus = StoreAccountAuthStatus.CHECKING,
@@ -60,7 +69,7 @@ fun normalizeStoreLoginError(statusCode: Int?): String = when (statusCode) {
 class StoreAccountSessionState(private val repository: AccountRepository) {
     private val mutableSnapshot = MutableStateFlow(StoreAccountAuthSnapshot())
     val snapshot: StateFlow<StoreAccountAuthSnapshot> = mutableSnapshot.asStateFlow()
-    private var actionInFlight = false
+    private val actionMutex = Mutex()
 
     suspend fun restore() {
         if (!repository.hasSession) {
@@ -95,10 +104,7 @@ class StoreAccountSessionState(private val repository: AccountRepository) {
             mutableSnapshot.value = mutableSnapshot.value.copy(error = "Introduce tu correo y contraseña.")
             return null
         }
-        synchronized(this) {
-            if (actionInFlight) return null
-            actionInFlight = true
-        }
+        if (!actionMutex.tryLock()) return null
         mutableSnapshot.value = mutableSnapshot.value.copy(loading = true, error = null)
         try {
             val user = repository.login(login.trim(), password)
@@ -116,7 +122,7 @@ class StoreAccountSessionState(private val repository: AccountRepository) {
             )
             return null
         } finally {
-            synchronized(this) { actionInFlight = false }
+            actionMutex.unlock()
         }
     }
 
