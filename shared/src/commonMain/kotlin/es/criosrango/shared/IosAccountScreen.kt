@@ -563,7 +563,7 @@ Card(
                                 ) { Text("Usar", style = MaterialTheme.typography.labelMedium) }
                             }
                         }
-                        
+
                          if (walletAmount < minimumAmount) {
                             Text(
                                 "Has acumulado " + wallet!!.walletValue +
