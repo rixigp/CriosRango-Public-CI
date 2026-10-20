@@ -751,22 +751,27 @@ fun StoreCartScreen(
                         )
                         val increment = line.quantityStep()
                         val nextLowerQuantity = line.quantityAfterDecrement()
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = {
+                                        if (nextLowerQuantity == null) cartController.remove(line)
+                                        else cartController.update(line, nextLowerQuantity)
+                                    }
+                                ) { Text("−", style = MaterialTheme.typography.titleLarge) }
+                                Text(line.quantity.toString(), modifier = Modifier.padding(horizontal = 8.dp), fontWeight = FontWeight.SemiBold)
+                                IconButton(
+                                    onClick = { cartController.update(line, line.quantity + increment) },
+                                    enabled = line.canIncreaseQuantity()
+                                ) { Text("+", style = MaterialTheme.typography.titleLarge) }
+                            }
                             IconButton(
-                                onClick = {
-                                    if (nextLowerQuantity == null) cartController.remove(line)
-                                    else cartController.update(line, nextLowerQuantity)
-                                }
-                            ) { Text("−", style = MaterialTheme.typography.titleLarge) }
-                            Text(line.quantity.toString(), modifier = Modifier.padding(horizontal = 8.dp), fontWeight = FontWeight.SemiBold)
-                            IconButton(
-                                onClick = { cartController.update(line, line.quantity + increment) },
-                                enabled = line.canIncreaseQuantity()
-                            ) { Text("+", style = MaterialTheme.typography.titleLarge) }
+                                onClick = { cartController.remove(line) },
+                                modifier = Modifier.align(Alignment.CenterEnd).size(40.dp)
+                            ) {
+                                androidx.compose.material3.Icon(IosCartDeleteLineIcon, contentDescription = "Eliminar", tint = Color(0xFF5F6368), modifier = Modifier.size(20.dp))
+                            }
                         }
-                    }
-                    IconButton(onClick = { cartController.remove(line) }, modifier = Modifier.size(40.dp)) {
-                        androidx.compose.material3.Icon(IosCartDeleteLineIcon, contentDescription = "Eliminar", tint = Color(0xFF5F6368), modifier = Modifier.size(20.dp))
                     }
                 }
             }
