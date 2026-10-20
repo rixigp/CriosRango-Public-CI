@@ -198,7 +198,14 @@ fun StoreAccountRootScreen(
             AccountRootAccess("Ayuda", Modifier.weight(1f), onHelp)
         }
         Spacer(Modifier.height(28.dp))
-        AccountInformationHomeSection(onInfoPage)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Información", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text("Cambios y devoluciones", Modifier.fillMaxWidth().clickable { onInfoPage(AccountInfoPage.RETURNS) }.padding(vertical = 6.dp))
+            Text("Condiciones de contratación", Modifier.fillMaxWidth().clickable { onInfoPage(AccountInfoPage.TERMS) }.padding(vertical = 6.dp))
+            Text("Política de privacidad", Modifier.fillMaxWidth().clickable { onInfoPage(AccountInfoPage.PRIVACY) }.padding(vertical = 6.dp))
+            Text("Aviso legal", Modifier.fillMaxWidth().clickable { onInfoPage(AccountInfoPage.LEGAL) }.padding(vertical = 6.dp))
+            Text("Política de cookies", Modifier.fillMaxWidth().clickable { onInfoPage(AccountInfoPage.COOKIES) }.padding(vertical = 6.dp))
+        }
         Spacer(Modifier.height(20.dp))
         Text("Versión $appVersion", Modifier.align(Alignment.CenterHorizontally), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
