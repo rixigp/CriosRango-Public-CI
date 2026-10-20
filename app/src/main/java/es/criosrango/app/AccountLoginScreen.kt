@@ -331,7 +331,7 @@ fun AccountLoginScreen(
                     onProfile = { showLogin = true },
                     onLogin = { showLogin = true },
                     onHelp = { accountSection = AccountSection.HELP },
-                    onInfoPage = { selectedInfoPage = it }
+                    onInfoPage = { selectedInfoPage = AccountInfoPage.valueOf(it.name) }
                 )
             }
             if (accountSection != AccountSection.HELP) Spacer(Modifier.height(24.dp))
