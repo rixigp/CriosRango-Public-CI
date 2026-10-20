@@ -1,6 +1,16 @@
 package es.criosrango.shared
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.CreditCard
+import androidx.compose.material.icons.outlined.LocalShipping
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
@@ -32,6 +42,10 @@ import es.criosrango.shared.checkoutFreeShippingProgress
 import es.criosrango.shared.loyalty.LoyaltyRepository
 import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.resolveCouponPresentation
+
+private val CheckoutUiGreen = Color(0xFF183B35)
+private val CheckoutUiSoftGreen = Color(0xFFE4F1ED)
+private val CheckoutUiBorder = Color(0xFFD0C9D0)
 
 @Composable
 fun StoreCheckoutScreen(
@@ -145,28 +159,37 @@ fun StoreCheckoutScreen(
         createdOrder == null &&
         !paymentInProgress
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(padding).imePadding(),
-        contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 72.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        item { StoreGlobalTopBar(cartQuantity = cartQuantity, onSearch = onSearch, onCart = onCart) }
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 0.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(onClick = onBack, enabled = !checkoutBusy && !paymentInProgress) { Text("←") }
-                Text("Finalizar compra", style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.weight(1f))
-            }
-        }
+    Column(modifier = Modifier.fillMaxSize().padding(padding).imePadding()) {
+        StoreGlobalTopBar(cartQuantity = cartQuantity, onSearch = onSearch, onCart = onCart)
+        StoreCatalogHeader(title = "Finalizar compra", showBack = true, onBack = onBack)
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 72.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
         item {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.secondaryContainer
+                color = CheckoutUiSoftGreen
             ) {
-                Text("🚚  " + freeShippingMessage, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.onSecondaryContainer)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.Icon(
+                        imageVector = Icons.Outlined.LocalShipping,
+                        contentDescription = null,
+                        tint = CheckoutUiGreen,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = "🚚  " + freeShippingMessage,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = CheckoutUiGreen
+                    )
+                }
             }
         }
         if (phase == StoreCheckoutPhase.LOADING && checkout == null) item {
@@ -175,7 +198,7 @@ fun StoreCheckoutScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(color = CheckoutUiGreen)
                 Text("Cargando checkout…", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -188,7 +211,7 @@ fun StoreCheckoutScreen(
                 ) {
                     Text("El carrito está vacío", style = MaterialTheme.typography.titleMedium)
                     Text("Añade productos al carrito antes de continuar con la compra.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(onClick = onBack) { Text("Volver al carrito") }
+                    Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = CheckoutUiGreen, contentColor = Color.White)) { Text("Volver al carrito") }
                 }
             }
         }
@@ -225,7 +248,8 @@ fun StoreCheckoutScreen(
                     if (addressError == null) checkoutStore.updateCustomer(addressValue)
                 },
                 enabled = phase != StoreCheckoutPhase.LOADING && phase != StoreCheckoutPhase.CREATING_ORDER,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = CheckoutUiGreen, contentColor = Color.White)
             ) { Text("Consultar entrega") }
         }
         item { CheckoutSection(2, "Envío") }
@@ -245,7 +269,8 @@ fun StoreCheckoutScreen(
                     onClick = {
                         selectedShipping = pack.packageId to rate.rateId
                         checkoutStore.selectShipping(pack.packageId, rate.rateId)
-                    }
+                    },
+                    colors = RadioButtonDefaults.colors(selectedColor = CheckoutUiGreen, unselectedColor = Color(0xFF777277))
                 )
                 Column(Modifier.weight(1f)) {
                     Text(resolveShippingPresentationName(rate.methodId, rate.rateId, rate.name))
@@ -294,24 +319,24 @@ fun StoreCheckoutScreen(
         }
         item { CheckoutSection(4, "Pago") }
         if (paymentOptions.isEmpty() && checkout != null) item { Text("No hay métodos de pago disponibles.") }
-        items(paymentOptions) { option ->
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { selectedPayment = option.gatewayId }.padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RadioButton(selected = selectedPayment == option.gatewayId, onClick = { selectedPayment = option.gatewayId })
-                Text(
-                    when (option.kind) {
-                        es.criosrango.shared.model.CheckoutPaymentKind.CARD -> "Pago con tarjeta"
-                        es.criosrango.shared.model.CheckoutPaymentKind.BIZUM -> "Bizum"
-                    }
-                )
+        item {
+            Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                paymentOptions.forEach { option ->
+                    val bizum = option.kind == es.criosrango.shared.model.CheckoutPaymentKind.BIZUM
+                    CheckoutPaymentOption(
+                        selected = selectedPayment == option.gatewayId,
+                        title = if (bizum) "Bizum" else "Pago con tarjeta",
+                        subtitle = if (bizum) "Recibirás las instrucciones de pago al finalizar el pedido" else "Pago seguro con tarjeta",
+                        icon = if (bizum) Icons.Outlined.AccountBalanceWallet else Icons.Outlined.CreditCard,
+                        onClick = { selectedPayment = option.gatewayId }
+                    )
+                }
             }
         }
 
 
         if (stableCreatedOrder != null && (stableCreatedOrder.paymentMethod.equals("bizum", true) || stableCreatedOrder.paymentMethod.equals("cheque", true))) item {
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = CheckoutUiSoftGreen) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Pedido recibido", style = MaterialTheme.typography.titleMedium)
                     Text("Hemos recibido tu pedido. Sigue las instrucciones de Bizum para completar el pago.")
@@ -320,7 +345,7 @@ fun StoreCheckoutScreen(
             }
         }
         if (paymentState == StoreCardPaymentState.PAID) item {
-            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+            Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = CheckoutUiSoftGreen) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Pago confirmado", style = MaterialTheme.typography.titleMedium)
                     Text("Tu pedido se ha pagado correctamente.")
@@ -334,7 +359,8 @@ fun StoreCheckoutScreen(
                     checkoutStore.clearCreatedOrder()
                     paymentStore.clearForNewProcess()
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = CheckoutUiGreen, contentColor = Color.White)
             ) { Text("Volver a intentarlo") }
         }
         if (!error.isNullOrBlank()) item {
@@ -344,13 +370,14 @@ fun StoreCheckoutScreen(
                     if (addressValue.firstName.isNotBlank() && addressValue.lastName.isNotBlank()) checkoutStore.updateCustomer(addressValue)
                     else checkoutStore.load()
                 },
-                enabled = !checkoutBusy && !paymentInProgress
+                enabled = !checkoutBusy && !paymentInProgress,
+                colors = ButtonDefaults.textButtonColors(contentColor = CheckoutUiGreen)
             ) { Text("Reintentar checkout") }
         }
         if (!paymentError.isNullOrBlank()) item {
             Text(paymentError!!, color = MaterialTheme.colorScheme.error)
             if (paymentState == StoreCardPaymentState.ERROR) {
-                TextButton(onClick = paymentStore::retryReconciliation) { Text("Reintentar comprobación") }
+                TextButton(onClick = paymentStore::retryReconciliation, colors = ButtonDefaults.textButtonColors(contentColor = CheckoutUiGreen)) { Text("Reintentar comprobación") }
             }
         }
 
@@ -369,8 +396,14 @@ fun StoreCheckoutScreen(
             Button(
                 onClick = { if (canSubmit) checkoutStore.createOrder(addressValue, selectedPayment, selectedShipping!!.second) },
                 enabled = canSubmit,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = RoundedCornerShape(28.dp)
+                modifier = Modifier.fillMaxWidth().height(60.dp),
+                shape = RoundedCornerShape(30.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = CheckoutUiGreen,
+                    contentColor = Color.White,
+                    disabledContainerColor = Color(0xFFE0E0E0),
+                    disabledContentColor = Color(0xFF777777)
+                )
             ) {
                 Text(
                     when {
@@ -383,13 +416,13 @@ fun StoreCheckoutScreen(
         }
         if (phase == StoreCheckoutPhase.CREATING_ORDER) item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = CheckoutUiGreen)
                 Spacer(Modifier.width(10.dp))
                 Text("Creando pedido…", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        }
     }
-}
 
 @Composable
 private fun CheckoutField(
@@ -405,9 +438,8 @@ private fun CheckoutField(
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         modifier = modifier.fillMaxWidth().height(58.dp),
         label = { Text(label, fontSize = 13.sp) },
-        textStyle = MaterialTheme.typography.bodyLarge,
+        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 16.sp),
         singleLine = true,
-        shape = RoundedCornerShape(3.dp),
         colors = checkoutFieldColors()
     )
 }
@@ -471,12 +503,59 @@ private fun checkoutFieldColors() = OutlinedTextFieldDefaults.colors(
 
 
 @Composable
+private fun CheckoutPaymentOption(
+    selected: Boolean,
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 82.dp).selectable(
+            selected = selected,
+            role = Role.RadioButton,
+            onClick = onClick
+        ),
+        shape = RoundedCornerShape(16.dp),
+        color = if (selected) CheckoutUiSoftGreen else Color.Transparent,
+        border = BorderStroke(1.dp, CheckoutUiBorder)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RadioButton(
+                selected = selected,
+                onClick = null,
+                colors = RadioButtonDefaults.colors(
+                    selectedColor = CheckoutUiGreen,
+                    unselectedColor = Color(0xFF777277)
+                )
+            )
+            Spacer(Modifier.width(14.dp))
+            androidx.compose.material3.Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = CheckoutUiGreen,
+                modifier = Modifier.size(28.dp)
+            )
+            Spacer(Modifier.width(18.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge, color = Color(0xFF303030))
+                Spacer(Modifier.height(3.dp))
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Color(0xFF999399))
+            }
+        }
+    }
+}
+
+@Composable
 private fun CheckoutSection(number: Int, title: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(Modifier.size(28.dp).background(Color(0xFF183B35), RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(28.dp).clip(RoundedCornerShape(50)).background(CheckoutUiGreen), contentAlignment = Alignment.Center) {
             Text(number.toString(), color = Color.White, fontWeight = FontWeight.Bold)
         }
-        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color(0xFF183B35))
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = CheckoutUiGreen)
     }
 }
 
