@@ -41,6 +41,9 @@ object StoreAccountFormValidation {
     fun profileError(firstName: String, lastName: String): String? =
         if (firstName.trim().isBlank() || lastName.trim().isBlank()) "Introduce tu nombre y apellidos." else null
 
+    fun mergeProfileNames(address: AccountCustomerAddress, firstName: String, lastName: String): AccountCustomerAddress =
+        address.copy(firstName = firstName.trim(), lastName = lastName.trim())
+
     fun cleanAddress(address: AccountCustomerAddress): AccountCustomerAddress = address.copy(
         firstName = address.firstName.trim(),
         lastName = address.lastName.trim(),
@@ -87,7 +90,7 @@ class StoreProfileOwner(
             }
             // Preserve every address field not edited by Profile; this remains the existing save contract.
             val address = repository.customerAddress()
-            repository.saveCustomerAddress(address.copy(firstName = first, lastName = last))
+            repository.saveCustomerAddress(StoreAccountFormValidation.mergeProfileNames(address, first, last))
             val updated = user.copy(
                 firstName = first,
                 lastName = last,
@@ -215,7 +218,7 @@ fun StoreProfileScreen(
                 busy = true; error = null; notice = null
                 scope.launch {
                     try {
-                        val saved = owner.save(user ?: error("No hay una sesión de cuenta activa."), firstName, lastName)
+                        val saved = owner.save(requireNotNull(user) { "No hay una sesión de cuenta activa." }, firstName, lastName)
                         if (saved != null) { onUserChanged(saved); notice = "Datos actualizados" }
                     } catch (failure: Exception) {
                         if (!repository.hasSession) onSessionExpired()
