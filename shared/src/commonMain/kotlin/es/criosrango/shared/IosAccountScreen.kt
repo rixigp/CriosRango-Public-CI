@@ -104,6 +104,7 @@ fun CriosRangoIOSAccountScreen(
     var forgotReturnPage by remember { mutableStateOf(IosAccountPage.LOGIN) }
     var addressReturnPage by remember { mutableStateOf(IosAccountPage.HOME) }
     val scope = rememberCoroutineScope()
+    val sharedAddressOwner = remember(repository) { StoreAddressOwner(repository) }
     val authSnapshot by sessionState.snapshot.collectAsState()
     val promotionRepository = remember(repository) {
         PromotionRepository(bearerTokenProvider = { repository.currentToken() })
@@ -204,8 +205,20 @@ fun CriosRangoIOSAccountScreen(
                     },
                     onBack = { page = IosAccountPage.HOME }
                 )
-                IosAccountPage.DATA -> IosProfileScreen(repository, user, { user = it }, ::invalidateExpiredSession) { page = IosAccountPage.PROFILE }
-                IosAccountPage.ADDRESS -> IosAddressScreen(repository, ::invalidateExpiredSession) { page = addressReturnPage }
+                IosAccountPage.DATA -> StoreProfileScreen(
+                    repository = repository,
+                    sessionState = sessionState,
+                    user = user,
+                    onUserChanged = { updated -> user = updated; sessionState.publishAuthenticatedUser(updated) },
+                    onSessionExpired = ::invalidateExpiredSession,
+                    onBack = { page = IosAccountPage.PROFILE }
+                )
+                IosAccountPage.ADDRESS -> StoreAddressScreen(
+                    repository = repository,
+                    addressOwner = sharedAddressOwner,
+                    onSessionExpired = ::invalidateExpiredSession,
+                    onBack = { page = addressReturnPage }
+                )
                 IosAccountPage.ORDERS -> IosOrdersScreen(repository, { selectedOrder = it; page = IosAccountPage.ORDER_DETAIL }, ::invalidateExpiredSession) { page = IosAccountPage.HOME }
                 IosAccountPage.WALLET -> IosWalletScreen(
                     authenticated = user != null,
