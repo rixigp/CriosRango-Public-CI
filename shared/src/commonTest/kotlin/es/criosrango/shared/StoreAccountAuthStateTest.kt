@@ -5,6 +5,7 @@ import es.criosrango.shared.account.AccountTokenStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertEquals
 import kotlinx.coroutines.runBlocking
 
 class StoreAccountAuthStateTest {
@@ -41,7 +42,8 @@ class StoreAccountAuthStateTest {
         assertEquals("Introduce tu correo y contraseña.", state.snapshot.value.error)
         assertNull(state.login("user@example.com", " "))
         assertEquals("Introduce tu correo y contraseña.", state.snapshot.value.error)
-        // The repository contract trims login identifiers, but never trims passwords.
+        assertEquals("user@example.com", normalizeStoreLoginCredentials(" user@example.com ", "  pass  ").first)
+        assertEquals("  pass  ", normalizeStoreLoginCredentials(" user@example.com ", "  pass  ").second)
         assertEquals("Correo electrónico o contraseña incorrectos.", normalizeStoreLoginError(401))
         assertEquals("Demasiados intentos. Espera unos minutos.", normalizeStoreLoginError(429))
         assertEquals("No hemos podido iniciar sesión.", normalizeStoreLoginError(500))
