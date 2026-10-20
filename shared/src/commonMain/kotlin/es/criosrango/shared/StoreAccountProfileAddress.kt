@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -28,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import es.criosrango.shared.account.AccountCustomerAddress
@@ -226,6 +228,7 @@ fun StoreProfileScreen(
         Button(
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35), contentColor = Color.White),
             onClick = {
                 if (busy) return@Button
                 val validation = StoreAccountFormValidation.profileError(firstName, lastName)
@@ -277,7 +280,7 @@ fun StoreAddressScreen(
             field("Dirección", a.address1) { addressOwner.edit(a.copy(address1 = it)) }
             field("Dirección adicional / Piso, puerta, etc. (opcional)", a.address2) { addressOwner.edit(a.copy(address2 = it)) }
             field("Código postal", a.postcode) { addressOwner.edit(a.copy(postcode = it)) }
-            field("Ciudad", a.city) { addressOwner.edit(a.copy(city = it)) }
+            field("Localidad", a.city) { addressOwner.edit(a.copy(city = it)) }
             Box(Modifier.fillMaxWidth()) {
                 val provinceLabel = StoreAccountFormValidation.provinceOptions.firstOrNull { it.first == a.state.uppercase() }?.second ?: a.state
                 OutlinedTextField(
@@ -305,6 +308,7 @@ fun StoreAddressScreen(
             Button(
                 enabled = !snapshot.saving,
                 modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35), contentColor = Color.White),
                 onClick = {
                     if (snapshot.saving) return@Button
                     scope.launch {
