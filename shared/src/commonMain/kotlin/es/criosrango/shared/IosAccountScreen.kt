@@ -874,69 +874,6 @@ private fun IosHelpScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun IosAccountHome(
-    user: AccountUser?,
-    error: String?,
-    onLogin: () -> Unit,
-    onRegister: () -> Unit,
-    onProfile: () -> Unit,
-    onWallet: () -> Unit,
-    onAddress: () -> Unit,
-    onOrders: () -> Unit,
-    onInfoPage: (AccountInfoPage) -> Unit,
-    onHelp: () -> Unit,
-    onLogout: () -> Unit,
-    repository: AccountRepository,
-    onBeforeLogout: suspend () -> Unit = {}
-) {
-    val scope = rememberCoroutineScope()
-    var loggingOut by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("Críos&Rango", style = MaterialTheme.typography.headlineMedium)
-        Text("Cuenta", style = MaterialTheme.typography.titleLarge)
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (user == null) {
-            Text("Accede a tu cuenta para consultar tus datos, dirección y pedidos.")
-            Button(onClick = onLogin, modifier = Modifier.fillMaxWidth()) { Text("Iniciar sesión") }
-            OutlinedButton(onClick = onRegister, modifier = Modifier.fillMaxWidth()) { Text("Crear cuenta") }
-            Button(onClick = { onInfoPage(AccountInfoPage.RETURNS) }, modifier = Modifier.fillMaxWidth()) { Text("Cambios y devoluciones") }
-            Button(onClick = { onInfoPage(AccountInfoPage.TERMS) }, modifier = Modifier.fillMaxWidth()) { Text("Condiciones de contratación") }
-            Button(onClick = { onInfoPage(AccountInfoPage.PRIVACY) }, modifier = Modifier.fillMaxWidth()) { Text("Política de privacidad") }
-            Button(onClick = { onInfoPage(AccountInfoPage.LEGAL) }, modifier = Modifier.fillMaxWidth()) { Text("Aviso legal") }
-            Button(onClick = { onInfoPage(AccountInfoPage.COOKIES) }, modifier = Modifier.fillMaxWidth()) { Text("Política de cookies") }
-            Button(onClick = onHelp, modifier = Modifier.fillMaxWidth()) { Text("Ayuda") }
-        } else {
-            Text("Hola, " + user.displayName.ifBlank { user.email })
-            Button(onClick = onProfile, modifier = Modifier.fillMaxWidth()) { Text("Mi perfil") }
-            Button(onClick = onAddress, modifier = Modifier.fillMaxWidth()) { Text("Mi dirección") }
-            Button(onClick = onOrders, modifier = Modifier.fillMaxWidth()) { Text("Mis pedidos") }
-            Button(onClick = onWallet, modifier = Modifier.fillMaxWidth()) {
-                Text("Cupones y promociones", maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Clip, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            }
-            Button(onClick = onHelp, modifier = Modifier.fillMaxWidth()) { Text("Ayuda") }
-            Button(onClick = { onInfoPage(AccountInfoPage.RETURNS) }, modifier = Modifier.fillMaxWidth()) { Text("Cambios y devoluciones") }
-            Button(onClick = { onInfoPage(AccountInfoPage.TERMS) }, modifier = Modifier.fillMaxWidth()) { Text("Condiciones de contratación") }
-            Button(onClick = { onInfoPage(AccountInfoPage.PRIVACY) }, modifier = Modifier.fillMaxWidth()) { Text("Política de privacidad") }
-            Button(onClick = { onInfoPage(AccountInfoPage.LEGAL) }, modifier = Modifier.fillMaxWidth()) { Text("Aviso legal") }
-            Button(onClick = { onInfoPage(AccountInfoPage.COOKIES) }, modifier = Modifier.fillMaxWidth()) { Text("Política de cookies") }
-            OutlinedButton(
-                enabled = !loggingOut,
-                onClick = {
-                    loggingOut = true
-                    scope.launch {
-                        runCatching { onBeforeLogout() }
-                        runCatching { repository.logout() }
-                        loggingOut = false
-                        onLogout()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text(if (loggingOut) "Cerrando sesión…" else "Cerrar sesión") }
-        }
-    }
-}
-
-@Composable
 private fun IosLoginScreen(
     repository: AccountRepository,
     sessionState: StoreAccountSessionState,
