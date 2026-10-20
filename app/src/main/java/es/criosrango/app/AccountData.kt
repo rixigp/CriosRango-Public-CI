@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import es.criosrango.shared.AndroidClaimOrderStore
+import es.criosrango.shared.StoreAccountAuthStatus
 import es.criosrango.shared.account.AccountClaimOrderResponse
 import es.criosrango.shared.account.AccountCustomerAddress
 import es.criosrango.shared.account.AccountOrderItem
@@ -179,7 +180,7 @@ class AccountRepository(context: Context) {
     }
 }
 
-enum class AccountAuthState { CHECKING, AUTHENTICATED, UNAUTHENTICATED }
+typealias AccountAuthState = StoreAccountAuthStatus
 
 class AccountViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = AccountRepository(application)
