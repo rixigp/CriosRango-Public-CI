@@ -292,13 +292,28 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
 
         restoreJob = viewModelScope.launch {
             try {
-                val restoredUser = try {
-                    repository.me()
-                } catch (exception: io.ktor.serialization.JsonConvertException) {
+                sharedAuthSession.restore()
+                if (generation != accountGeneration) return@launch
+                val authSnapshot = sharedAuthSession.snapshot.value
+                if (authSnapshot.status == AccountAuthState.UNAUTHENTICATED) {
                     invalidateSession()
                     return@launch
                 }
-                if (generation != accountGeneration) return@launch
+                val restoredUser = authSnapshot.user
+                if (authSnapshot.status != AccountAuthState.AUTHENTICATED || restoredUser == null) {
+                    val exception = authSnapshot.cause as? Exception
+                        ?: IllegalStateException(authSnapshot.error ?: "No hemos podido recuperar la sesión.")
+                    val storeError = exception.toStoreUiError(authenticated = true)
+                    if (storeError.type == StoreErrorType.SESSION_EXPIRED || !repository.hasSession) {
+                        invalidateSession()
+                        return@launch
+                    }
+                    // Keep the token and offer the existing retry path while the common session state remains CHECKING.
+                    _accountError.value = storeError
+                    _error.value = null
+                    _loading.value = false
+                    return@launch
+                }
                 _user.value = restoredUser
                 _authState.value = AccountAuthState.AUTHENTICATED
 
