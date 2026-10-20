@@ -1,6 +1,9 @@
 package es.criosrango.shared
 
 import es.criosrango.shared.account.AccountCustomerAddress
+import es.criosrango.shared.account.AccountRepository
+import es.criosrango.shared.account.AccountTokenStore
+import es.criosrango.shared.account.AccountUser
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -76,4 +79,25 @@ class StoreAccountProfileAddressTest {
         // Account validation intentionally does not apply checkout's province/postcode locality mapping.
         assertNull(StoreAccountFormValidation.addressError(valid.copy(postcode = "08001", city = "Madrid", state = "M")))
     }
+    @Test
+    fun updatedProfileUserIsPublishedToSharedAccountRootState() {
+        val repository = AccountRepository(object : AccountTokenStore {
+            private var token: String? = "valid-session-token"
+            override fun load(): String? = token
+            override fun save(token: String): Boolean { this.token = token; return true }
+            override fun clear() { token = null }
+        })
+        val session = StoreAccountSessionState(repository)
+        val updated = AccountUser(
+            id = 7, email = "ana@example.com",
+            firstName = "Ana", lastName = "Pérez", displayName = "Ana Pérez"
+        )
+
+        session.publishAuthenticatedUser(updated)
+
+        assertEquals(StoreAccountAuthStatus.AUTHENTICATED, session.snapshot.value.status)
+        assertEquals(updated, session.snapshot.value.user)
+        assertEquals(false, session.snapshot.value.loading)
+    }
+
 }
