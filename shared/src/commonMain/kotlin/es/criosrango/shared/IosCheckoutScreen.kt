@@ -327,7 +327,7 @@ fun StoreCheckoutScreen(
         }
 
 
-        if (paymentState == StoreCardPaymentState.PAID) item {
+        if (paymentState == StoreCardPaymentState.PAID && postOrderState == StoreCheckoutPostOrderState.CARD_PAID) item {
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = CheckoutUiSoftGreen) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Pago confirmado", style = MaterialTheme.typography.titleMedium)
@@ -335,7 +335,7 @@ fun StoreCheckoutScreen(
                 }
             }
         }
-        if (paymentState == StoreCardPaymentState.NOT_PAID) item {
+        if (shouldShowStoreCheckoutPaymentRetry(postOrderState)) item {
             Text("El pago no se ha completado.", color = MaterialTheme.colorScheme.error)
             Button(
                 onClick = {
@@ -357,14 +357,14 @@ fun StoreCheckoutScreen(
                 colors = ButtonDefaults.textButtonColors(contentColor = CheckoutUiGreen)
             ) { Text("Reintentar checkout") }
         }
-        if (!paymentError.isNullOrBlank()) item {
+        if (!paymentError.isNullOrBlank() && postOrderState != StoreCheckoutPostOrderState.MANUAL_ORDER_CREATED) item {
             Text(paymentError!!, color = MaterialTheme.colorScheme.error)
             if (paymentState == StoreCardPaymentState.ERROR) {
                 TextButton(onClick = paymentStore::retryReconciliation, colors = ButtonDefaults.textButtonColors(contentColor = CheckoutUiGreen)) { Text("Reintentar comprobación") }
             }
         }
 
-        if (createdOrder != null &&
+        if (postOrderState != StoreCheckoutPostOrderState.MANUAL_ORDER_CREATED && createdOrder != null &&
             (paymentState == StoreCardPaymentState.OPENING ||
                 paymentState == StoreCardPaymentState.WAITING_RETURN ||
                 paymentState == StoreCardPaymentState.RECONCILING)
@@ -375,7 +375,7 @@ fun StoreCheckoutScreen(
             }
         }
 
-        if (postOrderState != StoreCheckoutPostOrderState.MANUAL_ORDER_CREATED) item {
+        if (shouldShowStoreCheckoutPayCta(postOrderState)) item {
             Button(
                 onClick = { if (canSubmit) checkoutStore.createOrder(addressValue, selectedPayment, selectedShipping!!.second) },
                 enabled = canSubmit,

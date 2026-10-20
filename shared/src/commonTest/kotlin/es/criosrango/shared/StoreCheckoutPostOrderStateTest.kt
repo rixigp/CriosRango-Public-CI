@@ -29,6 +29,15 @@ class StoreCheckoutPostOrderStateTest {
     }
 
     @Test
+    fun manualOrderHasNeitherPayCtaNorPaymentRetry() {
+        val state = resolveStoreCheckoutPostOrderState("bizum", 57593, StoreCardPaymentState.NOT_PAID)
+        assertEquals(false, shouldShowStoreCheckoutPayCta(state))
+        assertEquals(false, shouldShowStoreCheckoutPaymentRetry(state))
+        assertEquals(true, shouldShowStoreCheckoutPayCta(StoreCheckoutPostOrderState.UNKNOWN))
+        assertEquals(true, shouldShowStoreCheckoutPaymentRetry(StoreCheckoutPostOrderState.TERMINAL_UNPAID_CANCELLED))
+    }
+
+    @Test
     fun missingOrderIdIsNotSuccess() {
         assertEquals(StoreCheckoutPostOrderState.NONE,
             resolveStoreCheckoutPostOrderState("bizum", null, StoreCardPaymentState.IDLE))

@@ -41,6 +41,12 @@ fun resolveStoreCheckoutPostOrderState(
     }
 }
 
+fun shouldShowStoreCheckoutPayCta(state: StoreCheckoutPostOrderState): Boolean =
+    state != StoreCheckoutPostOrderState.MANUAL_ORDER_CREATED
+
+fun shouldShowStoreCheckoutPaymentRetry(state: StoreCheckoutPostOrderState): Boolean =
+    state == StoreCheckoutPostOrderState.TERMINAL_UNPAID_CANCELLED
+
 class StoreCheckoutSubmissionGate {
     private val mutex = Mutex()
     private var acquired = false
