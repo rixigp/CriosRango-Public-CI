@@ -160,6 +160,7 @@ fun CriosRangoIOSRootScreen(
 ) {
     var section by remember { mutableStateOf(IosRootSection.HOME) }
     var openPromotionsOnStart by remember { mutableStateOf(false) }
+    var accountLoginFromCart by remember { mutableStateOf(false) }
     var checkoutOpen by remember { mutableStateOf(false) }
     var postOrderSuccess by remember { mutableStateOf<PostOrderSuccessSnapshot?>(null) }
     var catalogPage by remember { mutableStateOf<IosCatalogPage>(IosCatalogPage.Root) }
@@ -428,7 +429,7 @@ fun CriosRangoIOSRootScreen(
                     onCheckout = { checkoutOpen = true },
                     onOpenProduct = { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) },
                     isAuthenticated = accountRepository.hasSession,
-                    onLogin = { resetCatalog(); section = IosRootSection.ACCOUNT },
+                    onLogin = { accountLoginFromCart = true; resetCatalog(); section = IosRootSection.ACCOUNT },
                     promotionBearerTokenProvider = { accountTokenStore.load() },
                     refreshOnEnter = false
                 )
@@ -440,6 +441,17 @@ fun CriosRangoIOSRootScreen(
                     modifier = Modifier.padding(padding),
                     initialOrderId = pushNavigation?.orderId,
                     openPromotionsOnStart = openPromotionsOnStart,
+                    openLoginOnStart = accountLoginFromCart,
+                    onBackFromLogin = if (accountLoginFromCart) {
+                        { accountLoginFromCart = false; resetCatalog(); section = IosRootSection.CART }
+                    } else null,
+                    onAuthenticated = {
+                        if (accountLoginFromCart) {
+                            accountLoginFromCart = false
+                            resetCatalog()
+                            section = IosRootSection.CART
+                        }
+                    },
                     onPromotionsOpened = { openPromotionsOnStart = false },
                     onBeforeLogout = { cartStore.clearForLogoutAwait(); checkoutStore.resetForLogout(); checkoutOpen = false },
                     onOpenExternalUrl = onOpenExternalUrl
