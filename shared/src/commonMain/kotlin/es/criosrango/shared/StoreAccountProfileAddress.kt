@@ -343,10 +343,15 @@ fun StoreAddressScreen(
 
 /** Shared equivalent of the Android AccountSectionHeader golden. */
 @Composable
-fun StoreAccountSectionHeader(title: String, onBack: () -> Unit) {
+fun StoreAccountSectionHeader(
+    title: String,
+    onBack: () -> Unit,
+    horizontalPadding: androidx.compose.ui.unit.Dp = 20.dp
+) {
     StoreCatalogHeader(
         title = title,
         showBack = true,
-        onBack = onBack
+        onBack = onBack,
+        horizontalPadding = horizontalPadding
     )
 }
