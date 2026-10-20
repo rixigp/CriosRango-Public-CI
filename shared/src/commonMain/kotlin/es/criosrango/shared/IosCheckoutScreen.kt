@@ -22,6 +22,8 @@ import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.model.CustomerAddress
 import es.criosrango.shared.model.supportedPaymentOptions
 import es.criosrango.shared.model.consumerDiscount
+import es.criosrango.shared.model.consumerSubtotal
+import es.criosrango.shared.checkoutFreeShippingProgress
 import es.criosrango.shared.loyalty.LoyaltyRepository
 import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.resolveCouponPresentation
@@ -111,6 +113,15 @@ fun IosCheckoutScreen(
         StoreCardPaymentState.RECONCILING
     )
     val checkoutBusy = phase == StoreCheckoutPhase.LOADING || phase == StoreCheckoutPhase.CREATING_ORDER
+    val freeShippingProgress = checkoutFreeShippingProgress(
+        cart.totals.consumerSubtotal(),
+        cart.totals.currencyMinorUnit
+    )
+    val freeShippingMessage = if (freeShippingProgress.reached) {
+        "¡Ya tienes envío gratis!"
+    } else {
+        "Te faltan ${formatStorePrice(freeShippingProgress.remainingMinorUnits.toString(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol)} para conseguir envío gratis"
+    }
 
     val canSubmit = cart.items.isNotEmpty() &&
         phase == StoreCheckoutPhase.READY &&
@@ -134,13 +145,13 @@ fun IosCheckoutScreen(
                 Text("Finalizar compra", style = MaterialTheme.typography.titleLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.weight(1f))
             }
         }
-        if (phase == StoreCheckoutPhase.READY && shippingOptions.any { it.second.price.toLongOrNull() == 0L }) item {
+        item {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.secondaryContainer
             ) {
-                Text("¡Ya tienes envío gratis!", modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.onSecondaryContainer)
+                Text("🚚  " + freeShippingMessage, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), color = MaterialTheme.colorScheme.onSecondaryContainer)
             }
         }
         if (phase == StoreCheckoutPhase.LOADING && checkout == null) item {

@@ -39,6 +39,7 @@ import java.math.BigDecimal
 import kotlinx.coroutines.launch
 import es.criosrango.shared.model.CheckoutPaymentKind
 import es.criosrango.shared.model.normalizePaymentGatewayIds
+import es.criosrango.shared.checkoutFreeShippingProgress
 
 private val CheckoutUiGreen = Color(0xFF183B35)
 private val CheckoutUiSoftGreen = Color(0xFFE5F1ED)
@@ -131,6 +132,15 @@ fun RedesignedCheckoutScreen(
     } == true
     val hasSelectedShipping = selectedShipping in shippingOptions.map { it.rateId }.filter { it.isNotBlank() }
     val hasValidTotal = cart.totals.totalPrice.toBigDecimalOrNull()?.let { it >= BigDecimal.ZERO } == true
+    val freeShippingProgress = checkoutFreeShippingProgress(
+        cart.totals.consumerSubtotal(),
+        cart.totals.currencyMinorUnit
+    )
+    val freeShippingMessage = if (freeShippingProgress.reached) {
+        "¡Ya tienes envío gratis!"
+    } else {
+        "Te faltan ${formatMinorUnits(freeShippingProgress.remainingMinorUnits.toString(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol)} para conseguir envío gratis"
+    }
     val couponInvalidationNotice = isCouponInvalidationMessage(error)
     val ready = checkoutPhase == CheckoutPhase.READY && !loading && (error.isNullOrBlank() || couponInvalidationNotice) && checkout != null && addressMatchesQuote
     val canPay = !loading && (error.isNullOrBlank() || couponInvalidationNotice) && lastValidAddress != null && addressMatchesQuote && checkout != null &&
@@ -178,7 +188,7 @@ fun RedesignedCheckoutScreen(
         }
     }) { padding ->
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding(), contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (ready && shippingOptions.any { it.price.toBigDecimalOrNull() == BigDecimal.ZERO }) item {
+            item {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
@@ -198,7 +208,7 @@ fun RedesignedCheckoutScreen(
                         )
                         Spacer(Modifier.width(12.dp))
                         Text(
-                            text = "¡Ya tienes envío gratis!",
+                            text = "🚚  " + freeShippingMessage,
                             style = MaterialTheme.typography.bodyMedium,
                             color = CheckoutUiGreen,
                             maxLines = 1
