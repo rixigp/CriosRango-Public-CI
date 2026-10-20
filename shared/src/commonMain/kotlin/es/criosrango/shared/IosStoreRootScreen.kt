@@ -731,8 +731,14 @@ fun StoreCartScreen(
                         contentScale = ContentScale.Crop,
                         backgroundColor = Color(0xFFF3FAF7)
                     )
-                    Column(Modifier.weight(1f).padding(start = 8.dp, end = 4.dp)) {
-                        Text(normalizeWooPlainText(line.name), fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                        Text(
+                            normalizeWooPlainText(line.name),
+                            modifier = Modifier.fillMaxWidth(),
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
                         if (openingProductKey == line.key) Text("Abriendo producto…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (line.variation.isNotEmpty()) Text(
                             line.variation.joinToString(" · ") { "${it.attribute.removePrefix("pa_")}: ${it.value}" },
@@ -778,9 +784,19 @@ fun StoreCartScreen(
                         cart.totals.consumerDiscount()
                     )
                     val walletOptions = loyaltyWallet!!.redeemableOptions(eligibleSubtotal)
-                    val walletApplied = cart.coupons.any { coupon -> loyaltyWallet!!.pendingRewards.any { reward -> reward.code.equals(coupon.code, ignoreCase = true) } }
+                    val walletApplied = cart.coupons.any { coupon ->
+                        loyaltyWallet!!.pendingRewards.any { reward -> reward.code.equals(coupon.code, ignoreCase = true) }
+                    }
+                    val hasUnappliedReward = loyaltyWallet!!.pendingRewards.any { reward ->
+                        cart.coupons.none { it.code.equals(reward.code, ignoreCase = true) }
+                    }
+                    val walletVisibility = cartWalletUiVisibility(
+                        walletEnabled = walletEnabled,
+                        walletLoaded = loyaltyWallet != null,
+                        hasUnappliedReward = hasUnappliedReward
+                    )
 
-                    if (!walletApplied) Surface(
+                    if (walletVisibility.showSummary) Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
                         color = Color(0xFFE8F5EF)
@@ -799,7 +815,7 @@ fun StoreCartScreen(
                                     color = Color(0xFF315B52)
                                 )
                             }
-                            if (walletOptions.isNotEmpty()) IosCartApplyButton({ showWalletDialog=true }, enabled=!loyaltyLoading)
+                            if (walletOptions.isNotEmpty() && !walletApplied) IosCartApplyButton({ showWalletDialog=true }, enabled=!loyaltyLoading)
                             IconButton(
                                 onClick = { showWalletInfoDialog = true },
                                 modifier = Modifier.size(40.dp).semantics { contentDescription = "Información del monedero" }
@@ -814,9 +830,7 @@ fun StoreCartScreen(
                         }
                     }
 
-                    if (loyaltyWallet!!.pendingRewards.any { reward ->
-                        cart.coupons.none { it.code.equals(reward.code, ignoreCase = true) }
-                    }) {
+                    if (walletVisibility.showApplyCandidates) {
                         Text("Saldo listo para usar", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                         Surface(Modifier.fillMaxWidth(), shape=RoundedCornerShape(14.dp), color=Color(0xFFF4F0F5)) {
                             Column(Modifier.fillMaxWidth().padding(horizontal=12.dp, vertical=8.dp), verticalArrangement=Arrangement.spacedBy(4.dp)) {
