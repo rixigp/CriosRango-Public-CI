@@ -168,12 +168,13 @@ fun CriosRangoIOSAccountScreen(
             FullScreenLoading("Comprobando sesión")
         } else {
             when (page) {
-                IosAccountPage.HOME -> Column(Modifier.fillMaxSize()) {
+                IosAccountPage.HOME -> Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
                     (error ?: authSnapshot.error)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     StoreAccountRootScreen(
                         modifier = Modifier.weight(1f),
                         contentHorizontalPadding = 4.dp,
                         contentTopSpacing = 38.dp,
+                        headerHorizontalPadding = 0.dp,
                         fullName = user?.let { it.displayName.ifBlank { it.email } },
                         email = user?.email,
                         appVersion = appVersion,
