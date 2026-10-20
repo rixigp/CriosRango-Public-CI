@@ -254,9 +254,8 @@ fun StoreOrderDetailScreen(
     val a = order.shippingAddress
     val province = storeProvinceName(a.state)
     val city = if (a.city.equals("tarancon", true)) "Tarancón" else a.city
-    val shipping = storeDecimal(order.shippingTotal)
-    val total = storeDecimal(order.total)
-    val products = (total - shipping).coerceAtLeast(0.0)
+    val shippingMinor = storeOrderMinorUnits(order.shippingTotal)
+    val productsMinor = (storeOrderMinorUnits(order.total) - shippingMinor).coerceAtLeast(0L)
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 0.dp),
@@ -295,8 +294,8 @@ fun StoreOrderDetailScreen(
         }
         item {
             StoreOrderDetailCard("Resumen") {
-                Text("Productos: ${formatStoreDecimal(products, order.currency)}")
-                Text(if (shipping == 0.0) "Envío: Gratis" else "Envío: ${formatStoreAmount(order.shippingTotal, order.currency)}")
+                Text("Productos: ${formatStoreMinorUnits(productsMinor, order.currency)}")
+                Text(if (shippingMinor == 0L) "Envío: Gratis" else "Envío: ${formatStoreAmount(order.shippingTotal, order.currency)}")
                 Spacer(Modifier.height(8.dp))
                 Text("Total: ${formatStoreAmount(order.total, order.currency)}", style = MaterialTheme.typography.titleLarge)
             }
@@ -335,10 +334,23 @@ private fun formatStoreOrderDate(value: String): String {
     return if (raw.size == 3 && raw[0].length == 4) "${raw[2]}-${raw[1]}-${raw[0]}" else value.take(10)
 }
 
-private fun storeDecimal(value: String): Double = value.trim().replace(",", ".").toDoubleOrNull() ?: 0.0
+internal fun storeOrderMinorUnits(value: String): Long {
+    val raw = value.trim().replace(",", ".")
+    if (raw.isBlank()) return 0L
+    val negative = raw.startsWith("-")
+    val unsigned = raw.removePrefix("-").removePrefix("+")
+    val parts = unsigned.split(".", limit = 2)
+    val whole = parts[0].filter { it in '0'..'9' }.toLongOrNull() ?: return 0L
+    val fraction = parts.getOrElse(1) { "" }.filter { it in '0'..'9' }
+    val firstTwo = (fraction + "00").take(2).toLongOrNull() ?: 0L
+    val rounded = fraction.length > 2 && fraction[2] >= '5'
+    val cents = whole * 100L + firstTwo + if (rounded) 1L else 0L
+    return if (negative) -cents else cents
+}
 
-private fun formatStoreDecimal(value: Double, currency: String): String {
-    val amount = value.toString().replace('.', ',').ifBlank { "0" }
+internal fun formatStoreMinorUnits(value: Long, currency: String): String {
+    val absolute = kotlin.math.abs(value)
+    val amount = (if (value < 0) "-" else "") + (absolute / 100L).toString() + "," + (absolute % 100L).toString().padStart(2, '0')
     return if (currency.equals("EUR", true)) "$amount €" else "$amount $currency"
 }
 
