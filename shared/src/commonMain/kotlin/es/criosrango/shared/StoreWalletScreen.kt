@@ -222,8 +222,8 @@ Card(
 
                          if (walletAmount < minimumAmount) {
                             Text(
-                                "Has acumulado " + loyaltyDisplayMoney(wallet.walletValue) +
-                                    " de " + loyaltyDisplayMoney(wallet.minimumRedeemValue),
+                                "Has acumulado " + formatWalletMoney(wallet.walletValue) +
+                                    " de " + formatWalletMoney(wallet.minimumRedeemValue),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF40514D)
                             )
@@ -237,7 +237,7 @@ Card(
                                 )
                             }
                             Text(
-                                "Te faltan " + loyaltyDisplayMoney(
+                                "Te faltan " + formatWalletMoney(
                                     formatWalletRemaining(remaining)
                                 ) + " para desbloquear tu saldo.",
                                 style = MaterialTheme.typography.bodySmall,
@@ -482,13 +482,43 @@ Card(
     }
 
     if (showRedeemDialog && options.isNotEmpty()) {
-        LoyaltyRedeemDialog(
-            options = options,
-            loading = loading,
-            onDismiss = { showRedeemDialog = false },
-            onSelect = { option ->
-                showRedeemDialog = false
-                onRedeem(option.points)
+        AlertDialog(
+            onDismissRequest = { if (!loading) showRedeemDialog = false },
+            title = {
+                Text(
+                    "¿Cuánto quieres utilizar?",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    options.forEach { option ->
+                        Button(
+                            onClick = {
+                                showRedeemDialog = false
+                                onRedeem(option.points)
+                            },
+                            enabled = !loading,
+                            modifier = Modifier.fillMaxWidth().height(40.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F5C4D), contentColor = Color.White)
+                        ) {
+                            Text(
+                                if (option.isMaximum) "Máximo: " + formatWalletMoney(option.value)
+                                else formatWalletMoney(option.value),
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
+                    if (loading) CircularProgressIndicator(Modifier.padding(top = 4.dp))
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showRedeemDialog = false }, enabled = !loading) {
+                    Text("Cancelar")
+                }
             }
         )
     }
