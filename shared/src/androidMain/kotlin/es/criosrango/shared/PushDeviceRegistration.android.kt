@@ -1,4 +1,7 @@
 package es.criosrango.shared
+
 actual object PushDeviceRegistration {
- actual suspend fun unregisterCurrentDevice() {}
+    // Android token registration and logout are owned by PushNotificationController in :app.
+    actual suspend fun registerCurrentDevice() = Unit
+    actual suspend fun unregisterCurrentDevice() = Unit
 }

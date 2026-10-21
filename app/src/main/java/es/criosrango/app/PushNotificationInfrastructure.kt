@@ -23,6 +23,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.TimeUnit
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -52,7 +55,7 @@ internal data class PushRegistrationPayload(
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("platform", "android")
-        .put("identifier_type", "fid")
+        .put("identifier_type", "fcm_token")
         .put("identifier", identifier)
         .put("new_products", newProducts)
         .put("order_updates", orderUpdates)
@@ -64,25 +67,19 @@ internal fun pushRegistrationPayload(
     orderUpdates: Boolean
 ): PushRegistrationPayload = PushRegistrationPayload(identifier, newProducts, orderUpdates)
 
-internal fun shouldDeactivatePreviousFid(previousFid: String?, currentFid: String): Boolean =
-    !previousFid.isNullOrBlank() && previousFid != currentFid
+internal fun shouldDeactivatePreviousToken(previousToken: String?, currentToken: String): Boolean =
+    !previousToken.isNullOrBlank() && previousToken != currentToken
 
-internal enum class PushRegistrationAction {
-    REGISTER_NEW,
-    UNREGISTER_OLD
-}
+internal fun pendingUnregisterTokensAfterAttempt(pendingTokens: Set<String>, token: String, unregisterSucceeded: Boolean): Set<String> =
+    pendingTokens.toMutableSet().apply { if (unregisterSucceeded) remove(token) else add(token) }
 
-internal fun pushRegistrationActions(
-    previousFid: String?,
-    currentFid: String,
-    registrationSucceeded: Boolean
-): List<PushRegistrationAction> {
+internal enum class PushRegistrationAction { REGISTER_NEW, UNREGISTER_OLD }
+
+internal fun pushRegistrationActions(previousToken: String?, currentToken: String, registrationSucceeded: Boolean): List<PushRegistrationAction> {
     if (!registrationSucceeded) return listOf(PushRegistrationAction.REGISTER_NEW)
     return buildList {
         add(PushRegistrationAction.REGISTER_NEW)
-        if (shouldDeactivatePreviousFid(previousFid, currentFid)) {
-            add(PushRegistrationAction.UNREGISTER_OLD)
-        }
+        if (shouldDeactivatePreviousToken(previousToken, currentToken)) add(PushRegistrationAction.UNREGISTER_OLD)
     }
 }
 
@@ -91,15 +88,17 @@ object PushNotificationController {
     private const val SESSION = "criosrango_account_session_v2"
     private const val IDENTIFIER_TYPE_KEY = "criosrango_push_identifier_type"
     private const val IDENTIFIER_KEY = "criosrango_push_identifier"
+    private const val PENDING_UNREGISTER_KEY = "criosrango_push_pending_unregister_tokens"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val syncMutex = Mutex()
-    private val httpClient = OkHttpClient()
+    private val httpClient = OkHttpClient.Builder().callTimeout(4, TimeUnit.SECONDS)
+        .connectTimeout(2, TimeUnit.SECONDS).readTimeout(2, TimeUnit.SECONDS).writeTimeout(2, TimeUnit.SECONDS).build()
 
     fun initialize(context: Context) {
         createChannels(context)
         if (!notificationsAllowed(context)) return
-        FirebaseMessaging.getInstance().register()
+        FirebaseMessaging.getInstance().token.addOnSuccessListener { token -> onRegistered(context, token) }
     }
 
     fun requestPermission(context: Context) {
@@ -120,78 +119,55 @@ object PushNotificationController {
         initialize(context)
     }
 
-    fun onRegistered(context: Context, installationId: String) {
-        if (installationId.isBlank() || !notificationsAllowed(context)) return
-        scope.launch {
-            syncMutex.withLock {
-                syncRegisteredFid(context.applicationContext, installationId)
-            }
-        }
+    fun onRegistered(context: Context, token: String) {
+        if (token.isBlank() || !notificationsAllowed(context)) return
+        scope.launch { syncMutex.withLock { syncRegisteredToken(context.applicationContext, token) } }
     }
 
-    fun onUnregistered(context: Context, installationId: String) {
-        if (installationId.isBlank()) return
-        val applicationContext = context.applicationContext
-        scope.launch {
-            syncMutex.withLock {
-                val preferences = applicationContext.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
-                val accountToken = preferences.getString("account_token", null)
-                if (deactivateFid(installationId, accountToken)) {
-                    if (preferences.getString(IDENTIFIER_KEY, null) == installationId) {
-                        preferences.edit()
-                            .remove(IDENTIFIER_TYPE_KEY)
-                            .remove(IDENTIFIER_KEY)
-                            .apply()
-                    }
-                }
-            }
-        }
-    }
-
-    fun unregister(context: Context) {
-        val applicationContext = context.applicationContext
-        val preferences = applicationContext.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
-        val fid = preferences.getString(IDENTIFIER_KEY, null)?.takeIf { it.isNotBlank() } ?: return
-        val accountToken = preferences.getString("account_token", null)
-        scope.launch {
-            syncMutex.withLock {
-                if (deactivateFid(fid, accountToken)) {
-                    preferences.edit()
-                        .remove(IDENTIFIER_TYPE_KEY)
-                        .remove(IDENTIFIER_KEY)
-                        .apply()
-                }
-            }
-        }
-    }
-
-    internal fun buildUnregisterPayload(identifier: String): JSONObject =
-        JSONObject()
-            .put("platform", "android")
-            .put("identifier_type", "fid")
-            .put("identifier", identifier)
-
-    private fun syncRegisteredFid(context: Context, fid: String) {
-        val preferences = context.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
-        val previousFid = preferences.getString(IDENTIFIER_KEY, null)
-        val accountToken = preferences.getString("account_token", null)
-        val pushPreferences = PushPreferencesStore(context)
-        val payload = pushRegistrationPayload(
-            identifier = fid,
-            newProducts = pushPreferences.newProducts,
-            orderUpdates = pushPreferences.orderUpdates
+    /** Bounded best-effort deassociation; retain token and pending marker on failure. */
+    suspend fun unregisterAwait(context: Context): Boolean {
+        val app = context.applicationContext
+        val prefs = app.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
+        val token = prefs.getString(IDENTIFIER_KEY, null)?.takeIf { it.isNotBlank() } ?: return true
+        // Persist recovery intent before waiting for the registration mutex, so lock timeout cannot lose it.
+        val pending = pendingUnregisterTokensAfterAttempt(
+            prefs.getStringSet(PENDING_UNREGISTER_KEY, emptySet()).orEmpty(), token, unregisterSucceeded = false
         )
+        prefs.edit().putStringSet(PENDING_UNREGISTER_KEY, pending).apply()
+        return withTimeoutOrNull(4_500L) {
+            syncMutex.withLock {
+                val removed = withContext(Dispatchers.IO) { deactivateToken(token, prefs.getString("account_token", null)) }
+                val updatedPending = pendingUnregisterTokensAfterAttempt(
+                    prefs.getStringSet(PENDING_UNREGISTER_KEY, emptySet()).orEmpty(), token, unregisterSucceeded = removed
+                )
+                prefs.edit().putStringSet(PENDING_UNREGISTER_KEY, updatedPending).apply()
+                removed
+            }
+        } ?: false
+    }
 
-        if (!postRegistration(payload, accountToken)) return
+    internal fun buildUnregisterPayload(identifier: String): JSONObject = JSONObject()
+        .put("platform", "android").put("identifier_type", "fcm_token").put("identifier", identifier)
 
-        if (shouldDeactivatePreviousFid(previousFid, fid)) {
-            deactivateFid(previousFid!!, accountToken)
+    private fun syncRegisteredToken(context: Context, token: String) {
+        val prefs = context.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
+        val previousToken = prefs.getString(IDENTIFIER_KEY, null)
+        val accountToken = prefs.getString("account_token", null)
+        val pending = prefs.getStringSet(PENDING_UNREGISTER_KEY, emptySet()).orEmpty().toMutableSet()
+        val pushPrefs = PushPreferencesStore(context)
+        val payload = pushRegistrationPayload(token, pushPrefs.newProducts, pushPrefs.orderUpdates)
+        if (!postRegistration(payload, accountToken)) {
+            // A pending logout must still detach the previous account even when the new registration fails.
+            pending.toList().forEach { stale -> if (deactivateToken(stale, accountToken)) pending.remove(stale) }
+            prefs.edit().putStringSet(PENDING_UNREGISTER_KEY, pending).apply()
+            return
         }
-
-        preferences.edit()
-            .putString(IDENTIFIER_TYPE_KEY, "fid")
-            .putString(IDENTIFIER_KEY, fid)
-            .apply()
+        // Register/reassign first; only then retire old identities.
+        pending.filter { it != token }.forEach { stale -> if (deactivateToken(stale, accountToken)) pending.remove(stale) }
+        if (previousToken != null && previousToken != token && !deactivateToken(previousToken, accountToken)) pending.add(previousToken)
+        pending.remove(token)
+        prefs.edit().putString(IDENTIFIER_TYPE_KEY, "fcm_token").putString(IDENTIFIER_KEY, token)
+            .putStringSet(PENDING_UNREGISTER_KEY, pending).apply()
     }
 
     private fun postRegistration(
@@ -213,25 +189,12 @@ object PushNotificationController {
         }.getOrDefault(false)
     }
 
-    private fun deactivateFid(
-        fid: String,
-        accountToken: String?
-    ): Boolean {
-        if (fid.isBlank()) return false
-
-        val request = Request.Builder()
-            .url(ENDPOINT)
-            .delete(buildUnregisterPayload(fid).toString().toRequestBody("application/json".toMediaType()))
-            .apply {
-                accountToken?.let { header("Authorization", "Bearer $it") }
-            }
-            .build()
-
-        return runCatching {
-            httpClient.newCall(request).execute().use { response ->
-                response.isSuccessful
-            }
-        }.getOrDefault(false)
+    private fun deactivateToken(token: String, accountToken: String?): Boolean {
+        if (token.isBlank()) return false
+        val request = Request.Builder().url(ENDPOINT)
+            .delete(buildUnregisterPayload(token).toString().toRequestBody("application/json".toMediaType()))
+            .apply { accountToken?.let { header("Authorization", "Bearer $it") } }.build()
+        return runCatching { httpClient.newCall(request).execute().use { it.isSuccessful } }.getOrDefault(false)
     }
 
     fun createChannels(context: Context) {
@@ -267,12 +230,8 @@ class PushFirebaseMessagingService : FirebaseMessagingService() {
         PushNotificationController.createChannels(this)
     }
 
-    override fun onRegistered(installationId: String) {
-        PushNotificationController.onRegistered(this, installationId)
-    }
-
-    override fun onUnregistered(installationId: String) {
-        PushNotificationController.onUnregistered(this, installationId)
+    override fun onNewToken(token: String) {
+        PushNotificationController.onRegistered(this, token)
     }
 
     override fun onMessageReceived(message: RemoteMessage) {

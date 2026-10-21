@@ -169,7 +169,7 @@ class AccountRepository(context: Context) {
 
     suspend fun logout() {
         try {
-            runCatching { PushNotificationController.unregister(application) }
+            runCatching { PushNotificationController.unregisterAwait(application) }
             sharedRepository.logout()
         } finally {
             sharedRepository.clearLocalSession()

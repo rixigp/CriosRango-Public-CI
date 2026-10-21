@@ -122,7 +122,10 @@ fun CriosRangoIOSAccountScreen(
     val walletOwner = remember(loyaltyRepository, promotionRepository) {
         StoreWalletOwner(loyaltyRepository, promotionRepository)
     }
-    LaunchedEffect(user?.id) { walletOwner.onSessionChanged(user?.id?.toString()) }
+    LaunchedEffect(user?.id) {
+        walletOwner.onSessionChanged(user?.id?.toString())
+        if (user != null) runCatching { PushDeviceRegistration.registerCurrentDevice() }
+    }
     fun invalidateExpiredSession() { sessionState.logout(); user = null; selectedOrder = null; error = null; page = IosAccountPage.HOME }
 
     LaunchedEffect(openPromotionsOnStart, user?.id) {
@@ -246,6 +249,7 @@ fun CriosRangoIOSAccountScreen(
                             onDeleteAccount = { onOpenExternalUrl(AccountDeletion.URL) },
                             onLogout = {
                                 scope.launch {
+                                    runCatching { PushDeviceRegistration.unregisterCurrentDevice() }
                                     runCatching { onBeforeLogout() }
                                     runCatching { repository.logout() }
                                     sessionState.logout()
@@ -267,6 +271,7 @@ fun CriosRangoIOSAccountScreen(
                     onDeleteAccount = { onOpenExternalUrl(AccountDeletion.URL) },
                     onLogout = {
                         scope.launch {
+                            runCatching { PushDeviceRegistration.unregisterCurrentDevice() }
                             runCatching { onBeforeLogout() }
                             runCatching { repository.logout() }
                             sessionState.logout()

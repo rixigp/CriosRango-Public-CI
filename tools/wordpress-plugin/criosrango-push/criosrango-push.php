@@ -6,7 +6,7 @@
 if (!defined('ABSPATH')) exit;
 
 final class CriosRango_Push {
-    const NS='criosrango/v1'; const GROUP='criosrango-push'; const DB_VERSION=2;
+    const NS='criosrango/v1'; const GROUP='criosrango-push'; const DB_VERSION=3;
     static function init(){
         add_action('rest_api_init',[__CLASS__,'routes']);
         add_action('transition_post_status',[__CLASS__,'product_publish'],10,3);
@@ -289,6 +289,9 @@ final class CriosRango_Push {
             self::migration_error('verify_identifier_hash_unique');
             return false;
         }
+        // FID is not an FCM HTTP v1 target. Keep legacy rows for audit but detach and deactivate them.
+        $legacy_result=$wpdb->query($wpdb->prepare("UPDATE $table SET active=0,user_id=0,updated_gmt=%s WHERE platform='android' AND identifier_type='fid' AND (active<>0 OR user_id<>0)",gmdate('Y-m-d H:i:s')));
+        if(false===$legacy_result){ self::migration_error('deactivate_legacy_fid_devices'); return false; }
 
         return true;
     }
@@ -300,7 +303,7 @@ final class CriosRango_Push {
             $identifier=trim((string)$r->get_param('token'));
             if($type==='')$type=$platform==='ios'?'apns_token':'fcm_token';
         }
-        $valid=($platform==='android'&&in_array($type,['fid','fcm_token'],true))||($platform==='ios'&&$type==='apns_token');
+        $valid=($platform==='android'&&$type==='fcm_token')||($platform==='ios'&&$type==='apns_token');
         if(!$valid||$identifier==='')return new WP_Error('invalid_push_device','Datos no válidos',['status'=>400]);
         return [$platform,$type,$identifier];
     }
@@ -310,13 +313,16 @@ final class CriosRango_Push {
         $hash=hash('sha256',$platform.':'.$type.':'.$identifier); $legacy_hash=hash('sha256',$platform.':'.$identifier); $now=gmdate('Y-m-d H:i:s'); $table=self::table('devices');
         $data=['token_hash'=>$legacy_hash,'token'=>$identifier,'identifier_hash'=>$hash,'identifier'=>$identifier,'identifier_type'=>$type,'platform'=>$platform,'user_id'=>(int)$user,'new_products'=>$r->get_param('new_products')===null?1:(bool)$r->get_param('new_products'),'order_updates'=>$r->get_param('order_updates')===null?1:(bool)$r->get_param('order_updates'),'active'=>1,'last_seen_gmt'=>$now,'updated_gmt'=>$now];
         $id=$wpdb->get_var($wpdb->prepare("SELECT id FROM $table WHERE identifier_hash=%s",$hash));
-        if($id)$wpdb->update($table,$data,['id'=>(int)$id]);else{$data['created_gmt']=$now;$wpdb->insert($table,$data);}
+        if($id){ $write_result=$wpdb->update($table,$data,['id'=>(int)$id]); }
+        else { $data['created_gmt']=$now; $write_result=$wpdb->insert($table,$data); }
+        if(false===$write_result)return new WP_Error('push_device_registration_failed','No se ha podido guardar el dispositivo push.',['status'=>500]);
         return rest_ensure_response(['success'=>true]);
     }
     static function unregister($r){
         global $wpdb; $parsed=self::parse_identifier($r); if(is_wp_error($parsed))return $parsed; [$platform,$type,$identifier]=$parsed;
         $hash=hash('sha256',$platform.':'.$type.':'.$identifier);
-        $wpdb->update(self::table('devices'),['active'=>0,'user_id'=>0,'updated_gmt'=>gmdate('Y-m-d H:i:s')],['identifier_hash'=>$hash]);
+        $result=$wpdb->update(self::table('devices'),['active'=>0,'user_id'=>0,'updated_gmt'=>gmdate('Y-m-d H:i:s')],['identifier_hash'=>$hash]);
+        if(false===$result)return new WP_Error('push_device_unregistration_failed','No se ha podido desactivar el dispositivo push.',['status'=>500]);
         return rest_ensure_response(['success'=>true]);
     }
     static function product_publish($new,$old,$post){
@@ -363,20 +369,26 @@ final class CriosRango_Push {
         if($all_ok)$wpdb->update(self::table('events'),['sent_gmt'=>gmdate('Y-m-d H:i:s')],['id'=>$id]);
     }
     static function send($d,$p){
-        if($d->platform==='android')return self::fcm($d->identifier,$p,$d->identifier_type==='fid'?'fid':'token'); return self::apns($d->identifier,$p);
+        if($d->platform==='android'){
+            if($d->identifier_type!=='fcm_token')return ['result'=>'unsupported_identifier_type','provider_id'=>'','invalid'=>false];
+            return self::fcm($d->identifier,$p);
+        }
+        return self::apns($d->identifier,$p);
     }
     static function delivery($eid,$did,$r){
         global $wpdb;$wpdb->query($wpdb->prepare("INSERT INTO ".self::table('deliveries')." (event_id,device_id,result,provider_id,created_gmt) VALUES(%d,%d,%s,%s,%s) ON DUPLICATE KEY UPDATE result=%s, provider_id=%s, created_gmt=%s",$eid,$did,$r['result'],$r['provider_id'],gmdate('Y-m-d H:i:s'),$r['result'],$r['provider_id'],gmdate('Y-m-d H:i:s')));
-        if($r['invalid'])$wpdb->update(self::table('devices'),['active'=>0],['id'=>$did]);
+        if($r['invalid'])$wpdb->update(self::table('devices'),['active'=>0,'user_id'=>0],['id'=>$did]);
     }
-    static function fcm($identifier,$p,$target='token'){
+    static function fcm_message_payload($identifier,$p){
+        return ['message'=>['token'=>$identifier,'notification'=>['title'=>$p['title']??'Críos&Rango','body'=>$p['body']??'Tienes una nueva notificación'],'data'=>['type'=>$p['type']??'','order_id'=>(string)($p['order_id']??'')],'android'=>['notification'=>['channel_id'=>($p['type']??'')==='order_status'?'criosrango_orders':'criosrango_general']]]];
+    }
+    static function fcm($identifier,$p){
         $cfg=defined('CRIOSRANGO_PUSH_FCM_SERVICE_ACCOUNT')?CRIOSRANGO_PUSH_FCM_SERVICE_ACCOUNT:get_option('criosrango_push_fcm_service_account');if(!$cfg)return['result'=>'config_missing','provider_id'=>'','invalid'=>false];
         $c=is_string($cfg)?json_decode($cfg,true):$cfg;if(empty($c['project_id'])||empty($c['client_email'])||empty($c['private_key']))return['result'=>'config_invalid','provider_id'=>'','invalid'=>false];
         $now=time();$b=function($v){return rtrim(strtr(base64_encode($v),'+/','-_'),'=');};$h=$b(wp_json_encode(['alg'=>'RS256','typ'=>'JWT']));$pl=$b(wp_json_encode(['iss'=>$c['client_email'],'scope'=>'https://www.googleapis.com/auth/firebase.messaging','aud'=>'https://oauth2.googleapis.com/token','iat'=>$now,'exp'=>$now+3600]));$sig='';openssl_sign("$h.$pl",$sig,$c['private_key'],OPENSSL_ALGO_SHA256);$jwt="$h.$pl.".$b($sig);
         $r=wp_remote_post('https://oauth2.googleapis.com/token',['body'=>['grant_type'=>'urn:ietf:params:oauth:grant-type:jwt-bearer','assertion'=>$jwt],'timeout'=>15]);if(is_wp_error($r))return['result'=>'oauth_error','provider_id'=>'','invalid'=>false];$access=json_decode(wp_remote_retrieve_body($r),true)['access_token']??'';if(!$access)return['result'=>'oauth_error','provider_id'=>'','invalid'=>false];
-        $targetKey=$target==='fid'?'fid':'token';
-        $body=['message'=>[$targetKey=>$identifier,'notification'=>['title'=>$p['title'],'body'=>$p['body']],'data'=>['type'=>$p['type'],'order_id'=>(string)($p['order_id']??'')],'android'=>['notification'=>['channel_id'=>$p['type']==='order_status'?'criosrango_orders':'criosrango_general']]]];
-        $r=wp_remote_post('https://fcm.googleapis.com/v1/projects/'.rawurlencode($c['project_id']).'/messages:send',['headers'=>['Authorization'=>'Bearer '.$access,'Content-Type'=>'application/json'],'body'=>wp_json_encode($body),'timeout'=>15]);$code=is_wp_error($r)?0:wp_remote_retrieve_response_code($r);$raw=is_wp_error($r)?'':wp_remote_retrieve_body($r);return['result'=>$code>=200&&$code<300?'sent':'failed','provider_id'=>(string)$code,'invalid'=>$code===404||stripos($raw,'UNREGISTERED')!==false];
+        $body=self::fcm_message_payload($identifier,$p);
+        $r=wp_remote_post('https://fcm.googleapis.com/v1/projects/'.rawurlencode($c['project_id']).'/messages:send',['headers'=>['Authorization'=>'Bearer '.$access,'Content-Type'=>'application/json'],'body'=>wp_json_encode($body),'timeout'=>15]);$code=is_wp_error($r)?0:wp_remote_retrieve_response_code($r);$raw=is_wp_error($r)?'':wp_remote_retrieve_body($r);return['result'=>$code>=200&&$code<300?'sent':'failed','provider_id'=>(string)$code,'invalid'=>stripos($raw,'UNREGISTERED')!==false];
     }
     static function apns($token,$p){
         $key=defined('CRIOSRANGO_PUSH_APNS_KEY')?CRIOSRANGO_PUSH_APNS_KEY:get_option('criosrango_push_apns_key');

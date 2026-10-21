@@ -601,8 +601,24 @@ function test_invalid_and_transient_tokens(): void {
     push_assert(count(array_filter($db->updates, fn($u) => isset($u[1]['active']))) === 0, 'transient provider error must not deactivate a valid token');
 }
 
+function test_fcm_http_v1_uses_real_token_destination(): void {
+    $payload = CriosRango_Push::fcm_message_payload('real-fcm-registration-token', [
+        'type' => 'order_status', 'order_id' => 123, 'title' => 'Pedido recibido', 'body' => 'En preparación'
+    ]);
+    $message = $payload['message'];
+    push_assert_same('real-fcm-registration-token', $message['token'], 'FCM HTTP v1 must target the registration token');
+    push_assert(!array_key_exists('fid', $message), 'FCM HTTP v1 must never use Firebase Installation ID as destination');
+    push_assert_same('123', $message['data']['order_id'], 'order ID remains in data payload');
+
+    $legacyFid = CriosRango_Push::parse_identifier(new FakeRequest([
+        'platform' => 'android', 'identifier_type' => 'fid', 'identifier' => 'legacy-installation-id'
+    ]));
+    push_assert(is_wp_error($legacyFid), 'backend must reject FID as an Android send identifier');
+}
+
 $tests = [
     'device auth and dedup' => 'test_device_auth_and_dedup',
+    'FCM HTTP v1 token destination' => 'test_fcm_http_v1_uses_real_token_destination',
     'product event detection' => 'test_product_event_detection',
     'daily digest and idempotency' => 'test_daily_digest_and_idempotency',
     'digest zero devices stays pending' => 'test_digest_zero_devices_stays_pending',

@@ -20,49 +20,48 @@ class PushNotificationRoutingTest {
     }
 
     @Test
-    fun fidRegistrationPayload_hasExplicitFidIdentityAndNeverToken() {
-        val json = pushRegistrationPayload("TEST_FID", true, false).toJson()
+    fun registrationPayload_usesRealFcmTokenAndNeverFid() {
+        val json = pushRegistrationPayload("TEST_FCM_TOKEN", true, false).toJson()
         assertEquals("android", json.getString("platform"))
-        assertEquals("fid", json.getString("identifier_type"))
-        assertEquals("TEST_FID", json.getString("identifier"))
+        assertEquals("fcm_token", json.getString("identifier_type"))
+        assertEquals("TEST_FCM_TOKEN", json.getString("identifier"))
         assertEquals(true, json.getBoolean("new_products"))
         assertEquals(false, json.getBoolean("order_updates"))
         assertFalse(json.has("token"))
     }
 
     @Test
-    fun fidUnregisterPayload_hasExplicitFidIdentityAndNeverToken() {
-        val json = PushNotificationController.buildUnregisterPayload("TEST_FID")
+    fun unregisterPayload_usesFcmTokenIdentity() {
+        val json = PushNotificationController.buildUnregisterPayload("TEST_FCM_TOKEN")
         assertEquals("android", json.getString("platform"))
-        assertEquals("fid", json.getString("identifier_type"))
-        assertEquals("TEST_FID", json.getString("identifier"))
+        assertEquals("fcm_token", json.getString("identifier_type"))
+        assertEquals("TEST_FCM_TOKEN", json.getString("identifier"))
         assertFalse(json.has("token"))
     }
 
     @Test
-    fun sameFid_postsAgainButDoesNotDeactivatePrevious() {
-        assertEquals(
-            listOf(PushRegistrationAction.REGISTER_NEW),
-            pushRegistrationActions("TEST_FID", "TEST_FID", registrationSucceeded = true)
-        )
+    fun sameToken_postsAgainButDoesNotDeactivatePrevious() {
+        assertEquals(listOf(PushRegistrationAction.REGISTER_NEW),
+            pushRegistrationActions("TEST_FCM_TOKEN", "TEST_FCM_TOKEN", registrationSucceeded = true))
     }
 
     @Test
-    fun changedFid_registersNewThenDeactivatesOld() {
-        assertEquals(
-            listOf(
-                PushRegistrationAction.REGISTER_NEW,
-                PushRegistrationAction.UNREGISTER_OLD
-            ),
-            pushRegistrationActions("OLD_FID", "NEW_FID", registrationSucceeded = true)
-        )
+    fun changedToken_registersNewThenDeactivatesOld() {
+        assertEquals(listOf(PushRegistrationAction.REGISTER_NEW, PushRegistrationAction.UNREGISTER_OLD),
+            pushRegistrationActions("OLD_FCM_TOKEN", "NEW_FCM_TOKEN", registrationSucceeded = true))
     }
 
     @Test
     fun failedNewRegistration_neverDeactivatesOld() {
-        assertEquals(
-            listOf(PushRegistrationAction.REGISTER_NEW),
-            pushRegistrationActions("OLD_FID", "NEW_FID", registrationSucceeded = false)
-        )
+        assertEquals(listOf(PushRegistrationAction.REGISTER_NEW),
+            pushRegistrationActions("OLD_FCM_TOKEN", "NEW_FCM_TOKEN", registrationSucceeded = false))
+    }
+
+    @Test
+    fun failedUnregister_retainsPendingIdentifierForRecovery() {
+        assertEquals(setOf("OLD_FCM_TOKEN"),
+            pendingUnregisterTokensAfterAttempt(emptySet(), "OLD_FCM_TOKEN", unregisterSucceeded = false))
+        assertEquals(emptySet<String>(),
+            pendingUnregisterTokensAfterAttempt(setOf("OLD_FCM_TOKEN"), "OLD_FCM_TOKEN", unregisterSucceeded = true))
     }
 }
