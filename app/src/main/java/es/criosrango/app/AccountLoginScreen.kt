@@ -129,6 +129,11 @@ fun AccountLoginScreen(
     }
     var selectedOrderId by remember { mutableStateOf<Int?>(initialOrderId) }
     var selectedOrderFromShared by remember { mutableStateOf<AccountOrderSummary?>(null) }
+    val clearOrderSelection = {
+        val cleared = AccountOrderSelectionState(selectedOrderId, selectedOrderFromShared).clear()
+        selectedOrderId = cleared.orderId
+        selectedOrderFromShared = cleared.sharedOrder
+    }
     var returnPickerOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
     val sharedOrdersOwner = vm.sharedOrdersOwner
     val sharedOrdersState by sharedOrdersOwner.state.collectAsStateWithLifecycle()
@@ -236,11 +241,8 @@ fun AccountLoginScreen(
         return
     }
 
-    // Match the detail header: clear both the requested ID and the shared resolved order.
-    BackHandler(enabled = selectedOrder != null) {
-        selectedOrderId = null
-        selectedOrderFromShared = null
-    }
+    // System/gesture Back uses the same state transition as the detail header.
+    BackHandler(enabled = selectedOrder != null) { clearOrderSelection() }
     BackHandler(enabled = selectedOrder == null && !showLogin && accountSection != AccountSection.HOME) {
         accountSection = when (accountSection) {
             AccountSection.DATA, AccountSection.ADDRESSES -> AccountSection.PROFILE
@@ -256,7 +258,7 @@ fun AccountLoginScreen(
         Box(Modifier.fillMaxSize().padding(padding)) {
             StoreOrderDetailScreen(
                 order = selectedOrder,
-                onBack = { selectedOrderId = null; selectedOrderFromShared = null },
+                onBack = { clearOrderSelection() },
                 onRequestReturn = { order ->
                     if (order.items.size == 1) {
                         requestReturnViaWhatsApp(notificationContext, order, order.items.first())
@@ -779,3 +781,15 @@ private fun formatWalletRemaining(value: Double): String {
 
 internal fun shouldResetAccountUiForAuthState(authState: AccountAuthState): Boolean =
     authState == AccountAuthState.UNAUTHENTICATED
+
+internal data class AccountOrderSelectionState(
+    val orderId: Int? = null,
+    val sharedOrder: AccountOrderSummary? = null
+) {
+    fun select(order: AccountOrderSummary) = copy(orderId = order.id, sharedOrder = order)
+
+    fun clear() = AccountOrderSelectionState()
+
+    fun resolveFrom(orders: List<AccountOrderSummary>): AccountOrderSummary? =
+        sharedOrder ?: orders.firstOrNull { it.id == orderId }
+}
