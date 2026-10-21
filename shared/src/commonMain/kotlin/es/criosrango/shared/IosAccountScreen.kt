@@ -255,8 +255,7 @@ fun CriosRangoIOSAccountScreen(
                                 }
                             },
                             notificationPreferences = { IosPushPreferences() },
-                        onDeleteAccount = { onOpenExternalUrl(AccountDeletion.URL) },
-                        onBack = { page = IosAccountPage.PROFILE }
+                            onBack = { page = IosAccountPage.PROFILE }
                         )
                     }
                     StoreForgotPasswordScreen(owner = forgotPasswordOwner, onDismiss = { page = forgotReturnPage })

@@ -327,7 +327,7 @@ fun AccountLoginScreen(
                             selectedInfoPage = null
                             accountSection = AccountSection.HOME
                             vm.clearAccountMessages()
-                        } }
+                        } })
                     AccountSection.DATA -> es.criosrango.shared.StoreProfileScreen(
                         repository = vm.sharedRepository,
                         sessionState = vm.sharedAuthSession,
