@@ -222,6 +222,8 @@ class StoreWalletOwnerTest {
         assertTrue(walletReads >= 2)
         owner.applyReward(pending) { CouponApplicationResult.failure("Sigue rechazado") }
         advanceUntilIdle()
+        owner.redeem(100) { CouponApplicationResult.Success }
+        advanceUntilIdle()
         assertEquals(1, redeems)
     }
 

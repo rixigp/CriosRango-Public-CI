@@ -160,7 +160,7 @@ class StoreWalletOwner internal constructor(
     }
 
     fun redeem(points: Int, applyCoupon: suspend (String) -> CouponApplicationResult) {
-        if (redemptionInFlight || mutableState.value.redeemLoading || points <= 0) return
+        if (redemptionInFlight || mutableState.value.redeemLoading || points <= 0 || !mutableState.value.pendingRewardCode.isNullOrBlank()) return
         if (mutableState.value.wallet?.redeemableOptions()?.none { it.points == points } != false) return
         val previous = mutableState.value
         val requestId = if (previous.pendingRedemptionPoints == points && !previous.pendingRequestId.isNullOrBlank()) {
@@ -183,10 +183,20 @@ class StoreWalletOwner internal constructor(
                 }
                 // Server redemption succeeded: clear the retry token before touching Cart.
                 // Applying a created credit must never repeat redemption or create another credit.
+                val createdReward = response.coupon?.let { coupon ->
+                    LoyaltyReward(coupon.userRewardId, coupon.code, coupon.amount, points, "pending")
+                }
+                val currentWallet = mutableState.value.wallet
                 mutableState.value = mutableState.value.copy(
-                    pendingRedemptionPoints = null, pendingRequestId = null,
+                    wallet = currentWallet?.copy(
+                        points = response.remainingPoints,
+                        walletValue = response.remainingWalletValue,
+                        pendingRewards = (currentWallet.pendingRewards + listOfNotNull(createdReward)).distinctBy { it.code.trim().lowercase() }
+                    ),
+                    pendingRedemptionPoints = null,
+                    pendingRequestId = null,
                     pendingRewardCode = response.coupon?.code,
-                    pendingReward = response.coupon?.let { coupon -> LoyaltyReward(coupon.userRewardId, coupon.code, coupon.amount, points, "pending") }
+                    pendingReward = createdReward
                 )
                 refresh()
                 val coupon = response.coupon
@@ -212,7 +222,7 @@ class StoreWalletOwner internal constructor(
     }
 
     fun applyReward(reward: LoyaltyReward, applyCoupon: suspend (String) -> CouponApplicationResult) {
-        applyExistingCoupon(reward.code, applyCoupon, generation, "No se ha podido aplicar el crédito. Puedes volver a intentarlo.")
+        applyExistingCoupon(reward.code, applyCoupon, generation, "No se ha podido aplicar el crédito. Puedes volver a intentarlo.", createdCredit = true)
     }
 
     fun applyPromotion(code: String, applyCoupon: suspend (String) -> CouponApplicationResult) {
@@ -229,12 +239,21 @@ class StoreWalletOwner internal constructor(
         if (applyInFlight || mutableState.value.couponApplyLoading || code.isBlank()) return
         applyInFlight = true
         scope.launch {
-            mutableState.value = mutableState.value.copy(couponApplyLoading = true, operationError = null, pendingRewardCode = code)
+            mutableState.value = mutableState.value.copy(
+                couponApplyLoading = true,
+                operationError = null,
+                pendingRewardCode = if (createdCredit) code else mutableState.value.pendingRewardCode
+            )
             try {
                 val result = applyCoupon(code)
                 if (currentGeneration != generation) return@launch
                 if (result.success) {
-                    mutableState.value = mutableState.value.copy(operationError = null, pendingRewardCode = null, pendingReward = null)
+                    val current = mutableState.value
+                    mutableState.value = current.copy(
+                        operationError = null,
+                        pendingRewardCode = current.pendingRewardCode?.takeUnless { it.equals(code, ignoreCase = true) },
+                        pendingReward = current.pendingReward?.takeUnless { it.code.equals(code, ignoreCase = true) }
+                    )
                     refresh()
                 } else {
                     mutableState.value = mutableState.value.copy(operationError = if (createdCredit) failureMessage else result.message ?: failureMessage)
