@@ -169,21 +169,12 @@ Card(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(7.dp)
                     ) {
-                        val walletAmount = wallet.walletValue
-                            .replace(',', '.')
-                            .toDoubleOrNull()
-                            ?: 0.0
-                        val minimumAmount = wallet.minimumRedeemValue
-                            .replace(',', '.')
-                            .toDoubleOrNull()
-                            ?: 0.0
-                        val progress =
-                            if (minimumAmount > 0.0)
-                                (walletAmount / minimumAmount).coerceIn(0.0, 1.0)
-                            else
-                                0.0
-                        val remaining =
-                            (minimumAmount - walletAmount).coerceAtLeast(0.0)
+                        val walletMinor = es.criosrango.shared.loyalty.parseMoneyMinorUnits(wallet.walletValue)
+                        val minimumMinor = es.criosrango.shared.loyalty.parseMoneyMinorUnits(wallet.minimumRedeemValue)
+                        // Double is used only for the visual progress ratio, never for displayed money.
+                        val progress = if (minimumMinor > 0L) {
+                            (walletMinor.toDouble() / minimumMinor.toDouble()).coerceIn(0.0, 1.0)
+                        } else 0.0
 
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(end = 34.dp),
@@ -200,7 +191,7 @@ Card(
                                     color = Color(0xFF183B35)
                                 )
                                 Text(
-                                    formatWalletMoney(wallet.walletValue) + if (walletAmount >= minimumAmount) " disponibles" else " acumulados",
+                                    formatWalletMoney(wallet.walletValue) + if (walletMinor >= minimumMinor) " disponibles" else " acumulados",
                                     style = MaterialTheme.typography.headlineSmall,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
@@ -222,7 +213,7 @@ Card(
                             }
                         }
 
-                         if (walletAmount < minimumAmount) {
+                         if (walletMinor < minimumMinor) {
                             Text(
                                 "Has acumulado " + formatWalletMoney(wallet.walletValue) +
                                     " de " + formatWalletMoney(wallet.minimumRedeemValue),
@@ -240,7 +231,7 @@ Card(
                             }
                             Text(
                                 "Te faltan " + formatWalletMoney(
-                                    formatWalletRemaining(remaining)
+                                    es.criosrango.shared.loyalty.subtractMoneyAmounts(wallet.minimumRedeemValue, wallet.walletValue)
                                 ) + " para desbloquear tu saldo.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF40514D)
@@ -547,12 +538,6 @@ private fun formatPromotionExpiry(value: String): String {
 }
 
 
-private fun formatWalletRemaining(value: Double): String {
-    val cents = kotlin.math.round(value * 100.0).toLong()
-    val whole = cents / 100L
-    val fraction = kotlin.math.abs(cents % 100L)
-    return whole.toString() + "," + fraction.toString().padStart(2, '0')
-}
 
 fun formatWalletMoney(value: String): String {
     val minor = es.criosrango.shared.loyalty.parseMoneyMinorUnits(value)
