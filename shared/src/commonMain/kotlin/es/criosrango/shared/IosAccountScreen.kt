@@ -1013,7 +1013,7 @@ private fun IosProfileMenuScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            StorePageHeader(title = "Perfil", showBack = true, onBack = onBack, horizontalPadding = 0.dp)
+            StorePageHeader(title = "Perfil", onBack = onBack, horizontalPadding = 0.dp)
             Spacer(Modifier.height(10.dp))
             IosProfileActionRow("Datos personales", "👤", onPersonalData)
             IosProfileActionRow("Dirección de entrega", "⌖", onAddress)
