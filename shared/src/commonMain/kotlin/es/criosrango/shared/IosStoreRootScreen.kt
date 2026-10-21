@@ -429,6 +429,7 @@ fun CriosRangoIOSRootScreen(
                     loyaltyRepository = loyaltyRepository,
                     walletEnabled = accountRepository.hasSession,
                     padding = padding,
+                    onBack = { resetCatalog(); section = IosRootSection.HOME },
                     onCheckout = { checkoutOpen = true },
                     onOpenProduct = { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) },
                     isAuthenticated = accountRepository.hasSession,
@@ -450,6 +451,7 @@ fun CriosRangoIOSRootScreen(
                     onBackFromLogin = if (accountLoginFromCart) {
                         { accountLoginFromCart = false; resetCatalog(); section = IosRootSection.CART }
                     } else null,
+                    onBackFromRoot = { resetCatalog(); section = IosRootSection.HOME },
                     onAuthenticated = {
                         if (accountLoginFromCart) {
                             accountLoginFromCart = false
@@ -579,6 +581,7 @@ fun StoreCartScreen(
     loyaltyRepository: LoyaltyRepository,
     walletEnabled: Boolean,
     padding: PaddingValues,
+    onBack: () -> Unit,
     onCheckout: () -> Unit,
     onOpenProduct: (StoreProduct) -> Unit,
     accountUserId: Int? = null,
@@ -698,7 +701,7 @@ fun StoreCartScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            StorePageHeader(title = "Tu carrito", horizontalPadding = 0.dp)
+            StorePageHeader(title = "Tu carrito", onBack = onBack, horizontalPadding = 0.dp)
         }
         if (cart.items.isNotEmpty()) item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

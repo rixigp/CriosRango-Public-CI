@@ -177,6 +177,7 @@ fun StoreAccountRootScreen(
     fullName: String?,
     email: String?,
     appVersion: String,
+    onBack: () -> Unit,
     onOrders: () -> Unit,
     onWallet: () -> Unit,
     onProfile: () -> Unit,
@@ -195,7 +196,7 @@ fun StoreAccountRootScreen(
         parts.drop(1).firstOrNull()?.firstOrNull()?.let { append(it.uppercaseChar()) }
     }.ifBlank { "CR" }
     Column(modifier.fillMaxWidth()) {
-        StorePageHeader(title = "Cuenta", horizontalPadding = headerHorizontalPadding)
+        StorePageHeader(title = "Cuenta", onBack = onBack, horizontalPadding = headerHorizontalPadding)
         Column(Modifier.fillMaxWidth().padding(horizontal = contentHorizontalPadding).verticalScroll(rememberScrollState())) {
         Spacer(Modifier.height(contentTopSpacing))
         if (authenticated) {

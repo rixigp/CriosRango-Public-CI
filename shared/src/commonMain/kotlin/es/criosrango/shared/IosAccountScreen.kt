@@ -89,6 +89,7 @@ fun CriosRangoIOSAccountScreen(
     openPromotionsOnStart: Boolean = false,
     openLoginOnStart: Boolean = false,
     onBackFromLogin: (() -> Unit)? = null,
+    onBackFromRoot: () -> Unit = {},
     onAuthenticated: (() -> Unit)? = null,
     onPromotionsOpened: () -> Unit = {},
     onBeforeLogout: suspend () -> Unit = {}
@@ -175,6 +176,7 @@ fun CriosRangoIOSAccountScreen(
                         contentHorizontalPadding = 4.dp,
                         contentTopSpacing = 38.dp,
                         headerHorizontalPadding = 0.dp,
+                        onBack = onBackFromRoot,
                         fullName = user?.let { it.displayName.ifBlank { it.email } },
                         email = user?.email,
                         appVersion = appVersion,
