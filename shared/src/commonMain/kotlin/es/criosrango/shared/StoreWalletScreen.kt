@@ -331,7 +331,13 @@ Card(
 
         error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = onRefresh, enabled = !loading) { Text("Reintentar") }
+            TextButton(
+                onClick = {
+                    val points = state.pendingRedemptionPoints
+                    if (points != null) onRedeem(points) else onRefresh()
+                },
+                enabled = !loading
+            ) { Text(if (state.pendingRedemptionPoints != null) "Reintentar canje" else "Reintentar") }
         }
 
         val visiblePromotions = if (authenticated) promotions else promotions.filter { it.isVisibleToAnonymous() }
