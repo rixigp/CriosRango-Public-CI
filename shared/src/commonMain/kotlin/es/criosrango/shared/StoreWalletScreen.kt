@@ -146,6 +146,8 @@ fun StoreWalletScreen(
     var showWalletInfo by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val options = wallet?.redeemableOptions() ?: emptyList()
+    val pendingRewards = (wallet?.pendingRewards.orEmpty() + listOfNotNull(state.pendingReward))
+        .distinctBy { it.code.trim().lowercase() }
 
     Column(Modifier.fillMaxWidth()) {
         StorePageHeader(title = "Cupones y promociones", onBack = onBack, backEnabled = !loading)
@@ -262,7 +264,7 @@ Card(
             }
         }
 
-        if (authenticated && !wallet?.pendingRewards.isNullOrEmpty()) {
+        if (authenticated && pendingRewards.isNotEmpty()) {
             Text(
                 "Saldo listo para usar",
                 style = MaterialTheme.typography.titleSmall,
@@ -276,7 +278,7 @@ Card(
                 Column(
                     Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp)
                 ) {
-                    wallet?.pendingRewards.orEmpty().forEachIndexed { index, reward ->
+                    pendingRewards.forEachIndexed { index, reward ->
                         val applied = cartCouponCodes.any { it.equals(reward.code, ignoreCase = true) }
                         Row(
                             Modifier.fillMaxWidth().padding(vertical = 7.dp),
@@ -327,7 +329,7 @@ Card(
                                 }
                             }
                         }
-                        if (index < wallet!!.pendingRewards.lastIndex) {
+                        if (index < pendingRewards.lastIndex) {
                             HorizontalDivider(
                                 Modifier.padding(start = 30.dp),
                                 color = Color(0xFFDCD8E8),

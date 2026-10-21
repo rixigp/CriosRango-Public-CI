@@ -42,6 +42,7 @@ data class StoreWalletState(
     val pendingRedemptionPoints: Int? = null,
     val pendingRequestId: String? = null,
     val pendingRewardCode: String? = null,
+    val pendingReward: LoyaltyReward? = null,
     val appliedCouponCodes: Set<String> = emptySet()
 ) {
     val busy: Boolean get() = redeemLoading || couponApplyLoading
@@ -184,7 +185,8 @@ class StoreWalletOwner internal constructor(
                 // Applying a created credit must never repeat redemption or create another credit.
                 mutableState.value = mutableState.value.copy(
                     pendingRedemptionPoints = null, pendingRequestId = null,
-                    pendingRewardCode = response.coupon?.code
+                    pendingRewardCode = response.coupon?.code,
+                    pendingReward = response.coupon?.let { coupon -> LoyaltyReward(coupon.userRewardId, coupon.code, coupon.amount, points, "pending") }
                 )
                 refresh()
                 val coupon = response.coupon
@@ -193,7 +195,8 @@ class StoreWalletOwner internal constructor(
                     return@launch
                 }
                 applyExistingCoupon(coupon.code, applyCoupon, currentGeneration,
-                    "El crédito se ha creado, pero no se ha podido aplicar al carrito. Puedes aplicarlo desde «Saldo listo para usar».")
+                    "El crédito se ha creado, pero no se ha podido aplicar al carrito. Puedes aplicarlo desde «Saldo listo para usar».",
+                    createdCredit = true)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -220,7 +223,8 @@ class StoreWalletOwner internal constructor(
         code: String,
         applyCoupon: suspend (String) -> CouponApplicationResult,
         currentGeneration: Long,
-        failureMessage: String
+        failureMessage: String,
+        createdCredit: Boolean = false
     ) {
         if (applyInFlight || mutableState.value.couponApplyLoading || code.isBlank()) return
         applyInFlight = true
@@ -230,17 +234,17 @@ class StoreWalletOwner internal constructor(
                 val result = applyCoupon(code)
                 if (currentGeneration != generation) return@launch
                 if (result.success) {
-                    mutableState.value = mutableState.value.copy(operationError = null, pendingRewardCode = null)
+                    mutableState.value = mutableState.value.copy(operationError = null, pendingRewardCode = null, pendingReward = null)
                     refresh()
                 } else {
-                    mutableState.value = mutableState.value.copy(operationError = result.message ?: failureMessage)
+                    mutableState.value = mutableState.value.copy(operationError = if (createdCredit) failureMessage else result.message ?: failureMessage)
                     refresh()
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 if (currentGeneration == generation) {
-                    mutableState.value = mutableState.value.copy(operationError = error.message ?: failureMessage)
+                    mutableState.value = mutableState.value.copy(operationError = if (createdCredit) failureMessage else error.message ?: failureMessage)
                     refresh()
                 }
             } finally {
