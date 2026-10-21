@@ -236,7 +236,11 @@ fun AccountLoginScreen(
         return
     }
 
-    BackHandler(enabled = selectedOrder != null) { selectedOrderId = null }
+    // Match the detail header: clear both the requested ID and the shared resolved order.
+    BackHandler(enabled = selectedOrder != null) {
+        selectedOrderId = null
+        selectedOrderFromShared = null
+    }
     BackHandler(enabled = selectedOrder == null && !showLogin && accountSection != AccountSection.HOME) {
         accountSection = when (accountSection) {
             AccountSection.DATA, AccountSection.ADDRESSES -> AccountSection.PROFILE
