@@ -256,7 +256,8 @@ class StoreWalletOwner internal constructor(
                     mutableState.value = current.copy(
                         operationError = null,
                         pendingRewardCode = current.pendingRewardCode?.takeUnless { it.equals(code, ignoreCase = true) },
-                        pendingReward = current.pendingReward?.takeUnless { it.code.equals(code, ignoreCase = true) }
+                        pendingReward = current.pendingReward?.takeUnless { it.code.equals(code, ignoreCase = true) },
+                        redemptionReconciliationRequired = if (createdCredit) false else current.redemptionReconciliationRequired
                     )
                     refresh()
                 } else {
