@@ -69,6 +69,9 @@ import es.criosrango.shared.promotions.isVisibleToAnonymous
 import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.loyalty.LoyaltyWallet
 import es.criosrango.shared.loyalty.redeemableOptions
+import es.criosrango.shared.CouponApplicationResult
+import es.criosrango.shared.StoreWalletOwner
+import es.criosrango.shared.StoreWalletScreen
 import kotlinx.coroutines.launch
 
 private val SPANISH_PROVINCE_CODES = setOf("C","VI","AB","A","AL","O","AV","BA","B","BI","BU","CC","CA","S","CS","CE","CR","CO","CU","GI","GR","GU","SS","H","HU","J","LE","L","LO","LU","M","MA","ML","MU","NA","OR","P","GC","PO","SA","TF","SG","SE","SO","T","TE","TO","V","VA","ZA","Z")
@@ -82,7 +85,7 @@ fun CriosRangoIOSAccountScreen(
     loyaltyRepository: LoyaltyRepository,
     appVersion: String = "",
     cartCouponCodes: Set<String> = emptySet(),
-    onApplyWalletCoupon: suspend (String) -> Unit,
+    onApplyWalletCoupon: suspend (String) -> Boolean,
     modifier: Modifier = Modifier,
     onOpenExternalUrl: (String) -> Unit,
     initialOrderId: Int? = null,
@@ -114,6 +117,10 @@ fun CriosRangoIOSAccountScreen(
     val promotionRepository = remember(repository) {
         PromotionRepository(bearerTokenProvider = { repository.currentToken() })
     }
+    val walletOwner = remember(loyaltyRepository, promotionRepository) {
+        StoreWalletOwner(loyaltyRepository, promotionRepository)
+    }
+    LaunchedEffect(user?.id) { walletOwner.onSessionChanged(user?.id?.toString()) }
     fun invalidateExpiredSession() { sessionState.logout(); user = null; selectedOrder = null; error = null; page = IosAccountPage.HOME }
 
     LaunchedEffect(openPromotionsOnStart, user?.id) {
@@ -257,12 +264,15 @@ fun CriosRangoIOSAccountScreen(
                     onBack = { page = addressReturnPage }
                 )
                 IosAccountPage.ORDERS -> StoreOrdersScreen(ordersOwner, sessionState, onBack = { page = IosAccountPage.HOME }, onOpenOrder = { selectedOrder = it; page = IosAccountPage.ORDER_DETAIL }, onSessionExpired = ::invalidateExpiredSession)
-                IosAccountPage.WALLET -> IosWalletScreen(
+                IosAccountPage.WALLET -> StoreWalletScreen(
+                    owner = walletOwner,
                     authenticated = user != null,
-                    repository = loyaltyRepository,
-                    promotionRepository = promotionRepository,
+                    sessionId = user?.id?.toString(),
                     cartCouponCodes = cartCouponCodes,
-                    onApplyCoupon = onApplyWalletCoupon,
+                    onApplyCoupon = { code ->
+                        if (onApplyWalletCoupon(code)) CouponApplicationResult.Success
+                        else CouponApplicationResult.failure("No se ha podido aplicar el cupón al carrito.")
+                    },
                     onBack = { page = IosAccountPage.HOME }
                 )
                 IosAccountPage.INFO -> selectedInfoPage?.let { infoPage -> IosInformationPageScreen(infoPage) { page = IosAccountPage.HOME } }
@@ -479,383 +489,7 @@ private fun PromotionDateRow(text: String) {
     }
 }
 
-@Composable
-private fun IosWalletScreen(
-    authenticated: Boolean,
-    repository: LoyaltyRepository,
-    promotionRepository: PromotionRepository,
-    cartCouponCodes: Set<String>,
-    onApplyCoupon: suspend (String) -> Unit,
-    onBack: () -> Unit
-) {
-    var wallet by remember { mutableStateOf<LoyaltyWallet?>(null) }
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var showRedeemDialog by remember { mutableStateOf(false) }
-    var showWalletInfo by remember { mutableStateOf(false) }
-    var pendingPoints by remember { mutableStateOf<Int?>(null) }
-    var pendingRequestId by remember { mutableStateOf<String?>(null) }
-    var promotions by remember { mutableStateOf(emptyList<Promotion>()) }
-    var promotionsLoading by remember { mutableStateOf(true) }
-    var promotionsError by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
 
-    fun refresh() {
-        scope.launch {
-            loading = true
-            error = null
-            runCatching { repository.getWallet() }
-                .onSuccess { wallet = it }
-                .onFailure { error = it.message ?: "No se ha podido cargar el monedero." }
-            loading = false
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        refresh()
-        promotionsLoading = true
-        promotionsError = null
-        runCatching { promotionRepository.getPromotions() }
-            .onSuccess { promotions = it }
-            .onFailure {
-                promotions = emptyList()
-                promotionsError = it.message ?: "No se han podido cargar las promociones."
-            }
-        promotionsLoading = false
-    }
-
-    fun redeem(points: Int) {
-        val requestId = if (pendingPoints == points && !pendingRequestId.isNullOrBlank()) {
-            pendingRequestId!!
-        } else {
-            pendingPoints = points
-            repository.newRequestId().also { pendingRequestId = it }
-        }
-        scope.launch {
-            loading = true
-            error = null
-            runCatching { repository.redeem(points, requestId) }
-                .onSuccess { response ->
-                    wallet = runCatching { repository.getWallet() }.getOrNull() ?: wallet
-                    val coupon = response.coupon
-                    if (coupon == null) error = "El canje no ha devuelto un cupón utilizable." else onApplyCoupon(coupon.code)
-                    pendingPoints = null
-                    pendingRequestId = null
-                }
-                .onFailure { error = it.message ?: "No se ha podido utilizar el monedero." }
-            loading = false
-        }
-    }
-
-    fun applyReward(reward: LoyaltyReward) {
-        scope.launch {
-            loading = true
-            error = null
-            onApplyCoupon(reward.code)
-            wallet = runCatching { repository.getWallet() }.getOrNull() ?: wallet
-            loading = false
-        }
-    }
-
-    val options = wallet?.redeemableOptions() ?: emptyList()
-
-    Column(Modifier.fillMaxSize()) {
-        StorePageHeader(title = "Cupones y promociones", onBack = onBack, backEnabled = !loading)
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = 24.dp).offset(y = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-
-        when {
-            authenticated && loading && wallet == null -> FullScreenLoading("Cargando monedero")
-            authenticated && wallet != null -> {
-Card(
-                    Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF6F0))
-                ) {
-                    Box(Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(7.dp)
-                    ) {
-                        val walletAmount = wallet!!.walletValue
-                            .replace(',', '.')
-                            .toDoubleOrNull()
-                            ?: 0.0
-                        val minimumAmount = wallet!!.minimumRedeemValue
-                            .replace(',', '.')
-                            .toDoubleOrNull()
-                            ?: 0.0
-                        val progress =
-                            if (minimumAmount > 0.0)
-                                (walletAmount / minimumAmount).coerceIn(0.0, 1.0)
-                            else
-                                0.0
-                        val remaining =
-                            (minimumAmount - walletAmount).coerceAtLeast(0.0)
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(end = 34.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            WalletVisualIcon()
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                                Text(
-                                    "Monedero",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    color = Color(0xFF183B35)
-                                )
-                                Text(
-                                    wallet!!.walletValue + if (walletAmount >= minimumAmount) " disponibles" else " acumulados",
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    color = Color(0xFF0F5C4D)
-                                )
-                            }
-                            if (walletAmount >= minimumAmount && options.isNotEmpty()) {
-                                Button(
-                                    onClick = { showRedeemDialog = true },
-                                    enabled = !loading,
-                                    modifier = Modifier.width(76.dp).height(36.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                    shape = RoundedCornerShape(18.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F5C4D), contentColor = Color.White)
-                                ) { Text("Usar", style = MaterialTheme.typography.labelMedium) }
-                            }
-                        }
-
-                         if (walletAmount < minimumAmount) {
-                            Text(
-                                "Has acumulado " + wallet!!.walletValue +
-                                    " de " + wallet!!.minimumRedeemValue,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF40514D)
-                            )
-                            Box(
-                                modifier = Modifier.fillMaxWidth().height(6.dp)
-                                    .background(Color(0xFFD7E8E1), RoundedCornerShape(3.dp))
-                            ) {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth(progress.toFloat()).height(6.dp)
-                                        .background(Color(0xFF0F5C4D), RoundedCornerShape(3.dp))
-                                )
-                            }
-                            Text(
-                                "Te faltan " + formatWalletRemaining(remaining) + " para desbloquear tu saldo.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF40514D)
-                            )
-                        }
-                    }
-                    IconButton(
-                            onClick = { showWalletInfo = true },
-                            modifier = Modifier.align(Alignment.TopEnd).size(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = InfoLineIcon,
-                                contentDescription = "Cómo funciona el monedero",
-                                tint = Color(0xFF0F5C4D),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
-                    }
-                    }
-                }
-            }
-
-        if (authenticated && !wallet?.pendingRewards.isNullOrEmpty()) {
-            Text(
-                "Saldo listo para usar",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
-            )
-            Card(
-                Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF2F0F8))
-            ) {
-                Column(
-                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp)
-                ) {
-                    wallet!!.pendingRewards.forEachIndexed { index, reward ->
-                        val applied = cartCouponCodes.any { it.equals(reward.code, ignoreCase = true) }
-                        Row(
-                            Modifier.fillMaxWidth().padding(vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = WalletLineIcon,
-                                contentDescription = "Saldo de monedero",
-                                tint = Color(0xFF0F5C4D),
-                                modifier = Modifier.size(22.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Column(
-                                Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(1.dp)
-                            ) {
-                                Text(
-                                    "Saldo de monedero · " + reward.amount.replace('.', ',') + " €",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF183B35)
-                                )
-                                Text(
-                                    reward.code,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            if (applied) {
-                                Text(
-                                    "Aplicado",
-                                    color = Color(0xFF0F5C4D),
-                                    fontWeight = FontWeight.SemiBold,
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-                            } else {
-                                TextButton(
-                                    onClick = { applyReward(reward) },
-                                    enabled = !loading,
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                                ) { Text("Aplicar") }
-                            }
-                        }
-                        if (index < wallet!!.pendingRewards.lastIndex) {
-                            HorizontalDivider(
-                                Modifier.padding(start = 30.dp),
-                                color = Color(0xFFDCD8E8),
-                                thickness = 1.dp
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        error?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            TextButton(
-                onClick = { if (pendingPoints != null) redeem(pendingPoints!!) else refresh() },
-                enabled = !loading
-            ) { Text(if (pendingPoints != null) "Reintentar" else "Reintentar carga") }
-        }
-
-        val visiblePromotions = if (authenticated) promotions else promotions.filter { it.isVisibleToAnonymous() }
-        Text(
-            "Promociones disponibles (${visiblePromotions.size})",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
-        )
-
-        when {
-            promotionsLoading && visiblePromotions.isEmpty() -> CircularProgressIndicator(modifier = Modifier.padding(vertical = 8.dp))
-            promotionsError != null && visiblePromotions.isEmpty() -> Text(promotionsError!!, color = MaterialTheme.colorScheme.error)
-            visiblePromotions.isEmpty() -> Text("No hay promociones disponibles.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            else -> visiblePromotions.sortedByDescending { it.priority }.forEachIndexed { index, promotion ->
-                val code = promotion.code?.takeIf { it.isNotBlank() }
-                val applied = code?.let { couponCode -> cartCouponCodes.any { it.equals(couponCode, ignoreCase = true) } } == true
-                val isBirthday = promotion.type.equals("birthday_coupon", ignoreCase = true) || listOfNotNull(promotion.title, promotion.description).any { it.contains("cumpleaños", ignoreCase = true) || it.contains("birthday", ignoreCase = true) }
-                Card(
-                    Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(15.dp),
-                    colors = CardDefaults.cardColors(containerColor = promotionCardColor(promotion, isBirthday))
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        PromotionVisualIcon(promotion = promotion, isBirthday = isBirthday)
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                if (isBirthday) "Tu regalo de cumpleaños" else promotion.title,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF183B35)
-                            )
-                            val description = if (isBirthday) "15% de descuento por tu cumpleaños." else promotion.description.trim()
-                            if (description.isNotBlank()) Text(description, style = MaterialTheme.typography.bodySmall, color = Color(0xFF40514D))
-                            if (isBirthday) Text("Válido durante 15 días.", style = MaterialTheme.typography.labelSmall, color = Color(0xFF40514D))
-                            promotion.expiresAt?.takeIf { it.isNotBlank() }?.let {
-                                PromotionDateRow("Válido hasta " + formatPromotionExpiry(it))
-                            }
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        code?.let { couponCode ->
-                            Button(
-                                onClick = { if (!applied) scope.launch { onApplyCoupon(couponCode) } },
-                                enabled = !loading,
-                                modifier = Modifier.width(78.dp).height(36.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                                shape = RoundedCornerShape(18.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F5C4D), contentColor = Color.White)
-                            ) { Text(if (applied) "Aplicado" else "Aplicar", style = MaterialTheme.typography.labelMedium) }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    }
-
-    if (showWalletInfo) {
-        AlertDialog(
-            onDismissRequest = { showWalletInfo = false },
-            title = {
-                Text(
-                    "¿Cómo funciona tu monedero?",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-            },
-            text = {
-                Text(
-                    "1 € gastado = 1 punto.\n\n" +
-                        "Cuando acumules 100 puntos, podrás convertirlos en 5 € de saldo para tus compras.\n\n" +
-                        "La barra te indica cuánto te falta para desbloquear el saldo.\n\n" +
-                        "Cuando tengas saldo disponible, pulsa “Usar” para elegir cuánto quieres aplicar a tu compra."
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = { showWalletInfo = false },
-                    modifier = Modifier.height(36.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF0F5C4D),
-                        contentColor = Color.White
-                    )
-                ) { Text("Entendido", style = MaterialTheme.typography.labelMedium) }
-            }
-        )
-    }
-
-    if (showRedeemDialog && options.isNotEmpty()) {
-        AlertDialog(
-            onDismissRequest = { if (!loading) showRedeemDialog = false },
-            title = { Text("¿Cuánto quieres utilizar?" ) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    options.forEach { option ->
-                        Button(onClick = { showRedeemDialog = false; redeem(option.points) }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
-                            Text(if (option.isMaximum) "Máximo: " + option.value + " €" else option.value + " €")
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showRedeemDialog = false }, enabled = !loading) { Text("Cancelar") } }
-        )
-    }
-}
 
 private fun promotionCardColor(promotion: Promotion, isBirthday: Boolean): Color = when (promotionVisualKind(promotion, isBirthday)) {
     PromotionVisualKind.BIRTHDAY -> Color(0xFFFDECEF)

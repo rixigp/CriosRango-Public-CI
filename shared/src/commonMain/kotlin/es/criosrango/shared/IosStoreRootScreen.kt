@@ -443,7 +443,7 @@ fun CriosRangoIOSRootScreen(
                     loyaltyRepository = loyaltyRepository,
                     appVersion = accountAppVersion,
                     cartCouponCodes = cartStore.cart.collectAsState().value.coupons.map { it.code }.toSet(),
-                    onApplyWalletCoupon = { code -> cartStore.applyCoupon(code) },
+                    onApplyWalletCoupon = { code -> cartStore.applyCouponAwait(code) },
                     modifier = Modifier.padding(padding),
                     initialOrderId = pushNavigation?.orderId,
                     openPromotionsOnStart = openPromotionsOnStart,
