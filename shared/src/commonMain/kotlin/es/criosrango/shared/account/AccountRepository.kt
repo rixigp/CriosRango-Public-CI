@@ -26,6 +26,10 @@ interface ClaimOrderStore {
     fun clear()
 }
 
+class AccountRequestRejectedException : Exception()
+
+class AccountSessionPersistenceException : Exception()
+
 class AccountRepository(
     private val tokenStore: AccountTokenStore,
     private val client: AccountClient = AccountClient(),
@@ -64,8 +68,11 @@ class AccountRepository(
         return response.user
     }
 
-    suspend fun forgotPassword(login: String): String =
-        client.forgotPassword(AccountForgotPasswordRequest(login.trim())).message
+    suspend fun forgotPassword(login: String): String {
+        val response = client.forgotPassword(AccountForgotPasswordRequest(login.trim()))
+        if (!response.success) throw AccountRequestRejectedException()
+        return response.message
+    }
 
     suspend fun me(): AccountUser {
         val token = requireToken()
@@ -169,7 +176,7 @@ class AccountRepository(
 
     private fun persistToken(token: String) {
         if (token.isBlank() || !tokenStore.save(token)) {
-            throw IllegalStateException("No se ha podido guardar la sesión de cuenta.")
+            throw AccountSessionPersistenceException()
         }
     }
 }

@@ -110,6 +110,8 @@ fun CriosRangoIOSAccountScreen(
     var forgotReturnPage by remember { mutableStateOf(IosAccountPage.LOGIN) }
     var addressReturnPage by remember { mutableStateOf(IosAccountPage.HOME) }
     val scope = rememberCoroutineScope()
+    val registerOwner = remember(repository) { StoreRegisterOwner(repository) }
+    val forgotPasswordOwner = remember(repository) { StoreForgotPasswordOwner(repository) }
     val sharedAddressOwner = remember(repository) { StoreAddressOwner(repository) }
     val authSnapshot by sessionState.snapshot.collectAsState()
     val ordersState by ordersOwner.state.collectAsState()
@@ -225,13 +227,38 @@ fun CriosRangoIOSAccountScreen(
                     onForgot = { forgotReturnPage = IosAccountPage.LOGIN; page = IosAccountPage.FORGOT },
                     onBack = { if (onBackFromLogin != null) onBackFromLogin() else page = IosAccountPage.HOME }
                 )
-                IosAccountPage.REGISTER -> IosRegisterScreen(
-                    repository,
-                    onAuthenticated = ::finishAuthentication,
-                    onLogin = { page = IosAccountPage.LOGIN },
-                    onBack = { page = IosAccountPage.HOME }
-                )
-                IosAccountPage.FORGOT -> IosForgotPasswordScreen(repository) { page = forgotReturnPage }
+                IosAccountPage.REGISTER -> androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+                    IosLoginScreen(repository, sessionState, ::finishAuthentication, onRegister = {}, onForgot = {}, onBack = {
+                        if (onBackFromLogin != null) onBackFromLogin() else page = IosAccountPage.HOME
+                    })
+                    StoreRegisterScreen(owner = registerOwner, onDismiss = { page = IosAccountPage.LOGIN }, onRegistered = ::finishAuthentication)
+                }
+                IosAccountPage.FORGOT -> androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+                    if (forgotReturnPage == IosAccountPage.LOGIN) {
+                        IosLoginScreen(repository, sessionState, ::finishAuthentication, onRegister = { page = IosAccountPage.REGISTER }, onForgot = {}, onBack = {
+                            if (onBackFromLogin != null) onBackFromLogin() else page = IosAccountPage.HOME
+                        })
+                    } else {
+                        IosProfileMenuScreen(
+                            onPersonalData = { page = IosAccountPage.DATA },
+                            onAddress = { addressReturnPage = IosAccountPage.PROFILE; page = IosAccountPage.ADDRESS },
+                            onPassword = { forgotReturnPage = IosAccountPage.PROFILE; page = IosAccountPage.FORGOT },
+                            onDeleteAccount = { onOpenExternalUrl(AccountDeletion.URL) },
+                            onLogout = {
+                                scope.launch {
+                                    runCatching { onBeforeLogout() }
+                                    runCatching { repository.logout() }
+                                    sessionState.logout()
+                                    user = null
+                                    error = null
+                                    page = IosAccountPage.HOME
+                                }
+                            },
+                            onBack = { page = IosAccountPage.PROFILE }
+                        )
+                    }
+                    StoreForgotPasswordScreen(owner = forgotPasswordOwner, onDismiss = { page = forgotReturnPage })
+                }
                 IosAccountPage.PROFILE -> IosProfileMenuScreen(
                     onPersonalData = { page = IosAccountPage.DATA },
                     onAddress = { addressReturnPage = IosAccountPage.PROFILE; page = IosAccountPage.ADDRESS },
@@ -614,74 +641,6 @@ private fun IosLoginScreen(
         onBack = onBack,
         modifier = Modifier.fillMaxSize()
     )
-}
-
-@Composable
-private fun IosRegisterScreen(
-    repository: AccountRepository,
-    onAuthenticated: (AccountUser) -> Unit,
-    onLogin: () -> Unit,
-    onBack: () -> Unit
-) {
-    val scope = rememberCoroutineScope()
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var firstName by remember { mutableStateOf("") }
-    var lastName by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var birthDate by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    AccountForm("Crear cuenta", onBack) {
-        OutlinedTextField(firstName, { firstName = it }, label = { Text("Nombre") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(lastName, { lastName = it }, label = { Text("Apellidos") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(email, { email = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(phone, { phone = it }, label = { Text("Teléfono") }, modifier = Modifier.fillMaxWidth())
-        BirthDatePickerField(birthDate, { birthDate = it }, modifier = Modifier.fillMaxWidth(), enabled = !busy)
-        OutlinedTextField(password, { password = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Button(
-            enabled = !busy && email.isNotBlank() && password.isNotBlank(),
-            onClick = {
-                busy = true; error = null
-                scope.launch {
-                    runCatching { repository.register(email, password, firstName, lastName, phone, birthDate) }
-                        .onSuccess(onAuthenticated)
-                        .onFailure { error = it.message ?: "No se ha podido crear la cuenta." }
-                    busy = false
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) { Text(if (busy) "Creando…" else "Crear cuenta") }
-        TextButton(onClick = onLogin) { Text("Ya tengo una cuenta") }
-    }
-}
-
-@Composable
-private fun IosForgotPasswordScreen(repository: AccountRepository, onBack: () -> Unit) {
-    val scope = rememberCoroutineScope()
-    var login by remember { mutableStateOf("") }
-    var message by remember { mutableStateOf<String?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    AccountForm("Recuperar contraseña", onBack) {
-        OutlinedTextField(login, { login = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
-        message?.let { Text(it) }
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Button(
-            enabled = !busy && login.isNotBlank(),
-            onClick = {
-                busy = true; message = null; error = null
-                scope.launch {
-                    runCatching { repository.forgotPassword(login) }
-                        .onSuccess { message = it.ifBlank { "Revisa tu correo para continuar." } }
-                        .onFailure { error = it.message ?: "No se ha podido solicitar la recuperación." }
-                    busy = false
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) { Text(if (busy) "Enviando…" else "Enviar recuperación") }
-    }
 }
 
 @Composable

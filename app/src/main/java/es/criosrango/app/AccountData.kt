@@ -212,9 +212,6 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     private val _loading = MutableStateFlow(false)
     val loading = _loading.asStateFlow()
 
-    private val _forgotPasswordLoading = MutableStateFlow(false)
-    val forgotPasswordLoading = _forgotPasswordLoading.asStateFlow()
-
     private val _ordersRefreshing = MutableStateFlow(false)
     val ordersRefreshing = _ordersRefreshing.asStateFlow()
     private val ordersLoadGate = SingleActionGate()
@@ -434,38 +431,18 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun createAccount(
-        firstName: String,
-        lastName: String,
-        email: String,
-        phone: String,
-        password: String,
-        birthDate: String?
-    ) {
-        if (firstName.isBlank() || lastName.isBlank()) {
-            _error.value = "Introduce tu nombre y apellidos."
-            return
-        }
-        if (email.isBlank()) {
-            _error.value = "Introduce tu correo electrónico."
-            return
-        }
-        if (password.length < 8) {
-            _error.value = "La contraseña debe tener al menos 8 caracteres."
-            return
-        }
-        if (!authActionGate.tryAcquire()) return
-
+    fun completeRegistration(created: AccountUser) {
         viewModelScope.launch {
             _loading.value = true
             _error.value = null
             _notice.value = null
             try {
-                val created = repository.registerAccount(email, password, firstName, lastName, phone, birthDate)
                 _user.value = created
                 _authState.value = AccountAuthState.AUTHENTICATED
-                val loadedAddress = try { repository.customerAddress() } catch (exception: Exception) {
-                    if (exception is HttpException && exception.code() == 401) {
+                val loadedAddress = try {
+                    repository.customerAddress()
+                } catch (exception: Exception) {
+                    if (exception is io.ktor.client.plugins.ResponseException && exception.response.status.value == 401) {
                         invalidateSession()
                         return@launch
                     }
@@ -474,8 +451,10 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 _address.value = loadedAddress
                 if (ordersLoadGate.tryAcquire()) {
                     try {
-                        _orders.value = try { repository.orders() } catch (exception: Exception) {
-                            if (exception is HttpException && exception.code() == 401) {
+                        _orders.value = try {
+                            repository.orders()
+                        } catch (exception: Exception) {
+                            if (exception is io.ktor.client.plugins.ResponseException && exception.response.status.value == 401) {
                                 invalidateSession()
                                 return@launch
                             }
@@ -486,45 +465,8 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
                 if (_authState.value == AccountAuthState.AUTHENTICATED) claimPendingOrderIfAuthenticated()
-            } catch (e: HttpException) {
-                _error.value = when (e.code()) {
-                    400 -> "Revisa los datos introducidos."
-                    409 -> "Ya existe una cuenta con ese correo electrónico."
-                    429 -> "Demasiados intentos. Espera unos minutos."
-                    else -> "No hemos podido crear la cuenta."
-                }
-            } catch (_: Exception) {
-                _error.value = "No hemos podido crear la cuenta."
             } finally {
                 _loading.value = false
-                authActionGate.release()
-            }
-        }
-    }
-
-    fun forgotPassword(login: String) {
-        if (login.isBlank()) {
-            _error.value = "Introduce tu correo electrónico."
-            return
-        }
-        if (!authActionGate.tryAcquire()) return
-
-        viewModelScope.launch {
-            _forgotPasswordLoading.value = true
-            _error.value = null
-            _notice.value = null
-            try {
-                _notice.value = repository.forgotPassword(login)
-            } catch (e: HttpException) {
-                _error.value = when (e.code()) {
-                    429 -> "Demasiadas solicitudes. Espera unos minutos."
-                    else -> "No hemos podido solicitar el cambio de contraseña."
-                }
-            } catch (_: Exception) {
-                _error.value = "No hemos podido solicitar el cambio de contraseña."
-            } finally {
-                _forgotPasswordLoading.value = false
-                authActionGate.release()
             }
         }
     }

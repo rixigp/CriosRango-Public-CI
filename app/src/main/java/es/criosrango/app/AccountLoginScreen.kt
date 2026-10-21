@@ -62,6 +62,10 @@ import es.criosrango.shared.StoreOrdersScreen
 import es.criosrango.shared.StoreOrderDetailScreen
 import es.criosrango.shared.StoreOrderSelectionResolution
 import es.criosrango.shared.StoreLoginScreen
+import es.criosrango.shared.StoreRegisterOwner
+import es.criosrango.shared.StoreRegisterScreen
+import es.criosrango.shared.StoreForgotPasswordOwner
+import es.criosrango.shared.StoreForgotPasswordScreen
 import es.criosrango.shared.StoreWalletOwner
 import es.criosrango.shared.StoreWalletScreen
 import es.criosrango.shared.CouponApplicationResult
@@ -84,11 +88,12 @@ fun AccountLoginScreen(
     applyWalletCoupon: suspend (String) -> Boolean = { false },
     cartCouponCodes: Set<String> = emptySet()
 ) {
+    val registerOwner = remember(vm.sharedRepository) { StoreRegisterOwner(vm.sharedRepository) }
+    val forgotPasswordOwner = remember(vm.sharedRepository) { StoreForgotPasswordOwner(vm.sharedRepository) }
     val authState by vm.authState.collectAsStateWithLifecycle()
     val user by vm.user.collectAsStateWithLifecycle()
     val orders by vm.orders.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
-    val forgotPasswordLoading by vm.forgotPasswordLoading.collectAsStateWithLifecycle()
     val ordersRefreshing by vm.ordersRefreshing.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val accountError by vm.accountError.collectAsStateWithLifecycle()
@@ -344,7 +349,7 @@ fun AccountLoginScreen(
                 if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection == AccountSection.PROFILE) 12.dp else 24.dp))
             }
         }
-        if (showForgot) AccountForgotPasswordDialog(login, forgotPasswordLoading, error, notice, { showForgot = false; vm.clearAccountMessages() }, vm::forgotPassword)
+        if (showForgot) StoreForgotPasswordScreen(owner = forgotPasswordOwner, initialEmail = login, onDismiss = { showForgot = false; vm.clearAccountMessages() })
     } else if (!showLogin) {
         Column(
             Modifier.fillMaxSize().padding(padding)
@@ -379,12 +384,12 @@ fun AccountLoginScreen(
                 onLoginChanged = { login = it },
                 onPasswordChanged = { password = it },
                 onSubmit = { submittedLogin, submittedPassword -> vm.login(submittedLogin, submittedPassword) },
-                onForgotPassword = { vm.clearAccountMessages(); showForgot = true },
-                onRegister = { vm.clearAccountMessages(); showRegister = true },
+                onForgotPassword = { vm.clearAccountMessages(); forgotPasswordOwner.reset(login); showForgot = true },
+                onRegister = { vm.clearAccountMessages(); registerOwner.reset(login); showRegister = true },
                 onBack = leaveLogin
             )
-            if (showRegister) AccountRegisterDialog(login, loading, error, dismissRegister, vm::createAccount)
-            if (showForgot) AccountForgotPasswordDialog(login, forgotPasswordLoading, error, notice, dismissForgot, vm::forgotPassword)
+            if (showRegister) StoreRegisterScreen(owner = registerOwner, initialEmail = login, onDismiss = dismissRegister, onRegistered = { created -> showRegister = false; vm.completeRegistration(created) })
+            if (showForgot) StoreForgotPasswordScreen(owner = forgotPasswordOwner, initialEmail = login, onDismiss = dismissForgot)
         }
     }
 }
@@ -759,17 +764,6 @@ private fun AccountAddressContent(vm: AccountViewModel, address: AccountCustomer
 private fun AccountAddressField(label: String, value: String, enabled: Boolean, onValueChange: (String) -> Unit) { OutlinedTextField(value, onValueChange, label = { Text(label) }, singleLine = true, enabled = enabled, modifier = Modifier.fillMaxWidth()) }
 
 
-@Composable
-private fun AccountRegisterDialog(initialEmail: String, loading: Boolean, error: String?, onDismiss: () -> Unit, onCreate: (String, String, String, String, String, String?) -> Unit) {
-    var firstName by remember { mutableStateOf("") }; var lastName by remember { mutableStateOf("") }; var email by remember(initialEmail) { mutableStateOf(initialEmail) }; var phone by remember { mutableStateOf("") }; var password by remember { mutableStateOf("") }; var repeatPassword by remember { mutableStateOf("") }; var birthDate by remember { mutableStateOf<String?>(null) }
-    AlertDialog(onDismissRequest = { if (!loading) onDismiss() }, title = { Text("Crear cuenta") }, text = { Column(Modifier.verticalScroll(rememberScrollState())) { OutlinedTextField(firstName, { firstName = it }, label = { Text("Nombre") }, singleLine = true); Spacer(Modifier.height(8.dp)); OutlinedTextField(lastName, { lastName = it }, label = { Text("Apellidos") }, singleLine = true); Spacer(Modifier.height(8.dp)); OutlinedTextField(email, { email = it }, label = { Text("Correo electrónico") }, singleLine = true); Spacer(Modifier.height(8.dp)); OutlinedTextField(phone, { phone = it }, label = { Text("Teléfono (opcional)") }, singleLine = true); Spacer(Modifier.height(8.dp)); BirthDatePickerField(birthDate, { birthDate = it }, modifier = Modifier.fillMaxWidth(), enabled = !loading); Spacer(Modifier.height(8.dp)); OutlinedTextField(password, { password = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true); Spacer(Modifier.height(8.dp)); OutlinedTextField(repeatPassword, { repeatPassword = it }, label = { Text("Repetir contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true); if (repeatPassword.isNotEmpty() && password != repeatPassword) { Spacer(Modifier.height(8.dp)); Text("Las contraseñas no coinciden.", color = MaterialTheme.colorScheme.error) }; error?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error) } } }, confirmButton = { TextButton({ onCreate(firstName.trim(), lastName.trim(), email.trim(), phone.trim(), password, birthDate) }, enabled = !loading && firstName.isNotBlank() && lastName.isNotBlank() && email.isNotBlank() && password.length >= 8 && password == repeatPassword) { if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Crear cuenta") } }, dismissButton = { TextButton(onDismiss, enabled = !loading) { Text("Cancelar") } })
-}
-
-@Composable
-private fun AccountForgotPasswordDialog(initialLogin: String, loading: Boolean, error: String?, notice: String?, onDismiss: () -> Unit, onSend: (String) -> Unit) {
-    var login by remember(initialLogin) { mutableStateOf(initialLogin) }
-    AlertDialog(onDismissRequest = { if (!loading) onDismiss() }, title = { Text("Recuperar contraseña") }, text = { Column { Text("Introduce tu correo electrónico."); Spacer(Modifier.height(12.dp)); OutlinedTextField(login, { login = it }, label = { Text("Correo electrónico") }, singleLine = true); error?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error) }; notice?.let { Spacer(Modifier.height(8.dp)); Text("Si existe una cuenta asociada a ese correo electrónico, te enviaremos un enlace para restablecer tu contraseña.") } } }, confirmButton = { if (notice == null) TextButton({ onSend(login.trim()) }, enabled = !loading && login.isNotBlank()) { if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Enviar correo") } else TextButton(onDismiss) { Text("Cerrar") } }, dismissButton = { if (notice == null) TextButton(onDismiss, enabled = !loading) { Text("Cancelar") } })
-}
 private fun formatWalletRemaining(value: Double): String {
     val cents = kotlin.math.round(value * 100.0).toLong()
     val whole = cents / 100L
