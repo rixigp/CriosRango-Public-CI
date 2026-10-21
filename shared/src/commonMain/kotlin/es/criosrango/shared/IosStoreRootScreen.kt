@@ -701,17 +701,34 @@ fun StoreCartScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            StorePageHeader(title = "Tu carrito", onBack = onBack, horizontalPadding = 0.dp)
-        }
-        if (cart.items.isNotEmpty()) item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = { clearCartConfirm = true }) {
-                    androidx.compose.material3.Icon(IosCartDeleteLineIcon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Vaciar carrito")
+            StorePageHeader(
+                title = "Tu carrito",
+                onBack = onBack,
+                horizontalPadding = 0.dp,
+                trailing = {
+                    if (cart.items.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .clickable { clearCartConfirm = true }
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.Icon(
+                                IosCartDeleteLineIcon,
+                                contentDescription = null,
+                                tint = Color(0xFF183B35),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "Vaciar carrito",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = Color(0xFF183B35)
+                            )
+                        }
+                    }
                 }
-            }
+            )
         }
         if (state == StoreCartLoadState.LOADING && cart.items.isEmpty()) item { IosStoreLoading() }
         if (!error.isNullOrBlank()) item { IosStoreError(error!!, cartController::refresh) }

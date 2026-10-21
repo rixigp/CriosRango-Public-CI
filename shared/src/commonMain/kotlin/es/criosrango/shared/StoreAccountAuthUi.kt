@@ -186,7 +186,7 @@ fun StoreAccountRootScreen(
     onInfoPage: (StoreAccountInfoPage) -> Unit,
     modifier: Modifier = Modifier,
     contentHorizontalPadding: androidx.compose.ui.unit.Dp = 0.dp,
-    contentTopSpacing: androidx.compose.ui.unit.Dp = 34.dp,
+    contentTopSpacing: androidx.compose.ui.unit.Dp = 20.dp,
     headerHorizontalPadding: androidx.compose.ui.unit.Dp = 20.dp
 ) {
     val authenticated = !fullName.isNullOrBlank() && !email.isNullOrBlank()
@@ -231,17 +231,17 @@ fun StoreAccountRootScreen(
                 }
             }
         }
-        Spacer(Modifier.height(if (authenticated) 24.dp else 12.dp))
+        Spacer(Modifier.height(if (authenticated) 16.dp else 10.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             AccountRootAccess("Pedidos", Icons.Outlined.History, Modifier.weight(1f), onOrders)
             AccountRootAccess("Cupones y promociones", Icons.Outlined.Sell, Modifier.weight(1f), onWallet)
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             AccountRootAccess("Perfil", Icons.Outlined.Person, Modifier.weight(1f), onProfile)
             AccountRootAccess("Ayuda", Icons.AutoMirrored.Outlined.HelpOutline, Modifier.weight(1f), onHelp)
         }
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(18.dp))
         Text("Información", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(6.dp))
         StoreAccountInformationRow("Cambios y devoluciones", Icons.Outlined.Restore) { onInfoPage(StoreAccountInfoPage.RETURNS) }

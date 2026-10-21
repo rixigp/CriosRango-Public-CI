@@ -174,7 +174,7 @@ fun CriosRangoIOSAccountScreen(
                     StoreAccountRootScreen(
                         modifier = Modifier.weight(1f),
                         contentHorizontalPadding = 4.dp,
-                        contentTopSpacing = 38.dp,
+                        contentTopSpacing = 20.dp,
                         headerHorizontalPadding = 0.dp,
                         onBack = onBackFromRoot,
                         fullName = user?.let { it.displayName.ifBlank { it.email } },
