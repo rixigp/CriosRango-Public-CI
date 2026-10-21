@@ -148,7 +148,7 @@ fun AccountLoginScreen(
             is StoreOrderSelectionResolution.TransientError -> Unit
         }
     }
-    val selectedOrder = selectedOrderFromShared ?: sharedOrdersState.orders.firstOrNull { it.id == selectedOrderId }
+    val selectedOrder = AccountOrderSelectionState(selectedOrderId, selectedOrderFromShared).resolveFrom(sharedOrdersState.orders)
     LaunchedEffect(currentUser?.id, selectedOrderId, sharedOrdersState.loading, sharedOrdersState.refreshing, sharedOrdersState.error, sharedOrdersState.orders) {
         val id = selectedOrderId ?: return@LaunchedEffect
         if (currentUser == null || selectedOrderFromShared != null) return@LaunchedEffect
@@ -277,7 +277,7 @@ fun AccountLoginScreen(
                     owner = sharedOrdersOwner,
                     sessionState = vm.sharedAuthSession,
                     onBack = { accountSection = AccountSection.HOME },
-                    onOpenOrder = { selectedOrderFromShared = it; selectedOrderId = it.id },
+                    onOpenOrder = { val selected = AccountOrderSelectionState().select(it); selectedOrderFromShared = selected.sharedOrder; selectedOrderId = selected.orderId },
                     onSessionExpired = { vm.retrySession() }
                 )
             }
