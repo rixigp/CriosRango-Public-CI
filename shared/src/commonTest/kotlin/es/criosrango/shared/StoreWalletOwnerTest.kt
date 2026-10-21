@@ -232,6 +232,72 @@ class StoreWalletOwnerTest {
         assertTrue(owner.state.value.appliedCouponCodes.any { it.equals("PROMO-10", true) })
     }
 
+    @Test fun ownerRejectsPointsThatAreNotInCurrentRedeemableOptions() = runTest {
+        var redeems = 0
+        val owner = owner(backgroundScope)
+        owner.onSessionChanged("user-A")
+        advanceUntilIdle()
+        owner.redeem(1) { redeems++; CouponApplicationResult.Success }
+        advanceUntilIdle()
+        assertEquals(0, redeems)
+        assertNull(owner.state.value.pendingRequestId)
+    }
+
+    @Test fun pendingRewardCanBeAppliedWithoutRedeemingAgain() = runTest {
+        var redeems = 0
+        var applied: String? = null
+        val owner = StoreWalletOwner(
+            loadWallet = { wallet("4.35", listOf(reward())) },
+            loadPromotions = { emptyList() },
+            redeemPoints = { _, _ -> redeems++; response() },
+            createRequestId = { "unused" },
+            scope = backgroundScope
+        )
+        owner.onSessionChanged("user-A")
+        advanceUntilIdle()
+        owner.applyReward(reward()) { code -> applied = code; CouponApplicationResult.Success }
+        advanceUntilIdle()
+        assertEquals("CR-MONEDERO-42", applied)
+        assertEquals(0, redeems)
+        assertNull(owner.state.value.operationError)
+    }
+
+    @Test fun callbackExceptionIsShownAsRecoverableOperationError() = runTest {
+        val owner = owner(backgroundScope)
+        owner.onSessionChanged("user-A")
+        advanceUntilIdle()
+        owner.applyPromotion("PROMO-10") { error("cart adapter failed") }
+        advanceUntilIdle()
+        assertTrue(owner.state.value.operationError?.contains("cart adapter failed") == true)
+    }
+
+    @Test fun successfulServerRedemptionWithoutCouponDoesNotKeepRetryToken() = runTest {
+        val owner = StoreWalletOwner(
+            loadWallet = { wallet("4.35", listOf(reward())) },
+            loadPromotions = { emptyList() },
+            redeemPoints = { _, _ -> RedeemWalletResponse(success = true, pointsRedeemed = 100) },
+            createRequestId = { "no-coupon-id" },
+            scope = backgroundScope
+        )
+        owner.onSessionChanged("user-A")
+        advanceUntilIdle()
+        owner.redeem(100) { CouponApplicationResult.Success }
+        advanceUntilIdle()
+        assertNull(owner.state.value.pendingRequestId)
+        assertTrue(owner.state.value.operationError?.contains("no ha devuelto un cupón") == true)
+    }
+
+    @Test fun promotionsWithoutCodeRemainInSharedStateWithoutInventedCode() = runTest {
+        val noCode = Promotion("info", "Promoción informativa", description = "Sin cupón", code = null, priority = 2)
+        val withCode = Promotion("code", "Descuento", code = "PROMO-10", priority = 1)
+        val owner = owner(backgroundScope, promotions = listOf(withCode, noCode))
+        owner.onSessionChanged("user-A")
+        advanceUntilIdle()
+        assertEquals(listOf("info", "code"), owner.state.value.promotions.map { it.id })
+        assertNull(owner.state.value.promotions.first().code)
+        assertEquals("PROMO-10", owner.state.value.promotions.last().code)
+    }
+
     private fun owner(
         scope: kotlinx.coroutines.CoroutineScope,
         promotions: List<Promotion> = emptyList()

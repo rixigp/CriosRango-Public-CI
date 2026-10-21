@@ -4,6 +4,7 @@ import es.criosrango.shared.loyalty.LoyaltyRepository
 import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.loyalty.LoyaltyWallet
 import es.criosrango.shared.loyalty.RedeemWalletResponse
+import es.criosrango.shared.loyalty.redeemableOptions
 import es.criosrango.shared.promotions.Promotion
 import es.criosrango.shared.promotions.PromotionRepository
 import kotlinx.coroutines.CancellationException
@@ -199,8 +200,10 @@ class StoreWalletOwner internal constructor(
                 if (currentGeneration == generation) mutableState.value = mutableState.value.copy(operationError = error.message ?: "No se ha podido utilizar el monedero.")
                 // Keep the same request ID after a network/server failure for an idempotent retry.
             } finally {
-                redemptionInFlight = false
-                if (currentGeneration == generation) mutableState.value = mutableState.value.copy(redeemLoading = false)
+                if (currentGeneration == generation) {
+                    redemptionInFlight = false
+                    mutableState.value = mutableState.value.copy(redeemLoading = false)
+                }
             }
         }
     }
@@ -241,8 +244,10 @@ class StoreWalletOwner internal constructor(
                     refresh()
                 }
             } finally {
-                applyInFlight = false
-                if (currentGeneration == generation) mutableState.value = mutableState.value.copy(couponApplyLoading = false)
+                if (currentGeneration == generation) {
+                    applyInFlight = false
+                    mutableState.value = mutableState.value.copy(couponApplyLoading = false)
+                }
             }
         }
     }
