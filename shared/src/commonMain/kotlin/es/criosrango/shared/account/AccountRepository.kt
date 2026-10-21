@@ -175,8 +175,7 @@ class AccountRepository(
             ?: throw IllegalStateException("No hay ninguna sesión iniciada.")
 
     private fun persistToken(token: String) {
-        if (token.isBlank() || !tokenStore.save(token)) {
-            throw AccountSessionPersistenceException()
-        }
+        val saved = if (token.isBlank()) false else runCatching { tokenStore.save(token) }.getOrDefault(false)
+        if (!saved) throw AccountSessionPersistenceException()
     }
 }

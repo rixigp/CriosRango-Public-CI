@@ -11,6 +11,9 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -123,4 +126,51 @@ class StoreAccountAuthFormsTest {
         assertTrue(owner.submit())
         assertTrue(owner.state.value.success)
     }
+    @Test
+    fun registerDoubleSubmitIsBlockedAtOwner() = runTest {
+        var calls = 0
+        val (repository, _) = repository({
+            calls++
+            delay(100)
+            respond("""{"token":"token","user":{"id":9,"email":"c@example.test"}}""", HttpStatusCode.OK,
+                headersOf(HttpHeaders.ContentType, "application/json"))
+        })
+        val owner = StoreRegisterOwner(repository)
+        owner.update { it.copy(firstName = "C", lastName = "Test", email = "c@example.test", password = "12345678", repeatPassword = "12345678") }
+        val first = async { owner.submit() }
+        yield()
+        val second = async { owner.submit() }
+        assertNull(second.await())
+        assertEquals(9, first.await()?.id)
+        assertEquals(1, calls)
+    }
+
+    @Test
+    fun malformedRegisterResponseUsesSafeCopy() = runTest {
+        val (repository, _) = repository({
+            respond("not-json", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        })
+        val owner = StoreRegisterOwner(repository)
+        owner.update { it.copy(firstName = "D", lastName = "Test", email = "d@example.test", password = "12345678", repeatPassword = "12345678") }
+        assertNull(owner.submit())
+        assertEquals("No hemos podido crear la cuenta.", owner.state.value.requestError)
+    }
+
+    @Test
+    fun networkExceptionIsNotExposedToRegisterOrForgotUi() = runTest {
+        val (registerRepository, _) = repository({ throw IllegalStateException("secret socket stack") })
+        val register = StoreRegisterOwner(registerRepository)
+        register.update { it.copy(firstName = "E", lastName = "Test", email = "e@example.test", password = "12345678", repeatPassword = "12345678") }
+        assertNull(register.submit())
+        assertEquals("No hemos podido crear la cuenta.", register.state.value.requestError)
+        assertFalse(register.state.value.requestError.orEmpty().contains("secret socket stack"))
+
+        val (forgotRepository, _) = repository({ throw IllegalStateException("secret socket stack") })
+        val forgot = StoreForgotPasswordOwner(forgotRepository)
+        forgot.updateEmail("e@example.test")
+        assertFalse(forgot.submit())
+        assertEquals("No hemos podido solicitar el cambio de contraseña.", forgot.state.value.requestError)
+        assertFalse(forgot.state.value.requestError.orEmpty().contains("secret socket stack"))
+    }
+
 }
