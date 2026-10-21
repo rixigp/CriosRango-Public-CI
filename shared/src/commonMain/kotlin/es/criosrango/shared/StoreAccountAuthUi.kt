@@ -2,12 +2,17 @@ package es.criosrango.shared
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -17,6 +22,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Cookie
@@ -31,7 +40,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -39,12 +52,23 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextButtonDefaults
+import androidx.compose.material3.OutlinedButtonDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.LocalFocusManager
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardActions
+import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.account.AccountUser
 import io.ktor.client.plugins.ResponseException
@@ -291,6 +315,84 @@ private fun StoreAccountInformationRow(title: String, icon: ImageVector, onClick
     }
 }
 
+/** Approved Críos&Rango identity colors shared by Android and iOS Account UI. */
+object StoreAccountColors {
+    val primary = Color(0xFF183B35)
+    val switchCheckedTrack = Color(0xFFB9D8CE)
+    val switchCheckedThumb = Color(0xFF183B35)
+}
+
+@Composable
+private fun Modifier.accountKeyboardDismiss(): Modifier {
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    return pointerInput(focusManager, keyboard) {
+        detectTapGestures(onTap = { focusManager.clearFocus(); keyboard?.hide() })
+    }
+}
+
+@Composable
+fun StoreProfileMenuScreen(
+    onPersonalData: () -> Unit,
+    onAddress: () -> Unit,
+    onPassword: () -> Unit,
+    notificationPreferences: @Composable () -> Unit,
+    onDeleteAccount: () -> Unit,
+    onLogout: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var showDeleteConfirmation by remember { androidx.compose.runtime.mutableStateOf(false) }
+    Column(modifier.fillMaxWidth()) {
+        StorePageHeader(title = "Perfil", onBack = onBack)
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
+            Spacer(Modifier.height(8.dp))
+            StoreProfileMenuRow("Datos personales", androidx.compose.material.icons.Icons.Outlined.Person, onPersonalData)
+            Spacer(Modifier.height(8.dp))
+            StoreProfileMenuRow("Dirección de entrega", androidx.compose.material.icons.Icons.Outlined.LocationOn, onAddress)
+            Spacer(Modifier.height(8.dp))
+            StoreProfileMenuRow("Cambiar contraseña", androidx.compose.material.icons.Icons.Outlined.Lock, onPassword)
+            Spacer(Modifier.height(8.dp))
+            StoreProfileMenuRow(AccountDeletion.TITLE, androidx.compose.material.icons.Icons.Outlined.Delete, onClick = { showDeleteConfirmation = true }, containerColor = AccountDeletion.background, contentColor = AccountDeletion.accent)
+            Spacer(Modifier.height(12.dp))
+            notificationPreferences()
+            Spacer(Modifier.height(12.dp))
+            Card(Modifier.fillMaxWidth().clickable(onClick = onLogout), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFECEF))) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(androidx.compose.material.icons.Icons.AutoMirrored.Outlined.Logout, null, tint = Color(0xFFC73B4C))
+                    Spacer(Modifier.width(14.dp))
+                    Text("Cerrar sesión", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = Color(0xFFC73B4C))
+                }
+            }
+        }
+    }
+    if (showDeleteConfirmation) AlertDialog(
+        onDismissRequest = { showDeleteConfirmation = false },
+        title = { Text(AccountDeletion.TITLE) },
+        text = { Text(AccountDeletion.MESSAGE) },
+        confirmButton = { TextButton(onClick = { showDeleteConfirmation = false; onDeleteAccount() }) { Text(AccountDeletion.CONTINUE) } },
+        dismissButton = { TextButton(onClick = { showDeleteConfirmation = false }) { Text(AccountDeletion.CANCEL) } }
+    )
+}
+
+@Composable
+private fun StoreProfileMenuRow(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    containerColor: Color = Color(0xFFF0EDF1),
+    contentColor: Color = MaterialTheme.colorScheme.onSurface
+) {
+    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = containerColor)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = contentColor, modifier = Modifier.size(28.dp))
+            Spacer(Modifier.width(14.dp))
+            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = contentColor)
+            Text("›", style = MaterialTheme.typography.titleLarge, color = contentColor)
+        }
+    }
+}
+
 @Composable
 fun StoreLoginScreen(
     login: String,
@@ -305,31 +407,35 @@ fun StoreLoginScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(modifier.fillMaxWidth()) {
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val passwordFocus = remember { FocusRequester() }
+    Column(modifier.fillMaxWidth().accountKeyboardDismiss()) {
         StorePageHeader(title = "Iniciar sesión", onBack = onBack)
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             Spacer(Modifier.height(4.dp))
             OutlinedTextField(
                 value = login, onValueChange = onLoginChanged, label = { Text("Correo electrónico") },
-                singleLine = true, modifier = Modifier.fillMaxWidth()
+                singleLine = true, modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { passwordFocus.requestFocus() })
             )
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = password, onValueChange = onPasswordChanged, label = { Text("Contraseña") },
-                visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth()
+                visualTransformation = PasswordVisualTransformation(), singleLine = true,
+                modifier = Modifier.fillMaxWidth().focusRequester(passwordFocus),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); keyboard?.hide() })
             )
             error?.let { Spacer(Modifier.height(12.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
             Spacer(Modifier.height(20.dp))
-            Button(
-                onClick = { if (login.isBlank() || password.isBlank()) onSubmit(login, password) else onSubmit(login.trim(), password) },
-                enabled = !loading, modifier = Modifier.fillMaxWidth()
-            ) {
-                if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                else Text("Iniciar sesión")
+            Button(onClick = { if (login.isBlank() || password.isBlank()) onSubmit(login, password) else onSubmit(login.trim(), password) }, enabled = !loading, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = StoreAccountColors.primary, contentColor = Color.White)) {
+                if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White) else Text("Iniciar sesión")
             }
             Spacer(Modifier.height(8.dp))
-            TextButton(onClick = onForgotPassword, modifier = Modifier.fillMaxWidth()) { Text("He olvidado mi contraseña") }
-            OutlinedButton(onClick = onRegister, modifier = Modifier.fillMaxWidth()) { Text("Crear cuenta") }
+            TextButton(onClick = onForgotPassword, modifier = Modifier.fillMaxWidth(), colors = TextButtonDefaults.textButtonColors(contentColor = StoreAccountColors.primary)) { Text("He olvidado mi contraseña") }
+            OutlinedButton(onClick = onRegister, modifier = Modifier.fillMaxWidth(), colors = OutlinedButtonDefaults.colors(contentColor = StoreAccountColors.primary)) { Text("Crear cuenta") }
         }
     }
 }

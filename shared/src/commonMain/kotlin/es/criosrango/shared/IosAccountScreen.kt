@@ -239,7 +239,7 @@ fun CriosRangoIOSAccountScreen(
                             if (onBackFromLogin != null) onBackFromLogin() else page = IosAccountPage.HOME
                         })
                     } else {
-                        IosProfileMenuScreen(
+                        StoreProfileMenuScreen(
                             onPersonalData = { page = IosAccountPage.DATA },
                             onAddress = { addressReturnPage = IosAccountPage.PROFILE; page = IosAccountPage.ADDRESS },
                             onPassword = { forgotReturnPage = IosAccountPage.PROFILE; page = IosAccountPage.FORGOT },
@@ -254,12 +254,14 @@ fun CriosRangoIOSAccountScreen(
                                     page = IosAccountPage.HOME
                                 }
                             },
-                            onBack = { page = IosAccountPage.PROFILE }
+                            notificationPreferences = { IosPushPreferences() },
+                        onDeleteAccount = { onOpenExternalUrl(AccountDeletion.URL) },
+                        onBack = { page = IosAccountPage.PROFILE }
                         )
                     }
                     StoreForgotPasswordScreen(owner = forgotPasswordOwner, onDismiss = { page = forgotReturnPage })
                 }
-                IosAccountPage.PROFILE -> IosProfileMenuScreen(
+                IosAccountPage.PROFILE -> StoreProfileMenuScreen(
                     onPersonalData = { page = IosAccountPage.DATA },
                     onAddress = { addressReturnPage = IosAccountPage.PROFILE; page = IosAccountPage.ADDRESS },
                     onPassword = { forgotReturnPage = IosAccountPage.PROFILE; page = IosAccountPage.FORGOT },
@@ -274,7 +276,9 @@ fun CriosRangoIOSAccountScreen(
                             page = IosAccountPage.HOME
                         }
                     },
-                    onBack = { page = IosAccountPage.HOME }
+                    notificationPreferences = { IosPushPreferences() },
+                onDeleteAccount = { onOpenExternalUrl(AccountDeletion.URL) },
+                onBack = { page = IosAccountPage.HOME }
                 )
                 IosAccountPage.DATA -> StoreProfileScreen(
                     repository = repository,
@@ -641,87 +645,6 @@ private fun IosLoginScreen(
         onBack = onBack,
         modifier = Modifier.fillMaxSize()
     )
-}
-
-@Composable
-private fun IosProfileMenuScreen(
-    onPersonalData: () -> Unit,
-    onAddress: () -> Unit,
-    onPassword: () -> Unit,
-    onDeleteAccount: () -> Unit,
-    onLogout: () -> Unit,
-    onBack: () -> Unit
-) {
-    var showDeleteConfirmation by remember { mutableStateOf(false) }
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            StorePageHeader(title = "Perfil", onBack = onBack, horizontalPadding = 0.dp)
-            Spacer(Modifier.height(10.dp))
-            IosProfileActionRow("Datos personales", "👤", onPersonalData)
-            IosProfileActionRow("Dirección de entrega", "⌖", onAddress)
-            IosProfileActionRow("Cambiar contraseña", "🔒", onPassword)
-            IosPushPreferences()
-            IosProfileActionRow(
-                AccountDeletion.TITLE,
-                "🗑",
-                { showDeleteConfirmation = true },
-                containerColor = AccountDeletion.background,
-                contentColor = AccountDeletion.accent
-            )
-            IosProfileActionRow(
-                "Cerrar sesión",
-                "↪",
-                onLogout,
-                containerColor = Color(0xFFFFECEF),
-                contentColor = Color(0xFFC73B4C)
-            )
-        }
-    }
-    if (showDeleteConfirmation) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirmation = false },
-            title = { Text(AccountDeletion.TITLE) },
-            text = { Text(AccountDeletion.MESSAGE) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDeleteConfirmation = false
-                    onDeleteAccount()
-                }) { Text(AccountDeletion.CONTINUE) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirmation = false }) { Text(AccountDeletion.CANCEL) }
-            }
-        )
-    }
-}
-
-@Composable
-private fun IosProfileActionRow(
-    title: String,
-    icon: String,
-    onClick: () -> Unit,
-    containerColor: Color = Color(0xFFF0EDF1),
-    contentColor: Color = MaterialTheme.colorScheme.onSurface
-) {
-    Card(
-        Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor)
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(icon, modifier = Modifier.width(28.dp), color = contentColor)
-            Spacer(Modifier.width(14.dp))
-            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = contentColor)
-            Text("›", style = MaterialTheme.typography.titleLarge, color = contentColor)
-        }
-    }
 }
 
 @Composable

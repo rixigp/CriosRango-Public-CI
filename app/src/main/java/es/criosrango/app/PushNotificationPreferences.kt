@@ -6,6 +6,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import es.criosrango.shared.StoreAccountColors
 
 @Composable
 fun PushNotificationPreferences() {
@@ -25,7 +26,8 @@ fun PushNotificationPreferences() {
                 Text("Resumen diario de novedades.", style = MaterialTheme.typography.bodySmall)
             }
             Switch(
-                checked = newProducts,
+            colors = SwitchDefaults.colors(checkedThumbColor = StoreAccountColors.switchCheckedThumb, checkedTrackColor = StoreAccountColors.switchCheckedTrack, checkedBorderColor = StoreAccountColors.primary),
+            checked = newProducts,
                 onCheckedChange = { enabled ->
                     newProducts = enabled
                     store.newProducts = enabled
@@ -43,7 +45,8 @@ fun PushNotificationPreferences() {
                 Text("Cambios relevantes de tus pedidos.", style = MaterialTheme.typography.bodySmall)
             }
             Switch(
-                checked = orderUpdates,
+            colors = SwitchDefaults.colors(checkedThumbColor = StoreAccountColors.switchCheckedThumb, checkedTrackColor = StoreAccountColors.switchCheckedTrack, checkedBorderColor = StoreAccountColors.primary),
+            checked = orderUpdates,
                 onCheckedChange = { enabled ->
                     orderUpdates = enabled
                     store.orderUpdates = enabled

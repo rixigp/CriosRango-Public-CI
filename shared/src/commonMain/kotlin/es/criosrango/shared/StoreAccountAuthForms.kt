@@ -1,6 +1,13 @@
 package es.criosrango.shared
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.focus.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardActions
+import androidx.compose.ui.text.input.KeyboardOptions
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -193,13 +200,15 @@ fun StoreRegisterScreen(
 ) {
     val state by owner.state.collectAsState()
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(owner) { owner.reset(initialEmail) }
     LaunchedEffect(state.success) { state.success?.let(onRegistered) }
     AlertDialog(
         onDismissRequest = { if (!state.submitting) onDismiss() },
         title = { Text("Crear cuenta") },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
+            Column(Modifier.verticalScroll(rememberScrollState()).pointerInput(focusManager, keyboard) { detectTapGestures(onTap = { focusManager.clearFocus(); keyboard?.hide() }) }) {
                 OutlinedTextField(state.firstName, { owner.update { s -> s.copy(firstName = it) } }, label = { Text("Nombre") }, singleLine = true)
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(state.lastName, { owner.update { s -> s.copy(lastName = it) } }, label = { Text("Apellidos") }, singleLine = true)
@@ -212,7 +221,7 @@ fun StoreRegisterScreen(
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(state.password, { owner.update { s -> s.copy(password = it) } }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(state.repeatPassword, { owner.update { s -> s.copy(repeatPassword = it) } }, label = { Text("Repetir contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
+                OutlinedTextField(state.repeatPassword, { owner.update { s -> s.copy(repeatPassword = it) } }, label = { Text("Repetir contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); keyboard?.hide() }))
                 if (state.repeatPassword.isNotEmpty() && state.password != state.repeatPassword) {
                     Spacer(Modifier.height(8.dp))
                     Text("Las contraseñas no coinciden.", color = MaterialTheme.colorScheme.error)
@@ -237,15 +246,17 @@ fun StoreForgotPasswordScreen(
 ) {
     val state by owner.state.collectAsState()
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(owner) { owner.reset(initialEmail) }
     AlertDialog(
         onDismissRequest = { if (!state.submitting) onDismiss() },
         title = { Text("Recuperar contraseña") },
         text = {
-            Column {
+            Column(Modifier.pointerInput(focusManager, keyboard) { detectTapGestures(onTap = { focusManager.clearFocus(); keyboard?.hide() }) }) {
                 Text("Introduce tu correo electrónico")
                 Spacer(Modifier.height(12.dp))
-                OutlinedTextField(state.email, owner::updateEmail, label = { Text("Correo electrónico") }, singleLine = true, enabled = !state.submitting)
+                OutlinedTextField(state.email, owner::updateEmail, label = { Text("Correo electrónico") }, singleLine = true, enabled = !state.submitting, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); keyboard?.hide() }))
                 state.validationError?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
                 state.requestError?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
                 if (state.success) { Spacer(Modifier.height(8.dp)); Text(FORGOT_SUCCESS_COPY) }

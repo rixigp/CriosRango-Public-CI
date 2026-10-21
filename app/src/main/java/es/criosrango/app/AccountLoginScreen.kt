@@ -307,7 +307,19 @@ fun AccountLoginScreen(
                         onHelp = { accountSection = AccountSection.HELP },
                         onInfoPage = { selectedInfoPage = AccountInfoPage.valueOf(it.name) }
                     )
-                    AccountSection.PROFILE -> AccountProfileContent(loading, { accountSection = AccountSection.HOME }, { accountSection = AccountSection.DATA }, { accountSection = AccountSection.ADDRESSES }, { vm.clearAccountMessages(); showForgot = true }, { vm.logout(onBeforeLogout) {
+                    AccountSection.PROFILE -> es.criosrango.shared.StoreProfileMenuScreen(
+                        onBack = { accountSection = AccountSection.HOME },
+                        onPersonalData = { accountSection = AccountSection.DATA },
+                        onAddress = { accountSection = AccountSection.ADDRESSES },
+                        onPassword = { vm.clearAccountMessages(); showForgot = true },
+                        notificationPreferences = { PushNotificationPreferences() },
+                        onDeleteAccount = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(AccountDeletion.URL))
+                            runCatching { notificationContext.startActivity(intent) }.onFailure {
+                                Toast.makeText(notificationContext, "No se ha podido abrir la página de eliminación.", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onLogout = { vm.logout(onBeforeLogout) {
                             showLogin = true
                             showRegister = false
                             showForgot = false
@@ -315,7 +327,7 @@ fun AccountLoginScreen(
                             selectedInfoPage = null
                             accountSection = AccountSection.HOME
                             vm.clearAccountMessages()
-                        } })
+                        } }
                     AccountSection.DATA -> es.criosrango.shared.StoreProfileScreen(
                         repository = vm.sharedRepository,
                         sessionState = vm.sharedAuthSession,
@@ -666,86 +678,6 @@ private fun HelpContactRow(title: String, value: String, icon: ImageVector, onCl
     }
 }
 
-
-@Composable
-private fun AccountProfileContent(loading: Boolean, onBack: () -> Unit, onPersonalData: () -> Unit, onAddress: () -> Unit, onPassword: () -> Unit, onLogout: () -> Unit) {
-    var showDeleteConfirmation by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-
-    StorePageHeader(title = "Perfil", onBack = onBack)
-    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
-    Spacer(Modifier.height(8.dp))
-    ProfileMenuRow("Datos personales", Icons.Outlined.Person, onPersonalData)
-    Spacer(Modifier.height(8.dp))
-    ProfileMenuRow("Dirección de entrega", Icons.Outlined.LocationOn, onAddress)
-    Spacer(Modifier.height(8.dp))
-    ProfileMenuRow("Cambiar contraseña", Icons.Outlined.Lock, onPassword)
-    Spacer(Modifier.height(8.dp))
-    ProfileMenuRow(
-        AccountDeletion.TITLE,
-        Icons.Outlined.Delete,
-        onClick = { showDeleteConfirmation = true },
-        containerColor = AccountDeletion.background,
-        contentColor = AccountDeletion.accent
-    )
-    Spacer(Modifier.height(12.dp))
-    PushNotificationPreferences()
-    Spacer(Modifier.height(12.dp))
-    Card(Modifier.fillMaxWidth().clickable(onClick = onLogout), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFECEF))) { Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.AutoMirrored.Outlined.Logout, null, tint = Color(0xFFC73B4C)); Spacer(Modifier.width(14.dp)); Text("Cerrar sesión", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = Color(0xFFC73B4C)) } }
-
-    if (showDeleteConfirmation) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirmation = false },
-            title = { Text(AccountDeletion.TITLE) },
-            text = { Text(AccountDeletion.MESSAGE) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDeleteConfirmation = false
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(AccountDeletion.URL))
-                    runCatching { context.startActivity(intent) }
-                        .onFailure {
-                            Toast.makeText(
-                                context,
-                                "No se ha podido abrir la página de eliminación.",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                }) { Text(AccountDeletion.CONTINUE) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirmation = false }) {
-                    Text(AccountDeletion.CANCEL)
-                }
-            }
-        )
-    }
-    }
-}
-
-@Composable
-private fun ProfileMenuRow(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit,
-    containerColor: Color = Color(0xFFF0EDF1),
-    contentColor: Color = MaterialTheme.colorScheme.onSurface
-) {
-    Card(
-        Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor)
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(icon, null, tint = contentColor, modifier = Modifier.size(28.dp))
-            Spacer(Modifier.width(14.dp))
-            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = contentColor)
-            Text("›", style = MaterialTheme.typography.titleLarge, color = contentColor)
-        }
-    }
-}
 
 @Composable
 private fun AccountPersonalDataContent(vm: AccountViewModel, user: AccountUser, onBack: () -> Unit) {
