@@ -438,6 +438,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
             _notice.value = null
             try {
                 _user.value = created
+                sharedAuthSession.publishAuthenticatedUser(created)
                 _authState.value = AccountAuthState.AUTHENTICATED
                 val loadedAddress = try {
                     repository.customerAddress()
@@ -691,7 +692,6 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 _addressSaveError.value = null
                 _addressSaveNotice.value = null
                 _loading.value = false
-                _forgotPasswordLoading.value = false
                 _ordersRefreshing.value = false
                 _savingAccountDetails.value = false
                 _savingAddress.value = false
