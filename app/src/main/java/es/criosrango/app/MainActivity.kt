@@ -401,7 +401,7 @@ private fun CriosRangoApp(
         }
     }
 
-    MaterialTheme(colorScheme = lightColorScheme(primary = Color(0xFF183B35), secondary = Color(0xFFD18162))) {
+    es.criosrango.shared.CriosRangoTheme {
         Crossfade(
             targetState = showStartupBranding,
             animationSpec = tween(durationMillis = 250),

@@ -194,7 +194,7 @@ fun CriosRangoIOSAccountScreen(
         error = authSnapshot.error
     }
 
-    MaterialTheme {
+    CriosRangoTheme {
         androidx.compose.foundation.layout.Box(modifier.fillMaxSize()) {
         if (authSnapshot.status == StoreAccountAuthStatus.CHECKING && authSnapshot.loading) {
             FullScreenLoading("Comprobando sesión")
@@ -276,7 +276,6 @@ fun CriosRangoIOSAccountScreen(
                         }
                     },
                     notificationPreferences = { IosPushPreferences() },
-                onDeleteAccount = { onOpenExternalUrl(AccountDeletion.URL) },
                 onBack = { page = IosAccountPage.HOME }
                 )
                 IosAccountPage.DATA -> StoreProfileScreen(

@@ -269,7 +269,7 @@ fun CriosRangoIOSRootScreen(
         }
     }
 
-    MaterialTheme {
+    CriosRangoTheme {
         androidx.compose.runtime.LaunchedEffect(Unit) { println("KMP_RUNTIME_ROOT_SCREEN_READY") }
         Box(Modifier.fillMaxSize()) {
         StoreGlobalShell(

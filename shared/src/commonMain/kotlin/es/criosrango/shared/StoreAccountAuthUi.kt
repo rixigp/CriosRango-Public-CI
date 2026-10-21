@@ -52,9 +52,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextButtonDefaults
-import androidx.compose.material3.OutlinedButtonDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,8 +63,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardActions
-import androidx.compose.ui.text.input.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -436,8 +436,8 @@ fun StoreLoginScreen(
                 if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Color.White) else Text("Iniciar sesión")
             }
             Spacer(Modifier.height(8.dp))
-            TextButton(onClick = onForgotPassword, modifier = Modifier.fillMaxWidth(), colors = TextButtonDefaults.textButtonColors(contentColor = StoreAccountColors.primary)) { Text("He olvidado mi contraseña") }
-            OutlinedButton(onClick = onRegister, modifier = Modifier.fillMaxWidth(), colors = OutlinedButtonDefaults.colors(contentColor = StoreAccountColors.primary)) { Text("Crear cuenta") }
+            TextButton(onClick = onForgotPassword, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColors(contentColor = StoreAccountColors.primary)) { Text("He olvidado mi contraseña") }
+            OutlinedButton(onClick = onRegister, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.outlinedButtonColors(contentColor = StoreAccountColors.primary)) { Text("Crear cuenta") }
         }
     }
 }

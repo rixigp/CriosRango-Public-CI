@@ -5,9 +5,11 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardActions
-import androidx.compose.ui.text.input.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -202,6 +204,12 @@ fun StoreRegisterScreen(
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
+    val firstNameFocus = remember { FocusRequester() }
+    val lastNameFocus = remember { FocusRequester() }
+    val emailFocus = remember { FocusRequester() }
+    val phoneFocus = remember { FocusRequester() }
+    val passwordFocus = remember { FocusRequester() }
+    val repeatPasswordFocus = remember { FocusRequester() }
     LaunchedEffect(owner) { owner.reset(initialEmail) }
     LaunchedEffect(state.success) { state.success?.let(onRegistered) }
     AlertDialog(
@@ -209,19 +217,19 @@ fun StoreRegisterScreen(
         title = { Text("Crear cuenta") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()).pointerInput(focusManager, keyboard) { detectTapGestures(onTap = { focusManager.clearFocus(); keyboard?.hide() }) }) {
-                OutlinedTextField(state.firstName, { owner.update { s -> s.copy(firstName = it) } }, label = { Text("Nombre") }, singleLine = true)
+                OutlinedTextField(state.firstName, { owner.update { s -> s.copy(firstName = it) } }, label = { Text("Nombre") }, singleLine = true, modifier = Modifier.focusRequester(firstNameFocus), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next), keyboardActions = KeyboardActions(onNext = { lastNameFocus.requestFocus() }))
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(state.lastName, { owner.update { s -> s.copy(lastName = it) } }, label = { Text("Apellidos") }, singleLine = true)
+                OutlinedTextField(state.lastName, { owner.update { s -> s.copy(lastName = it) } }, label = { Text("Apellidos") }, singleLine = true, modifier = Modifier.focusRequester(lastNameFocus), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next), keyboardActions = KeyboardActions(onNext = { emailFocus.requestFocus() }))
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(state.email, { owner.update { s -> s.copy(email = it) } }, label = { Text("Correo electrónico") }, singleLine = true)
+                OutlinedTextField(state.email, { owner.update { s -> s.copy(email = it) } }, label = { Text("Correo electrónico") }, singleLine = true, modifier = Modifier.focusRequester(emailFocus), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next), keyboardActions = KeyboardActions(onNext = { phoneFocus.requestFocus() }))
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(state.phone, { owner.update { s -> s.copy(phone = it) } }, label = { Text("Teléfono (opcional)") }, singleLine = true)
+                OutlinedTextField(state.phone, { owner.update { s -> s.copy(phone = it) } }, label = { Text("Teléfono (opcional)") }, singleLine = true, modifier = Modifier.focusRequester(phoneFocus), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next), keyboardActions = KeyboardActions(onNext = { passwordFocus.requestFocus() }))
                 Spacer(Modifier.height(8.dp))
                 BirthDatePickerField(state.birthDate, { owner.update { s -> s.copy(birthDate = it) } }, modifier = Modifier.fillMaxWidth(), enabled = !state.submitting)
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(state.password, { owner.update { s -> s.copy(password = it) } }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
+                OutlinedTextField(state.password, { owner.update { s -> s.copy(password = it) } }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.focusRequester(passwordFocus), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next), keyboardActions = KeyboardActions(onNext = { repeatPasswordFocus.requestFocus() }))
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(state.repeatPassword, { owner.update { s -> s.copy(repeatPassword = it) } }, label = { Text("Repetir contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); keyboard?.hide() }))
+                OutlinedTextField(state.repeatPassword, { owner.update { s -> s.copy(repeatPassword = it) } }, label = { Text("Repetir contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.focusRequester(repeatPasswordFocus), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); keyboard?.hide() }))
                 if (state.repeatPassword.isNotEmpty() && state.password != state.repeatPassword) {
                     Spacer(Modifier.height(8.dp))
                     Text("Las contraseñas no coinciden.", color = MaterialTheme.colorScheme.error)
