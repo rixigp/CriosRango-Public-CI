@@ -198,7 +198,7 @@ Card(
                                     color = Color(0xFF0F5C4D)
                                 )
                             }
-                            if (walletAmount >= minimumAmount && options.isNotEmpty()) {
+                            if (walletMinor >= minimumMinor && options.isNotEmpty() && state.pendingRewardCode.isNullOrBlank()) {
                                 Button(
                                     onClick = { showRedeemDialog = true },
                                     enabled = !loading,
