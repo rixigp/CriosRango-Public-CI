@@ -417,6 +417,7 @@ fun StoreLoginScreen(
             OutlinedTextField(
                 value = login, onValueChange = onLoginChanged, label = { Text("Correo electrónico") },
                 singleLine = true, modifier = Modifier.fillMaxWidth(),
+                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(focusedBorderColor = StoreAccountColors.primary, focusedLabelColor = StoreAccountColors.primary, cursorColor = StoreAccountColors.primary),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { passwordFocus.requestFocus() })
             )
@@ -425,6 +426,7 @@ fun StoreLoginScreen(
                 value = password, onValueChange = onPasswordChanged, label = { Text("Contraseña") },
                 visualTransformation = PasswordVisualTransformation(), singleLine = true,
                 modifier = Modifier.fillMaxWidth().focusRequester(passwordFocus),
+                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(focusedBorderColor = StoreAccountColors.primary, focusedLabelColor = StoreAccountColors.primary, cursorColor = StoreAccountColors.primary),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); keyboard?.hide() })
             )
