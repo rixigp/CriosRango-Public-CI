@@ -8,15 +8,18 @@ import org.junit.Test
 
 class PushNotificationRoutingTest {
     @Test
-    fun newProductsPayload_routesToNewProductsWithoutOrder() {
-        assertEquals(es.criosrango.shared.PushNotificationType.NEW_PRODUCTS, es.criosrango.shared.PushNotificationType.NEW_PRODUCTS)
+    fun newProductsPayload_usesSharedDestinationAndNoOrder() {
+        assertEquals(es.criosrango.shared.PushDestination.NewProducts,
+            es.criosrango.shared.PushNotificationContract.destination(es.criosrango.shared.PushNotificationType.NEW_PRODUCTS))
         assertTrue(es.criosrango.shared.PushNotificationContract.parseOrderId(null) == null)
     }
 
     @Test
-    fun orderStatusPayload_roundTripsExactOrderId() {
-        assertEquals(es.criosrango.shared.PushNotificationType.ORDER_STATUS, es.criosrango.shared.PushNotificationType.ORDER_STATUS)
-        assertEquals(123, es.criosrango.shared.PushNotificationContract.parseOrderId("123"))
+    fun orderStatusPayload_usesExactSharedOrderDestination() {
+        assertEquals(es.criosrango.shared.PushDestination.Order(123),
+            es.criosrango.shared.PushNotificationContract.destination(es.criosrango.shared.PushNotificationType.ORDER_STATUS, "123"))
+        assertEquals(es.criosrango.shared.PushDestination.Account,
+            es.criosrango.shared.PushNotificationContract.destination(es.criosrango.shared.PushNotificationType.ORDER_STATUS, "bad"))
     }
 
     @Test

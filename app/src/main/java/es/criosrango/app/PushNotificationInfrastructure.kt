@@ -89,6 +89,7 @@ object PushNotificationController {
     private const val IDENTIFIER_TYPE_KEY = "criosrango_push_identifier_type"
     private const val IDENTIFIER_KEY = "criosrango_push_identifier"
     private const val PENDING_UNREGISTER_KEY = "criosrango_push_pending_unregister_tokens"
+    private const val PREFERENCES_SYNC_PENDING_KEY = "criosrango_push_preferences_sync_pending"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val syncMutex = Mutex()
@@ -97,7 +98,7 @@ object PushNotificationController {
 
     fun initialize(context: Context) {
         createChannels(context)
-        if (!notificationsAllowed(context)) return
+        // Product preferences are independent from the OS notification permission.
         FirebaseMessaging.getInstance().token.addOnSuccessListener { token -> onRegistered(context, token) }
     }
 
@@ -116,11 +117,13 @@ object PushNotificationController {
     }
 
     fun syncPreferences(context: Context) {
-        initialize(context)
+        context.applicationContext.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
+            .edit().putBoolean(PREFERENCES_SYNC_PENDING_KEY, true).apply()
+        FirebaseMessaging.getInstance().token.addOnSuccessListener { token -> onRegistered(context, token) }
     }
 
     fun onRegistered(context: Context, token: String) {
-        if (token.isBlank() || !notificationsAllowed(context)) return
+        if (token.isBlank()) return
         scope.launch { syncMutex.withLock { syncRegisteredToken(context.applicationContext, token) } }
     }
 
@@ -157,6 +160,7 @@ object PushNotificationController {
         val pushPrefs = PushPreferencesStore(context)
         val payload = pushRegistrationPayload(token, pushPrefs.newProducts, pushPrefs.orderUpdates)
         if (!postRegistration(payload, accountToken)) {
+            prefs.edit().putBoolean(PREFERENCES_SYNC_PENDING_KEY, true).apply()
             // A pending logout must still detach the previous account even when the new registration fails.
             pending.toList().forEach { stale -> if (deactivateToken(stale, accountToken)) pending.remove(stale) }
             prefs.edit().putStringSet(PENDING_UNREGISTER_KEY, pending).apply()
@@ -167,7 +171,7 @@ object PushNotificationController {
         if (previousToken != null && previousToken != token && !deactivateToken(previousToken, accountToken)) pending.add(previousToken)
         pending.remove(token)
         prefs.edit().putString(IDENTIFIER_TYPE_KEY, "fcm_token").putString(IDENTIFIER_KEY, token)
-            .putStringSet(PENDING_UNREGISTER_KEY, pending).apply()
+            .putStringSet(PENDING_UNREGISTER_KEY, pending).remove(PREFERENCES_SYNC_PENDING_KEY).apply()
     }
 
     private fun postRegistration(
@@ -236,17 +240,17 @@ class PushFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         val type = message.data[PushNotificationContract.TYPE_KEY] ?: return
-        val orderId = message.data[PushNotificationContract.ORDER_ID_KEY]
-        val title = if (type == PushNotificationType.BIRTHDAY_COUPON) {
-            "🎂 ¡Feliz cumpleaños!"
-        } else {
-            message.data["title"] ?: "Críos&Rango"
-        }
-        val body = if (type == PushNotificationType.BIRTHDAY_COUPON) {
-            "Tienes un 15% de descuento por tu cumpleaños. Disponible durante 15 días."
-        } else {
-            message.data["body"] ?: "Tienes una nueva notificación"
-        }
+        val payload = PushNotificationContract.parsePayload(
+            type = type,
+            orderId = message.data[PushNotificationContract.ORDER_ID_KEY],
+            notificationTitle = message.notification?.title,
+            notificationBody = message.notification?.body,
+            dataTitle = message.data[PushNotificationContract.TITLE_KEY],
+            dataBody = message.data[PushNotificationContract.BODY_KEY]
+        )
+        val orderId = payload.orderId?.toString()
+        val title = payload.title ?: PushNotificationContract.GENERIC_TITLE
+        val body = payload.body ?: PushNotificationContract.GENERIC_BODY
         val channel = if (type == PushNotificationType.ORDER_STATUS) {
             "criosrango_orders"
         } else {

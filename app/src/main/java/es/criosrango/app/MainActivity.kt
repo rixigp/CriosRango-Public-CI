@@ -290,6 +290,7 @@ private fun CriosRangoApp(
     var accountRootBackAvailable by remember { mutableStateOf(false) }
     var returnToCartAfterLogin by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var openPromotionsOnStart by remember { mutableStateOf(false) }
+    var pendingPushOrderId by remember { mutableStateOf<Int?>(null) }
 
     fun openUtilityTab(destination: AppTab) {
         if (tab != AppTab.CART && tab != AppTab.ACCOUNT) {
@@ -300,19 +301,36 @@ private fun CriosRangoApp(
     var homeShowAll by remember { mutableStateOf(false) }
 
     LaunchedEffect(pushType, pushOrderId) {
-        when (pushType) {
-            PushNotificationType.NEW_PRODUCTS -> {
-                viewModel.refreshHome()
-                tab = AppTab.HOME
-                homeShowAll = true
+        if (pushType != null) {
+            when (val destination = PushNotificationContract.destination(pushType, pushOrderId?.toString())) {
+                is es.criosrango.shared.PushDestination.Order -> {
+                    pendingPushOrderId = destination.orderId
+                    tab = AppTab.ACCOUNT
+                }
+                es.criosrango.shared.PushDestination.Account -> {
+                    pendingPushOrderId = null
+                    tab = AppTab.ACCOUNT
+                }
+                es.criosrango.shared.PushDestination.NewProducts -> {
+                    viewModel.refreshHome()
+                    tab = AppTab.HOME
+                    homeShowAll = true
+                }
+                es.criosrango.shared.PushDestination.Promotions -> {
+                    openPromotionsOnStart = true
+                    tab = AppTab.ACCOUNT
+                }
+                es.criosrango.shared.PushDestination.Ignore -> Unit
             }
-            PushNotificationType.ORDER_STATUS -> { tab = AppTab.ACCOUNT }
-            PushNotificationType.BIRTHDAY_COUPON -> {
-                openPromotionsOnStart = true
-                tab = AppTab.ACCOUNT
-            }
+            pushTypeState.value = null
+            pushOrderIdState.value = null
         }
-        if (pushType != null) { pushTypeState.value = null; pushOrderIdState.value = null }
+    }
+    LaunchedEffect(tab, pushType, pendingPushOrderId) {
+        // AccountLoginScreen captures initialOrderId during composition; clear the host copy afterwards.
+        if (tab == AppTab.ACCOUNT && pushType == null && pendingPushOrderId != null) {
+            pendingPushOrderId = null
+        }
     }
     val homeListState = androidx.compose.foundation.lazy.rememberLazyListState()
     val saveableStateHolder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
@@ -511,7 +529,7 @@ private fun CriosRangoApp(
                         padding = padding,
                         vm = accountViewModel,
                         openLoginOnStart = returnToCartAfterLogin,
-                        initialOrderId = pushOrderId,
+                        initialOrderId = pendingPushOrderId,
                         openPromotionsOnStart = openPromotionsOnStart,
                         onPromotionsOpened = { openPromotionsOnStart = false },
                         onRootBack = { tab = utilityReturnTab ?: AppTab.HOME; utilityReturnTab = null },

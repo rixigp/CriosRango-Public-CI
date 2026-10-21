@@ -17,11 +17,10 @@ final class PushNotificationBridge: NSObject {
     func refreshRegistration() {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             if settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional {
-                DispatchQueue.main.async {
-                    UIApplication.shared.registerForRemoteNotifications()
-                    self.syncStoredRegistration()
-                }
+                DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
             }
+            // Product preferences are persisted separately from OS permission; retry sync on resume.
+            self.syncStoredRegistration()
         }
     }
 

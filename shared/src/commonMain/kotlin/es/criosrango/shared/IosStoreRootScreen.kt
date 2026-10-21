@@ -160,6 +160,7 @@ fun CriosRangoIOSRootScreen(
     onPushNavigationConsumed: () -> Unit = {}
 ) {
     var section by remember { mutableStateOf(IosRootSection.HOME) }
+    var pendingPushOrderId by remember { mutableStateOf<Int?>(null) }
     var openPromotionsOnStart by remember { mutableStateOf(false) }
     var accountLoginFromCart by remember { mutableStateOf(false) }
     var checkoutOpen by remember { mutableStateOf(false) }
@@ -222,15 +223,33 @@ fun CriosRangoIOSRootScreen(
 
     LaunchedEffect(pushNavigation) {
         val n = pushNavigation ?: return@LaunchedEffect
-        when (n.type) {
-            PushNotificationType.NEW_PRODUCTS -> { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Novedades) }
-            PushNotificationType.ORDER_STATUS -> section = IosRootSection.ACCOUNT
-            PushNotificationType.BIRTHDAY_COUPON -> {
+        when (val destination = n.destination) {
+            is PushDestination.Order -> {
+                pendingPushOrderId = destination.orderId
+                section = IosRootSection.ACCOUNT
+            }
+            PushDestination.Account -> {
+                pendingPushOrderId = null
+                section = IosRootSection.ACCOUNT
+            }
+            PushDestination.NewProducts -> {
+                section = IosRootSection.CATEGORIES
+                resetCatalog()
+                openCatalog(IosCatalogPage.Novedades)
+            }
+            PushDestination.Promotions -> {
                 openPromotionsOnStart = true
                 section = IosRootSection.ACCOUNT
             }
+            PushDestination.Ignore -> Unit
         }
         onPushNavigationConsumed()
+    }
+    LaunchedEffect(section, pushNavigation, pendingPushOrderId) {
+        // Let Account capture the pending ID before clearing the root-level copy.
+        if (section == IosRootSection.ACCOUNT && pushNavigation == null && pendingPushOrderId != null) {
+            pendingPushOrderId = null
+        }
     }
 
     val cartController = remember(cartStore) { StoreCartController(cartStore) }
@@ -445,7 +464,7 @@ fun CriosRangoIOSRootScreen(
                     cartCouponCodes = cartStore.cart.collectAsState().value.coupons.map { it.code }.toSet(),
                     onApplyWalletCoupon = { code -> cartStore.applyCouponAwait(code) },
                     modifier = Modifier.padding(padding),
-                    initialOrderId = pushNavigation?.orderId,
+                    initialOrderId = pendingPushOrderId,
                     openPromotionsOnStart = openPromotionsOnStart,
                     openLoginOnStart = accountLoginFromCart,
                     onBackFromLogin = if (accountLoginFromCart) {
