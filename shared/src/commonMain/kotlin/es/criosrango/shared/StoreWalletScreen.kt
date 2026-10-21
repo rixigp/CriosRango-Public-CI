@@ -215,8 +215,7 @@ Card(
 
                          if (walletMinor < minimumMinor) {
                             Text(
-                                "Has acumulado " + formatWalletMoney(wallet.walletValue) +
-                                    " de " + formatWalletMoney(wallet.minimumRedeemValue),
+                                walletProgressLabel(wallet),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF40514D)
                             )
@@ -230,9 +229,7 @@ Card(
                                 )
                             }
                             Text(
-                                "Te faltan " + formatWalletMoney(
-                                    es.criosrango.shared.loyalty.subtractMoneyAmounts(wallet.minimumRedeemValue, wallet.walletValue)
-                                ) + " para desbloquear tu saldo.",
+                                walletRemainingLabel(wallet),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF40514D)
                             )
@@ -546,3 +543,11 @@ fun formatWalletMoney(value: String): String {
     return sign + (absolute / 100L).toString() + "," + (absolute % 100L).toString().padStart(2, '0') + " €"
 }
 
+
+fun walletProgressLabel(wallet: LoyaltyWallet): String =
+    "Has acumulado " + formatWalletMoney(wallet.walletValue) + " de " + formatWalletMoney(wallet.minimumRedeemValue)
+
+fun walletRemainingLabel(wallet: LoyaltyWallet): String =
+    "Te faltan " + formatWalletMoney(
+        es.criosrango.shared.loyalty.subtractMoneyAmounts(wallet.minimumRedeemValue, wallet.walletValue)
+    ) + " para desbloquear tu saldo.
