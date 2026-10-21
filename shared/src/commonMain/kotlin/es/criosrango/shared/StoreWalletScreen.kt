@@ -550,4 +550,4 @@ fun walletProgressLabel(wallet: LoyaltyWallet): String =
 fun walletRemainingLabel(wallet: LoyaltyWallet): String =
     "Te faltan " + formatWalletMoney(
         es.criosrango.shared.loyalty.subtractMoneyAmounts(wallet.minimumRedeemValue, wallet.walletValue)
-    ) + " para desbloquear tu saldo.
+    ) + " para desbloquear tu saldo."
