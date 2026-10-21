@@ -3,6 +3,7 @@
 package es.criosrango.app
 
 import es.criosrango.shared.StoreGlobalTopBar
+import es.criosrango.shared.StorePageHeader
 import es.criosrango.shared.resolveCouponPresentation
 import es.criosrango.shared.loyalty.LoyaltyWallet
 
@@ -181,7 +182,7 @@ fun RedesignedCheckoutScreen(
                 onSearch = onSearch,
                 onCart = onCart
             )
-            CatalogScreenHeader(
+            StorePageHeader(
                 title = "Finalizar compra",
                 onBack = onBack
             )
