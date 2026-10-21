@@ -289,7 +289,7 @@ fun AccountLoginScreen(
         } else {
             Column(
                 Modifier.fillMaxSize().padding(padding)
-                    .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.DATA, AccountSection.ADDRESSES)) Modifier else Modifier.verticalScroll(rememberScrollState()))
+                    .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) Modifier else Modifier.verticalScroll(rememberScrollState()))
                     .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.HELP, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES, AccountSection.WALLET)) Modifier else Modifier.padding(horizontal = 24.dp))
             ) {
                 if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection in setOf(AccountSection.HOME, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES, AccountSection.WALLET)) 0.dp else 20.dp))
@@ -365,7 +365,7 @@ fun AccountLoginScreen(
     } else if (!showLogin) {
         Column(
             Modifier.fillMaxSize().padding(padding)
-                    .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.DATA, AccountSection.ADDRESSES)) Modifier else Modifier.verticalScroll(rememberScrollState()))
+                    .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) Modifier else Modifier.verticalScroll(rememberScrollState()))
                 .then(if (accountSection == AccountSection.HELP) Modifier else Modifier.padding(horizontal = 24.dp))
         ) {
             if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection in setOf(AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) 8.dp else 20.dp))
