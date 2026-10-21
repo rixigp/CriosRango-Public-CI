@@ -292,7 +292,10 @@ class StoreWalletOwnerTest {
         advanceUntilIdle()
         owner.redeem(100) { CouponApplicationResult.Success }
         advanceUntilIdle()
+        owner.redeem(100) { CouponApplicationResult.Success }
+        advanceUntilIdle()
         assertNull(owner.state.value.pendingRequestId)
+        assertTrue(owner.state.value.redemptionReconciliationRequired)
         assertTrue(owner.state.value.operationError?.contains("no ha devuelto un cupón") == true)
     }
 

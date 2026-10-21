@@ -198,7 +198,7 @@ Card(
                                     color = Color(0xFF0F5C4D)
                                 )
                             }
-                            if (walletMinor >= minimumMinor && options.isNotEmpty() && state.pendingRewardCode.isNullOrBlank()) {
+                            if (walletMinor >= minimumMinor && options.isNotEmpty() && state.pendingRewardCode.isNullOrBlank() && !state.redemptionReconciliationRequired) {
                                 Button(
                                     onClick = { showRedeemDialog = true },
                                     enabled = !loading,

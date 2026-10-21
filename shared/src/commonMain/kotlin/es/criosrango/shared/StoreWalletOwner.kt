@@ -43,6 +43,7 @@ data class StoreWalletState(
     val pendingRequestId: String? = null,
     val pendingRewardCode: String? = null,
     val pendingReward: LoyaltyReward? = null,
+    val redemptionReconciliationRequired: Boolean = false,
     val appliedCouponCodes: Set<String> = emptySet()
 ) {
     val busy: Boolean get() = redeemLoading || couponApplyLoading
@@ -160,7 +161,7 @@ class StoreWalletOwner internal constructor(
     }
 
     fun redeem(points: Int, applyCoupon: suspend (String) -> CouponApplicationResult) {
-        if (redemptionInFlight || mutableState.value.redeemLoading || points <= 0 || !mutableState.value.pendingRewardCode.isNullOrBlank()) return
+        if (redemptionInFlight || mutableState.value.redeemLoading || points <= 0 || !mutableState.value.pendingRewardCode.isNullOrBlank() || mutableState.value.redemptionReconciliationRequired) return
         if (mutableState.value.wallet?.redeemableOptions()?.none { it.points == points } != false) return
         val previous = mutableState.value
         val requestId = if (previous.pendingRedemptionPoints == points && !previous.pendingRequestId.isNullOrBlank()) {
@@ -201,7 +202,10 @@ class StoreWalletOwner internal constructor(
                 refresh()
                 val coupon = response.coupon
                 if (coupon == null || coupon.code.isBlank()) {
-                    mutableState.value = mutableState.value.copy(operationError = "El canje se ha creado, pero el servidor no ha devuelto un cupón utilizable.")
+                    mutableState.value = mutableState.value.copy(
+                        operationError = "El canje se ha creado, pero el servidor no ha devuelto un cupón utilizable.",
+                        redemptionReconciliationRequired = true
+                    )
                     return@launch
                 }
                 applyExistingCoupon(coupon.code, applyCoupon, currentGeneration,
