@@ -187,6 +187,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     private val repository = AccountRepository(application)
     internal val sharedRepository get() = repository.sharedRepository
     internal val sharedAuthSession = StoreAccountSessionState(repository.sharedRepository)
+    internal val sharedOrdersOwner by lazy { es.criosrango.shared.StoreOrdersOwner(repository.sharedRepository, sharedAuthSession) }
     internal val sharedAddressOwner by lazy { es.criosrango.shared.StoreAddressOwner(repository.sharedRepository) }
 
     fun publishProfileUser(user: AccountUser) {
@@ -592,7 +593,13 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         val generation = accountGeneration
         viewModelScope.launch {
             try {
-                repository.claimPendingOrder()
+                es.criosrango.shared.claimAndRefreshIfSuccessful(
+                    claim = { repository.claimPendingOrder() },
+                    refresh = {
+                        sharedOrdersOwner.onSessionChanged(_user.value?.id)
+                        sharedOrdersOwner.refresh()
+                    }
+                )
                 if (ordersLoadGate.tryAcquire()) {
                     try {
                         if (generation == accountGeneration) _orders.value = repository.orders()
@@ -620,7 +627,11 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             try {
                 repository.claimOrder(orderId, orderKey)
-                if (generation == accountGeneration) _orders.value = repository.orders()
+                if (generation == accountGeneration) {
+                    sharedOrdersOwner.onSessionChanged(_user.value?.id)
+                    runCatching { sharedOrdersOwner.refresh() }
+                    _orders.value = repository.orders()
+                }
             } catch (exception: Exception) {
                 if (generation != accountGeneration) return@launch
                 if (!handleAuthenticatedHttpError(exception, "No se ha podido actualizar el pedido.")) {

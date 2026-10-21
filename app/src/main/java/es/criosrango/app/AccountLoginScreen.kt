@@ -64,6 +64,7 @@ import es.criosrango.shared.StorePageHeader
 import es.criosrango.shared.StoreOrdersOwner
 import es.criosrango.shared.StoreOrdersScreen
 import es.criosrango.shared.StoreOrderDetailScreen
+import es.criosrango.shared.StoreOrderSelectionResolution
 import es.criosrango.shared.StoreLoginScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -131,9 +132,29 @@ fun AccountLoginScreen(
     var selectedOrderId by remember { mutableStateOf<Int?>(initialOrderId) }
     var selectedOrderFromShared by remember { mutableStateOf<AccountOrderSummary?>(null) }
     var returnPickerOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
-    val sharedOrdersOwner = remember(vm.sharedRepository, vm.sharedAuthSession) { StoreOrdersOwner(vm.sharedRepository, vm.sharedAuthSession) }
+    val sharedOrdersOwner = vm.sharedOrdersOwner
+    val sharedOrdersState by sharedOrdersOwner.state.collectAsStateWithLifecycle()
     LaunchedEffect(currentUser?.id) { sharedOrdersOwner.onSessionChanged(currentUser?.id); selectedOrderFromShared = null }
-    val selectedOrder = selectedOrderFromShared ?: orders.firstOrNull { it.id == selectedOrderId }
+    LaunchedEffect(currentUser?.id, selectedOrderId) {
+        val id = selectedOrderId ?: return@LaunchedEffect
+        if (currentUser == null || selectedOrderFromShared != null) return@LaunchedEffect
+        when (val resolution = sharedOrdersOwner.resolveOrderById(id)) {
+            is StoreOrderSelectionResolution.Resolved -> selectedOrderFromShared = resolution.order
+            StoreOrderSelectionResolution.NotFound -> selectedOrderId = null
+            StoreOrderSelectionResolution.Pending -> Unit
+            is StoreOrderSelectionResolution.TransientError -> Unit
+        }
+    }
+    val selectedOrder = selectedOrderFromShared ?: sharedOrdersState.orders.firstOrNull { it.id == selectedOrderId }
+    LaunchedEffect(currentUser?.id, selectedOrderId, sharedOrdersState.loading, sharedOrdersState.refreshing, sharedOrdersState.error, sharedOrdersState.orders) {
+        val id = selectedOrderId ?: return@LaunchedEffect
+        if (currentUser == null || selectedOrderFromShared != null) return@LaunchedEffect
+        when (val resolution = sharedOrdersOwner.resolveSelection(id)) {
+            is StoreOrderSelectionResolution.Resolved -> selectedOrderFromShared = resolution.order
+            StoreOrderSelectionResolution.NotFound -> selectedOrderId = null
+            StoreOrderSelectionResolution.Pending, is StoreOrderSelectionResolution.TransientError -> Unit
+        }
+    }
     val accountRootBackAvailable = selectedInfoPage == null && selectedOrder == null && !showLogin && accountSection == AccountSection.HOME
     SideEffect { onRootBackAvailable(accountRootBackAvailable) }
     val leaveLogin: () -> Unit = {
@@ -165,21 +186,6 @@ fun AccountLoginScreen(
         if (openPromotionsOnStart && currentUser != null) {
             accountSection = AccountSection.WALLET
             onPromotionsOpened()
-        }
-    }
-
-    LaunchedEffect(currentUser?.id, initialOrderId) {
-        val orderId = initialOrderId ?: return@LaunchedEffect
-        if (currentUser == null) return@LaunchedEffect
-        selectedOrderId = orderId
-        try {
-            sharedOrdersOwner.load()
-            sharedOrdersOwner.findById(orderId)?.let { selectedOrderFromShared = it }
-            if (sharedOrdersOwner.state.value.error == null && sharedOrdersOwner.findById(orderId) == null) selectedOrderId = null
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            // Keep the initial ID so a later remount can retry resolution.
         }
     }
 

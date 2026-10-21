@@ -128,6 +128,25 @@ class StoreOrdersOwner(
 
     fun findById(orderId: Int): AccountOrderSummary? =
         mutableState.value.orders.firstOrNull { it.id == orderId }
+
+    fun resolveSelection(orderId: Int): StoreOrderSelectionResolution =
+        resolveStoreOrderSelection(orderId, mutableState.value, loadedForUser == mutableState.value.authenticatedUserId)
+
+    suspend fun resolveOrderById(orderId: Int): StoreOrderSelectionResolution {
+        if (orderId <= 0) return StoreOrderSelectionResolution.NotFound
+        findById(orderId)?.let { return StoreOrderSelectionResolution.Resolved(it) }
+        val before = mutableState.value
+        if (before.loading || before.refreshing) return StoreOrderSelectionResolution.Pending
+        load(force = before.error != null)
+        return resolveSelection(orderId)
+    }
+
+    suspend fun claimPendingOrderAndRefresh(): es.criosrango.shared.account.AccountClaimOrderResponse? {
+        return claimAndRefreshIfSuccessful(
+            claim = { repository.claimPendingOrder() },
+            refresh = { refresh() }
+        )
+    }
 }
 
 enum class StoreOrderStatusKind { COMPLETED, PROCESSING, SHIPPED, PENDING, ON_HOLD, CANCELLED, REFUNDED, FAILED, UNKNOWN }

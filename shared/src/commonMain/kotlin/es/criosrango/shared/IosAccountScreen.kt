@@ -100,6 +100,7 @@ fun CriosRangoIOSAccountScreen(
     var user by remember(sessionState) { mutableStateOf(sessionState.snapshot.value.user) }
     var error by remember { mutableStateOf<String?>(null) }
     var selectedOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
+    var returnPickerOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
     val ordersOwner = remember(repository, sessionState) { StoreOrdersOwner(repository, sessionState) }
     var pendingPushOrderId by remember { mutableStateOf(initialOrderId) }
     var selectedInfoPage by remember { mutableStateOf<AccountInfoPage?>(null) }
@@ -108,6 +109,7 @@ fun CriosRangoIOSAccountScreen(
     val scope = rememberCoroutineScope()
     val sharedAddressOwner = remember(repository) { StoreAddressOwner(repository) }
     val authSnapshot by sessionState.snapshot.collectAsState()
+    val ordersState by ordersOwner.state.collectAsState()
     LaunchedEffect(authSnapshot.user?.id) { ordersOwner.onSessionChanged(authSnapshot.user?.id) }
     val promotionRepository = remember(repository) {
         PromotionRepository(bearerTokenProvider = { repository.currentToken() })
@@ -126,14 +128,34 @@ fun CriosRangoIOSAccountScreen(
         if (user == null) return@LaunchedEffect
         try {
             ordersOwner.onSessionChanged(user?.id)
-            ordersOwner.load()
-            selectedOrder = ordersOwner.findById(id)
-            if (selectedOrder != null) { page = IosAccountPage.ORDER_DETAIL; pendingPushOrderId = null }
-            else if (ordersOwner.state.value.error == null) pendingPushOrderId = null
+            when (val resolution = ordersOwner.resolveOrderById(id)) {
+                is StoreOrderSelectionResolution.Resolved -> {
+                    selectedOrder = resolution.order
+                    page = IosAccountPage.ORDER_DETAIL
+                    pendingPushOrderId = null
+                }
+                StoreOrderSelectionResolution.NotFound -> pendingPushOrderId = null
+                StoreOrderSelectionResolution.Pending -> Unit
+                is StoreOrderSelectionResolution.TransientError -> Unit
+            }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            // Retain the pending ID after a transient failure so it can be resolved on remount.
+            // Keep the initial order ID on transient failures so the shared contract can retry.
+        }
+    }
+
+    LaunchedEffect(user?.id, pendingPushOrderId, ordersState.loading, ordersState.refreshing, ordersState.error, ordersState.orders) {
+        val id = pendingPushOrderId ?: return@LaunchedEffect
+        if (user == null) return@LaunchedEffect
+        when (val resolution = ordersOwner.resolveSelection(id)) {
+            is StoreOrderSelectionResolution.Resolved -> {
+                selectedOrder = resolution.order
+                page = IosAccountPage.ORDER_DETAIL
+                pendingPushOrderId = null
+            }
+            StoreOrderSelectionResolution.NotFound -> pendingPushOrderId = null
+            StoreOrderSelectionResolution.Pending, is StoreOrderSelectionResolution.TransientError -> Unit
         }
     }
 
@@ -142,7 +164,7 @@ fun CriosRangoIOSAccountScreen(
         error = null
         page = if (openPromotionsOnStart) IosAccountPage.WALLET else IosAccountPage.HOME
         scope.launch {
-            runCatching { repository.claimPendingOrder() }
+            runCatching { ordersOwner.claimPendingOrderAndRefresh() }
                 .onFailure { println("KMP_ACCOUNT_CLAIM_FAILED=${it.message}") }
             if (!repository.hasSession) {
                 user = null
@@ -245,7 +267,36 @@ fun CriosRangoIOSAccountScreen(
                 )
                 IosAccountPage.INFO -> selectedInfoPage?.let { infoPage -> IosInformationPageScreen(infoPage) { page = IosAccountPage.HOME } }
                 IosAccountPage.HELP -> IosHelpScreen { page = IosAccountPage.HOME }
-                IosAccountPage.ORDER_DETAIL -> selectedOrder?.let { order -> StoreOrderDetailScreen(order, onBack = { page = IosAccountPage.ORDERS }, onRequestReturn = { selected -> onOpenExternalUrl("https://wa.me/34633246788?text=Hola%2C%20quiero%20solicitar%20la%20devoluci%C3%B3n%20de%20mi%20pedido%20%23" + selected.number + "%20%3FPod%C3%A9is%20indicarme%20c%C3%B3mo%20proceder%3F") }) }
+                IosAccountPage.ORDER_DETAIL -> selectedOrder?.let { order -> StoreOrderDetailScreen(order, onBack = { page = IosAccountPage.ORDERS }, onRequestReturn = { selected ->
+                    val requests = storeReturnRequests(selected)
+                    when (requests.size) {
+                        0 -> Unit
+                        1 -> onOpenExternalUrl("https://wa.me/34633246788?text=" + encodeStoreWhatsAppMessage(requests.single().message))
+                        else -> returnPickerOrder = selected
+                    }
+                }) }
+            }
+            returnPickerOrder?.let { order ->
+                val requests = storeReturnRequests(order)
+                AlertDialog(
+                    onDismissRequest = { returnPickerOrder = null },
+                    title = { Text("¿Qué producto quieres devolver?") },
+                    text = { Column {
+                        requests.forEach { request ->
+                            OutlinedButton(onClick = {
+                                returnPickerOrder = null
+                                onOpenExternalUrl("https://wa.me/34633246788?text=" + encodeStoreWhatsAppMessage(request.message))
+                            }, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                                Column(Modifier.fillMaxWidth()) {
+                                    Text(request.productName, fontWeight = FontWeight.Medium)
+                                    Text("Cantidad: ${request.quantity}", style = MaterialTheme.typography.bodySmall)
+                                    request.variations.forEach { (name, value) -> Text("$name: $value", style = MaterialTheme.typography.bodySmall) }
+                                }
+                            }
+                        }
+                    } },
+                    confirmButton = { TextButton(onClick = { returnPickerOrder = null }) { Text("Cancelar") } }
+                )
             }
         }
         }

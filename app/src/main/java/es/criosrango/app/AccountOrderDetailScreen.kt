@@ -190,13 +190,8 @@ private fun returnVariationDetails(item: AccountOrderItem): List<Pair<String, St
             }
         }
 
-private fun buildReturnWhatsAppMessage(order: AccountOrderSummary, item: AccountOrderItem): String = buildString {
-    append("Hola, quiero solicitar la devolución de un producto de mi pedido #${order.number}.\n\n")
-    append("Producto: ${item.name.cleanWooText()}\n")
-    append("Cantidad: ${item.quantity}\n")
-    returnVariationDetails(item).forEach { (label, value) -> append("$label: $value\n") }
-    append("\n¿Podéis indicarme cómo proceder?")
-}
+private fun buildReturnWhatsAppMessage(order: AccountOrderSummary, item: AccountOrderItem): String =
+    es.criosrango.shared.buildStoreReturnRequest(order, item).message
 
 private fun openWhatsAppReturnRequest(context: Context, order: AccountOrderSummary, item: AccountOrderItem) {
     val message = buildReturnWhatsAppMessage(order, item)
