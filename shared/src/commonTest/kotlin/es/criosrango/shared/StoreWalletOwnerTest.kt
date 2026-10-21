@@ -217,7 +217,7 @@ class StoreWalletOwnerTest {
         advanceUntilIdle()
         assertEquals(1, redeems)
         assertNull(owner.state.value.pendingRequestId)
-        assertTrue(owner.state.value.operationError?.contains("Cupón rechazado") == true)
+        assertTrue(owner.state.value.operationError?.contains("El crédito se ha creado") == true)
         assertEquals("CR-MONEDERO-42", owner.state.value.wallet?.pendingRewards?.single()?.code)
         assertTrue(walletReads >= 2)
         owner.applyReward(pending) { CouponApplicationResult.failure("Sigue rechazado") }
@@ -296,6 +296,27 @@ class StoreWalletOwnerTest {
         assertEquals(listOf("info", "code"), owner.state.value.promotions.map { it.id })
         assertNull(owner.state.value.promotions.first().code)
         assertEquals("PROMO-10", owner.state.value.promotions.last().code)
+    }
+
+    @Test fun createdCreditRemainsAvailableWhenWalletRefreshAlsoFails() = runTest {
+        var walletCalls = 0
+        val owner = StoreWalletOwner(
+            loadWallet = {
+                walletCalls++
+                if (walletCalls == 1) wallet() else error("wallet refresh failed")
+            },
+            loadPromotions = { emptyList() },
+            redeemPoints = { _, _ -> response() },
+            createRequestId = { "one-credit" },
+            scope = backgroundScope
+        )
+        owner.onSessionChanged("user-A")
+        advanceUntilIdle()
+        owner.redeem(100) { CouponApplicationResult.failure("cart rejected") }
+        advanceUntilIdle()
+        assertNull(owner.state.value.pendingRequestId)
+        assertEquals("CR-MONEDERO-42", owner.state.value.pendingReward?.code)
+        assertTrue(owner.state.value.operationError?.contains("El crédito se ha creado") == true)
     }
 
     private fun owner(
