@@ -4,6 +4,7 @@ import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.loyalty.LoyaltyWallet
 import es.criosrango.shared.loyalty.RedeemWalletCoupon
 import es.criosrango.shared.loyalty.RedeemWalletResponse
+import es.criosrango.shared.loyalty.redeemableOptions
 import es.criosrango.shared.promotions.Promotion
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -50,6 +51,12 @@ class StoreWalletOwnerTest {
         val belowMinimum = wallet("1.40")
         assertEquals("Has acumulado 1,40 € de 5,00 €", walletProgressLabel(belowMinimum))
         assertEquals("Te faltan 3,60 € para desbloquear tu saldo.", walletRemainingLabel(belowMinimum))
+    }
+
+    @Test fun maximumRedeemOptionIsMarkedAndUsesSpanishMoney() {
+        val maximum = wallet().redeemableOptions().last()
+        assertTrue(maximum.isMaximum)
+        assertEquals("9,35 €", formatWalletMoney(maximum.value))
     }
 
     @Test fun initialStateSeparatesLoadingAndErrors() = runTest {
