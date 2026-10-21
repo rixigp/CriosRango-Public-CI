@@ -55,6 +55,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import es.criosrango.shared.promotions.Promotion
 import es.criosrango.shared.promotions.PromotionRepository
+import es.criosrango.shared.StoreAccountHelpScreen
 import es.criosrango.shared.StoreAccountRootScreen
 import es.criosrango.shared.StorePageHeader
 import es.criosrango.shared.StoreOrdersOwner
@@ -241,7 +242,7 @@ fun AccountLoginScreen(
 
     if (selectedInfoPage != null && selectedOrder == null) {
         Column(Modifier.fillMaxSize().padding(padding)) {
-            AccountInformationPageContent(selectedInfoPage!!, onBack = { selectedInfoPage = null; accountSection = AccountSection.HOME })
+            AccountInformationPageAdapter(selectedInfoPage!!, onBack = { selectedInfoPage = null; accountSection = AccountSection.HOME })
         }
         return
     }
@@ -289,7 +290,7 @@ fun AccountLoginScreen(
         } else {
             Column(
                 Modifier.fillMaxSize().padding(padding)
-                    .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) Modifier else Modifier.verticalScroll(rememberScrollState()))
+                    .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.HELP, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) Modifier else Modifier.verticalScroll(rememberScrollState()))
                     .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.HELP, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES, AccountSection.WALLET)) Modifier else Modifier.padding(horizontal = 24.dp))
             ) {
                 if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection in setOf(AccountSection.HOME, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES, AccountSection.WALLET)) 0.dp else 20.dp))
@@ -365,7 +366,7 @@ fun AccountLoginScreen(
     } else if (!showLogin) {
         Column(
             Modifier.fillMaxSize().padding(padding)
-                    .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) Modifier else Modifier.verticalScroll(rememberScrollState()))
+                    .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.HELP, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) Modifier else Modifier.verticalScroll(rememberScrollState()))
                 .then(if (accountSection == AccountSection.HELP) Modifier else Modifier.padding(horizontal = 24.dp))
         ) {
             if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection in setOf(AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) 8.dp else 20.dp))
@@ -577,6 +578,37 @@ private fun formatPromotionExpiry(value: String): String {
 
 @Composable
 private fun AccountHelpContent(onBack: () -> Unit) {
+    val context = LocalContext.current
+    StoreAccountHelpScreen(
+        onBack = onBack,
+        onWhatsApp = {
+            val message = "Hola, necesito ayuda con la app de Críos&Rango."
+            val encodedMessage = java.net.URLEncoder.encode(message, "UTF-8")
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/34633246788?text=$encodedMessage"))
+            runCatching { context.startActivity(intent) }.onFailure {
+                Toast.makeText(context, "No se ha podido abrir WhatsApp.", Toast.LENGTH_SHORT).show()
+            }
+        },
+        onCall = {
+            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:+34969091236"))
+            runCatching { context.startActivity(intent) }.onFailure {
+                Toast.makeText(context, "No se ha podido abrir el teléfono.", Toast.LENGTH_SHORT).show()
+            }
+        },
+        onEmail = {
+            val intent = Intent(Intent.ACTION_SENDTO).apply {
+                data = Uri.parse("mailto:criosrango@criosrango.es")
+                putExtra(Intent.EXTRA_SUBJECT, "Consulta desde la app Críos&Rango")
+            }
+            runCatching { context.startActivity(intent) }.onFailure {
+                Toast.makeText(context, "No se ha podido abrir el correo.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    )
+}
+
+@Composable
+private fun AccountHelpContentLegacy(onBack: () -> Unit) {
     val context = LocalContext.current
     Column(Modifier.fillMaxWidth()) {
         StorePageHeader(title = "Ayuda", onBack = onBack)

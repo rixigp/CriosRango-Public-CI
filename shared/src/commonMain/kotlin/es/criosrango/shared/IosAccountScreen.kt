@@ -304,8 +304,13 @@ fun CriosRangoIOSAccountScreen(
                     },
                     onBack = { page = IosAccountPage.HOME }
                 )
-                IosAccountPage.INFO -> selectedInfoPage?.let { infoPage -> IosInformationPageScreen(infoPage) { page = IosAccountPage.HOME } }
-                IosAccountPage.HELP -> IosHelpScreen { page = IosAccountPage.HOME }
+                IosAccountPage.INFO -> selectedInfoPage?.let { infoPage -> IosInformationPageAdapter(infoPage) { page = IosAccountPage.HOME } }
+                IosAccountPage.HELP -> StoreAccountHelpScreen(
+                    onBack = { page = IosAccountPage.HOME },
+                    onWhatsApp = { onOpenExternalUrl("https://wa.me/34633246788?text=Hola%2C+necesito+ayuda+con+la+app+de+Cr%C3%ADos%26Rango.") },
+                    onCall = { onOpenExternalUrl("tel:+34969091236") },
+                    onEmail = { onOpenExternalUrl("mailto:criosrango@criosrango.es?subject=Consulta%20desde%20la%20app%20Cr%C3%ADos%26Rango") }
+                )
                 IosAccountPage.ORDER_DETAIL -> selectedOrder?.let { order -> StoreOrderDetailScreen(order, onBack = { page = IosAccountPage.ORDERS }, onRequestReturn = { selected ->
                     val requests = storeReturnRequests(selected)
                     when (requests.size) {
@@ -536,68 +541,34 @@ private fun formatPromotionExpiry(value: String): String {
 }
 
 @Composable
-private fun IosInformationPageScreen(page: AccountInfoPage, onBack: () -> Unit) {
+private fun IosInformationPageAdapter(page: AccountInfoPage, onBack: () -> Unit) {
     val client = remember { WordPressPagesClient() }
     var retryKey by remember { mutableStateOf(0) }
     var loading by remember(page, retryKey) { mutableStateOf(true) }
     var result by remember(page, retryKey) { mutableStateOf<WordPressPage?>(null) }
-    var notFound by remember(page, retryKey) { mutableStateOf(false) }
     var error by remember(page, retryKey) { mutableStateOf<String?>(null) }
     LaunchedEffect(page, retryKey) {
-        loading = true; result = null; notFound = false; error = null
+        loading = true
+        result = null
+        error = null
         runCatching { client.getPageBySlug(page.slug) }
-            .onSuccess { loaded -> if (loaded == null) notFound = true else result = loaded; loading = false }
-            .onFailure { error = "No se ha podido cargar esta información."; loading = false }
-    }
-    Column(Modifier.fillMaxSize()) {
-        StorePageHeader(title = page.title, onBack = onBack)
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
-            Spacer(Modifier.height(24.dp))
-        when {
-            loading -> FullScreenLoading("Cargando información")
-            notFound -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("No se ha encontrado esta información.")
-                Spacer(Modifier.height(12.dp))
-                OutlinedButton(onClick = { retryKey++ }) { Text("Reintentar") }
+            .onSuccess { loaded ->
+                if (loaded == null) error = "No se ha podido cargar esta información." else result = loaded
+                loading = false
             }
-            error != null -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(error!!, color = MaterialTheme.colorScheme.error)
-                Spacer(Modifier.height(12.dp))
-                OutlinedButton(onClick = { retryKey++ }) { Text("Reintentar") }
+            .onFailure {
+                error = "No se ha podido cargar esta información."
+                loading = false
             }
-            result != null -> {
-                val title = wordpressHtmlToText(result!!.title.rendered).ifBlank { page.title }
-                val content = wordpressHtmlToText(result!!.content.rendered)
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    item { Text(title, style = MaterialTheme.typography.headlineSmall) }
-                    item { if (content.isBlank()) Text("No hay contenido disponible.") else Text(content, style = MaterialTheme.typography.bodyLarge) }
-                }
-            }
-        }
-
-        }
     }
-}
-
-@Composable
-private fun IosHelpScreen(onBack: () -> Unit) {
-    Column(Modifier.fillMaxSize()) {
-        StorePageHeader(title = "Ayuda", onBack = onBack)
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
-            Spacer(Modifier.height(28.dp))
-        Text("Contacta con nosotros", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(12.dp))
-        Text("WhatsApp: 633 246 788")
-        Text("Teléfono: 969 091 236")
-        Text("Correo electrónico: criosrango@criosrango.es")
-        Spacer(Modifier.height(20.dp))
-        Text("Horario de atención", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(10.dp))
-        Text("Lunes a viernes: 10:00–13:30 · 17:30–21:00")
-        Text("Sábado: 10:00–13:30")
-        Text("Domingo: Cerrado")
-        }
-    }
+    StoreAccountInformationScreen(
+        title = page.title,
+        loading = loading,
+        errorMessage = error,
+        content = result?.let { wordpressHtmlToText(it.content.rendered) }.orEmpty(),
+        onRetry = { retryKey++ },
+        onBack = onBack
+    )
 }
 
 @Composable
