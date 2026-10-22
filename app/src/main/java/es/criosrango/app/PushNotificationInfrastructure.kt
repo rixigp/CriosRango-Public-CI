@@ -212,7 +212,13 @@ object PushNotificationController {
         ))
         app.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
             .edit().putBoolean(PREFERENCES_SYNC_PENDING_KEY, true).apply()
-        FirebaseMessaging.getInstance().token
+        val tokenTask = try {
+            FirebaseMessaging.getInstance().token
+        } catch (error: Exception) {
+            recordTokenAcquisitionError(app, error)
+            return
+        }
+        tokenTask
             .addOnSuccessListener { token ->
                 if (token.isBlank()) {
                     persistDiagnostics(app, _diagnostics.value.copy(
@@ -225,16 +231,19 @@ object PushNotificationController {
                     onRegistered(app, token)
                 }
             }
-            .addOnFailureListener { error ->
-                persistDiagnostics(app, _diagnostics.value.copy(
-                    tokenAvailable = false,
-                    httpResult = "TOKEN_ERROR ${error.javaClass.simpleName}",
-                    tokenErrorClass = error.javaClass.simpleName,
-                    tokenErrorMessage = safePushTokenErrorMessage(error.message),
-                    syncPending = true
-                ))
-                android.util.Log.w(TAG, "FCM token available NO (${error.javaClass.simpleName}: ${safePushTokenErrorMessage(error.message)}); sync pending YES")
-            }
+            .addOnFailureListener { error -> recordTokenAcquisitionError(app, error) }
+    }
+
+    private fun recordTokenAcquisitionError(context: Context, error: Exception) {
+        val message = safePushTokenErrorMessage(error.message)
+        persistDiagnostics(context, _diagnostics.value.copy(
+            tokenAvailable = false,
+            httpResult = "TOKEN_ERROR ${error.javaClass.simpleName}",
+            tokenErrorClass = error.javaClass.simpleName,
+            tokenErrorMessage = message,
+            syncPending = true
+        ))
+        android.util.Log.w(TAG, "FCM token acquisition failed; class=${error.javaClass.simpleName}; message=$message; sync pending YES")
     }
 
     fun onRegistered(context: Context, token: String) {
