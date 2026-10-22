@@ -53,7 +53,7 @@ private fun OutletBubble(label: String, selected: Boolean, onClick: () -> Unit) 
     Surface(
         modifier = Modifier.height(34.dp).clickable(onClick = onClick),
         shape = RoundedCornerShape(17.dp),
-        color = if (selected) Color(0xFF163B35) else Color(0xFFFCFAF7)
+        color = if (selected) Color(0xFF163B35) else Color(0xFFE4EFEA)
     ) {
         Box(
             modifier = Modifier.padding(horizontal = 12.dp).then(Modifier),

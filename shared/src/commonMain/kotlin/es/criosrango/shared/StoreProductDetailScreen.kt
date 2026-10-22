@@ -94,8 +94,8 @@ fun StoreProductDetailScreen(
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (state.primaryActionLabel == "Añadido al carrito") Color(0xFF183B35) else Color(0xFFE4EFEA),
                         contentColor = if (state.primaryActionLabel == "Añadido al carrito") Color.White else Color(0xFF183B35),
-                        disabledContainerColor = Color(0xFFF4F2EF),
-                        disabledContentColor = Color(0xFF5F6368)
+                        disabledContainerColor = Color(0xFFE4EFEA),
+                        disabledContentColor = Color(0xFF183B35)
                     )
                 ) {
                     Icon(
