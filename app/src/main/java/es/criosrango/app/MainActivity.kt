@@ -31,6 +31,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.net.Uri
+import android.util.Log
 import es.criosrango.shared.PushNotificationContract
 import es.criosrango.shared.PushNotificationType
 import es.criosrango.shared.cartUnitCount
@@ -95,6 +96,19 @@ import compose.icons.tablericons.Shirt
 import compose.icons.tablericons.Tag
 import kotlinx.coroutines.launch
 
+internal fun logAndroidPushRoute(message: String) {
+    if (BuildConfig.DEBUG) Log.d("CRPushRoute", message)
+}
+
+internal fun pendingOrderAfterConsumption(pendingOrderId: Int?, consumedOrderId: Int): Int? =
+    if (pendingOrderId == consumedOrderId) null else pendingOrderId
+
+internal fun shouldIgnoreInvalidAndroidOrderPush(type: String?, orderId: Int?): Boolean =
+    type == PushNotificationType.ORDER_STATUS && (orderId == null || orderId <= 0)
+
+internal fun shouldConsumePendingOrder(pendingOrderId: Int?, selectedOrderId: Int?, authenticated: Boolean): Boolean =
+    pendingOrderId != null && pendingOrderId > 0 && authenticated && selectedOrderId == pendingOrderId
+
 enum class BrandOrigin { HOME, ALL_BRANDS }
 enum class AppTab(val label: String) { HOME("Inicio"), CATEGORIES("Categorías"), OUTLET("Outlet"), SEARCH("Buscar"), CART("Carrito"), ACCOUNT("Cuenta") }
 private val paymentReturnUriState = androidx.compose.runtime.mutableStateOf<android.net.Uri?>(null)
@@ -121,6 +135,7 @@ class MainActivity : ComponentActivity() {
         paymentReturnUriState.value = intent?.data
         pushTypeState.value = intent?.getStringExtra(PushNotificationContract.TYPE_KEY)
         pushOrderIdState.value = PushNotificationContract.parseOrderId(intent?.getStringExtra(PushNotificationContract.ORDER_ID_KEY))
+        if (pushTypeState.value == PushNotificationType.ORDER_STATUS) logAndroidPushRoute("PUSH_TAP orderId=${pushOrderIdState.value ?: "invalid"}")
         val preferences = getSharedPreferences("criosrango", MODE_PRIVATE)
         val session = StoreSession(preferences)
         val sharedSession = AndroidStoreSessionStore(session)
@@ -158,6 +173,10 @@ class MainActivity : ComponentActivity() {
         paymentReturnUriState.value = intent.data
         pushTypeState.value = intent.getStringExtra(PushNotificationContract.TYPE_KEY)
         pushOrderIdState.value = PushNotificationContract.parseOrderId(intent.getStringExtra(PushNotificationContract.ORDER_ID_KEY))
+        if (pushTypeState.value == PushNotificationType.ORDER_STATUS) {
+            logAndroidPushRoute("PUSH_TAP orderId=${pushOrderIdState.value ?: "invalid"}")
+            logAndroidPushRoute("ONNEWINTENT_ORDER_ID=${pushOrderIdState.value ?: "invalid"}")
+        }
     }
     override fun onResume() { super.onResume(); PushNotificationController.initialize(this); activeAndroidCheckoutPaymentStore?.onForeground() }
 }
@@ -321,13 +340,19 @@ private fun CriosRangoApp(
 
     LaunchedEffect(pushType, pushOrderId) {
         if (pushType != null) {
+            if (shouldIgnoreInvalidAndroidOrderPush(pushType, pushOrderId)) {
+                logAndroidPushRoute("PUSH_TAP orderId=invalid; ignored")
+                pushTypeState.value = null
+                pushOrderIdState.value = null
+                return@LaunchedEffect
+            }
             when (val destination = PushNotificationContract.destination(pushType, pushOrderId?.toString())) {
                 is es.criosrango.shared.PushDestination.Order -> {
                     pendingPushOrderId = destination.orderId
+                    logAndroidPushRoute("HOST_PENDING=${destination.orderId}")
                     tab = AppTab.ACCOUNT
                 }
                 es.criosrango.shared.PushDestination.Account -> {
-                    pendingPushOrderId = null
                     tab = AppTab.ACCOUNT
                 }
                 es.criosrango.shared.PushDestination.NewProducts -> {
@@ -573,7 +598,12 @@ private fun CriosRangoApp(
                         vm = accountViewModel,
                         openLoginOnStart = returnToCartAfterLogin,
                         initialOrderId = pendingPushOrderId,
-                        onPushOrderConsumed = { pendingPushOrderId = null },
+                        onPushOrderConsumed = { consumedOrderId ->
+                            if (pendingPushOrderId == consumedOrderId) {
+                                logAndroidPushRoute("PUSH_CONSUMED=$consumedOrderId")
+                                pendingPushOrderId = pendingOrderAfterConsumption(pendingPushOrderId, consumedOrderId)
+                            }
+                        },
                         openPromotionsOnStart = openPromotionsOnStart,
                         onPromotionsOpened = { openPromotionsOnStart = false },
                         onRootBack = { tab = utilityReturnTab ?: AppTab.HOME; utilityReturnTab = null },

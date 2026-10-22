@@ -79,7 +79,7 @@ fun AccountLoginScreen(
     vm: AccountViewModel = viewModel(),
     openLoginOnStart: Boolean = false,
     initialOrderId: Int? = null,
-    onPushOrderConsumed: () -> Unit = {},
+    onPushOrderConsumed: (Int) -> Unit = {},
     openPromotionsOnStart: Boolean = false,
     onAuthenticated: (() -> Unit)? = null,
     onPromotionsOpened: () -> Unit = {},
@@ -140,9 +140,12 @@ fun AccountLoginScreen(
     // Treat each changed incoming id as a selection event, not an initial-only value.
     LaunchedEffect(initialOrderId) {
         if (initialOrderId != null && initialOrderId > 0) {
+            logAndroidPushRoute("ACCOUNT_RECEIVED=$initialOrderId")
+            selectedInfoPage = null
+            accountSection = AccountSection.ORDERS
+            showLogin = currentUser == null
             selectedOrderFromShared = null
-            selectedOrderId = incomingPushOrderSelection(selectedOrderId, initialOrderId)
-            onPushOrderConsumed()
+            selectedOrderId = initialOrderId
         }
     }
     val clearOrderSelection = {
@@ -158,13 +161,20 @@ fun AccountLoginScreen(
         val id = selectedOrderId ?: return@LaunchedEffect
         if (currentUser == null || selectedOrderFromShared != null) return@LaunchedEffect
         when (val resolution = sharedOrdersOwner.resolveOrderById(id)) {
-            is StoreOrderSelectionResolution.Resolved -> selectedOrderFromShared = resolution.order
-            StoreOrderSelectionResolution.NotFound -> selectedOrderId = null
+            is StoreOrderSelectionResolution.Resolved -> if (selectedOrderId == id && resolution.order.id == id) selectedOrderFromShared = resolution.order
+            StoreOrderSelectionResolution.NotFound -> if (selectedOrderId == id && initialOrderId != id) selectedOrderId = null
             StoreOrderSelectionResolution.Pending -> Unit
             is StoreOrderSelectionResolution.TransientError -> Unit
         }
     }
     val selectedOrder = AccountOrderSelectionState(selectedOrderId, selectedOrderFromShared).resolveFrom(sharedOrdersState.orders)
+    LaunchedEffect(initialOrderId, currentUser?.id, selectedOrder?.id) {
+        val targetOrderId = initialOrderId ?: return@LaunchedEffect
+        if (shouldConsumePendingOrder(targetOrderId, selectedOrder?.id, authenticated = currentUser != null)) {
+            logAndroidPushRoute("ORDER_SELECTED=$targetOrderId")
+            onPushOrderConsumed(targetOrderId)
+        }
+    }
     LaunchedEffect(currentUser?.id, selectedOrderId, sharedOrdersState.loading, sharedOrdersState.refreshing, sharedOrdersState.error, sharedOrdersState.orders) {
         val id = selectedOrderId ?: return@LaunchedEffect
         if (currentUser == null || selectedOrderFromShared != null) return@LaunchedEffect
@@ -762,5 +772,5 @@ internal data class AccountOrderSelectionState(
     fun clear() = AccountOrderSelectionState()
 
     fun resolveFrom(orders: List<AccountOrderSummary>): AccountOrderSummary? =
-        sharedOrder ?: orders.firstOrNull { it.id == orderId }
+        sharedOrder?.takeIf { it.id == orderId } ?: orders.firstOrNull { it.id == orderId }
 }

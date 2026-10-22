@@ -23,6 +23,42 @@ class PushNotificationRoutingTest {
     }
 
     @Test
+    fun invalidOrderPush_isIgnoredInsteadOfOpeningAccountRoot() {
+        assertTrue(shouldIgnoreInvalidAndroidOrderPush("order_status", null))
+        assertTrue(shouldIgnoreInvalidAndroidOrderPush("order_status", 0))
+        assertTrue(shouldIgnoreInvalidAndroidOrderPush("order_status", -4))
+        assertFalse(shouldIgnoreInvalidAndroidOrderPush("order_status", 57628))
+        assertFalse(shouldIgnoreInvalidAndroidOrderPush("new_products", null))
+    }
+
+    @Test
+    fun pendingOrderIsNotConsumedBeforeAuthenticationAndExactSelection() {
+        assertFalse(shouldConsumePendingOrder(57628, 57628, authenticated = false))
+        assertFalse(shouldConsumePendingOrder(57628, 57627, authenticated = true))
+        assertTrue(shouldConsumePendingOrder(57628, 57628, authenticated = true))
+    }
+
+    @Test
+    fun hostPendingOrder_isNotClearedUntilMatchingExactOrderIsConsumed() {
+        assertEquals(57628, pendingOrderAfterConsumption(57628, 57627))
+        assertEquals(null, pendingOrderAfterConsumption(57628, 57628))
+    }
+
+    @Test
+    fun coldStartAndBackgroundIntentParseTheExactPositiveOrderId() {
+        assertEquals(57628, es.criosrango.shared.PushNotificationContract.parseOrderId("57628"))
+        assertEquals(es.criosrango.shared.PushDestination.Order(57628),
+            es.criosrango.shared.PushNotificationContract.destination("order_status", "57628"))
+    }
+
+    @Test
+    fun pushFromAccountRootProfileOrExistingDetailUsesIncomingIdAsAuthority() {
+        assertEquals(57628, incomingPushOrderSelection(null, 57628))
+        assertEquals(57628, incomingPushOrderSelection(57627, 57628))
+        assertEquals(57631, incomingPushOrderSelection(57628, 57631))
+    }
+
+    @Test
     fun incomingPushOrderWhileAccountIsAlreadyOpen_selectsNewExactOrder() {
         assertEquals(57625, incomingPushOrderSelection(57624, 57625))
     }
@@ -31,6 +67,13 @@ class PushNotificationRoutingTest {
     fun incomingPushOrder_twice_selectsSecondOrderInsteadOfStaleFirst() {
         val first = incomingPushOrderSelection(null, 57624)
         assertEquals(57625, incomingPushOrderSelection(first, 57625))
+    }
+
+    @Test
+    fun secondPushOrderWinsWhileFirstIsStillPending() {
+        val pendingAfterSecondPush = 57631
+        assertEquals(57631, pendingOrderAfterConsumption(pendingAfterSecondPush, 57628))
+        assertEquals(null, pendingOrderAfterConsumption(pendingAfterSecondPush, 57631))
     }
 
     @Test
