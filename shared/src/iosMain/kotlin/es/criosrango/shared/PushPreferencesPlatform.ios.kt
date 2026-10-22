@@ -38,7 +38,7 @@ actual object PushPreferencesPlatform {
                     if (error != null) IosPushDiagnostics.recordRegistrationFailure(error::class.simpleName ?: "NSError", error.localizedDescription)
                     if (granted) {
                         IosPushDiagnostics.recordRegistrationRequested()
-                        NSNotificationCenter.defaultCenter.postNotificationName("criosrango.push.refresh-registration", object = null)
+                        NSNotificationCenter.defaultCenter.postNotificationName("criosrango.push.refresh-registration", null)
                     }
                 }
             }

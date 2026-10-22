@@ -331,7 +331,7 @@ fun CriosRangoIOSRootScreen(
                     checkoutStore = checkoutStore,
                     paymentStore = paymentStore,
                     accountRepository = accountRepository,
-                    padding = padding,
+                    padding = androidx.compose.foundation.layout.PaddingValues(bottom = padding.calculateBottomPadding()),
                     onBack = { checkoutOpen = false },
                     onOpenPayment = onOpenPayment,
                     loyaltyRepository = loyaltyRepository,

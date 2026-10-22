@@ -488,7 +488,7 @@ private fun CriosRangoApp(
                             country = address.country.ifBlank { "ES" }
                         )
                     },
-                    padding = shellPadding,
+                    padding = androidx.compose.foundation.layout.PaddingValues(bottom = shellPadding.calculateBottomPadding()),
                     onBack = { checkoutOpen = false },
                     onManualOrderCompleted = {
                         checkoutOpen = false
@@ -521,7 +521,7 @@ private fun CriosRangoApp(
                     topBar = {},
                     bottomNavigationModifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()
                 ) { shellPadding ->
-                    Box(Modifier.fillMaxSize().padding(shellPadding)) {
+                    Box(Modifier.fillMaxSize().padding(bottom = shellPadding.calculateBottomPadding())) {
                         ProductDetail(
                     product = selectedProduct!!,
                     variation = selectedVariation,

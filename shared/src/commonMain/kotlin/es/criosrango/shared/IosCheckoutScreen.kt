@@ -412,13 +412,6 @@ fun StoreCheckoutScreen(
                 )
             }
         }
-        if (phase == StoreCheckoutPhase.CREATING_ORDER) item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = CheckoutUiGreen)
-                Spacer(Modifier.width(10.dp))
-                Text("Creando pedido…", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
         }
     }
 
