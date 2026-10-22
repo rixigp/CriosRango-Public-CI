@@ -58,7 +58,7 @@ internal data class PushRegistrationPayload(
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("platform", "android")
-        .put("identifier_type", "fcm_token")
+        .put("identifier_type", "fid")
         .put("identifier", identifier)
         .put("new_products", newProducts)
         .put("order_updates", orderUpdates)
@@ -84,7 +84,8 @@ internal fun safePushTokenErrorMessage(message: String?): String {
 }
 
 data class PushRegistrationDiagnostics(
-    val tokenAvailable: Boolean? = null,
+    val fidAvailable: Boolean? = null,
+    val registerReceived: Boolean? = null,
     val registerAttempted: Boolean? = null,
     val httpResult: String = "Sin intento registrado",
     val tokenErrorClass: String? = null,
@@ -122,7 +123,8 @@ object PushNotificationController {
     private const val PENDING_UNREGISTER_KEY = "criosrango_push_pending_unregister_tokens"
     private const val PREFERENCES_SYNC_PENDING_KEY = "criosrango_push_preferences_sync_pending"
     private const val TAG = "CriosRangoPush"
-    private const val DIAG_TOKEN = "criosrango_push_diag_token_available"
+    private const val DIAG_TOKEN = "criosrango_push_diag_fid_available"
+    private const val DIAG_REGISTER_RECEIVED = "criosrango_push_diag_register_received"
     private const val DIAG_ATTEMPTED = "criosrango_push_diag_register_attempted"
     private const val DIAG_HTTP = "criosrango_push_diag_http_result"
     private const val DIAG_TOKEN_ERROR_CLASS = "criosrango_push_diag_token_error_class"
@@ -166,7 +168,8 @@ object PushNotificationController {
     fun loadDiagnostics(context: Context) {
         val prefs = context.applicationContext.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
         _diagnostics.value = PushRegistrationDiagnostics(
-            tokenAvailable = prefs.getNullableBoolean(DIAG_TOKEN),
+            fidAvailable = prefs.getNullableBoolean(DIAG_TOKEN),
+            registerReceived = prefs.getNullableBoolean(DIAG_REGISTER_RECEIVED)
             registerAttempted = prefs.getNullableBoolean(DIAG_ATTEMPTED),
             httpResult = prefs.getString(DIAG_HTTP, "Sin intento registrado") ?: "Sin intento registrado",
             tokenErrorClass = prefs.getString(DIAG_TOKEN_ERROR_CLASS, null),
@@ -184,7 +187,8 @@ object PushNotificationController {
     private fun persistDiagnostics(context: Context, value: PushRegistrationDiagnostics) {
         val prefs = context.applicationContext.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
         prefs.edit().apply {
-            value.tokenAvailable?.let { putBoolean(DIAG_TOKEN, it) } ?: remove(DIAG_TOKEN)
+            value.fidAvailable?.let { putBoolean(DIAG_TOKEN, it) } ?: remove(DIAG_TOKEN)
+            value.registerReceived?.let { putBoolean(DIAG_REGISTER_RECEIVED, it) } ?: remove(DIAG_REGISTER_RECEIVED)
             value.registerAttempted?.let { putBoolean(DIAG_ATTEMPTED, it) } ?: remove(DIAG_ATTEMPTED)
             putString(DIAG_HTTP, value.httpResult)
             value.tokenErrorClass?.let { putString(DIAG_TOKEN_ERROR_CLASS, it) } ?: remove(DIAG_TOKEN_ERROR_CLASS)
@@ -200,69 +204,41 @@ object PushNotificationController {
     fun syncRegistration(context: Context) {
         val app = context.applicationContext
         persistDiagnostics(app, _diagnostics.value.copy(
-            tokenAvailable = null,
-            registerAttempted = false,
-            httpResult = "Esperando token FCM",
-            tokenErrorClass = null,
-            tokenErrorMessage = null,
-            authenticated = null,
-            registerSuccess = null,
-            syncPending = true,
-            orderUpdatesSent = null
+            fidAvailable = null, registerAttempted = true, registerReceived = false,
+            httpResult = "Esperando REGISTER / onRegistered", tokenErrorClass = null,
+            tokenErrorMessage = null, authenticated = null, registerSuccess = null,
+            syncPending = true, orderUpdatesSent = null
         ))
-        app.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
-            .edit().putBoolean(PREFERENCES_SYNC_PENDING_KEY, true).apply()
-        val tokenTask = try {
-            FirebaseMessaging.getInstance().token
+        app.getSharedPreferences(SESSION, Context.MODE_PRIVATE).edit().putBoolean(PREFERENCES_SYNC_PENDING_KEY, true).apply()
+        try {
+            FirebaseMessaging.getInstance().register()
+            android.util.Log.i(TAG, "Firebase installation REGISTER requested")
         } catch (error: Exception) {
-            recordTokenAcquisitionError(app, error)
-            return
+            val message = safePushTokenErrorMessage(error.message)
+            persistDiagnostics(app, _diagnostics.value.copy(fidAvailable = false, registerReceived = false,
+                httpResult = "REGISTER_ERROR ${error.javaClass.simpleName}", tokenErrorClass = error.javaClass.simpleName,
+                tokenErrorMessage = message, syncPending = true))
+            android.util.Log.w(TAG, "Firebase installation register failed; class=${error.javaClass.simpleName}; message=$message")
         }
-        tokenTask
-            .addOnSuccessListener { token ->
-                if (token.isBlank()) {
-                    persistDiagnostics(app, _diagnostics.value.copy(
-                        tokenAvailable = false, httpResult = "Token FCM vacío", syncPending = true
-                    ))
-                    android.util.Log.w(TAG, "FCM token available NO; sync pending YES")
-                } else {
-                    persistDiagnostics(app, _diagnostics.value.copy(tokenAvailable = true))
-                    android.util.Log.i(TAG, "FCM token available YES")
-                    onRegistered(app, token)
-                }
-            }
-            .addOnFailureListener { error -> recordTokenAcquisitionError(app, error) }
     }
 
-    private fun recordTokenAcquisitionError(context: Context, error: Exception) {
-        val message = safePushTokenErrorMessage(error.message)
-        persistDiagnostics(context, _diagnostics.value.copy(
-            tokenAvailable = false,
-            httpResult = "TOKEN_ERROR ${error.javaClass.simpleName}",
-            tokenErrorClass = error.javaClass.simpleName,
-            tokenErrorMessage = message,
-            syncPending = true
-        ))
-        android.util.Log.w(TAG, "FCM token acquisition failed; class=${error.javaClass.simpleName}; message=$message; sync pending YES")
-    }
-
-    fun onRegistered(context: Context, token: String) {
-        if (token.isBlank()) {
-            persistDiagnostics(context, _diagnostics.value.copy(
-                tokenAvailable = false, httpResult = "Token FCM vacío", syncPending = true
-            ))
-            android.util.Log.w(TAG, "Registration skipped: blank FCM token; sync pending YES")
+    fun onRegistered(context: Context, installationId: String) {
+        if (installationId.isBlank()) {
+            persistDiagnostics(context, _diagnostics.value.copy(fidAvailable = false, registerReceived = true, httpResult = "FID vacío", syncPending = true))
             return
         }
-        persistDiagnostics(context, _diagnostics.value.copy(tokenAvailable = true))
-        scope.launch { syncMutex.withLock { syncRegisteredToken(context.applicationContext, token) } }
+        persistDiagnostics(context, _diagnostics.value.copy(fidAvailable = true, registerReceived = true))
+        android.util.Log.i(TAG, "Firebase installation onRegistered received")
+        scope.launch { syncMutex.withLock { syncRegisteredFid(context.applicationContext, installationId) } }
     }
 
     /** Bounded best-effort deassociation; retain token and pending marker on failure. */
     suspend fun unregisterAwait(context: Context): Boolean {
         val app = context.applicationContext
         val prefs = app.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
+        val identifierType = prefs.getString(IDENTIFIER_TYPE_KEY, null)
         val token = prefs.getString(IDENTIFIER_KEY, null)?.takeIf { it.isNotBlank() } ?: return true
+        if (identifierType != "fid") return true
         // Persist recovery intent before waiting for the registration mutex, so lock timeout cannot lose it.
         val pending = pendingUnregisterTokensAfterAttempt(
             prefs.getStringSet(PENDING_UNREGISTER_KEY, emptySet()).orEmpty(), token, unregisterSucceeded = false
@@ -281,18 +257,19 @@ object PushNotificationController {
     }
 
     internal fun buildUnregisterPayload(identifier: String): JSONObject = JSONObject()
-        .put("platform", "android").put("identifier_type", "fcm_token").put("identifier", identifier)
+        .put("platform", "android").put("identifier_type", "fid").put("identifier", identifier)
 
-    private fun syncRegisteredToken(context: Context, token: String) {
+    private fun syncRegisteredFid(context: Context, fid: String) {
         val prefs = context.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
-        val previousToken = prefs.getString(IDENTIFIER_KEY, null)
+        val previousIdentifierType = prefs.getString(IDENTIFIER_TYPE_KEY, null)
+        val previousToken = prefs.getString(IDENTIFIER_KEY, null)?.takeIf { previousIdentifierType == "fid" }
         val accountToken = prefs.getString("account_token", null)
         val pending = prefs.getStringSet(PENDING_UNREGISTER_KEY, emptySet()).orEmpty().toMutableSet()
         val pushPrefs = PushPreferencesStore(context)
-        val payload = pushRegistrationPayload(token, pushPrefs.newProducts, pushPrefs.orderUpdates)
+        val payload = pushRegistrationPayload(fid, pushPrefs.newProducts, pushPrefs.orderUpdates)
         val authenticated = !accountToken.isNullOrBlank()
         persistDiagnostics(context, _diagnostics.value.copy(
-            tokenAvailable = true,
+            fidAvailable = true,
             registerAttempted = true,
             httpResult = "POST en curso",
             authenticated = authenticated,
@@ -304,23 +281,21 @@ object PushNotificationController {
         if (!postRegistration(context, payload, accountToken)) {
             prefs.edit().putBoolean(PREFERENCES_SYNC_PENDING_KEY, true).apply()
             persistDiagnostics(context, _diagnostics.value.copy(syncPending = true))
-            android.util.Log.w(TAG, "Registration failed; sync pending YES; old unregisters postponed=${pending.isNotEmpty() || shouldDeactivatePreviousToken(previousToken, token)}")
+            android.util.Log.w(TAG, "Registration failed; sync pending YES; old unregisters postponed=${pending.isNotEmpty() || shouldDeactivatePreviousToken(previousToken, fid)}")
             // Register-first invariant: never deactivate an old identity unless the new POST succeeded.
             return
         }
-        pending.filter { it != token }.forEach { stale ->
-            val removed = deactivateToken(stale, accountToken)
-            if (removed) pending.remove(stale)
-            android.util.Log.i(TAG, "Pending unregister ${if (removed) "executed" else "retained for retry"}")
-        }
-        if (previousToken != null && previousToken != token) {
+        // Legacy LOT1 FCM identifiers are not FIDs. Clear their queue only after
+        // the current FID has been accepted by the backend.
+        pending.clear()
+        if (previousToken != null && previousToken != fid) {
             val removed = deactivateToken(previousToken, accountToken)
             if (!removed) pending.add(previousToken)
             android.util.Log.i(TAG, "Previous token unregister ${if (removed) "executed" else "retained for retry"}")
         }
-        pending.remove(token)
-        prefs.edit().putString(IDENTIFIER_TYPE_KEY, "fcm_token").putString(IDENTIFIER_KEY, token)
-            .putStringSet(PENDING_UNREGISTER_KEY, pending).remove(PREFERENCES_SYNC_PENDING_KEY).apply()
+        prefs.edit().putString(IDENTIFIER_TYPE_KEY, "fid").putString(IDENTIFIER_KEY, fid)
+            .putStringSet(PENDING_UNREGISTER_KEY, pending).remove(PREFERENCES_SYNC_PENDING_KEY)
+            .remove(DIAG_TOKEN_ERROR_CLASS).remove(DIAG_TOKEN_ERROR_MESSAGE).apply()
         persistDiagnostics(context, _diagnostics.value.copy(
             registerSuccess = true,
             syncPending = false
@@ -416,8 +391,8 @@ class PushFirebaseMessagingService : FirebaseMessagingService() {
         PushNotificationController.createChannels(this)
     }
 
-    override fun onNewToken(token: String) {
-        PushNotificationController.onRegistered(this, token)
+    override fun onRegistered(installationId: String) {
+        PushNotificationController.onRegistered(this, installationId)
     }
 
     override fun onMessageReceived(message: RemoteMessage) {

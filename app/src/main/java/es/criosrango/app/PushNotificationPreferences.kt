@@ -49,7 +49,9 @@ fun PushNotificationPreferences() {
         )
         Column(Modifier.fillMaxWidth().padding(top = 20.dp)) {
             Text("Diagnóstico técnico de notificaciones", style = MaterialTheme.typography.titleSmall)
-            Text("Token FCM disponible: ${diagnostics.tokenAvailable.label()}", style = MaterialTheme.typography.bodySmall)
+            Text("FID disponible: ${diagnostics.fidAvailable.label()}", style = MaterialTheme.typography.bodySmall)
+            Text("REGISTER solicitado: ${diagnostics.registerAttempted.label()}", style = MaterialTheme.typography.bodySmall)
+            Text("onRegistered recibido: ${diagnostics.registerReceived.label()}", style = MaterialTheme.typography.bodySmall)
             Text("POST intentado: ${diagnostics.registerAttempted.label()}", style = MaterialTheme.typography.bodySmall)
             Text("Resultado del registro: ${diagnostics.httpResult}", style = MaterialTheme.typography.bodySmall)
             diagnostics.tokenErrorClass?.let { Text("TOKEN_ERROR_CLASS=$it", style = MaterialTheme.typography.bodySmall) }
