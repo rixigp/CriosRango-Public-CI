@@ -479,7 +479,8 @@ private fun CriosRangoApp(
                     loyaltyRepository = sharedLoyaltyRepository, walletEnabled = sharedAccountRepository.hasSession,
                     cartQuantity = cartQuantity,
                     onSearch = { checkoutOpen = false; tab = AppTab.SEARCH },
-                    onCart = { checkoutOpen = false; tab = AppTab.CART }
+                    onCart = { checkoutOpen = false; tab = AppTab.CART },
+                    showInlineCardSuccess = false
                 )
             } else if (selectedProduct != null) {
                 ProductDetail(
@@ -644,11 +645,13 @@ private fun CriosRangoApp(
             val orderId = uri.getQueryParameter("order_id")?.toIntOrNull()
             when (result) {
                 "cancel" -> {
-                    if (orderId != null) {
-                        sharedPaymentStore.cancel(orderId)
-                        checkoutOpen = false
-                        tab = AppTab.CART
-                    }
+                    // The gateway/backend has cancelled this attempt. Drop all client-side
+                    // order, payment-session and redirect state before Checkout can be reopened.
+                    sharedPaymentStore.cancel(orderId)
+                    sharedCheckoutStore.clearForNewProcess()
+                    sharedPaymentStore.clearForNewProcess()
+                    checkoutOpen = false
+                    tab = AppTab.CART
                 }
                 "ok" -> sharedPaymentStore.handlePaymentReturn("ok", orderId)
             }

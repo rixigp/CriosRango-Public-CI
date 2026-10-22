@@ -62,7 +62,8 @@ fun StoreCheckoutScreen(
     walletEnabled: Boolean,
     cartQuantity: Int = 0,
     onSearch: () -> Unit = {},
-    onCart: () -> Unit = {}
+    onCart: () -> Unit = {},
+    showInlineCardSuccess: Boolean = true
 ) {
     val checkout by checkoutStore.checkout.collectAsState()
     val cart by checkoutStore.cart.collectAsState()
@@ -341,7 +342,7 @@ fun StoreCheckoutScreen(
         }
 
 
-        if (paymentState == StoreCardPaymentState.PAID && postOrderState == StoreCheckoutPostOrderState.CARD_PAID) item {
+        if (showInlineCardSuccess && paymentState == StoreCardPaymentState.PAID && postOrderState == StoreCheckoutPostOrderState.CARD_PAID) item {
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = CheckoutUiSoftGreen) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Pago confirmado", style = MaterialTheme.typography.titleMedium)
