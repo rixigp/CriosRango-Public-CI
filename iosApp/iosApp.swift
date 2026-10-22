@@ -22,7 +22,13 @@ final class CriosRangoIOSApp: UIResponder, UIApplicationDelegate, UNUserNotifica
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) { PushNotificationBridge.shared.didRegister(deviceToken: deviceToken) }
-    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) { print("APNS_REGISTRATION_FAILED=\(error.localizedDescription)") }
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        IosPushDiagnostics.shared.recordRegistrationFailure(
+            errorClass: String(describing: type(of: error)),
+            message: error.localizedDescription
+        )
+        print("APNS_REGISTRATION_FAILED=\(String(describing: type(of: error)))")
+    }
     func application(
         _ application: UIApplication,
         configurationForConnecting connectingSceneSession: UISceneSession,

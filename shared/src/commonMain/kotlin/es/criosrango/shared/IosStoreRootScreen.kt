@@ -142,6 +142,12 @@ internal fun iosSelectedRootTab(section: IosRootSection, catalogOriginHome: Bool
         IosRootSection.ACCOUNT -> StoreMainTab.ACCOUNT
     }
 
+internal fun iosRootShellSelectedTab(
+    section: IosRootSection,
+    catalogOriginHome: Boolean,
+    checkoutOpen: Boolean
+): StoreMainTab = if (checkoutOpen) StoreMainTab.CART else iosSelectedRootTab(section, catalogOriginHome)
+
 @Composable
 fun CriosRangoIOSRootScreen(
     storeApi: es.criosrango.shared.api.StoreApiClient,
@@ -292,9 +298,11 @@ fun CriosRangoIOSRootScreen(
         androidx.compose.runtime.LaunchedEffect(Unit) { println("KMP_RUNTIME_ROOT_SCREEN_READY") }
         Box(Modifier.fillMaxSize()) {
         StoreGlobalShell(
-            selectedTab = iosSelectedRootTab(section, catalogOriginHome),
+            selectedTab = iosRootShellSelectedTab(section, catalogOriginHome, checkoutOpen),
             cartQuantity = cartQuantity,
             onTabSelected = { item ->
+                // The shell stays mounted during Checkout; leaving Checkout must also close its route.
+                checkoutOpen = false
                 val destination = when (item) {
                     StoreMainTab.HOME -> IosRootSection.HOME
                     StoreMainTab.CATEGORIES -> IosRootSection.CATEGORIES

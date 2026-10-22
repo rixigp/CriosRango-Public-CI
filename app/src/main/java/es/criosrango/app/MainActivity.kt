@@ -360,6 +360,28 @@ private fun CriosRangoApp(
         else { selectedBrand = null; showAllBrands = false; tab = AppTab.HOME }
     }
     var outletSeasonFilter by remember { mutableStateOf<HomeOutletSeason?>(null) }
+    fun selectRootTab(item: es.criosrango.shared.StoreMainTab) {
+        checkoutOpen = false
+        viewModel.closeProduct()
+        rootFilterOwner.backFromResults()
+        selectedBrand = null
+        showAllBrands = false
+        if (item == es.criosrango.shared.StoreMainTab.HOME) homeShowAll = false
+        if (item == es.criosrango.shared.StoreMainTab.CATEGORIES) categoryPath.clear()
+        if (item == es.criosrango.shared.StoreMainTab.OUTLET) {
+            outletSeasonFilter = null
+            categoryPath.clear()
+            categoryPath += 445
+        }
+        val destination = when (item) {
+            es.criosrango.shared.StoreMainTab.HOME -> AppTab.HOME
+            es.criosrango.shared.StoreMainTab.CATEGORIES -> AppTab.CATEGORIES
+            es.criosrango.shared.StoreMainTab.OUTLET -> AppTab.OUTLET
+            es.criosrango.shared.StoreMainTab.CART -> AppTab.CART
+            es.criosrango.shared.StoreMainTab.ACCOUNT -> AppTab.ACCOUNT
+        }
+        if (destination == AppTab.CART || destination == AppTab.ACCOUNT) openUtilityTab(destination) else tab = destination
+    }
 
     LaunchedEffect(categoryCache, tab, categoryPath.toList()) {
         categoryCache.updates.collect { update ->
@@ -442,6 +464,13 @@ private fun CriosRangoApp(
                 StartupBranding()
             } else Surface(Modifier.fillMaxSize(), color = Color(0xFFFCFAF7)) {
             if (checkoutOpen) {
+                es.criosrango.shared.StoreGlobalShell(
+                    selectedTab = es.criosrango.shared.StoreMainTab.CART,
+                    cartQuantity = cartQuantity,
+                    onTabSelected = { selectRootTab(it) },
+                    topBar = {},
+                    bottomNavigationModifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()
+                ) { shellPadding ->
                 es.criosrango.shared.StoreCheckoutScreen(
                     checkoutStore = sharedCheckoutStore, paymentStore = sharedPaymentStore,
                     accountRepository = sharedAccountRepository,
@@ -459,7 +488,7 @@ private fun CriosRangoApp(
                             country = address.country.ifBlank { "ES" }
                         )
                     },
-                    padding = PaddingValues(0.dp),
+                    padding = shellPadding,
                     onBack = { checkoutOpen = false },
                     onManualOrderCompleted = {
                         checkoutOpen = false
@@ -476,8 +505,24 @@ private fun CriosRangoApp(
                     onCart = { checkoutOpen = false; tab = AppTab.CART },
                     showInlineCardSuccess = false
                 )
+
+                }
             } else if (selectedProduct != null) {
-                ProductDetail(
+                es.criosrango.shared.StoreGlobalShell(
+                    selectedTab = when (tab) {
+                        AppTab.HOME -> es.criosrango.shared.StoreMainTab.HOME
+                        AppTab.CATEGORIES, AppTab.SEARCH -> es.criosrango.shared.StoreMainTab.CATEGORIES
+                        AppTab.OUTLET -> es.criosrango.shared.StoreMainTab.OUTLET
+                        AppTab.CART -> es.criosrango.shared.StoreMainTab.CART
+                        AppTab.ACCOUNT -> es.criosrango.shared.StoreMainTab.ACCOUNT
+                    },
+                    cartQuantity = cartQuantity,
+                    onTabSelected = { selectRootTab(it) },
+                    topBar = {},
+                    bottomNavigationModifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()
+                ) { shellPadding ->
+                    Box(Modifier.fillMaxSize().padding(shellPadding)) {
+                        ProductDetail(
                     product = selectedProduct!!,
                     variation = selectedVariation,
                     cartItems = cartItems,
@@ -487,6 +532,9 @@ private fun CriosRangoApp(
                     onSearch = { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH; viewModel.closeProduct() },
                     onAdd = { item -> viewModel.addToSharedCart(item, sharedCartController) }
                 )
+
+                    }
+                }
             } else {
                 es.criosrango.shared.StoreGlobalShell(
                 selectedTab = when (tab) {
@@ -497,26 +545,7 @@ private fun CriosRangoApp(
                     AppTab.ACCOUNT -> es.criosrango.shared.StoreMainTab.ACCOUNT
                 },
                 cartQuantity = cartQuantity,
-                onTabSelected = { item ->
-                    rootFilterOwner.backFromResults()
-                    selectedBrand = null
-                    showAllBrands = false
-                    if (item == es.criosrango.shared.StoreMainTab.HOME) homeShowAll = false
-                    if (item == es.criosrango.shared.StoreMainTab.CATEGORIES) categoryPath.clear()
-                    if (item == es.criosrango.shared.StoreMainTab.OUTLET) {
-                        outletSeasonFilter = null
-                        categoryPath.clear()
-                        categoryPath += 445
-                    }
-                    val destination = when (item) {
-                        es.criosrango.shared.StoreMainTab.HOME -> AppTab.HOME
-                        es.criosrango.shared.StoreMainTab.CATEGORIES -> AppTab.CATEGORIES
-                        es.criosrango.shared.StoreMainTab.OUTLET -> AppTab.OUTLET
-                        es.criosrango.shared.StoreMainTab.CART -> AppTab.CART
-                        es.criosrango.shared.StoreMainTab.ACCOUNT -> AppTab.ACCOUNT
-                    }
-                    if (destination == AppTab.CART || destination == AppTab.ACCOUNT) openUtilityTab(destination) else tab = destination
-                },
+                onTabSelected = { selectRootTab(it) },
                 topBar = {
                     es.criosrango.shared.StoreGlobalTopBar(
                         cartQuantity,

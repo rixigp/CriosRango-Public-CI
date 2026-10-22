@@ -10,13 +10,46 @@ final class PushNotificationBridge: NSObject {
     private let tokenKey = "criosrango_apns_token"
     private let pendingUnregisterKey = "criosrango_push_pending_unregister_token"
     func configure() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert,.sound,.badge]) { granted,_ in
-            if granted { DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() } }
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let status: String
+            switch settings.authorizationStatus {
+            case .authorized: status = "AUTORIZADO"
+            case .denied: status = "DENEGADO"
+            case .notDetermined: status = "NO DETERMINADO"
+            case .provisional: status = "AUTORIZADO"
+            case .ephemeral: status = "AUTORIZADO"
+            @unknown default: status = "NO DETERMINADO"
+            }
+            IosPushDiagnostics.shared.recordPermission(status: status)
+            if settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional || settings.authorizationStatus == .ephemeral {
+                IosPushDiagnostics.shared.recordRegistrationRequested()
+                DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
+            } else if settings.authorizationStatus == .notDetermined {
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert,.sound,.badge]) { granted, error in
+                    IosPushDiagnostics.shared.recordPermission(status: granted ? "AUTORIZADO" : "DENEGADO")
+                    if let error {
+                        IosPushDiagnostics.shared.recordRegistrationFailure(errorClass: String(describing: type(of: error)), message: error.localizedDescription)
+                    }
+                    if granted {
+                        IosPushDiagnostics.shared.recordRegistrationRequested()
+                        DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
+                    }
+                }
+            }
         }
     }
     func refreshRegistration() {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
-            if settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional {
+            let status: String
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral: status = "AUTORIZADO"
+            case .denied: status = "DENEGADO"
+            case .notDetermined: status = "NO DETERMINADO"
+            @unknown default: status = "NO DETERMINADO"
+            }
+            IosPushDiagnostics.shared.recordPermission(status: status)
+            if settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional || settings.authorizationStatus == .ephemeral {
+                IosPushDiagnostics.shared.recordRegistrationRequested()
                 DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
             }
             // Product preferences are persisted separately from OS permission; retry sync on resume.
@@ -29,6 +62,7 @@ final class PushNotificationBridge: NSObject {
         let previous = defaults.string(forKey: tokenKey)
         if let previous, previous != token { defaults.set(previous, forKey: pendingUnregisterKey) }
         defaults.set(token, forKey: tokenKey)
+        IosPushDiagnostics.shared.recordToken(token: token)
         syncStoredRegistration()
     }
 
@@ -40,14 +74,29 @@ final class PushNotificationBridge: NSObject {
         if let accountToken=IosAccountTokenStore().load() {
             request.setValue("Bearer \(accountToken)",forHTTPHeaderField:"Authorization")
         }
+        let accountToken = IosAccountTokenStore().load()
+        let newProducts = defaults.object(forKey:"criosrango_push_new_products") as? Bool ?? true
+        let orderUpdates = defaults.object(forKey:"criosrango_push_order_updates") as? Bool ?? true
+        IosPushDiagnostics.shared.recordPostAttempt(authenticated: accountToken != nil, newProducts: newProducts, orderUpdates: orderUpdates)
         request.httpBody=try? JSONSerialization.data(withJSONObject:[
             "platform":"ios",
-            "token":token,
-            "new_products":defaults.object(forKey:"criosrango_push_new_products") as? Bool ?? true,
-            "order_updates":defaults.object(forKey:"criosrango_push_order_updates") as? Bool ?? true
+            "identifier_type":"apns_token",
+            "identifier":token,
+            "new_products":newProducts,
+            "order_updates":orderUpdates
         ])
         URLSession.shared.dataTask(with: request) { _, response, error in
-            guard error == nil, let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return }
+            if let error {
+                IosPushDiagnostics.shared.recordPostResult(result: "ERROR \(String(describing: type(of: error)))", accepted: "NO", pending: true, errorClass: String(describing: type(of: error)), errorMessage: error.localizedDescription)
+                return
+            }
+            guard let http = response as? HTTPURLResponse else {
+                IosPushDiagnostics.shared.recordPostResult(result: "ERROR HTTP", accepted: "NO", pending: true, errorClass: "HTTPError", errorMessage: "No se recibió respuesta HTTP")
+                return
+            }
+            let accepted = (200..<300).contains(http.statusCode)
+            IosPushDiagnostics.shared.recordPostResult(result: "HTTP \(http.statusCode)", accepted: accepted ? "SÍ" : "NO", pending: !accepted, errorClass: "", errorMessage: "")
+            guard accepted else { return }
             guard let pending = self.defaults.string(forKey: self.pendingUnregisterKey) else { return }
             // A token re-registered after logout is now associated with the current account (or anonymous user).
             if pending == token {

@@ -92,8 +92,12 @@ fun StoreProductDetailScreen(
                         .height(54.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (state.primaryActionLabel == "Añadido al carrito") Color(0xFF183B35) else Color(0xFFE4EFEA),
-                        contentColor = if (state.primaryActionLabel == "Añadido al carrito") Color.White else Color(0xFF183B35),
+                        containerColor = when {
+                            state.primaryActionLabel == "Añadido al carrito" -> Color(0xFF183B35)
+                            state.primaryActionEnabled -> Color(0xFF183B35)
+                            else -> Color(0xFFE4EFEA)
+                        },
+                        contentColor = if (state.primaryActionEnabled || state.primaryActionLabel == "Añadido al carrito") Color.White else Color(0xFF183B35),
                         disabledContainerColor = Color(0xFFE4EFEA),
                         disabledContentColor = Color(0xFF183B35)
                     )
