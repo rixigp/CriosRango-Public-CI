@@ -70,10 +70,25 @@ internal fun pushRegistrationPayload(
     orderUpdates: Boolean
 ): PushRegistrationPayload = PushRegistrationPayload(identifier, newProducts, orderUpdates)
 
+internal fun safePushTokenErrorMessage(message: String?): String {
+    val normalized = message.orEmpty().replace(Regex("[\\r\\n\\t]+"), " ").trim()
+    if (normalized.isBlank()) return "(sin mensaje)"
+    return normalized
+        .replace(Regex("(?i)Bearer\\s+[^\\s,;]+"), "Bearer [REDACTED]")
+        .replace(Regex("(?i)(token|api[_-]?key|secret|password)=([^\\s&]+)")) { match ->
+            "${match.groupValues[1]}=[REDACTED]"
+        }
+        .replace(Regex("AIza[0-9A-Za-z_-]{30,}"), "[REDACTED]")
+        .replace(Regex("[A-Za-z0-9_\\-]{80,}"), "[REDACTED]")
+        .take(240)
+}
+
 data class PushRegistrationDiagnostics(
     val tokenAvailable: Boolean? = null,
     val registerAttempted: Boolean? = null,
     val httpResult: String = "Sin intento registrado",
+    val tokenErrorClass: String? = null,
+    val tokenErrorMessage: String? = null,
     val authenticated: Boolean? = null,
     val registerSuccess: Boolean? = null,
     val syncPending: Boolean = true,
@@ -110,6 +125,8 @@ object PushNotificationController {
     private const val DIAG_TOKEN = "criosrango_push_diag_token_available"
     private const val DIAG_ATTEMPTED = "criosrango_push_diag_register_attempted"
     private const val DIAG_HTTP = "criosrango_push_diag_http_result"
+    private const val DIAG_TOKEN_ERROR_CLASS = "criosrango_push_diag_token_error_class"
+    private const val DIAG_TOKEN_ERROR_MESSAGE = "criosrango_push_diag_token_error_message"
     private const val DIAG_AUTH = "criosrango_push_diag_authenticated"
     private const val DIAG_SUCCESS = "criosrango_push_diag_register_success"
     private const val DIAG_PENDING = "criosrango_push_diag_sync_pending"
@@ -152,6 +169,8 @@ object PushNotificationController {
             tokenAvailable = prefs.getNullableBoolean(DIAG_TOKEN),
             registerAttempted = prefs.getNullableBoolean(DIAG_ATTEMPTED),
             httpResult = prefs.getString(DIAG_HTTP, "Sin intento registrado") ?: "Sin intento registrado",
+            tokenErrorClass = prefs.getString(DIAG_TOKEN_ERROR_CLASS, null),
+            tokenErrorMessage = prefs.getString(DIAG_TOKEN_ERROR_MESSAGE, null),
             authenticated = prefs.getNullableBoolean(DIAG_AUTH),
             registerSuccess = prefs.getNullableBoolean(DIAG_SUCCESS),
             syncPending = prefs.getBoolean(DIAG_PENDING, prefs.getBoolean(PREFERENCES_SYNC_PENDING_KEY, true)),
@@ -168,6 +187,8 @@ object PushNotificationController {
             value.tokenAvailable?.let { putBoolean(DIAG_TOKEN, it) } ?: remove(DIAG_TOKEN)
             value.registerAttempted?.let { putBoolean(DIAG_ATTEMPTED, it) } ?: remove(DIAG_ATTEMPTED)
             putString(DIAG_HTTP, value.httpResult)
+            value.tokenErrorClass?.let { putString(DIAG_TOKEN_ERROR_CLASS, it) } ?: remove(DIAG_TOKEN_ERROR_CLASS)
+            value.tokenErrorMessage?.let { putString(DIAG_TOKEN_ERROR_MESSAGE, it) } ?: remove(DIAG_TOKEN_ERROR_MESSAGE)
             value.authenticated?.let { putBoolean(DIAG_AUTH, it) } ?: remove(DIAG_AUTH)
             value.registerSuccess?.let { putBoolean(DIAG_SUCCESS, it) } ?: remove(DIAG_SUCCESS)
             putBoolean(DIAG_PENDING, value.syncPending)
@@ -182,6 +203,8 @@ object PushNotificationController {
             tokenAvailable = null,
             registerAttempted = false,
             httpResult = "Esperando token FCM",
+            tokenErrorClass = null,
+            tokenErrorMessage = null,
             authenticated = null,
             registerSuccess = null,
             syncPending = true,
@@ -206,9 +229,11 @@ object PushNotificationController {
                 persistDiagnostics(app, _diagnostics.value.copy(
                     tokenAvailable = false,
                     httpResult = "TOKEN_ERROR ${error.javaClass.simpleName}",
+                    tokenErrorClass = error.javaClass.simpleName,
+                    tokenErrorMessage = safePushTokenErrorMessage(error.message),
                     syncPending = true
                 ))
-                android.util.Log.w(TAG, "FCM token available NO (${error.javaClass.simpleName}); sync pending YES")
+                android.util.Log.w(TAG, "FCM token available NO (${error.javaClass.simpleName}: ${safePushTokenErrorMessage(error.message)}); sync pending YES")
             }
     }
 

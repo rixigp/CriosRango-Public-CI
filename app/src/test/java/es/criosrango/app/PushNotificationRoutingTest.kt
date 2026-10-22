@@ -34,6 +34,19 @@ class PushNotificationRoutingTest {
     }
 
     @Test
+    fun tokenErrorMessageShowsSafeFirebaseReasonWithoutSecretsOrStacktrace() {
+        assertEquals(
+            "Default FirebaseApp is not initialized in this process.",
+            safePushTokenErrorMessage("Default FirebaseApp is not initialized in this process.")
+        )
+        assertEquals(
+            "Missing API key; Bearer [REDACTED]",
+            safePushTokenErrorMessage("Missing API key; Bearer abc.def.ghi")
+        )
+        assertEquals("(sin mensaje)", safePushTokenErrorMessage("  "))
+    }
+
+    @Test
     fun authenticatedRegistrationUsesPersistedBearerTokenOnly() {
         assertEquals("Bearer ACCOUNT_TOKEN", pushAuthorizationHeader("ACCOUNT_TOKEN"))
         assertEquals(null, pushAuthorizationHeader(null))

@@ -52,6 +52,8 @@ fun PushNotificationPreferences() {
             Text("Token FCM disponible: ${diagnostics.tokenAvailable.label()}", style = MaterialTheme.typography.bodySmall)
             Text("POST intentado: ${diagnostics.registerAttempted.label()}", style = MaterialTheme.typography.bodySmall)
             Text("Resultado del registro: ${diagnostics.httpResult}", style = MaterialTheme.typography.bodySmall)
+            diagnostics.tokenErrorClass?.let { Text("TOKEN_ERROR_CLASS=$it", style = MaterialTheme.typography.bodySmall) }
+            diagnostics.tokenErrorMessage?.let { Text("TOKEN_ERROR_MESSAGE=$it", style = MaterialTheme.typography.bodySmall) }
             Text("Registro autenticado: ${diagnostics.authenticated.label()}", style = MaterialTheme.typography.bodySmall)
             Text("Registro aceptado: ${diagnostics.registerSuccess.label()}", style = MaterialTheme.typography.bodySmall)
             Text("Sincronización pendiente: ${diagnostics.syncPending.label()}", style = MaterialTheme.typography.bodySmall)
