@@ -254,6 +254,9 @@ private fun CriosRangoApp(
     val pushType = pushTypeState.value
     val pushOrderId = pushOrderIdState.value
     val bizumOrderId by viewModel.bizumOrderId.collectAsStateWithLifecycle()
+    val sharedCreatedOrder by sharedCheckoutStore.createdOrder.collectAsStateWithLifecycle()
+    val sharedCardPaymentState by sharedPaymentStore.state.collectAsStateWithLifecycle()
+    val sharedCardPaymentOrderId by sharedPaymentStore.orderId.collectAsStateWithLifecycle()
     LaunchedEffect(checkout?.orderId, checkout?.orderKey) {
         val orderId = checkout?.orderId ?: return@LaunchedEffect
         val orderKey = checkout?.orderKey?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -269,6 +272,22 @@ private fun CriosRangoApp(
     val initialLoading by viewModel.initialLoading.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(AppTab.HOME) }
+    var sharedCardSuccessOrderId by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(
+        sharedCreatedOrder?.orderId,
+        sharedCreatedOrder?.paymentMethod,
+        sharedCardPaymentState,
+        sharedCardPaymentOrderId
+    ) {
+        val order = sharedCreatedOrder ?: return@LaunchedEffect
+        val orderId = order.orderId ?: sharedCardPaymentOrderId
+        if (es.criosrango.shared.shouldShowStoreCardSuccessConfirmation(
+                order.paymentMethod, orderId, sharedCardPaymentState
+            )
+        ) {
+            sharedCardSuccessOrderId = orderId
+        }
+    }
     LaunchedEffect(Unit) {
         launch { runCatching { viewModel.refreshCartForSharedState() } }
         runCatching { sharedCartController.refreshAwait() }
@@ -597,6 +616,23 @@ private fun CriosRangoApp(
     bizumOrderId?.let { orderId ->
         val closeBizumConfirmation = { viewModel.consumeBizumOrder(); checkoutOpen = false; tab = AppTab.HOME; viewModel.refreshCart() }
         androidx.compose.material3.AlertDialog(onDismissRequest = closeBizumConfirmation, title = { androidx.compose.material3.Text("Pedido recibido") }, text = { androidx.compose.material3.Text("Tu pedido #$orderId ha sido recibido.\n\nRealiza el pago por Bizum al 679 97 28 88 y utiliza el número de pedido como referencia de pago.\n\nTu pedido no se procesará hasta que se haya recibido el importe.") }, confirmButton = { androidx.compose.material3.TextButton(onClick = closeBizumConfirmation) { androidx.compose.material3.Text("Seguir comprando") } })
+    }
+    sharedCardSuccessOrderId?.let { orderId ->
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Pedido recibido") },
+            text = { Text("Tu pedido #$orderId se ha pagado correctamente.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    sharedCardSuccessOrderId = null
+                    sharedCheckoutStore.clearForNewProcess()
+                    sharedPaymentStore.clearForNewProcess()
+                    checkoutOpen = false
+                    tab = AppTab.HOME
+                    sharedCartController.refresh()
+                }) { Text("Seguir comprando") }
+            }
+        )
     }
     LaunchedEffect(paymentReturnUri) {
         val uri = paymentReturnUri ?: return@LaunchedEffect

@@ -41,6 +41,13 @@ fun resolveStoreCheckoutPostOrderState(
     }
 }
 
+fun shouldShowStoreCardSuccessConfirmation(
+    paymentMethod: String?,
+    orderId: Int?,
+    paymentState: StoreCardPaymentState
+): Boolean = resolveStoreCheckoutPostOrderState(paymentMethod, orderId, paymentState) ==
+    StoreCheckoutPostOrderState.CARD_PAID
+
 fun shouldShowStoreCheckoutPayCta(state: StoreCheckoutPostOrderState): Boolean =
     state != StoreCheckoutPostOrderState.MANUAL_ORDER_CREATED
 

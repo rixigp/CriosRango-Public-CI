@@ -42,4 +42,12 @@ class StoreCheckoutPostOrderStateTest {
         assertEquals(StoreCheckoutPostOrderState.NONE,
             resolveStoreCheckoutPostOrderState("bizum", null, StoreCardPaymentState.IDLE))
     }
+
+    @Test
+    fun cardSuccessConfirmationRequiresConfirmedCardPaymentAndOrderId() {
+        assertEquals(true, shouldShowStoreCardSuccessConfirmation("cecabank_gateway", 57593, StoreCardPaymentState.PAID))
+        assertEquals(false, shouldShowStoreCardSuccessConfirmation("cecabank_gateway", null, StoreCardPaymentState.PAID))
+        assertEquals(false, shouldShowStoreCardSuccessConfirmation("cecabank_gateway", 57593, StoreCardPaymentState.NOT_PAID))
+        assertEquals(false, shouldShowStoreCardSuccessConfirmation("bizum", 57593, StoreCardPaymentState.PAID))
+    }
 }

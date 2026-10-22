@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.model.CustomerAddress
+import es.criosrango.shared.model.StoreShippingDestination
 import es.criosrango.shared.model.supportedPaymentOptions
 import es.criosrango.shared.model.consumerDiscount
 import es.criosrango.shared.validateCheckoutAddress
@@ -118,11 +119,24 @@ fun StoreCheckoutScreen(
             selectedPayment = paymentOptions.firstOrNull()?.gatewayId.orEmpty()
         }
     }
-    LaunchedEffect(cart.shippingRates) {
-        val selected = cart.shippingRates.flatMap { pack ->
+    val filteredShippingPackages = remember(cart.shippingRates, city, postcode, state, country) {
+        filterStoreShippingPackagesForDestination(
+            cart.shippingRates,
+            StoreShippingDestination(city = city, postcode = postcode, state = state, country = country)
+        )
+    }
+    LaunchedEffect(filteredShippingPackages) {
+        val visibleRates = filteredShippingPackages.flatMap { pack ->
+            pack.rates.map { pack.packageId to it.rateId }
+        }
+        val selected = filteredShippingPackages.flatMap { pack ->
             pack.rates.filter { it.selected }.map { pack.packageId to it.rateId }
         }.firstOrNull()
-        if (selected != null) selectedShipping = selected
+        val currentSelection = selectedShipping
+        when {
+            selected != null -> selectedShipping = selected
+            currentSelection == null || currentSelection !in visibleRates -> selectedShipping = visibleRates.firstOrNull()
+        }
     }
 
     LaunchedEffect(createdOrder?.orderId, createdOrder?.paymentMethod) {
@@ -136,7 +150,7 @@ fun StoreCheckoutScreen(
         firstName.trim(), lastName.trim(), email.trim(), phone.trim(),
         address.trim(), address2.trim(), postcode.trim(), city.trim(), state.trim().uppercase(), country.trim().uppercase()
     )
-    val shippingOptions = cart.shippingRates.flatMap { pack -> pack.rates.map { pack to it } }
+    val shippingOptions = filteredShippingPackages.flatMap { pack -> pack.rates.map { pack to it } }
     val paymentInProgress = paymentState in setOf(
         StoreCardPaymentState.OPENING,
         StoreCardPaymentState.WAITING_RETURN,

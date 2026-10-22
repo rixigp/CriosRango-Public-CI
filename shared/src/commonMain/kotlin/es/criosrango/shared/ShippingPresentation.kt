@@ -1,5 +1,8 @@
 package es.criosrango.shared
 
+import es.criosrango.shared.model.StoreShippingDestination
+import es.criosrango.shared.model.StoreShippingPackage
+
 /**
  * Single UI-only shipping label resolver. It never changes the WooCommerce method/rate IDs,
  * selected state, price, or eligibility; those remain authoritative backend data.
@@ -35,3 +38,35 @@ private fun stripFreeShippingWording(label: String): String =
         .replace(Regex("\\s+"), " ")
         .trim(' ', '-', '—', ':')
         .ifBlank { "Envío a domicilio" }
+
+/**
+ * Restores Android's historical Tarancón eligibility filter at the shared Store API boundary.
+ * Only Correos Express is hidden for Tarancón (Cuenca / CP 16400); other destinations and
+ * Tarancón's free delivery / store-pickup options remain unchanged.
+ */
+fun filterStoreShippingPackagesForDestination(
+    packages: List<StoreShippingPackage>,
+    fallbackDestination: StoreShippingDestination? = null
+): List<StoreShippingPackage> = packages.map { pack ->
+    val destination = pack.destination ?: fallbackDestination
+    if (!isTarancónDestination(destination)) return@map pack
+    pack.copy(rates = pack.rates.filterNot { rate ->
+        listOf(rate.name, rate.methodId, rate.rateId)
+            .joinToString(" ")
+            .normalizedShippingKey()
+            .contains("correos express")
+    })
+}
+
+private fun isTarancónDestination(destination: StoreShippingDestination?): Boolean {
+    if (destination == null) return false
+    val city = destination.city.normalizedShippingKey()
+    val postcode = destination.postcode.trim()
+    val province = destination.state.normalizedShippingKey()
+    return city.contains("tarancon") && (postcode.startsWith("1640") ||
+        province.contains("cuenca") || province == "cu")
+}
+
+private fun String.normalizedShippingKey(): String = lowercase()
+    .replace('á', 'a').replace('é', 'e').replace('í', 'i')
+    .replace('ó', 'o').replace('ú', 'u').replace('ü', 'u')
