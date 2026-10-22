@@ -9,7 +9,15 @@ final class PushNotificationBridge: NSObject {
     private let defaults = UserDefaults.standard
     private let tokenKey = "criosrango_apns_token"
     private let pendingUnregisterKey = "criosrango_push_pending_unregister_token"
+    private var refreshObserver: NSObjectProtocol?
     func configure() {
+        if refreshObserver == nil {
+            refreshObserver = NotificationCenter.default.addObserver(
+                forName: Notification.Name("criosrango.push.refresh-registration"),
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in self?.refreshRegistration() }
+        }
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             let status: String
             switch settings.authorizationStatus {

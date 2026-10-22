@@ -1,7 +1,7 @@
 package es.criosrango.shared
 
+import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSUserDefaults
-import platform.UIKit.UIApplication
 import platform.UserNotifications.UNAuthorizationOptionAlert
 import platform.UserNotifications.UNAuthorizationOptionBadge
 import platform.UserNotifications.UNAuthorizationOptionSound
@@ -29,7 +29,7 @@ actual object PushPreferencesPlatform {
             IosPushDiagnostics.recordPermission(status)
             if (status == "AUTORIZADO") {
                 IosPushDiagnostics.recordRegistrationRequested()
-                UIApplication.sharedApplication.registerForRemoteNotifications()
+                NSNotificationCenter.defaultCenter.postNotificationName("criosrango.push.refresh-registration", object = null)
             } else if (status == "NO DETERMINADO") {
                 UNUserNotificationCenter.currentNotificationCenter().requestAuthorizationWithOptions(
                     UNAuthorizationOptionAlert or UNAuthorizationOptionBadge or UNAuthorizationOptionSound
@@ -38,7 +38,7 @@ actual object PushPreferencesPlatform {
                     if (error != null) IosPushDiagnostics.recordRegistrationFailure(error::class.simpleName ?: "NSError", error.localizedDescription)
                     if (granted) {
                         IosPushDiagnostics.recordRegistrationRequested()
-                        UIApplication.sharedApplication.registerForRemoteNotifications()
+                        NSNotificationCenter.defaultCenter.postNotificationName("criosrango.push.refresh-registration", object = null)
                     }
                 }
             }
