@@ -179,8 +179,8 @@ fun AccountLoginScreen(
         val id = selectedOrderId ?: return@LaunchedEffect
         if (currentUser == null || selectedOrderFromShared != null) return@LaunchedEffect
         when (val resolution = sharedOrdersOwner.resolveSelection(id)) {
-            is StoreOrderSelectionResolution.Resolved -> selectedOrderFromShared = resolution.order
-            StoreOrderSelectionResolution.NotFound -> selectedOrderId = null
+            is StoreOrderSelectionResolution.Resolved -> if (selectedOrderId == id && resolution.order.id == id) selectedOrderFromShared = resolution.order
+            StoreOrderSelectionResolution.NotFound -> if (selectedOrderId == id && initialOrderId != id) selectedOrderId = null
             StoreOrderSelectionResolution.Pending, is StoreOrderSelectionResolution.TransientError -> Unit
         }
     }
