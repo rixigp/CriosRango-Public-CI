@@ -79,6 +79,7 @@ fun AccountLoginScreen(
     vm: AccountViewModel = viewModel(),
     openLoginOnStart: Boolean = false,
     initialOrderId: Int? = null,
+    onPushOrderConsumed: () -> Unit = {},
     openPromotionsOnStart: Boolean = false,
     onAuthenticated: (() -> Unit)? = null,
     onPromotionsOpened: () -> Unit = {},
@@ -135,6 +136,15 @@ fun AccountLoginScreen(
     }
     var selectedOrderId by remember { mutableStateOf<Int?>(initialOrderId) }
     var selectedOrderFromShared by remember { mutableStateOf<AccountOrderSummary?>(null) }
+    // onNewIntent can deliver another order while AccountLoginScreen remains composed.
+    // Treat each changed incoming id as a selection event, not an initial-only value.
+    LaunchedEffect(initialOrderId) {
+        if (initialOrderId != null && initialOrderId > 0) {
+            selectedOrderFromShared = null
+            selectedOrderId = incomingPushOrderSelection(selectedOrderId, initialOrderId)
+            onPushOrderConsumed()
+        }
+    }
     val clearOrderSelection = {
         val cleared = AccountOrderSelectionState(selectedOrderId, selectedOrderFromShared).clear()
         selectedOrderId = cleared.orderId
@@ -739,6 +749,9 @@ private fun formatWalletRemaining(value: Double): String {
 
 internal fun shouldResetAccountUiForAuthState(authState: AccountAuthState): Boolean =
     authState == AccountAuthState.UNAUTHENTICATED
+
+internal fun incomingPushOrderSelection(currentOrderId: Int?, incomingOrderId: Int?): Int? =
+    incomingOrderId?.takeIf { it > 0 } ?: currentOrderId
 
 internal data class AccountOrderSelectionState(
     val orderId: Int? = null,

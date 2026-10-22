@@ -23,6 +23,23 @@ class PushNotificationRoutingTest {
     }
 
     @Test
+    fun incomingPushOrderWhileAccountIsAlreadyOpen_selectsNewExactOrder() {
+        assertEquals(57625, incomingPushOrderSelection(57624, 57625))
+    }
+
+    @Test
+    fun incomingPushOrder_twice_selectsSecondOrderInsteadOfStaleFirst() {
+        val first = incomingPushOrderSelection(null, 57624)
+        assertEquals(57625, incomingPushOrderSelection(first, 57625))
+    }
+
+    @Test
+    fun invalidIncomingPushOrderId_doesNotCrashOrReplaceCurrentSelection() {
+        assertEquals(57624, incomingPushOrderSelection(57624, 0))
+        assertEquals(null, incomingPushOrderSelection(null, null))
+    }
+
+    @Test
     fun registrationPayload_usesRealFcmTokenAndNeverFid() {
         val json = pushRegistrationPayload("TEST_FCM_TOKEN", true, false).toJson()
         assertEquals("android", json.getString("platform"))

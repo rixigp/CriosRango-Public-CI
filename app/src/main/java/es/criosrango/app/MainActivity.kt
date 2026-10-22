@@ -345,12 +345,6 @@ private fun CriosRangoApp(
             pushOrderIdState.value = null
         }
     }
-    LaunchedEffect(tab, pushType, pendingPushOrderId) {
-        // AccountLoginScreen captures initialOrderId during composition; clear the host copy afterwards.
-        if (tab == AppTab.ACCOUNT && pushType == null && pendingPushOrderId != null) {
-            pendingPushOrderId = null
-        }
-    }
     val homeListState = androidx.compose.foundation.lazy.rememberLazyListState()
     val saveableStateHolder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     var checkoutOpen by remember { mutableStateOf(false) }
@@ -550,6 +544,7 @@ private fun CriosRangoApp(
                         vm = accountViewModel,
                         openLoginOnStart = returnToCartAfterLogin,
                         initialOrderId = pendingPushOrderId,
+                        onPushOrderConsumed = { pendingPushOrderId = null },
                         openPromotionsOnStart = openPromotionsOnStart,
                         onPromotionsOpened = { openPromotionsOnStart = false },
                         onRootBack = { tab = utilityReturnTab ?: AppTab.HOME; utilityReturnTab = null },
