@@ -21,6 +21,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -67,6 +70,16 @@ internal fun pushRegistrationPayload(
     orderUpdates: Boolean
 ): PushRegistrationPayload = PushRegistrationPayload(identifier, newProducts, orderUpdates)
 
+data class PushRegistrationDiagnostics(
+    val tokenAvailable: Boolean? = null,
+    val registerAttempted: Boolean? = null,
+    val httpResult: String = "Sin intento registrado",
+    val authenticated: Boolean? = null,
+    val registerSuccess: Boolean? = null,
+    val syncPending: Boolean = true,
+    val orderUpdatesSent: Boolean? = null
+)
+
 internal fun pushAuthorizationHeader(accountToken: String?): String? =
     accountToken?.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
 
@@ -94,6 +107,16 @@ object PushNotificationController {
     private const val PENDING_UNREGISTER_KEY = "criosrango_push_pending_unregister_tokens"
     private const val PREFERENCES_SYNC_PENDING_KEY = "criosrango_push_preferences_sync_pending"
     private const val TAG = "CriosRangoPush"
+    private const val DIAG_TOKEN = "criosrango_push_diag_token_available"
+    private const val DIAG_ATTEMPTED = "criosrango_push_diag_register_attempted"
+    private const val DIAG_HTTP = "criosrango_push_diag_http_result"
+    private const val DIAG_AUTH = "criosrango_push_diag_authenticated"
+    private const val DIAG_SUCCESS = "criosrango_push_diag_register_success"
+    private const val DIAG_PENDING = "criosrango_push_diag_sync_pending"
+    private const val DIAG_ORDER_UPDATES = "criosrango_push_diag_order_updates_sent"
+
+    private val _diagnostics = MutableStateFlow(PushRegistrationDiagnostics())
+    val diagnostics: StateFlow<PushRegistrationDiagnostics> = _diagnostics.asStateFlow()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val syncMutex = Mutex()
@@ -123,19 +146,81 @@ object PushNotificationController {
     fun syncPreferences(context: Context) = syncRegistration(context)
 
     /** Explicit retry hook for login success, session restore, resume and preference changes. */
+    fun loadDiagnostics(context: Context) {
+        val prefs = context.applicationContext.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
+        _diagnostics.value = PushRegistrationDiagnostics(
+            tokenAvailable = prefs.getNullableBoolean(DIAG_TOKEN),
+            registerAttempted = prefs.getNullableBoolean(DIAG_ATTEMPTED),
+            httpResult = prefs.getString(DIAG_HTTP, "Sin intento registrado") ?: "Sin intento registrado",
+            authenticated = prefs.getNullableBoolean(DIAG_AUTH),
+            registerSuccess = prefs.getNullableBoolean(DIAG_SUCCESS),
+            syncPending = prefs.getBoolean(DIAG_PENDING, prefs.getBoolean(PREFERENCES_SYNC_PENDING_KEY, true)),
+            orderUpdatesSent = prefs.getNullableBoolean(DIAG_ORDER_UPDATES)
+        )
+    }
+
+    private fun android.content.SharedPreferences.getNullableBoolean(key: String): Boolean? =
+        if (contains(key)) getBoolean(key, false) else null
+
+    private fun persistDiagnostics(context: Context, value: PushRegistrationDiagnostics) {
+        val prefs = context.applicationContext.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
+        prefs.edit().apply {
+            value.tokenAvailable?.let { putBoolean(DIAG_TOKEN, it) } ?: remove(DIAG_TOKEN)
+            value.registerAttempted?.let { putBoolean(DIAG_ATTEMPTED, it) } ?: remove(DIAG_ATTEMPTED)
+            putString(DIAG_HTTP, value.httpResult)
+            value.authenticated?.let { putBoolean(DIAG_AUTH, it) } ?: remove(DIAG_AUTH)
+            value.registerSuccess?.let { putBoolean(DIAG_SUCCESS, it) } ?: remove(DIAG_SUCCESS)
+            putBoolean(DIAG_PENDING, value.syncPending)
+            value.orderUpdatesSent?.let { putBoolean(DIAG_ORDER_UPDATES, it) } ?: remove(DIAG_ORDER_UPDATES)
+        }.apply()
+        _diagnostics.value = value
+    }
+
     fun syncRegistration(context: Context) {
         val app = context.applicationContext
+        persistDiagnostics(app, _diagnostics.value.copy(
+            tokenAvailable = null,
+            registerAttempted = false,
+            httpResult = "Esperando token FCM",
+            authenticated = null,
+            registerSuccess = null,
+            syncPending = true,
+            orderUpdatesSent = null
+        ))
         app.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
             .edit().putBoolean(PREFERENCES_SYNC_PENDING_KEY, true).apply()
         FirebaseMessaging.getInstance().token
-            .addOnSuccessListener { token -> onRegistered(app, token) }
+            .addOnSuccessListener { token ->
+                if (token.isBlank()) {
+                    persistDiagnostics(app, _diagnostics.value.copy(
+                        tokenAvailable = false, httpResult = "Token FCM vacío", syncPending = true
+                    ))
+                    android.util.Log.w(TAG, "FCM token available NO; sync pending YES")
+                } else {
+                    persistDiagnostics(app, _diagnostics.value.copy(tokenAvailable = true))
+                    android.util.Log.i(TAG, "FCM token available YES")
+                    onRegistered(app, token)
+                }
+            }
             .addOnFailureListener { error ->
-                android.util.Log.w(TAG, "Push token retrieval failed (${error.javaClass.simpleName}); sync pending YES")
+                persistDiagnostics(app, _diagnostics.value.copy(
+                    tokenAvailable = false,
+                    httpResult = "TOKEN_ERROR ${error.javaClass.simpleName}",
+                    syncPending = true
+                ))
+                android.util.Log.w(TAG, "FCM token available NO (${error.javaClass.simpleName}); sync pending YES")
             }
     }
 
     fun onRegistered(context: Context, token: String) {
-        if (token.isBlank()) return
+        if (token.isBlank()) {
+            persistDiagnostics(context, _diagnostics.value.copy(
+                tokenAvailable = false, httpResult = "Token FCM vacío", syncPending = true
+            ))
+            android.util.Log.w(TAG, "Registration skipped: blank FCM token; sync pending YES")
+            return
+        }
+        persistDiagnostics(context, _diagnostics.value.copy(tokenAvailable = true))
         scope.launch { syncMutex.withLock { syncRegisteredToken(context.applicationContext, token) } }
     }
 
@@ -171,9 +256,20 @@ object PushNotificationController {
         val pending = prefs.getStringSet(PENDING_UNREGISTER_KEY, emptySet()).orEmpty().toMutableSet()
         val pushPrefs = PushPreferencesStore(context)
         val payload = pushRegistrationPayload(token, pushPrefs.newProducts, pushPrefs.orderUpdates)
-        android.util.Log.i(TAG, "Registration attempt started; authenticated=${!accountToken.isNullOrBlank()}")
-        if (!postRegistration(payload, accountToken)) {
+        val authenticated = !accountToken.isNullOrBlank()
+        persistDiagnostics(context, _diagnostics.value.copy(
+            tokenAvailable = true,
+            registerAttempted = true,
+            httpResult = "POST en curso",
+            authenticated = authenticated,
+            registerSuccess = null,
+            syncPending = true,
+            orderUpdatesSent = pushPrefs.orderUpdates
+        ))
+        android.util.Log.i(TAG, "Registration attempt started; authenticated=$authenticated; order_updates=${pushPrefs.orderUpdates}")
+        if (!postRegistration(context, payload, accountToken)) {
             prefs.edit().putBoolean(PREFERENCES_SYNC_PENDING_KEY, true).apply()
+            persistDiagnostics(context, _diagnostics.value.copy(syncPending = true))
             android.util.Log.w(TAG, "Registration failed; sync pending YES; old unregisters postponed=${pending.isNotEmpty() || shouldDeactivatePreviousToken(previousToken, token)}")
             // Register-first invariant: never deactivate an old identity unless the new POST succeeded.
             return
@@ -191,10 +287,15 @@ object PushNotificationController {
         pending.remove(token)
         prefs.edit().putString(IDENTIFIER_TYPE_KEY, "fcm_token").putString(IDENTIFIER_KEY, token)
             .putStringSet(PENDING_UNREGISTER_KEY, pending).remove(PREFERENCES_SYNC_PENDING_KEY).apply()
+        persistDiagnostics(context, _diagnostics.value.copy(
+            registerSuccess = true,
+            syncPending = false
+        ))
         android.util.Log.i(TAG, "Registration successful; authenticated=${!accountToken.isNullOrBlank()}; sync pending NO")
     }
 
     private fun postRegistration(
+        context: Context,
         payload: PushRegistrationPayload,
         accountToken: String?
     ): Boolean {
@@ -208,11 +309,26 @@ object PushNotificationController {
 
         return try {
             httpClient.newCall(request).execute().use { response ->
-                android.util.Log.i(TAG, "Registration HTTP ${response.code}; authenticated=${!accountToken.isNullOrBlank()}")
-                response.isSuccessful
+                val successful = response.isSuccessful
+                val category = "HTTP ${response.code}"
+                persistDiagnostics(context, _diagnostics.value.copy(
+                    httpResult = category,
+                    authenticated = !accountToken.isNullOrBlank(),
+                    registerSuccess = successful,
+                    syncPending = !successful
+                ))
+                android.util.Log.i(TAG, "Registration $category; authenticated=${!accountToken.isNullOrBlank()}; success=$successful; sync pending=${!successful}")
+                successful
             }
         } catch (error: Exception) {
-            android.util.Log.w(TAG, "Registration request failed (${error.javaClass.simpleName}); authenticated=${!accountToken.isNullOrBlank()}")
+            val category = "NETWORK_ERROR ${error.javaClass.simpleName}"
+            persistDiagnostics(context, _diagnostics.value.copy(
+                httpResult = category,
+                authenticated = !accountToken.isNullOrBlank(),
+                registerSuccess = false,
+                syncPending = true
+            ))
+            android.util.Log.w(TAG, "Registration $category; authenticated=${!accountToken.isNullOrBlank()}; success NO; sync pending YES")
             false
         }
     }
