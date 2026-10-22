@@ -169,7 +169,7 @@ object PushNotificationController {
         val prefs = context.applicationContext.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
         _diagnostics.value = PushRegistrationDiagnostics(
             fidAvailable = prefs.getNullableBoolean(DIAG_TOKEN),
-            registerReceived = prefs.getNullableBoolean(DIAG_REGISTER_RECEIVED)
+            registerReceived = prefs.getNullableBoolean(DIAG_REGISTER_RECEIVED),
             registerAttempted = prefs.getNullableBoolean(DIAG_ATTEMPTED),
             httpResult = prefs.getString(DIAG_HTTP, "Sin intento registrado") ?: "Sin intento registrado",
             tokenErrorClass = prefs.getString(DIAG_TOKEN_ERROR_CLASS, null),
