@@ -323,6 +323,8 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 }
                 _user.value = restoredUser
                 _authState.value = AccountAuthState.AUTHENTICATED
+                // restore() validates the persisted token before authenticated Push sync.
+                PushNotificationController.syncRegistration(getApplication())
 
                 try {
                     val loadedAddress = repository.customerAddress()
@@ -440,6 +442,8 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 _user.value = created
                 sharedAuthSession.publishAuthenticatedUser(created)
                 _authState.value = AccountAuthState.AUTHENTICATED
+                // Registration/session persistence completes before Push reads account_token.
+                PushNotificationController.syncRegistration(getApplication())
                 val loadedAddress = try {
                     repository.customerAddress()
                 } catch (exception: Exception) {
@@ -493,6 +497,8 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 }
                 _user.value = loggedUser
                 _authState.value = AccountAuthState.AUTHENTICATED
+                // sharedAuthSession.login has persisted the account token before returning.
+                PushNotificationController.syncRegistration(getApplication())
                 val loadedAddress = repository.customerAddress()
                 _address.value = loadedAddress
                 if (ordersLoadGate.tryAcquire()) {

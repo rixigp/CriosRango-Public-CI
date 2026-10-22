@@ -67,6 +67,9 @@ internal fun pushRegistrationPayload(
     orderUpdates: Boolean
 ): PushRegistrationPayload = PushRegistrationPayload(identifier, newProducts, orderUpdates)
 
+internal fun pushAuthorizationHeader(accountToken: String?): String? =
+    accountToken?.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
+
 internal fun shouldDeactivatePreviousToken(previousToken: String?, currentToken: String): Boolean =
     !previousToken.isNullOrBlank() && previousToken != currentToken
 
@@ -90,6 +93,7 @@ object PushNotificationController {
     private const val IDENTIFIER_KEY = "criosrango_push_identifier"
     private const val PENDING_UNREGISTER_KEY = "criosrango_push_pending_unregister_tokens"
     private const val PREFERENCES_SYNC_PENDING_KEY = "criosrango_push_preferences_sync_pending"
+    private const val TAG = "CriosRangoPush"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val syncMutex = Mutex()
@@ -98,8 +102,8 @@ object PushNotificationController {
 
     fun initialize(context: Context) {
         createChannels(context)
-        // Product preferences are independent from the OS notification permission.
-        FirebaseMessaging.getInstance().token.addOnSuccessListener { token -> onRegistered(context, token) }
+        // onResume is a bounded retry opportunity for any previously failed registration.
+        syncRegistration(context)
     }
 
     fun requestPermission(context: Context) {
@@ -116,10 +120,18 @@ object PushNotificationController {
         }
     }
 
-    fun syncPreferences(context: Context) {
-        context.applicationContext.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
+    fun syncPreferences(context: Context) = syncRegistration(context)
+
+    /** Explicit retry hook for login success, session restore, resume and preference changes. */
+    fun syncRegistration(context: Context) {
+        val app = context.applicationContext
+        app.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
             .edit().putBoolean(PREFERENCES_SYNC_PENDING_KEY, true).apply()
-        FirebaseMessaging.getInstance().token.addOnSuccessListener { token -> onRegistered(context, token) }
+        FirebaseMessaging.getInstance().token
+            .addOnSuccessListener { token -> onRegistered(app, token) }
+            .addOnFailureListener { error ->
+                android.util.Log.w(TAG, "Push token retrieval failed (${error.javaClass.simpleName}); sync pending YES")
+            }
     }
 
     fun onRegistered(context: Context, token: String) {
@@ -159,19 +171,27 @@ object PushNotificationController {
         val pending = prefs.getStringSet(PENDING_UNREGISTER_KEY, emptySet()).orEmpty().toMutableSet()
         val pushPrefs = PushPreferencesStore(context)
         val payload = pushRegistrationPayload(token, pushPrefs.newProducts, pushPrefs.orderUpdates)
+        android.util.Log.i(TAG, "Registration attempt started; authenticated=${!accountToken.isNullOrBlank()}")
         if (!postRegistration(payload, accountToken)) {
             prefs.edit().putBoolean(PREFERENCES_SYNC_PENDING_KEY, true).apply()
-            // A pending logout must still detach the previous account even when the new registration fails.
-            pending.toList().forEach { stale -> if (deactivateToken(stale, accountToken)) pending.remove(stale) }
-            prefs.edit().putStringSet(PENDING_UNREGISTER_KEY, pending).apply()
+            android.util.Log.w(TAG, "Registration failed; sync pending YES; old unregisters postponed=${pending.isNotEmpty() || shouldDeactivatePreviousToken(previousToken, token)}")
+            // Register-first invariant: never deactivate an old identity unless the new POST succeeded.
             return
         }
-        // Register/reassign first; only then retire old identities.
-        pending.filter { it != token }.forEach { stale -> if (deactivateToken(stale, accountToken)) pending.remove(stale) }
-        if (previousToken != null && previousToken != token && !deactivateToken(previousToken, accountToken)) pending.add(previousToken)
+        pending.filter { it != token }.forEach { stale ->
+            val removed = deactivateToken(stale, accountToken)
+            if (removed) pending.remove(stale)
+            android.util.Log.i(TAG, "Pending unregister ${if (removed) "executed" else "retained for retry"}")
+        }
+        if (previousToken != null && previousToken != token) {
+            val removed = deactivateToken(previousToken, accountToken)
+            if (!removed) pending.add(previousToken)
+            android.util.Log.i(TAG, "Previous token unregister ${if (removed) "executed" else "retained for retry"}")
+        }
         pending.remove(token)
         prefs.edit().putString(IDENTIFIER_TYPE_KEY, "fcm_token").putString(IDENTIFIER_KEY, token)
             .putStringSet(PENDING_UNREGISTER_KEY, pending).remove(PREFERENCES_SYNC_PENDING_KEY).apply()
+        android.util.Log.i(TAG, "Registration successful; authenticated=${!accountToken.isNullOrBlank()}; sync pending NO")
     }
 
     private fun postRegistration(
@@ -182,23 +202,35 @@ object PushNotificationController {
             .url(ENDPOINT)
             .post(payload.toJson().toString().toRequestBody("application/json".toMediaType()))
             .apply {
-                accountToken?.let { header("Authorization", "Bearer $it") }
+                pushAuthorizationHeader(accountToken)?.let { header("Authorization", it) }
             }
             .build()
 
-        return runCatching {
+        return try {
             httpClient.newCall(request).execute().use { response ->
+                android.util.Log.i(TAG, "Registration HTTP ${response.code}; authenticated=${!accountToken.isNullOrBlank()}")
                 response.isSuccessful
             }
-        }.getOrDefault(false)
+        } catch (error: Exception) {
+            android.util.Log.w(TAG, "Registration request failed (${error.javaClass.simpleName}); authenticated=${!accountToken.isNullOrBlank()}")
+            false
+        }
     }
 
     private fun deactivateToken(token: String, accountToken: String?): Boolean {
         if (token.isBlank()) return false
         val request = Request.Builder().url(ENDPOINT)
             .delete(buildUnregisterPayload(token).toString().toRequestBody("application/json".toMediaType()))
-            .apply { accountToken?.let { header("Authorization", "Bearer $it") } }.build()
-        return runCatching { httpClient.newCall(request).execute().use { it.isSuccessful } }.getOrDefault(false)
+            .apply { pushAuthorizationHeader(accountToken)?.let { header("Authorization", it) } }.build()
+        return try {
+            httpClient.newCall(request).execute().use { response ->
+                android.util.Log.i(TAG, "Unregister HTTP ${response.code}; authenticated=${!accountToken.isNullOrBlank()}")
+                response.isSuccessful
+            }
+        } catch (error: Exception) {
+            android.util.Log.w(TAG, "Unregister failed (${error.javaClass.simpleName}); authenticated=${!accountToken.isNullOrBlank()}")
+            false
+        }
     }
 
     fun createChannels(context: Context) {

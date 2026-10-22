@@ -34,6 +34,20 @@ class PushNotificationRoutingTest {
     }
 
     @Test
+    fun authenticatedRegistrationUsesPersistedBearerTokenOnly() {
+        assertEquals("Bearer ACCOUNT_TOKEN", pushAuthorizationHeader("ACCOUNT_TOKEN"))
+        assertEquals(null, pushAuthorizationHeader(null))
+        assertEquals(null, pushAuthorizationHeader(""))
+    }
+
+    @Test
+    fun orderUpdatesTrueIsPreservedInRegistrationPayload() {
+        val json = pushRegistrationPayload("TEST_FCM_TOKEN", false, true).toJson()
+        assertEquals(false, json.getBoolean("new_products"))
+        assertTrue(json.getBoolean("order_updates"))
+    }
+
+    @Test
     fun unregisterPayload_usesFcmTokenIdentity() {
         val json = PushNotificationController.buildUnregisterPayload("TEST_FCM_TOKEN")
         assertEquals("android", json.getString("platform"))
