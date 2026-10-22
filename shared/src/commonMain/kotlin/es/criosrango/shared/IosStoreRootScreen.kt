@@ -251,13 +251,6 @@ fun CriosRangoIOSRootScreen(
         }
         onPushNavigationConsumed()
     }
-    LaunchedEffect(section, pushNavigation, pendingPushOrderId) {
-        // Let Account capture the pending ID before clearing the root-level copy.
-        if (section == IosRootSection.ACCOUNT && pushNavigation == null && pendingPushOrderId != null) {
-            pendingPushOrderId = null
-        }
-    }
-
     val cartController = remember(cartStore) { StoreCartController(cartStore) }
     LaunchedEffect(cartController) {
         runCatching { cartController.refreshAwait() }
@@ -473,6 +466,9 @@ fun CriosRangoIOSRootScreen(
                     onApplyWalletCoupon = { code -> cartStore.applyCouponAwait(code) },
                     modifier = Modifier.padding(padding),
                     initialOrderId = pendingPushOrderId,
+                    onInitialOrderConsumed = { consumedOrderId ->
+                        if (pendingPushOrderId == consumedOrderId) pendingPushOrderId = null
+                    },
                     openPromotionsOnStart = openPromotionsOnStart,
                     openLoginOnStart = accountLoginFromCart,
                     onBackFromLogin = if (accountLoginFromCart) {

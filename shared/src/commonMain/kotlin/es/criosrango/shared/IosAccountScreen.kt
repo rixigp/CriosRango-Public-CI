@@ -89,6 +89,7 @@ fun CriosRangoIOSAccountScreen(
     modifier: Modifier = Modifier,
     onOpenExternalUrl: (String) -> Unit,
     initialOrderId: Int? = null,
+    onInitialOrderConsumed: (Int) -> Unit = {},
     openPromotionsOnStart: Boolean = false,
     openLoginOnStart: Boolean = false,
     onBackFromLogin: (() -> Unit)? = null,
@@ -106,6 +107,14 @@ fun CriosRangoIOSAccountScreen(
     var returnPickerOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
     val ordersOwner = remember(repository, sessionState) { StoreOrdersOwner(repository, sessionState) }
     var pendingPushOrderId by remember { mutableStateOf(initialOrderId) }
+    var consumedPushOrderId by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(initialOrderId) {
+        val id = initialOrderId?.takeIf { it > 0 } ?: return@LaunchedEffect
+        pendingPushOrderId = id
+        consumedPushOrderId = null
+        selectedOrder = null
+        page = if (user == null) IosAccountPage.LOGIN else IosAccountPage.ORDERS
+    }
     var selectedInfoPage by remember { mutableStateOf<AccountInfoPage?>(null) }
     var forgotReturnPage by remember { mutableStateOf(IosAccountPage.LOGIN) }
     var addressReturnPage by remember { mutableStateOf(IosAccountPage.HOME) }
@@ -144,9 +153,13 @@ fun CriosRangoIOSAccountScreen(
                 is StoreOrderSelectionResolution.Resolved -> {
                     selectedOrder = resolution.order
                     page = IosAccountPage.ORDER_DETAIL
+                    if (consumedPushOrderId != id) {
+                        consumedPushOrderId = id
+                        onInitialOrderConsumed(id)
+                    }
                     pendingPushOrderId = null
                 }
-                StoreOrderSelectionResolution.NotFound -> pendingPushOrderId = null
+                StoreOrderSelectionResolution.NotFound -> Unit
                 StoreOrderSelectionResolution.Pending -> Unit
                 is StoreOrderSelectionResolution.TransientError -> Unit
             }
@@ -164,9 +177,13 @@ fun CriosRangoIOSAccountScreen(
             is StoreOrderSelectionResolution.Resolved -> {
                 selectedOrder = resolution.order
                 page = IosAccountPage.ORDER_DETAIL
+                if (consumedPushOrderId != id) {
+                    consumedPushOrderId = id
+                    onInitialOrderConsumed(id)
+                }
                 pendingPushOrderId = null
             }
-            StoreOrderSelectionResolution.NotFound -> pendingPushOrderId = null
+            StoreOrderSelectionResolution.NotFound -> Unit
             StoreOrderSelectionResolution.Pending, is StoreOrderSelectionResolution.TransientError -> Unit
         }
     }
@@ -174,7 +191,11 @@ fun CriosRangoIOSAccountScreen(
     fun finishAuthentication(authenticatedUser: AccountUser) {
         user = authenticatedUser
         error = null
-        page = if (openPromotionsOnStart) IosAccountPage.WALLET else IosAccountPage.HOME
+        page = when {
+            pendingPushOrderId != null -> IosAccountPage.ORDERS
+            openPromotionsOnStart -> IosAccountPage.WALLET
+            else -> IosAccountPage.HOME
+        }
         scope.launch {
             runCatching { ordersOwner.claimPendingOrderAndRefresh() }
                 .onFailure { println("KMP_ACCOUNT_CLAIM_FAILED=${it.message}") }

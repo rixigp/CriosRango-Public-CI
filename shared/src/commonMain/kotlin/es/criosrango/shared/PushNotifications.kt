@@ -65,7 +65,9 @@ object PushNotificationContract {
 
 data class IosPushNavigation(val type: String, val orderId: Int? = null) {
     val destination: PushDestination
-        get() = PushNotificationContract.destination(type, orderId?.toString())
+        get() = if (
+            type == PushNotificationType.ORDER_STATUS && (orderId == null || orderId <= 0)
+        ) PushDestination.Ignore else PushNotificationContract.destination(type, orderId?.toString())
 }
 
 object StorePushPreferencesContract {
