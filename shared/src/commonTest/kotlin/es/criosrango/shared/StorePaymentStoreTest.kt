@@ -351,6 +351,13 @@ class StorePaymentStoreTest {
 
         assertEquals(StoreCardPaymentState.NOT_PAID, paymentStore.state.value)
         assertNull(pendingStore.load())
+
+        // Host cleanup after the cancellation must destroy all transient payment references.
+        paymentStore.clearForNewProcess()
+        assertEquals(StoreCardPaymentState.IDLE, paymentStore.state.value)
+        assertNull(paymentStore.orderId.value)
+        assertNull(paymentStore.redirectUrl.value)
+        assertNull(paymentStore.error.value)
     }
 
     @Test
