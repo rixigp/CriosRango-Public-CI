@@ -29,7 +29,7 @@ actual object PushPreferencesPlatform {
             IosPushDiagnostics.recordPermission(status)
             if (status == "AUTORIZADO") {
                 IosPushDiagnostics.recordRegistrationRequested()
-                NSNotificationCenter.defaultCenter.postNotificationName("criosrango.push.refresh-registration", object = null)
+                NSNotificationCenter.defaultCenter.postNotificationName("criosrango.push.refresh-registration", null)
             } else if (status == "NO DETERMINADO") {
                 UNUserNotificationCenter.currentNotificationCenter().requestAuthorizationWithOptions(
                     UNAuthorizationOptionAlert or UNAuthorizationOptionBadge or UNAuthorizationOptionSound
