@@ -1261,8 +1261,6 @@ internal fun IosStoreError(message: String, retry: () -> Unit) {
     }
 }
 
-@Composable
-private fun IosCategoryRootPreview(): Unit = Unit
 
 internal fun shouldReturnHomeAfterCatalogBack(historyIsEmpty: Boolean, pageIsRoot: Boolean, catalogOriginHome: Boolean): Boolean =
     historyIsEmpty && pageIsRoot && catalogOriginHome

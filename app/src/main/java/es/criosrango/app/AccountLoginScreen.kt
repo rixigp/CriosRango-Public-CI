@@ -25,8 +25,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.outlined.Chat
-import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
@@ -36,7 +34,6 @@ import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Sell
-import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
@@ -625,47 +622,6 @@ private fun AccountHelpContent(onBack: () -> Unit) {
             }
         }
     )
-}
-
-@Composable
-private fun AccountHelpContentLegacy(onBack: () -> Unit) {
-    val context = LocalContext.current
-    Column(Modifier.fillMaxWidth()) {
-        StorePageHeader(title = "Ayuda", onBack = onBack)
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-            Spacer(Modifier.height(4.dp))
-            Text("Contacta con nosotros", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = Color(0xFF183B35))
-            Spacer(Modifier.height(16.dp))
-            HelpContactRow("WhatsApp", "633 246 788", Icons.AutoMirrored.Outlined.Chat) {
-                val message = "Hola, necesito ayuda con la app de Críos&Rango."
-                val encodedMessage = java.net.URLEncoder.encode(message, "UTF-8")
-                val whatsappUri = Uri.parse("https://wa.me/34633246788?text=$encodedMessage")
-                val intent = Intent(Intent.ACTION_VIEW, whatsappUri)
-                runCatching { context.startActivity(intent) }.onFailure {
-                    Toast.makeText(context, "No se ha podido abrir WhatsApp.", Toast.LENGTH_SHORT).show()
-                }
-            }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            HelpContactRow("Llamar", "969 091 236", Icons.Outlined.Phone) {
-                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:+34969091236"))
-                runCatching { context.startActivity(intent) }.onFailure {
-                    Toast.makeText(context, "No se ha podido abrir el teléfono.", Toast.LENGTH_SHORT).show()
-                }
-            }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            HelpContactRow("Correo electrónico", "criosrango@criosrango.es", Icons.Outlined.Email) {
-                val intent = Intent(Intent.ACTION_SENDTO).apply {
-                    data = Uri.parse("mailto:criosrango@criosrango.es")
-                    putExtra(Intent.EXTRA_SUBJECT, "Consulta desde la app Críos&Rango")
-                }
-                runCatching { context.startActivity(intent) }.onFailure {
-                    Toast.makeText(context, "No se ha podido abrir el correo.", Toast.LENGTH_SHORT).show()
-                }
-            }
-            Spacer(Modifier.height(28.dp))
-            StoreHoursSection()
-        }
-    }
 }
 
 @Composable
