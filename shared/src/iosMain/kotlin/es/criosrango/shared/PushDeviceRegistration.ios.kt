@@ -77,8 +77,15 @@ actual object PushDeviceRegistration {
                 httpClient.post(PUSH_DEVICE_ENDPOINT) {
                     contentType(ContentType.Application.Json)
                     accountToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
-                    setBody(mapOf("platform" to "ios", "identifier_type" to "apns_token",
-                        "identifier" to token, "new_products" to newProducts, "order_updates" to orderUpdates))
+                    setBody(
+                        PushDeviceRegistrationPayload(
+                            platform = "ios",
+                            identifierType = "apns_token",
+                            identifier = token,
+                            newProducts = newProducts,
+                            orderUpdates = orderUpdates
+                        )
+                    )
                 }
             }
 
@@ -138,7 +145,12 @@ actual object PushDeviceRegistration {
                 client.delete(PUSH_DEVICE_ENDPOINT) {
                     contentType(ContentType.Application.Json)
                     snapshot.accountToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
-                    setBody(mapOf("platform" to "ios", "token" to snapshot.deviceToken))
+                    setBody(
+                        PushDeviceUnregisterPayload(
+                            platform = "ios",
+                            token = snapshot.deviceToken
+                        )
+                    )
                 }
             }
             val accepted = response.status.value in 200..299
