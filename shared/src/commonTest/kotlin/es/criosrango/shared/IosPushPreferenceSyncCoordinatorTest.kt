@@ -20,7 +20,7 @@ class IosPushPreferenceSyncCoordinatorTest {
         val restarted = IosPushPreferenceSyncCoordinator(
             true, true, { _, _ -> }, { _, _ -> true },
             initialPendingUnregisterSnapshot = persisted,
-            unregister = { _, _ -> true }
+            unregister = { _ -> true }
         )
         assertEquals(persisted, restarted.pendingUnregisterSnapshotForTest())
     }
@@ -50,7 +50,7 @@ class IosPushPreferenceSyncCoordinatorTest {
         var persisted: PushUnregisterSnapshot? = null
         val snapshots = mutableListOf<PushUnregisterSnapshot?>()
         val c = IosPushPreferenceSyncCoordinator(
-            true, true, { _, _ -> }, { true },
+            true, true, { _, _ -> }, { _, _ -> true },
             captureUnregisterSnapshot = { generation -> PushUnregisterSnapshot("apns-A", visibleAccount, generation) },
             persistUnregisterSnapshot = { persisted = it; snapshots += it },
             unregister = { true }
