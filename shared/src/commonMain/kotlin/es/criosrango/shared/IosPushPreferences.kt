@@ -1,12 +1,11 @@
 package es.criosrango.shared
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,37 +19,12 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun IosPushPreferences() {
-    val initialNews = remember { PushPreferencesPlatform.newProducts() }
-    val initialOrders = remember { PushPreferencesPlatform.orderUpdates() }
-    var syncState by remember {
-        mutableStateOf(
-            IosPushPreferenceSyncCoordinator.State(
-                desired = IosPushPreferenceSyncCoordinator.Snapshot(initialNews, initialOrders),
-                confirmed = IosPushPreferenceSyncCoordinator.Snapshot(initialNews, initialOrders)
-            )
-        )
-    }
-    val scope = rememberCoroutineScope()
+    val coordinator = IosPushPreferenceSyncRuntime.coordinator
+    var syncState by remember { mutableStateOf(coordinator.state) }
     var checking by remember { mutableStateOf(false) }
-    val coordinator = remember {
-        IosPushPreferenceSyncCoordinator(
-            initialNewProducts = initialNews,
-            initialOrderUpdates = initialOrders,
-            persistDesired = { news, orders ->
-                PushPreferencesPlatform.setNewProducts(news)
-                PushPreferencesPlatform.setOrderUpdates(orders)
-            },
-            postSnapshot = { news, orders ->
-                // Registration reads these defaults synchronously before its first suspension,
-                // so this is the immutable snapshot for the active POST.
-                PushPreferencesPlatform.setNewProducts(news)
-                PushPreferencesPlatform.setOrderUpdates(orders)
-                runCatching { PushDeviceRegistration.registerCurrentDevice() }.isSuccess &&
-                    IosPushDiagnostics.snapshot.accepted == "SÍ" &&
-                    !IosPushDiagnostics.snapshot.pendingSync
-            },
-            onStateChanged = { syncState = it }
-        )
+    DisposableEffect(coordinator) {
+        val unsubscribe = coordinator.observe { syncState = it }
+        onDispose { unsubscribe() }
     }
     val diagnostic = IosPushDiagnostics.snapshot
 
@@ -61,12 +35,12 @@ fun IosPushPreferences() {
             onNewsChanged = { enabled ->
                 coordinator.setNewProducts(enabled)
                 if (enabled) PushPreferencesPlatform.requestPermission()
-                scope.launch { coordinator.synchronize() }
+                IosPushPreferenceSyncRuntime.synchronize()
             },
             onOrderUpdatesChanged = { enabled ->
                 coordinator.setOrderUpdates(enabled)
                 if (enabled) PushPreferencesPlatform.requestPermission()
-                scope.launch { coordinator.synchronize() }
+                IosPushPreferenceSyncRuntime.synchronize()
             }
         )
         Spacer(Modifier.height(6.dp))
@@ -110,10 +84,8 @@ fun IosPushPreferences() {
             onClick = {
                 checking = true
                 PushPreferencesPlatform.requestPermission()
-                scope.launch {
-                    coordinator.synchronize(force = true)
-                    checking = false
-                }
+                IosPushPreferenceSyncRuntime.synchronize(force = true)
+                checking = false
             },
             enabled = !checking && !syncState.syncInProgress,
             modifier = Modifier.fillMaxWidth()

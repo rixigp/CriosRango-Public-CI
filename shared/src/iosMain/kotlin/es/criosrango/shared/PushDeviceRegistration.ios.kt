@@ -12,92 +12,100 @@ import platform.Foundation.NSUserDefaults
 
 private const val PUSH_DEVICE_ENDPOINT = "https://criosrango.es/wp-json/criosrango/v1/push/device"
 private const val PUSH_TOKEN_KEY = "criosrango_apns_token"
-private const val PUSH_PENDING_UNREGISTER_KEY = "criosrango_push_pending_unregister_token"
+private const val PENDING_TOKEN_KEY = "criosrango_push_pending_unregister_token"
+private const val PENDING_ACCOUNT_KEY = "criosrango_push_pending_unregister_account"
+private const val PENDING_GENERATION_KEY = "criosrango_push_pending_unregister_generation"
 
 actual object PushDeviceRegistration {
+    private val defaults get() = NSUserDefaults.standardUserDefaults
+
+    actual fun hasPendingUnregister(): Boolean = loadPendingUnregisterSnapshot() != null
+
+    actual fun captureUnregisterSnapshot(registrationGeneration: Long): PushUnregisterSnapshot? {
+        val token = defaults.stringForKey(PENDING_TOKEN_KEY)?.takeIf { it.isNotBlank() }
+            ?: defaults.stringForKey(PUSH_TOKEN_KEY)?.takeIf { it.isNotBlank() }
+            ?: return null
+        return PushUnregisterSnapshot(
+            deviceToken = token,
+            accountToken = IosAccountTokenStore().load(),
+            registrationGeneration = registrationGeneration
+        )
+    }
+
+    actual fun loadPendingUnregisterSnapshot(): PushUnregisterSnapshot? {
+        val token = defaults.stringForKey(PENDING_TOKEN_KEY)?.takeIf { it.isNotBlank() } ?: return null
+        val account = defaults.stringForKey(PENDING_ACCOUNT_KEY)?.takeIf { it.isNotBlank() }
+        val generation = if (defaults.objectForKey(PENDING_GENERATION_KEY) == null) 0L else defaults.integerForKey(PENDING_GENERATION_KEY)
+        return PushUnregisterSnapshot(token, account, generation)
+    }
+
+    actual fun persistPendingUnregisterSnapshot(snapshot: PushUnregisterSnapshot) {
+        defaults.setObject(snapshot.deviceToken, forKey = PENDING_TOKEN_KEY)
+        if (snapshot.accountToken == null) defaults.removeObjectForKey(PENDING_ACCOUNT_KEY)
+        else defaults.setObject(snapshot.accountToken, forKey = PENDING_ACCOUNT_KEY)
+        defaults.setObject(snapshot.registrationGeneration, forKey = PENDING_GENERATION_KEY)
+    }
+
+    actual fun clearPendingUnregisterSnapshot(snapshot: PushUnregisterSnapshot) {
+        if (loadPendingUnregisterSnapshot() != snapshot) return
+        defaults.removeObjectForKey(PENDING_TOKEN_KEY)
+        defaults.removeObjectForKey(PENDING_ACCOUNT_KEY)
+        defaults.removeObjectForKey(PENDING_GENERATION_KEY)
+    }
+
     actual suspend fun registerCurrentDevice() {
-        val defaults = NSUserDefaults.standardUserDefaults
         val token = defaults.stringForKey(PUSH_TOKEN_KEY)?.takeIf { it.isNotBlank() }
         if (token == null) {
             IosPushDiagnostics.recordPostResult("NO ENVIADO: token APNs no disponible", "AÚN SIN DATO", true)
             return
         }
-        IosPushDiagnostics.recordToken(token)
         val accountToken = IosAccountTokenStore().load()
         val newProducts = defaults.objectForKey("criosrango_push_new_products") as? Boolean ?: true
         val orderUpdates = defaults.objectForKey("criosrango_push_order_updates") as? Boolean ?: true
+        IosPushDiagnostics.recordToken(token)
         IosPushDiagnostics.recordPostAttempt(accountToken != null, newProducts, orderUpdates)
         val client = createStoreHttpClient()
         try {
-            val pending = defaults.stringForKey(PUSH_PENDING_UNREGISTER_KEY)
-            val response = runCatching {
-                withTimeout(4_000L) {
-                    client.post(PUSH_DEVICE_ENDPOINT) {
-                        contentType(ContentType.Application.Json)
-                        accountToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
-                        setBody(mapOf(
-                            "platform" to "ios",
-                            "identifier_type" to "apns_token",
-                            "identifier" to token,
-                            "new_products" to newProducts,
-                            "order_updates" to orderUpdates
-                        ))
-                    }
+            val response = runCatching { withTimeout(4_000L) {
+                client.post(PUSH_DEVICE_ENDPOINT) {
+                    contentType(ContentType.Application.Json)
+                    accountToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                    setBody(mapOf("platform" to "ios", "identifier_type" to "apns_token",
+                        "identifier" to token, "new_products" to newProducts, "order_updates" to orderUpdates))
                 }
-            }.getOrNull()
-            if (response == null || response.status.value !in 200..299) {
-                IosPushDiagnostics.recordPostResult(
-                    if (response == null) "ERROR de red" else "HTTP ${response.status.value}",
-                    "NO",
-                    true,
-                    if (response == null) "NetworkError" else "",
-                    if (response == null) "No se pudo completar el POST de registro" else "El backend rechazó el registro"
-                )
-                // If logout left a pending association, retire it even when reassignment fails.
-                if (!pending.isNullOrBlank()) {
-                    val removed = runCatching { withTimeout(3_000L) {
-                        client.delete(PUSH_DEVICE_ENDPOINT) {
-                            contentType(ContentType.Application.Json)
-                            accountToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
-                            setBody(mapOf("platform" to "ios", "token" to pending))
-                        }.status.value in 200..299
-                    } }.getOrDefault(false)
-                    if (removed) defaults.removeObjectForKey(PUSH_PENDING_UNREGISTER_KEY)
-                }
-                return
-            }
-            IosPushDiagnostics.recordPostResult("HTTP ${response.status.value}", "SÍ", false)
-            if (pending == token) {
-                // Successful registration reassigns this unique token row to the current account.
-                defaults.removeObjectForKey(PUSH_PENDING_UNREGISTER_KEY)
-            } else if (!pending.isNullOrBlank()) {
-                val removed = runCatching { withTimeout(3_000L) {
-                    client.delete(PUSH_DEVICE_ENDPOINT) {
-                        contentType(ContentType.Application.Json)
-                        accountToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
-                        setBody(mapOf("platform" to "ios", "token" to pending))
-                    }.status.value in 200..299
-                } }.getOrDefault(false)
-                if (removed) defaults.removeObjectForKey(PUSH_PENDING_UNREGISTER_KEY)
-            }
+            } }.getOrNull()
+            val accepted = response != null && response.status.value in 200..299
+            IosPushDiagnostics.recordPostResult(
+                if (response == null) "ERROR de red" else "HTTP ${response.status.value}",
+                if (accepted) "SÍ" else "NO", !accepted,
+                if (response == null) "NetworkError" else if (accepted) "" else "HTTPError",
+                if (response == null) "No se pudo completar el POST de registro" else if (accepted) "" else "El backend rechazó el registro"
+            )
         } finally { client.close() }
     }
 
     actual suspend fun unregisterCurrentDevice() {
-        val defaults = NSUserDefaults.standardUserDefaults
-        val token = defaults.stringForKey(PUSH_TOKEN_KEY)?.takeIf { it.isNotBlank() } ?: return
-        defaults.setObject(token, forKey = PUSH_PENDING_UNREGISTER_KEY)
+        val snapshot = captureUnregisterSnapshot(0L) ?: return
+        persistPendingUnregisterSnapshot(snapshot)
+        unregisterSnapshot(snapshot)
+    }
+
+    actual suspend fun unregisterSnapshot(snapshot: PushUnregisterSnapshot): Boolean {
+        persistPendingUnregisterSnapshot(snapshot)
         val client = createStoreHttpClient()
-        try {
+        return try {
             val response = withTimeout(4_000L) {
                 client.delete(PUSH_DEVICE_ENDPOINT) {
                     contentType(ContentType.Application.Json)
-                    IosAccountTokenStore().load()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
-                    setBody(mapOf("platform" to "ios", "token" to token))
+                    snapshot.accountToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                    setBody(mapOf("platform" to "ios", "token" to snapshot.deviceToken))
                 }
             }
-            if (response.status.value in 200..299) defaults.removeObjectForKey(PUSH_PENDING_UNREGISTER_KEY)
+            val accepted = response.status.value in 200..299
+            if (accepted) clearPendingUnregisterSnapshot(snapshot)
+            accepted
+        } catch (_: Throwable) {
+            false
         } finally { client.close() }
-        // Keep APNs token locally so a later login can register it for the current account.
     }
 }

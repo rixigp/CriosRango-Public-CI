@@ -1,94 +1,163 @@
 package es.criosrango.shared
 
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.async
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class IosPushPreferenceSyncCoordinatorTest {
-    @Test fun onToOffAcceptedConfirmsOff() = runTest {
-        val c = coordinator { _, orders -> assertFalse(orders); true }
-        c.setOrderUpdates(false)
-        c.synchronize()
-        assertFalse(c.state.confirmed.orderUpdates)
-        assertEquals(c.state.desired, c.state.confirmed)
+    private fun unregisterSnapshot(token: String = "apns-A", account: String? = "account-A", generation: Long = 7L) =
+        PushUnregisterSnapshot(token, account, generation)
+
+    @Test fun T1_pendingUnregisterIsRestoredByNewCoordinatorAfterRestart() {
+        val persisted = unregisterSnapshot()
+        val restarted = IosPushPreferenceSyncCoordinator(
+            true, true, { _, _ -> }, { true },
+            initialPendingUnregisterSnapshot = persisted,
+            unregister = { true }
+        )
+        assertEquals(persisted, restarted.pendingUnregisterSnapshotForTest())
+    }
+
+    @Test fun T2_restoredPendingUnregisterRetriesAndClearsOnlyAfterSuccess() = runBlocking {
+        val persisted = unregisterSnapshot()
+        var saved: PushUnregisterSnapshot? = persisted
+        var calls = 0
+        val c = IosPushPreferenceSyncCoordinator(
+            true, true, { _, _ -> }, { true },
+            initialPendingUnregisterSnapshot = saved,
+            persistUnregisterSnapshot = { saved = it },
+            unregister = { calls++; calls > 1 }
+        )
+        c.synchronize(force = true)
+        assertEquals(1, calls)
+        assertEquals(persisted, saved)
+        assertEquals(persisted, c.pendingUnregisterSnapshotForTest())
+        c.synchronize(force = true)
+        assertEquals(2, calls)
+        assertNull(saved)
+        assertNull(c.pendingUnregisterSnapshotForTest())
+    }
+
+    @Test fun T3_logoutCapturesAccountSnapshotSynchronouslyBeforeSessionClear() {
+        var visibleAccount: String? = "account-A"
+        var persisted: PushUnregisterSnapshot? = null
+        val snapshots = mutableListOf<PushUnregisterSnapshot?>()
+        val c = IosPushPreferenceSyncCoordinator(
+            true, true, { _, _ -> }, { true },
+            captureUnregisterSnapshot = { generation -> PushUnregisterSnapshot("apns-A", visibleAccount, generation) },
+            persistUnregisterSnapshot = { persisted = it; snapshots += it },
+            unregister = { true }
+        )
+        c.requestUnregister(CoroutineScope(Dispatchers.Unconfined))
+        visibleAccount = null
+        val captured = snapshots.first { it != null }
+        assertEquals("account-A", captured?.accountToken)
+        assertEquals("apns-A", captured?.deviceToken)
+        assertEquals(1L, captured?.registrationGeneration)
+    }
+
+    @Test fun T4_registerAResponseAfterLogoutAndLoginBIsStale() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var confirmedWrites = 0
+        val c = IosPushPreferenceSyncCoordinator(
+            true, true, { _, _ -> }, {
+                if (!entered.isCompleted) { entered.complete(Unit); release.await() }
+                true
+            },
+            persistConfirmed = { _, _ -> confirmedWrites++ }
+        )
+        val a = launch { c.synchronize(force = true) }
+        entered.await()
+        c.registrationContextChanged() // logout A invalidates in-flight registration
+        c.registrationContextChanged() // login B establishes a newer generation
+        release.complete(Unit)
+        a.join()
+        assertEquals(0, confirmedWrites)
+        assertTrue(c.state.syncPending)
+    }
+
+    @Test fun T5_pendingUnregisterAIsRetriedWithSnapshotABeforeRegisterB() = runBlocking {
+        val snapshotA = unregisterSnapshot()
+        var persisted: PushUnregisterSnapshot? = snapshotA
+        val calls = mutableListOf<String>()
+        val c = IosPushPreferenceSyncCoordinator(
+            true, true, { _, _ -> }, { _, _ -> calls += "register-B"; true },
+            initialPendingUnregisterSnapshot = snapshotA,
+            persistUnregisterSnapshot = { persisted = it },
+            unregister = { snapshot -> calls += "unregister-${snapshot.accountToken}"; snapshot == snapshotA }
+        )
+        c.registrationContextChanged() // B login; pending A must not be replaced with B
+        c.synchronize(force = true)
+        assertEquals(listOf("unregister-account-A", "register-B"), calls)
+        assertNull(persisted)
         assertFalse(c.state.syncPending)
     }
 
-    @Test fun offToOnAcceptedConfirmsOn() = runTest {
-        val c = coordinator(initialOrders = false) { _, orders -> assertTrue(orders); true }
+    @Test fun T6_offThenOnDuringFirstRequestSendsLatestDesiredSnapshot() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val sent = mutableListOf<IosPushPreferenceSyncCoordinator.Snapshot>()
+        var confirmed = IosPushPreferenceSyncCoordinator.Snapshot(true, true)
+        var pending = false
+        val c = IosPushPreferenceSyncCoordinator(
+            true, true, { _, _ -> }, { n, o ->
+                sent += IosPushPreferenceSyncCoordinator.Snapshot(n, o)
+                if (sent.size == 1) { entered.complete(Unit); release.await() }
+                true
+            },
+            persistConfirmed = { n, o -> confirmed = IosPushPreferenceSyncCoordinator.Snapshot(n, o) },
+            persistPending = { pending = it }
+        )
+        c.setOrderUpdates(false)
+        val job = launch { c.synchronize() }
+        entered.await()
         c.setOrderUpdates(true)
-        c.synchronize()
-        assertTrue(c.state.confirmed.orderUpdates)
+        release.complete(Unit)
+        job.join()
+        assertEquals(
+            listOf(
+                IosPushPreferenceSyncCoordinator.Snapshot(true, false),
+                IosPushPreferenceSyncCoordinator.Snapshot(true, true)
+            ),
+            sent
+        )
+        assertEquals(IosPushPreferenceSyncCoordinator.Snapshot(true, true), confirmed)
+        assertEquals(IosPushPreferenceSyncCoordinator.Snapshot(true, true), c.state.desired)
+        assertFalse(pending)
+        assertFalse(c.state.syncPending)
+        assertFalse(c.state.error)
     }
 
-    @Test fun failurePreservesConfirmedDesiredAndPending() = runTest {
-        val c = coordinator { _, _ -> false }
+    @Test fun T7_networkErrorThenManualRetry200ClearsPendingAndError() = runBlocking {
+        var calls = 0
+        var confirmed = IosPushPreferenceSyncCoordinator.Snapshot(true, true)
+        var pending = false
+        val c = IosPushPreferenceSyncCoordinator(
+            true, true, { _, _ -> }, { _, _ -> ++calls > 1 },
+            persistConfirmed = { n, o -> confirmed = IosPushPreferenceSyncCoordinator.Snapshot(n, o) },
+            persistPending = { pending = it }
+        )
         c.setOrderUpdates(false)
         c.synchronize()
-        assertTrue(c.state.confirmed.orderUpdates)
-        assertFalse(c.state.desired.orderUpdates)
+        assertEquals(IosPushPreferenceSyncCoordinator.Snapshot(true, true), confirmed)
+        assertEquals(IosPushPreferenceSyncCoordinator.Snapshot(true, false), c.state.desired)
+        assertTrue(pending)
         assertTrue(c.state.syncPending)
         assertTrue(c.state.error)
-    }
 
-    @Test fun latestChangeDuringRequestIsSentAfterOldSnapshot() = runTest {
-        val started = CompletableDeferred<Unit>()
-        val finishFirst = CompletableDeferred<Boolean>()
-        val sent = mutableListOf<Boolean>()
-        val c = coordinator(post = { _, orders ->
-            sent += orders
-            if (sent.size == 1) {
-                started.complete(Unit)
-                finishFirst.await()
-            } else true
-        })
-        c.setOrderUpdates(false)
-        val request = async { c.synchronize() }
-        started.await()
-        c.setOrderUpdates(true)
-        finishFirst.complete(true)
-        request.await()
-        assertEquals(listOf(false, true), sent)
-        assertTrue(c.state.confirmed.orderUpdates)
-        assertEquals(c.state.desired, c.state.confirmed)
-        assertFalse(c.state.syncPending)
-    }
-
-    @Test fun simultaneousPreferenceChangesPersistBothLatestValues() = runTest {
-        val sent = mutableListOf<IosPushPreferenceSyncCoordinator.Snapshot>()
-        val c = coordinator(post = { news, orders ->
-            sent += IosPushPreferenceSyncCoordinator.Snapshot(news, orders)
-            true
-        })
-        c.setOrderUpdates(false)
-        c.setNewProducts(false)
-        c.synchronize()
-        assertEquals(IosPushPreferenceSyncCoordinator.Snapshot(false, false), sent.last())
-        assertEquals(sent.last(), c.state.confirmed)
-    }
-
-    @Test fun manualRetryAfterNetworkErrorConfirmsDesired() = runTest {
-        var attempts = 0
-        val c = coordinator(post = { _, _ -> attempts++; attempts > 1 })
-        c.setOrderUpdates(false)
-        c.synchronize()
-        assertTrue(c.state.syncPending)
         c.synchronize(force = true)
-        assertEquals(c.state.desired, c.state.confirmed)
+        assertEquals(IosPushPreferenceSyncCoordinator.Snapshot(true, false), confirmed)
+        assertEquals(IosPushPreferenceSyncCoordinator.Snapshot(true, false), c.state.desired)
+        assertFalse(pending)
         assertFalse(c.state.syncPending)
+        assertFalse(c.state.error)
     }
-
-    private fun coordinator(
-        initialOrders: Boolean = true,
-        post: suspend (Boolean, Boolean) -> Boolean
-    ) = IosPushPreferenceSyncCoordinator(
-        initialNewProducts = true,
-        initialOrderUpdates = initialOrders,
-        persistDesired = { _, _ -> },
-        postSnapshot = post
-    )
 }
