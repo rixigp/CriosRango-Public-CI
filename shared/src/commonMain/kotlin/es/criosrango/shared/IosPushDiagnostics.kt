@@ -20,12 +20,62 @@ data class IosPushDiagnosticSnapshot(
     val errorClass: String = "",
     val errorMessage: String = "",
     val httpStatus: Int? = null,
-    val responseBody: String = ""
+    val responseBody: String = "",
+    val bodyReadOk: String = "AÚN SIN DATO",
+    val requestStage: String = "NOT_STARTED",
+    val exceptionStage: String = "",
+    val lastSentOrderUpdates: String = "AÚN SIN DATO",
+    val desiredOrderUpdates: String = "AÚN SIN DATO",
+    val confirmedOrderUpdates: String = "AÚN SIN DATO",
+    val syncInProgress: Boolean = false,
+    val dirty: Boolean = false,
+    val desiredRevision: Long = 0,
+    val requestRevision: Long = 0,
+    val requestGeneration: Long = 0,
+    val currentGeneration: Long = 0
 )
 
 object IosPushDiagnostics {
     var snapshot by mutableStateOf(IosPushDiagnosticSnapshot())
         private set
+
+    fun recordRequestStage(
+        stage: String,
+        orderUpdates: Boolean? = null,
+        newProducts: Boolean? = null,
+        revision: Long? = null,
+        generation: Long? = null,
+        exceptionStage: String? = null
+    ) {
+        snapshot = snapshot.copy(
+            requestStage = stage.safeDiagnosticText(48),
+            lastSentOrderUpdates = orderUpdates?.let { if (it) "SÍ" else "NO" } ?: snapshot.lastSentOrderUpdates,
+            newProductsSent = newProducts?.let { if (it) "SÍ" else "NO" } ?: snapshot.newProductsSent,
+            orderUpdatesSent = orderUpdates?.let { if (it) "SÍ" else "NO" } ?: snapshot.orderUpdatesSent,
+            requestRevision = revision ?: snapshot.requestRevision,
+            requestGeneration = generation ?: snapshot.requestGeneration,
+            exceptionStage = exceptionStage?.safeDiagnosticText(48)
+                ?: if (stage.endsWith("ENTERED") || stage == "REQUEST_CREATED") "" else snapshot.exceptionStage
+        )
+    }
+
+    fun recordCoordinatorState(
+        desiredOrderUpdates: Boolean,
+        confirmedOrderUpdates: Boolean,
+        syncInProgress: Boolean,
+        dirty: Boolean,
+        revision: Long,
+        generation: Long
+    ) {
+        snapshot = snapshot.copy(
+            desiredOrderUpdates = if (desiredOrderUpdates) "SÍ" else "NO",
+            confirmedOrderUpdates = if (confirmedOrderUpdates) "SÍ" else "NO",
+            syncInProgress = syncInProgress,
+            dirty = dirty,
+            desiredRevision = revision,
+            currentGeneration = generation
+        )
+    }
 
     fun recordPermission(status: String) {
         snapshot = snapshot.copy(permission = status.safeDiagnosticText(40))
@@ -60,7 +110,11 @@ object IosPushDiagnostics {
             authenticated = if (authenticated) "SÍ" else "NO",
             newProductsSent = if (newProducts) "SÍ" else "NO",
             orderUpdatesSent = if (orderUpdates) "SÍ" else "NO",
-            pendingSync = true
+            pendingSync = true,
+            httpStatus = null,
+            responseBody = "",
+            bodyReadOk = "AÚN SIN DATO",
+            exceptionStage = ""
         )
     }
 
@@ -71,7 +125,8 @@ object IosPushDiagnostics {
         errorClass: String = "",
         errorMessage: String = "",
         httpStatus: Int? = null,
-        responseBody: String = ""
+        responseBody: String = "",
+        bodyReadOk: Boolean? = null
     ) {
         snapshot = snapshot.copy(
             registrationResult = result.safeDiagnosticText(80),
@@ -80,7 +135,9 @@ object IosPushDiagnostics {
             errorClass = errorClass.safeDiagnosticText(80),
             errorMessage = errorMessage.safeDiagnosticText(180),
             httpStatus = httpStatus,
-            responseBody = responseBody.safeDiagnosticText(240)
+            responseBody = responseBody.safeDiagnosticText(240),
+            bodyReadOk = bodyReadOk?.let { if (it) "SÍ" else "NO" } ?: snapshot.bodyReadOk,
+            requestStage = if (httpStatus != null) "RESPONSE_RECEIVED" else snapshot.requestStage
         )
     }
 }
@@ -88,6 +145,7 @@ object IosPushDiagnostics {
 private fun String.safeDiagnosticText(maxLength: Int): String =
     replace(Regex("(?i)bearer\\s+\\S+"), "Bearer [redactado]")
         .replace(Regex("(?i)\\b[0-9a-f]{32,}\\b"), "[token redactado]")
+        .replace(Regex("eyJ[^\\s]+"), "[JWT redactado]")
         .replace(Regex("[\\r\\n\\t]"), " ")
         .take(maxLength)
 

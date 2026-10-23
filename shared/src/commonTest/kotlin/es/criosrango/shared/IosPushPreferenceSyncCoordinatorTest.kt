@@ -122,13 +122,10 @@ class IosPushPreferenceSyncCoordinatorTest {
         c.setOrderUpdates(true)
         release.complete(Unit)
         job.join()
-        assertEquals(
-            listOf(
-                IosPushPreferenceSyncCoordinator.Snapshot(true, false),
-                IosPushPreferenceSyncCoordinator.Snapshot(true, true)
-            ),
-            sent
-        )
+        assertEquals(2, sent.size)
+        assertEquals(IosPushPreferenceSyncCoordinator.Snapshot(true, false), sent[0])
+        assertEquals(IosPushPreferenceSyncCoordinator.Snapshot(true, true), sent[1])
+        assertTrue(sent[1].orderUpdates)
         assertEquals(IosPushPreferenceSyncCoordinator.Snapshot(true, true), confirmed)
         assertEquals(IosPushPreferenceSyncCoordinator.Snapshot(true, true), c.state.desired)
         assertFalse(pending)
@@ -209,4 +206,41 @@ class IosPushPreferenceSyncCoordinatorTest {
         assertFalse(c.state.syncInProgress)
         assertFalse(c.state.error)
     }
+    @Test fun T9_queuedOnUsesCurrentGenerationAfterWaitingForOffMutex() = runBlocking {
+        val enteredOff = CompletableDeferred<Unit>()
+        val releaseOff = CompletableDeferred<Unit>()
+        val sent = mutableListOf<IosPushPreferenceSyncCoordinator.Snapshot>()
+        val c = IosPushPreferenceSyncCoordinator(
+            initialNewProducts = true,
+            initialOrderUpdates = true,
+            persistDesired = { _, _ -> },
+            postSnapshot = { n, o ->
+                sent += IosPushPreferenceSyncCoordinator.Snapshot(n, o)
+                if (sent.size == 1) {
+                    enteredOff.complete(Unit)
+                    releaseOff.await()
+                }
+                true
+            }
+        )
+        c.setOrderUpdates(false)
+        val off = launch { c.synchronize() }
+        enteredOff.await()
+        c.setOrderUpdates(true)
+        val queuedOn = launch { c.synchronize(force = true) }
+        c.registrationContextChanged()
+        releaseOff.complete(Unit)
+        off.join()
+        queuedOn.join()
+
+        assertEquals(2, sent.size)
+        assertEquals(IosPushPreferenceSyncCoordinator.Snapshot(true, false), sent[0])
+        assertEquals(IosPushPreferenceSyncCoordinator.Snapshot(true, true), sent[1])
+        assertEquals(IosPushPreferenceSyncCoordinator.Snapshot(true, true), c.state.desired)
+        assertEquals(IosPushPreferenceSyncCoordinator.Snapshot(true, true), c.state.confirmed)
+        assertFalse(c.state.syncPending)
+        assertFalse(c.state.syncInProgress)
+        assertFalse(c.state.error)
+    }
+
 }

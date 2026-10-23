@@ -55,6 +55,14 @@ class IosPushPreferenceSyncCoordinator(
     private fun publish(next: State) {
         state = next
         onStateChanged(next)
+        IosPushDiagnostics.recordCoordinatorState(
+            desiredOrderUpdates = next.desired.orderUpdates,
+            confirmedOrderUpdates = next.confirmed.orderUpdates,
+            syncInProgress = next.syncInProgress,
+            dirty = next.syncPending,
+            revision = next.revision,
+            generation = currentRegistrationGeneration
+        )
         observers.toList().forEach { it(next) }
     }
 
@@ -90,8 +98,13 @@ class IosPushPreferenceSyncCoordinator(
     suspend fun synchronize(force: Boolean = false) = drainAndSync(force, allowPost = true)
 
     private suspend fun drainAndSync(force: Boolean, allowPost: Boolean) {
-        val requestGeneration = currentRegistrationGeneration
+        val generationAtQueue = currentRegistrationGeneration
+        IosPushDiagnostics.recordRequestStage("WAITING_FOR_MUTEX", revision = state.revision, generation = generationAtQueue)
         mutex.lock()
+        // A queued ON may wait while enabling notifications refreshes APNs/session context.
+        // Read generation after the lock, so it cannot be discarded using a stale queue-time value.
+        val requestGeneration = currentRegistrationGeneration
+        IosPushDiagnostics.recordRequestStage("MUTEX_ACQUIRED", revision = state.revision, generation = requestGeneration)
         try {
             val pendingUnregister = pendingUnregisterSnapshot
             if (pendingUnregister != null) {
@@ -121,14 +134,33 @@ class IosPushPreferenceSyncCoordinator(
             persistPending(true)
             while (true) {
                 if (requestGeneration != currentRegistrationGeneration) {
+                    IosPushDiagnostics.recordRequestStage("DROPPED_AS_STALE", revision = state.revision, generation = requestGeneration, exceptionStage = "STALE_GENERATION")
                     persistPending(true)
                     publish(state.copy(syncInProgress = false, syncPending = true))
                     return
                 }
                 val sent = state.desired
                 val sentRevision = state.revision
-                val accepted = try { postSnapshot(sent.newProducts, sent.orderUpdates) } catch (_: Throwable) { false }
+                IosPushDiagnostics.recordRequestStage(
+                    "REQUEST_CREATED", sent.orderUpdates, sent.newProducts, sentRevision, requestGeneration
+                )
+                val accepted = try {
+                    val result = postSnapshot(sent.newProducts, sent.orderUpdates)
+                    IosPushDiagnostics.recordRequestStage("CALLBACK_RETURNED", revision = sentRevision, generation = requestGeneration)
+                    result
+                } catch (error: Throwable) {
+                    IosPushDiagnostics.recordRequestStage(
+                        "CALLBACK_EXCEPTION", revision = sentRevision, generation = requestGeneration, exceptionStage = "CALLBACK"
+                    )
+                    false
+                }
                 if (requestGeneration != currentRegistrationGeneration) {
+                    IosPushDiagnostics.recordRequestStage(
+                        "DROPPED_AS_STALE",
+                        revision = state.revision,
+                        generation = requestGeneration,
+                        exceptionStage = "STALE_GENERATION"
+                    )
                     persistPending(true)
                     publish(state.copy(syncInProgress = false, syncPending = true))
                     return

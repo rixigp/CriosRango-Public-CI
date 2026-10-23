@@ -65,36 +65,33 @@ actual object PushDeviceRegistration {
         val orderUpdates = defaults.objectForKey("criosrango_push_order_updates") as? Boolean ?: true
         IosPushDiagnostics.recordToken(token)
         IosPushDiagnostics.recordPostAttempt(accountToken != null, newProducts, orderUpdates)
-        val client = createStoreHttpClient()
+        IosPushDiagnostics.recordRequestStage("REGISTER_HTTP_ENTERED", orderUpdates, newProducts)
+        var stage = "BEFORE_SEND"
+        var client: io.ktor.client.HttpClient? = null
         try {
-            val response = try {
-                withTimeout(4_000L) {
-                    client.post(PUSH_DEVICE_ENDPOINT) {
-                        contentType(ContentType.Application.Json)
-                        accountToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
-                        setBody(mapOf("platform" to "ios", "identifier_type" to "apns_token",
-                            "identifier" to token, "new_products" to newProducts, "order_updates" to orderUpdates))
-                    }
+            val httpClient = createStoreHttpClient()
+            client = httpClient
+            stage = "SEND"
+            IosPushDiagnostics.recordRequestStage("REGISTER_HTTP_SEND_STARTED", orderUpdates, newProducts)
+            val response = withTimeout(4_000L) {
+                httpClient.post(PUSH_DEVICE_ENDPOINT) {
+                    contentType(ContentType.Application.Json)
+                    accountToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                    setBody(mapOf("platform" to "ios", "identifier_type" to "apns_token",
+                        "identifier" to token, "new_products" to newProducts, "order_updates" to orderUpdates))
                 }
-            } catch (error: Throwable) {
-                IosPushDiagnostics.recordPostResult(
-                    result = "ERROR de red",
-                    accepted = "NO",
-                    pending = true,
-                    errorClass = error::class.simpleName ?: "Throwable",
-                    errorMessage = error.message ?: error.toString(),
-                    httpStatus = null,
-                    responseBody = ""
-                )
-                return
             }
 
-            // HTTP status is authoritative. Body parsing is diagnostic only and must never
-            // turn a valid 2xx response into a failed registration.
+            stage = "RECEIVE_STATUS"
             val status = response.status.value
+            IosPushDiagnostics.recordRequestStage("REGISTER_HTTP_RESPONSE_RECEIVED", orderUpdates, newProducts)
+            stage = "READ_BODY"
+            val bodyResult = runCatching { response.bodyAsText() }
+            if (bodyResult.isFailure) {
+                IosPushDiagnostics.recordRequestStage("BODY_READ_FAILED", exceptionStage = "READ_BODY")
+            }
+            val body = bodyResult.getOrElse { "[body read failed: ${it::class.simpleName}: ${it.message}]" }
             val accepted = status in 200..299
-            val body = runCatching { response.bodyAsText() }
-                .getOrElse { "[body read failed: ${it::class.simpleName}: ${it.message}]" }
             IosPushDiagnostics.recordPostResult(
                 result = "HTTP $status",
                 accepted = if (accepted) "SÍ" else "NO",
@@ -102,11 +99,28 @@ actual object PushDeviceRegistration {
                 errorClass = if (accepted) "" else "HTTPError",
                 errorMessage = if (accepted) "" else "El backend rechazó el registro",
                 httpStatus = status,
-                responseBody = body
+                responseBody = body,
+                bodyReadOk = bodyResult.isSuccess
+            )
+        } catch (error: Throwable) {
+            IosPushDiagnostics.recordRequestStage(
+                "REGISTER_HTTP_EXCEPTION", orderUpdates, newProducts, exceptionStage = stage
+            )
+            IosPushDiagnostics.recordPostResult(
+                result = if (stage == "BEFORE_SEND") "Error antes del envío" else "Error durante $stage",
+                accepted = "NO",
+                pending = true,
+                errorClass = error::class.simpleName ?: "Throwable",
+                errorMessage = error.message ?: error.toString(),
+                httpStatus = null,
+                responseBody = ""
             )
         } finally {
-            // Closing a client is cleanup, not part of the server's acceptance contract.
-            runCatching { client.close() }
+            try {
+                client?.close()
+            } catch (error: Throwable) {
+                IosPushDiagnostics.recordRequestStage("CLOSE_CLIENT_EXCEPTION", exceptionStage = "CLOSE_CLIENT")
+            }
         }
     }
 
