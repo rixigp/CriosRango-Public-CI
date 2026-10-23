@@ -124,8 +124,8 @@ class PushNotificationRoutingTest {
     fun unregisterPayload_usesFidIdentity() {
         val json = PushNotificationController.buildUnregisterPayload("TEST_FIREBASE_INSTALLATION_ID")
         assertEquals("android", json.getString("platform"))
-        assertEquals("fcm_token", json.getString("identifier_type"))
-        assertEquals("TEST_FCM_TOKEN", json.getString("identifier"))
+        assertEquals("fid", json.getString("identifier_type"))
+        assertEquals("TEST_FIREBASE_INSTALLATION_ID", json.getString("identifier"))
         assertFalse(json.has("token"))
     }
 
