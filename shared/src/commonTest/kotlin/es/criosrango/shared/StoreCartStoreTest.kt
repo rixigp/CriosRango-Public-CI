@@ -1,3 +1,4 @@
+import es.criosrango.shared.model.StoreCartLine
 package es.criosrango.shared
 
 import es.criosrango.shared.api.InMemoryStoreSessionStore
