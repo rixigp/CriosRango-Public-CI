@@ -71,6 +71,8 @@ fun IosPushPreferences() {
         Text("didRegister recibido: ${if (diagnostic.didRegisterReceived) "SÍ" else "NO"}")
         Text("POST intentado: ${if (diagnostic.postAttempted) "SÍ" else "NO"}")
         Text("Resultado del registro: ${diagnostic.registrationResult}")
+        Text("HTTP status real: ${diagnostic.httpStatus?.toString() ?: "SIN RESPUESTA HTTP"}")
+        if (diagnostic.responseBody.isNotBlank()) Text("HTTP response body: ${diagnostic.responseBody}")
         Text("Registro autenticado: ${diagnostic.authenticated}")
         Text("Registro aceptado: ${diagnostic.accepted}")
         Text("Sincronización pendiente: ${if (diagnostic.pendingSync || syncState.syncPending) "SÍ" else "NO"}")

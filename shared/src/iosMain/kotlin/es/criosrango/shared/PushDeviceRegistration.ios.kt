@@ -4,6 +4,7 @@ import io.ktor.client.request.delete
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
@@ -66,22 +67,47 @@ actual object PushDeviceRegistration {
         IosPushDiagnostics.recordPostAttempt(accountToken != null, newProducts, orderUpdates)
         val client = createStoreHttpClient()
         try {
-            val response = runCatching { withTimeout(4_000L) {
-                client.post(PUSH_DEVICE_ENDPOINT) {
-                    contentType(ContentType.Application.Json)
-                    accountToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
-                    setBody(mapOf("platform" to "ios", "identifier_type" to "apns_token",
-                        "identifier" to token, "new_products" to newProducts, "order_updates" to orderUpdates))
+            val response = try {
+                withTimeout(4_000L) {
+                    client.post(PUSH_DEVICE_ENDPOINT) {
+                        contentType(ContentType.Application.Json)
+                        accountToken?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+                        setBody(mapOf("platform" to "ios", "identifier_type" to "apns_token",
+                            "identifier" to token, "new_products" to newProducts, "order_updates" to orderUpdates))
+                    }
                 }
-            } }.getOrNull()
-            val accepted = response != null && response.status.value in 200..299
+            } catch (error: Throwable) {
+                IosPushDiagnostics.recordPostResult(
+                    result = "ERROR de red",
+                    accepted = "NO",
+                    pending = true,
+                    errorClass = error::class.simpleName ?: "Throwable",
+                    errorMessage = error.message ?: error.toString(),
+                    httpStatus = null,
+                    responseBody = ""
+                )
+                return
+            }
+
+            // HTTP status is authoritative. Body parsing is diagnostic only and must never
+            // turn a valid 2xx response into a failed registration.
+            val status = response.status.value
+            val accepted = status in 200..299
+            val body = runCatching { response.bodyAsText() }
+                .getOrElse { "[body read failed: ${it::class.simpleName}: ${it.message}]" }
             IosPushDiagnostics.recordPostResult(
-                if (response == null) "ERROR de red" else "HTTP ${response.status.value}",
-                if (accepted) "SÍ" else "NO", !accepted,
-                if (response == null) "NetworkError" else if (accepted) "" else "HTTPError",
-                if (response == null) "No se pudo completar el POST de registro" else if (accepted) "" else "El backend rechazó el registro"
+                result = "HTTP $status",
+                accepted = if (accepted) "SÍ" else "NO",
+                pending = !accepted,
+                errorClass = if (accepted) "" else "HTTPError",
+                errorMessage = if (accepted) "" else "El backend rechazó el registro",
+                httpStatus = status,
+                responseBody = body
             )
-        } finally { client.close() }
+        } finally {
+            // Closing a client is cleanup, not part of the server's acceptance contract.
+            runCatching { client.close() }
+        }
     }
 
     actual suspend fun unregisterCurrentDevice() {

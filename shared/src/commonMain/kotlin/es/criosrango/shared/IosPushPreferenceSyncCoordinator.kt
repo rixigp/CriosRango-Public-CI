@@ -135,6 +135,12 @@ class IosPushPreferenceSyncCoordinator(
                 }
                 if (!accepted) {
                     persistPending(true)
+                    // A failed request must not swallow a newer desired value selected in flight.
+                    val newerDesiredExists = state.desired != sent || state.revision != sentRevision
+                    if (newerDesiredExists) {
+                        publish(state.copy(syncInProgress = true, syncPending = true, error = false))
+                        continue
+                    }
                     publish(state.copy(syncInProgress = false, syncPending = true, error = true))
                     return
                 }
@@ -148,6 +154,14 @@ class IosPushPreferenceSyncCoordinator(
                 }
             }
         } finally {
+            // Never leave the runtime believing a request is active after any exceptional exit.
+            val pendingAfterExit = state.syncPending || state.desired != state.confirmed || pendingUnregisterSnapshot != null
+            if (state.syncInProgress || state.syncPending != pendingAfterExit) {
+                runCatching {
+                    persistPending(pendingAfterExit)
+                    publish(state.copy(syncInProgress = false, syncPending = pendingAfterExit))
+                }
+            }
             mutex.unlock()
         }
     }

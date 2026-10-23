@@ -18,7 +18,9 @@ data class IosPushDiagnosticSnapshot(
     val orderUpdatesSent: String = "AÚN SIN DATO",
     val installationHash: String = "",
     val errorClass: String = "",
-    val errorMessage: String = ""
+    val errorMessage: String = "",
+    val httpStatus: Int? = null,
+    val responseBody: String = ""
 )
 
 object IosPushDiagnostics {
@@ -67,14 +69,18 @@ object IosPushDiagnostics {
         accepted: String,
         pending: Boolean,
         errorClass: String = "",
-        errorMessage: String = ""
+        errorMessage: String = "",
+        httpStatus: Int? = null,
+        responseBody: String = ""
     ) {
         snapshot = snapshot.copy(
             registrationResult = result.safeDiagnosticText(80),
             accepted = accepted.safeDiagnosticText(40),
             pendingSync = pending,
             errorClass = errorClass.safeDiagnosticText(80),
-            errorMessage = errorMessage.safeDiagnosticText(180)
+            errorMessage = errorMessage.safeDiagnosticText(180),
+            httpStatus = httpStatus,
+            responseBody = responseBody.safeDiagnosticText(240)
         )
     }
 }

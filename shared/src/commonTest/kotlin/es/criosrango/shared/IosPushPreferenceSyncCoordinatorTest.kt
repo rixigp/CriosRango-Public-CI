@@ -160,4 +160,53 @@ class IosPushPreferenceSyncCoordinatorTest {
         assertFalse(c.state.syncPending)
         assertFalse(c.state.error)
     }
+
+    @Test fun T8_failedOffAfterServerSideEffectStillRetriesNewerOn() = runBlocking {
+        val enteredOff = CompletableDeferred<Unit>()
+        val releaseOff = CompletableDeferred<Unit>()
+        val sent = mutableListOf<IosPushPreferenceSyncCoordinator.Snapshot>()
+        var serverOrderUpdates = true
+        var confirmed = IosPushPreferenceSyncCoordinator.Snapshot(true, true)
+        var pending = false
+        val c = IosPushPreferenceSyncCoordinator(
+            initialNewProducts = true,
+            initialOrderUpdates = true,
+            persistDesired = { _, _ -> },
+            postSnapshot = { n, o ->
+                val snapshot = IosPushPreferenceSyncCoordinator.Snapshot(n, o)
+                sent += snapshot
+                if (sent.size == 1) {
+                    enteredOff.complete(Unit)
+                    releaseOff.await()
+                    serverOrderUpdates = o
+                    throw IllegalStateException("response cleanup failed after server applied OFF")
+                }
+                serverOrderUpdates = o
+                true
+            },
+            persistConfirmed = { n, o -> confirmed = IosPushPreferenceSyncCoordinator.Snapshot(n, o) },
+            persistPending = { pending = it }
+        )
+        c.setOrderUpdates(false)
+        val sync = launch { c.synchronize() }
+        enteredOff.await()
+        c.setOrderUpdates(true)
+        releaseOff.complete(Unit)
+        sync.join()
+
+        assertEquals(
+            listOf(
+                IosPushPreferenceSyncCoordinator.Snapshot(true, false),
+                IosPushPreferenceSyncCoordinator.Snapshot(true, true)
+            ),
+            sent
+        )
+        assertEquals(IosPushPreferenceSyncCoordinator.Snapshot(true, true), confirmed)
+        assertEquals(IosPushPreferenceSyncCoordinator.Snapshot(true, true), c.state.desired)
+        assertTrue(serverOrderUpdates)
+        assertFalse(pending)
+        assertFalse(c.state.syncPending)
+        assertFalse(c.state.syncInProgress)
+        assertFalse(c.state.error)
+    }
 }
