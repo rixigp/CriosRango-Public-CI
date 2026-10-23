@@ -1,6 +1,6 @@
-import es.criosrango.shared.model.StoreCartLine
 package es.criosrango.shared
 
+import es.criosrango.shared.model.StoreCartLine
 import es.criosrango.shared.api.InMemoryStoreSessionStore
 import es.criosrango.shared.api.StoreSessionStore
 import kotlin.test.Test
