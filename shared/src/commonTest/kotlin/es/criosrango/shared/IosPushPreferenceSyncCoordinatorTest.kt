@@ -18,9 +18,9 @@ class IosPushPreferenceSyncCoordinatorTest {
     @Test fun T1_pendingUnregisterIsRestoredByNewCoordinatorAfterRestart() {
         val persisted = unregisterSnapshot()
         val restarted = IosPushPreferenceSyncCoordinator(
-            true, true, { _, _ -> }, { true },
+            true, true, { _, _ -> }, { _, _ -> true },
             initialPendingUnregisterSnapshot = persisted,
-            unregister = { true }
+            unregister = { _, _ -> true }
         )
         assertEquals(persisted, restarted.pendingUnregisterSnapshotForTest())
     }
@@ -30,7 +30,7 @@ class IosPushPreferenceSyncCoordinatorTest {
         var saved: PushUnregisterSnapshot? = persisted
         var calls = 0
         val c = IosPushPreferenceSyncCoordinator(
-            true, true, { _, _ -> }, { true },
+            true, true, { _, _ -> }, { _, _ -> true },
             initialPendingUnregisterSnapshot = saved,
             persistUnregisterSnapshot = { saved = it },
             unregister = { calls++; calls > 1 }
@@ -68,7 +68,7 @@ class IosPushPreferenceSyncCoordinatorTest {
         val release = CompletableDeferred<Unit>()
         var confirmedWrites = 0
         val c = IosPushPreferenceSyncCoordinator(
-            true, true, { _, _ -> }, {
+            true, true, { _, _ -> }, { _, _ ->
                 if (!entered.isCompleted) { entered.complete(Unit); release.await() }
                 true
             },
