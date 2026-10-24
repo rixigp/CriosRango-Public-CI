@@ -19,6 +19,7 @@ import platform.UIKit.UIGestureRecognizerStateEnded
 import platform.UIKit.UIRectEdgeLeft
 import platform.UIKit.UIScreenEdgePanGestureRecognizer
 import kotlinx.cinterop.StableRef
+import kotlinx.cinterop.useContents
 import platform.darwin.NSObject
 import kotlinx.cinterop.ObjCAction
 import platform.objc.OBJC_ASSOCIATION_RETAIN_NONATOMIC
@@ -33,7 +34,7 @@ private val edgeBackTargetAssociationKey = StableRef.create(Unit).asCPointer()
 private class IosEdgeBackTarget(private val coordinator: IosBackCoordinator) : NSObject(), UIGestureRecognizerDelegateProtocol {
     @ObjCAction fun handleEdgePan(recognizer: UIScreenEdgePanGestureRecognizer) {
         if (recognizer.state != UIGestureRecognizerStateEnded) return
-        if (recognizer.translationInView(recognizer.view).x >= 72.0) coordinator.dispatchBack()
+        if (recognizer.translationInView(recognizer.view).useContents { x } >= 72.0) coordinator.dispatchBack()
     }
     override fun gestureRecognizer(gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWithGestureRecognizer: UIGestureRecognizer): Boolean = true
 }
