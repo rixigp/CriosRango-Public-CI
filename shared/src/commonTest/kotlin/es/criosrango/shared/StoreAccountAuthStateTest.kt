@@ -127,7 +127,7 @@ class StoreAccountAuthStateTest {
         assertNull(state.login("user@example.com", "secret"))
         assertEquals(null, tokenStore.load())
         assertEquals(StoreAccountAuthStatus.UNAUTHENTICATED, state.snapshot.value.status)
-        assertEquals("No se ha podido guardar la sesión de cuenta.", state.snapshot.value.error)
+        assertEquals("No hemos podido conectar con la tienda.", state.snapshot.value.error)
     }
 
     @Test
