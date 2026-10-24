@@ -6,7 +6,8 @@ import es.criosrango.shared.loyalty.RedeemWalletCoupon
 import es.criosrango.shared.loyalty.RedeemWalletResponse
 import es.criosrango.shared.loyalty.redeemableOptions
 import es.criosrango.shared.promotions.Promotion
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -74,7 +75,7 @@ class StoreWalletOwnerTest {
             Promotion("high", "Alta", priority = 9)
         ))
         owner.onSessionChanged("user-A")
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertEquals("9.35", owner.state.value.wallet?.walletValue)
         assertEquals(listOf("high", "low"), owner.state.value.promotions.map { it.id })
     }
@@ -82,7 +83,7 @@ class StoreWalletOwnerTest {
     @Test fun logoutClearsSensitiveWalletAndPromotionsImmediately() = runTest {
         val owner = owner(backgroundScope, promotions = listOf(Promotion("p", "Promo")))
         owner.onSessionChanged("user-A")
-        advanceUntilIdle()
+        owner.awaitSettled()
         owner.clearForLogout()
         assertNull(owner.state.value.wallet)
         assertTrue(owner.state.value.promotions.isEmpty())
@@ -100,13 +101,13 @@ class StoreWalletOwnerTest {
             scope = backgroundScope
         )
         owner.onSessionChanged("user-A")
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertEquals("9.35", owner.state.value.wallet?.walletValue)
         current = wallet("1.40")
         owner.onSessionChanged("user-B")
         assertNull(owner.state.value.wallet)
         assertTrue(owner.state.value.promotions.isEmpty())
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertEquals("1.40", owner.state.value.wallet?.walletValue)
     }
 
@@ -120,9 +121,9 @@ class StoreWalletOwnerTest {
             scope = backgroundScope
         )
         owner.onSessionChanged("restored-user")
-        advanceUntilIdle()
+        owner.awaitSettled()
         owner.refresh()
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertTrue(reads >= 2)
         assertEquals("restored", owner.state.value.promotions.single().id)
     }
@@ -138,18 +139,18 @@ class StoreWalletOwnerTest {
             scope = backgroundScope
         )
         owner.onSessionChanged("user-A")
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertNotNull(owner.state.value.walletError)
         assertNull(owner.state.value.promotionsError)
         failWallet = false
         failPromotions = true
         owner.refresh()
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertNull(owner.state.value.walletError)
         assertNotNull(owner.state.value.promotionsError)
         failPromotions = false
         owner.refresh()
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertNull(owner.state.value.walletError)
         assertNull(owner.state.value.promotionsError)
     }
@@ -165,9 +166,9 @@ class StoreWalletOwnerTest {
             scope = backgroundScope
         )
         owner.onSessionChanged("user-A")
-        advanceUntilIdle()
+        owner.awaitSettled()
         owner.redeem(100) { code -> appliedCode = code; CouponApplicationResult.Success }
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertEquals(1, redeems)
         assertEquals("CR-MONEDERO-42", appliedCode)
         assertNull(owner.state.value.pendingRequestId)
@@ -182,10 +183,10 @@ class StoreWalletOwnerTest {
             createRequestId = { "one-id" }, scope = backgroundScope
         )
         owner.onSessionChanged("user-A")
-        advanceUntilIdle()
+        owner.awaitSettled()
         owner.redeem(100) { CouponApplicationResult.Success }
         owner.redeem(100) { CouponApplicationResult.Success }
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertEquals(1, redeems)
     }
 
@@ -198,12 +199,12 @@ class StoreWalletOwnerTest {
             createRequestId = { "same-id" }, scope = backgroundScope
         )
         owner.onSessionChanged("user-A")
-        advanceUntilIdle()
+        owner.awaitSettled()
         owner.redeem(100) { CouponApplicationResult.Success }
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertEquals("same-id", owner.state.value.pendingRequestId)
         owner.redeem(100) { CouponApplicationResult.Success }
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertEquals(listOf("same-id", "same-id"), ids)
     }
 
@@ -219,18 +220,18 @@ class StoreWalletOwnerTest {
             scope = backgroundScope
         )
         owner.onSessionChanged("user-A")
-        advanceUntilIdle()
+        owner.awaitSettled()
         owner.redeem(100) { CouponApplicationResult.failure("Cupón rechazado") }
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertEquals(1, redeems)
         assertNull(owner.state.value.pendingRequestId)
         assertTrue(owner.state.value.operationError?.contains("El crédito se ha creado") == true)
         assertEquals("CR-MONEDERO-42", owner.state.value.wallet?.pendingRewards?.single()?.code)
         assertTrue(walletReads >= 2)
         owner.applyReward(pending) { CouponApplicationResult.failure("Sigue rechazado") }
-        advanceUntilIdle()
+        owner.awaitSettled()
         owner.redeem(100) { CouponApplicationResult.Success }
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertEquals(1, redeems)
     }
 
@@ -245,9 +246,9 @@ class StoreWalletOwnerTest {
         var redeems = 0
         val owner = owner(backgroundScope)
         owner.onSessionChanged("user-A")
-        advanceUntilIdle()
+        owner.awaitSettled()
         owner.redeem(1) { redeems++; CouponApplicationResult.Success }
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertEquals(0, redeems)
         assertNull(owner.state.value.pendingRequestId)
     }
@@ -263,9 +264,9 @@ class StoreWalletOwnerTest {
             scope = backgroundScope
         )
         owner.onSessionChanged("user-A")
-        advanceUntilIdle()
+        owner.awaitSettled()
         owner.applyReward(reward()) { code -> applied = code; CouponApplicationResult.Success }
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertEquals("CR-MONEDERO-42", applied)
         assertEquals(0, redeems)
         assertNull(owner.state.value.operationError)
@@ -274,9 +275,9 @@ class StoreWalletOwnerTest {
     @Test fun callbackExceptionIsShownAsRecoverableOperationError() = runTest {
         val owner = owner(backgroundScope)
         owner.onSessionChanged("user-A")
-        advanceUntilIdle()
+        owner.awaitSettled()
         owner.applyPromotion("PROMO-10") { error("cart adapter failed") }
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertTrue(owner.state.value.operationError?.contains("cart adapter failed") == true)
     }
 
@@ -289,11 +290,11 @@ class StoreWalletOwnerTest {
             scope = backgroundScope
         )
         owner.onSessionChanged("user-A")
-        advanceUntilIdle()
+        owner.awaitSettled()
         owner.redeem(100) { CouponApplicationResult.Success }
-        advanceUntilIdle()
+        owner.awaitSettled()
         owner.redeem(100) { CouponApplicationResult.Success }
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertNull(owner.state.value.pendingRequestId)
         assertTrue(owner.state.value.redemptionReconciliationRequired)
         assertTrue(owner.state.value.operationError?.contains("no ha devuelto un cupón") == true)
@@ -304,7 +305,7 @@ class StoreWalletOwnerTest {
         val withCode = Promotion("code", "Descuento", code = "PROMO-10", priority = 1)
         val owner = owner(backgroundScope, promotions = listOf(withCode, noCode))
         owner.onSessionChanged("user-A")
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertEquals(listOf("info", "code"), owner.state.value.promotions.map { it.id })
         assertNull(owner.state.value.promotions.first().code)
         assertEquals("PROMO-10", owner.state.value.promotions.last().code)
@@ -323,12 +324,28 @@ class StoreWalletOwnerTest {
             scope = backgroundScope
         )
         owner.onSessionChanged("user-A")
-        advanceUntilIdle()
+        owner.awaitSettled()
         owner.redeem(100) { CouponApplicationResult.failure("cart rejected") }
-        advanceUntilIdle()
+        owner.awaitSettled()
         assertNull(owner.state.value.pendingRequestId)
         assertEquals("CR-MONEDERO-42", owner.state.value.pendingReward?.code)
         assertTrue(owner.state.value.operationError?.contains("El crédito se ha creado") == true)
+    }
+
+    /**
+     * Run work queued at the current virtual time, then wait for the owner's
+     * observable loading flags to confirm that wallet, promotions and any
+     * redemption/coupon callback have finished. backgroundScope is intentionally
+     * not treated as an idle-work signal.
+     */
+    private suspend fun StoreWalletOwner.awaitSettled() {
+        runCurrent()
+        state.first {
+            !it.walletLoading &&
+                !it.promotionsLoading &&
+                !it.redeemLoading &&
+                !it.couponApplyLoading
+        }
     }
 
     private fun owner(
