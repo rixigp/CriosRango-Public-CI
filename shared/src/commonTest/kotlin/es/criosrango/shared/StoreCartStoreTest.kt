@@ -17,8 +17,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 
 class StoreCartStoreTest {
@@ -64,7 +64,7 @@ class StoreCartStoreTest {
 
         assertEquals(StoreCartLoadState.LOADING, store.state.value)
         store.refresh()
-        advanceUntilIdle()
+        store.state.first { it == StoreCartLoadState.SUCCESS_EMPTY }
 
         assertEquals(StoreCartLoadState.SUCCESS_EMPTY, store.state.value)
         assertTrue(store.cart.value.items.isEmpty())
@@ -78,7 +78,7 @@ class StoreCartStoreTest {
         ), this)
 
         store.refresh()
-        advanceUntilIdle()
+        store.state.first { it == StoreCartLoadState.SUCCESS_ITEMS }
 
         assertEquals(StoreCartLoadState.SUCCESS_ITEMS, store.state.value)
         assertEquals("line-1", store.cart.value.items.single().key)
@@ -92,14 +92,14 @@ class StoreCartStoreTest {
         ), this)
 
         store.refresh()
-        advanceUntilIdle()
+        store.state.first { it == StoreCartLoadState.ERROR }
         assertEquals(StoreCartLoadState.ERROR, store.state.value)
         assertNotNull(store.error.value)
 
         store.refresh()
         runCurrent()
         assertEquals(StoreCartLoadState.LOADING, store.state.value)
-        advanceUntilIdle()
+        store.state.first { it == StoreCartLoadState.SUCCESS_EMPTY }
         assertEquals(StoreCartLoadState.SUCCESS_EMPTY, store.state.value)
         assertNull(store.error.value)
     }
@@ -120,17 +120,17 @@ class StoreCartStoreTest {
         }))
         val store = StoreCartStore(api, this)
         store.refresh()
-        advanceUntilIdle()
+        store.state.first { it == StoreCartLoadState.SUCCESS_EMPTY }
         assertEquals(StoreCartLoadState.SUCCESS_EMPTY, store.state.value)
 
         store.refresh()
-        runCurrent()
+        refreshStarted.await()
         assertTrue(refreshStarted.isCompleted)
         assertEquals(StoreCartLoadState.SUCCESS_EMPTY, store.state.value)
         assertTrue(store.cart.value.items.isEmpty())
 
         finishRefresh.complete(Unit)
-        advanceUntilIdle()
+        store.error.first { it != null }
         assertEquals(StoreCartLoadState.SUCCESS_EMPTY, store.state.value)
         assertNotNull(store.error.value)
     }
@@ -151,17 +151,17 @@ class StoreCartStoreTest {
         }))
         val store = StoreCartStore(api, this)
         store.refresh()
-        advanceUntilIdle()
+        store.state.first { it == StoreCartLoadState.SUCCESS_ITEMS }
         assertEquals(StoreCartLoadState.SUCCESS_ITEMS, store.state.value)
 
         store.refresh()
-        runCurrent()
+        refreshStarted.await()
         assertTrue(refreshStarted.isCompleted)
         assertEquals(StoreCartLoadState.SUCCESS_ITEMS, store.state.value)
         assertEquals("line-1", store.cart.value.items.single().key)
 
         finishRefresh.complete(Unit)
-        advanceUntilIdle()
+        store.state.first { it == StoreCartLoadState.SUCCESS_EMPTY }
         assertEquals(StoreCartLoadState.SUCCESS_EMPTY, store.state.value)
     }
 
@@ -172,11 +172,11 @@ class StoreCartStoreTest {
             HttpStatusCode.OK to """{"items":[]}"""
         ), this)
         store.refresh()
-        advanceUntilIdle()
+        store.state.first { it == StoreCartLoadState.SUCCESS_ITEMS }
         assertEquals(StoreCartLoadState.SUCCESS_ITEMS, store.state.value)
 
         store.remove(StoreCartLine(key = "line-1", id = 1, name = "Camisa", quantity = 1))
-        advanceUntilIdle()
+        store.state.first { it == StoreCartLoadState.SUCCESS_EMPTY }
 
         assertEquals(StoreCartLoadState.SUCCESS_EMPTY, store.state.value)
         assertTrue(store.cart.value.items.isEmpty())
@@ -244,8 +244,7 @@ class StoreCartStoreTest {
         ), this)
         store.refreshAwait()
         store.removeCoupon("WELCOME10")
-        runCurrent()
-        advanceUntilIdle()
+        store.couponError.first { it != null }
         assertEquals(listOf("WELCOME10"), store.cart.value.coupons.map { it.code })
         assertEquals("429", store.cart.value.totals.totalDiscount)
         assertNotNull(store.couponError.value)
@@ -283,12 +282,11 @@ class StoreCartStoreTest {
         }))
         val store = StoreCartStore(api, this)
         val first = async { store.applyCouponAwait("FIRST") }
-        runCurrent()
+        firstStarted.await()
         assertTrue(firstStarted.isCompleted)
         val second = async { store.applyCouponAwait("SECOND") }
         runCurrent()
         releaseFirst.complete(Unit)
-        advanceUntilIdle()
         assertTrue(first.await())
         assertTrue(second.await())
         assertEquals(listOf("SECOND"), store.cart.value.coupons.map { it.code })
