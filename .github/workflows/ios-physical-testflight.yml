@@ -10,6 +10,7 @@ on:
   push:
     branches:
       - outlet-full-shared-convergence
+      - fix/ios-swipe-back
 
 permissions:
   contents: read
@@ -42,9 +43,15 @@ jobs:
           if [[ "$WORKFLOW_EVENT" == "workflow_dispatch" ]]; then
             REQUESTED_TARGET_SHA="$DISPATCH_TARGET_SHA"
           elif [[ "$WORKFLOW_EVENT" == "push" ]]; then
-            [[ "$BRANCH_NAME" == "outlet-full-shared-convergence" ]] || { echo "::error::Automatic physical build is restricted to the Outlet working branch"; exit 1; }
-            [[ "$HEAD_COMMIT_MESSAGE" == "CI_ONLY_OUTLET_PHYSICAL_TESTFLIGHT_TARGET_E9631D1D89831E46E6FC0B9F1BE73AD2F320F560" ]] || { echo "::error::Push is not the explicitly authorized CI-only physical trigger"; exit 1; }
-            REQUESTED_TARGET_SHA="e9631d1d89831e46e6fc0b9f1be73ad2f320f560"
+            if [[ "$BRANCH_NAME" == "fix/ios-swipe-back" ]]; then
+              [[ "$HEAD_COMMIT_MESSAGE" == "Enable physical TestFlight validation on iOS swipe back branch" ]] || { echo "::error::Push is not the authorized swipe-back physical trigger"; exit 1; }
+              REQUESTED_TARGET_SHA="$WORKFLOW_RUN_SHA"
+            elif [[ "$BRANCH_NAME" == "outlet-full-shared-convergence" ]]; then
+              [[ "$HEAD_COMMIT_MESSAGE" == "CI_ONLY_OUTLET_PHYSICAL_TESTFLIGHT_TARGET_E9631D1D89831E46E6FC0B9F1BE73AD2F320F560" ]] || { echo "::error::Push is not the explicitly authorized CI-only physical trigger"; exit 1; }
+              REQUESTED_TARGET_SHA="e9631d1d89831e46e6fc0b9f1be73ad2f320f560"
+            else
+              echo "::error::Automatic physical build is restricted to explicitly authorized branches"; exit 1
+            fi
           else
             echo "::error::Unsupported event"; exit 1
           fi
@@ -106,8 +113,13 @@ jobs:
           if [[ "$WORKFLOW_EVENT" == "workflow_dispatch" ]]; then
             [[ "$BRANCH_NAME" == "main" || "$BRANCH_NAME" == "compose-multiplatform-convergence" ]] || { echo "::error::Manual dispatch is only authorized on main or the convergence pilot branch"; exit 1; }
           else
-            [[ "$BRANCH_NAME" == "outlet-full-shared-convergence" && "$HEAD_COMMIT_MESSAGE" == "CI_ONLY_OUTLET_PHYSICAL_TESTFLIGHT_TARGET_E9631D1D89831E46E6FC0B9F1BE73AD2F320F560" ]] || { echo "::error::Push-triggered physical build is restricted to the explicit CI-only Outlet trigger"; exit 1; }
-            [[ "$REQUESTED_TARGET_SHA" == "e9631d1d89831e46e6fc0b9f1be73ad2f320f560" ]] || { echo "::error::CI-only Outlet trigger target is frozen"; exit 1; }
+            if [[ "$BRANCH_NAME" == "fix/ios-swipe-back" ]]; then
+              [[ "$HEAD_COMMIT_MESSAGE" == "Enable physical TestFlight validation on iOS swipe back branch" && "$REQUESTED_TARGET_SHA" == "$WORKFLOW_RUN_SHA" ]] || { echo "::error::Swipe-back physical target is not the authorized trigger commit"; exit 1; }
+            elif [[ "$BRANCH_NAME" == "outlet-full-shared-convergence" ]]; then
+              [[ "$HEAD_COMMIT_MESSAGE" == "CI_ONLY_OUTLET_PHYSICAL_TESTFLIGHT_TARGET_E9631D1D89831E46E6FC0B9F1BE73AD2F320F560" && "$REQUESTED_TARGET_SHA" == "e9631d1d89831e46e6fc0b9f1be73ad2f320f560" ]] || { echo "::error::CI-only Outlet trigger target is frozen"; exit 1; }
+            else
+              echo "::error::Push-triggered physical build is restricted to explicitly authorized branches"; exit 1
+            fi
           fi
           VERSION="$(grep -m1 'MARKETING_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
           BASE_BUILD="$(grep -m1 'CURRENT_PROJECT_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*CURRENT_PROJECT_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
