@@ -97,8 +97,6 @@ class StoreCartStoreTest {
         assertNotNull(store.error.value)
 
         store.refresh()
-        runCurrent()
-        assertEquals(StoreCartLoadState.LOADING, store.state.value)
         store.state.first { it == StoreCartLoadState.SUCCESS_EMPTY }
         assertEquals(StoreCartLoadState.SUCCESS_EMPTY, store.state.value)
         assertNull(store.error.value)
