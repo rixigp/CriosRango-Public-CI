@@ -80,6 +80,18 @@ jobs:
           ref: ${{ needs.resolve-target.outputs.resolved_sha }}
           fetch-depth: 1
 
+      - name: Reconstruct and validate Firebase iOS configuration
+        shell: bash
+        env:
+          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$GOOGLE_SERVICE_INFO_PLIST_BASE64"
+          printf '%s' "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > iosApp/GoogleService-Info.plist
+          test -s iosApp/GoogleService-Info.plist
+          plutil -lint iosApp/GoogleService-Info.plist
+          /usr/libexec/PlistBuddy -c 'Print :GOOGLE_APP_ID' iosApp/GoogleService-Info.plist >/dev/null
+
       - name: Verify target SHA, branch, version and unique build
         id: metadata
         shell: bash
