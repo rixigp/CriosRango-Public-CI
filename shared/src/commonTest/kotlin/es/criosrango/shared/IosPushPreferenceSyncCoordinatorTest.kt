@@ -18,9 +18,9 @@ class IosPushPreferenceSyncCoordinatorTest {
     @Test fun T1_pendingUnregisterIsRestoredByNewCoordinatorAfterRestart() {
         val persisted = unregisterSnapshot()
         val restarted = IosPushPreferenceSyncCoordinator(
-            true, true, { _, _ -> }, { true },
+            true, true, { _, _ -> }, { _, _ -> true },
             initialPendingUnregisterSnapshot = persisted,
-            unregister = { true }
+            unregister = { _ -> true }
         )
         assertEquals(persisted, restarted.pendingUnregisterSnapshotForTest())
     }
@@ -30,7 +30,7 @@ class IosPushPreferenceSyncCoordinatorTest {
         var saved: PushUnregisterSnapshot? = persisted
         var calls = 0
         val c = IosPushPreferenceSyncCoordinator(
-            true, true, { _, _ -> }, { true },
+            true, true, { _, _ -> }, { _, _ -> true },
             initialPendingUnregisterSnapshot = saved,
             persistUnregisterSnapshot = { saved = it },
             unregister = { calls++; calls > 1 }
@@ -50,10 +50,10 @@ class IosPushPreferenceSyncCoordinatorTest {
         var persisted: PushUnregisterSnapshot? = null
         val snapshots = mutableListOf<PushUnregisterSnapshot?>()
         val c = IosPushPreferenceSyncCoordinator(
-            true, true, { _, _ -> }, { true },
+            true, true, { _, _ -> }, { _, _ -> true },
             captureUnregisterSnapshot = { generation -> PushUnregisterSnapshot("apns-A", visibleAccount, generation) },
             persistUnregisterSnapshot = { persisted = it; snapshots += it },
-            unregister = { true }
+            unregister = { _ -> true }
         )
         c.requestUnregister(CoroutineScope(Dispatchers.Unconfined))
         visibleAccount = null
@@ -68,7 +68,7 @@ class IosPushPreferenceSyncCoordinatorTest {
         val release = CompletableDeferred<Unit>()
         var confirmedWrites = 0
         val c = IosPushPreferenceSyncCoordinator(
-            true, true, { _, _ -> }, {
+            true, true, { _, _ -> }, { _, _ ->
                 if (!entered.isCompleted) { entered.complete(Unit); release.await() }
                 true
             },
