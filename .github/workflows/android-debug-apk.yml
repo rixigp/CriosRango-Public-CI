@@ -16,6 +16,7 @@ on:
       - kmp-migration
       - compose-multiplatform-convergence
       - home-novedades-marcas-convergence
+      - fix/release-test-suite
     paths:
       - "app/**"
       - "shared/**"
@@ -79,13 +80,13 @@ jobs:
           STOREPASS="$(printf '%s' "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD" | tr -d '\r\n')"
           keytool -list -keystore "$RUNNER_TEMP/criosrango-debug.jks" -storepass "$STOREPASS" -alias "criosrango-development"
       - name: Build Android Debug APK (push-fast)
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref != 'refs/heads/fix/release-test-suite'
         run: |
           set -euo pipefail
           ./gradlew :app:assembleDebug --warning-mode all --stacktrace
 
       - name: Validate Android debug, tests, lint, and minified release
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/home-novedades-marcas-convergence')
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/home-novedades-marcas-convergence' || github.ref == 'refs/heads/fix/release-test-suite'))
         run: |
           set +e
           ./gradlew clean :app:assembleDebug :app:lintDebug test :app:assembleRelease --warning-mode all --stacktrace
@@ -94,8 +95,20 @@ jobs:
             cat app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
           fi
           exit $STATUS
+      - name: Upload Android test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-test-reports
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            shared/build/test-results/**/*.xml
+            shared/build/reports/tests/**
+            app/build/test-results/**/*.xml
+            app/build/reports/tests/**
       - name: Validate R8 outputs and release manifest
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/home-novedades-marcas-convergence')
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/home-novedades-marcas-convergence' || github.ref == 'refs/heads/fix/release-test-suite'))
         shell: bash
         run: |
           set -euo pipefail

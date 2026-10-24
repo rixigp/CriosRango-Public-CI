@@ -5,7 +5,10 @@ import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.account.AccountTokenStore
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.request.HttpRequestData
+import io.ktor.client.request.HttpResponseData
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -31,7 +34,7 @@ class StoreAccountAuthFormsTest {
     }
 
     private fun repository(
-        response: suspend (io.ktor.client.request.HttpRequestData) -> io.ktor.client.statement.HttpResponseData,
+        response: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
         store: TokenStore = TokenStore()
     ): Pair<AccountRepository, TokenStore> {
         val http = HttpClient(MockEngine { request -> response(request) }) {
@@ -42,7 +45,7 @@ class StoreAccountAuthFormsTest {
 
     @Test
     fun registerValidationMatchesGoldenAndLeavesPasswordUntrimmed() {
-        val owner = StoreRegisterOwner(repository { error("should not call network") }.first)
+        val owner = StoreRegisterOwner(repository(response = { _ -> error("should not call network") }).first)
         assertTrue(owner.validate().containsKey("firstName"))
         assertTrue(owner.validate().containsKey("lastName"))
         assertTrue(owner.validate().containsKey("email"))

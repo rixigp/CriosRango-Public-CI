@@ -214,5 +214,6 @@ class StoreProfileAddressOwnerTest {
         assertNull(owner.save(user, "Ana", "Pérez"))
         allowAddressRead.complete(Unit)
         assertNotNull(first.await())
+        Unit
     }
 }
