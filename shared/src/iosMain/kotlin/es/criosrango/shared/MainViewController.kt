@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package es.criosrango.shared
 
 import androidx.compose.ui.window.ComposeUIViewController
@@ -17,11 +19,10 @@ import platform.UIKit.UIGestureRecognizerStateEnded
 import platform.UIKit.UIRectEdgeLeft
 import platform.UIKit.UIScreenEdgePanGestureRecognizer
 import kotlinx.cinterop.StableRef
-import kotlinx.cinterop.asCPointer
 import platform.darwin.NSObject
-import platform.darwin.ObjCAction
-import platform.darwin.OBJC_ASSOCIATION_RETAIN_NONATOMIC
-import platform.darwin.objc_setAssociatedObject
+import kotlinx.cinterop.ObjCAction
+import platform.objc.OBJC_ASSOCIATION_RETAIN_NONATOMIC
+import platform.objc.objc_setAssociatedObject
 
 private var iosPaymentStore: StorePaymentStore? = null
 private var iosRootViewController: UIViewController? = null
