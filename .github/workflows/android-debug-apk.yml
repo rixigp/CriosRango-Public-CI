@@ -16,6 +16,7 @@ on:
       - kmp-migration
       - compose-multiplatform-convergence
       - home-novedades-marcas-convergence
+      - fix/ios-swipe-back
     paths:
       - "app/**"
       - "shared/**"
