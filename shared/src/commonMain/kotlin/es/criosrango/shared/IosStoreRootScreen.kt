@@ -74,7 +74,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.path
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.loyalty.LoyaltyRepository
@@ -315,7 +314,6 @@ fun CriosRangoIOSRootScreen(
                     onCart = { resetCatalog(); section = IosRootSection.CART }
                 )
             },
-            bottomNavigationModifier = Modifier.navigationBarsPadding()
         ) { paddingValues ->
             val padding = paddingValues
             Column(Modifier.fillMaxSize()) {

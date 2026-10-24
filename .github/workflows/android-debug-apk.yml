@@ -16,6 +16,7 @@ on:
       - kmp-migration
       - compose-multiplatform-convergence
       - home-novedades-marcas-convergence
+      - fix/bottom-nav-safe-area
     paths:
       - "app/**"
       - "shared/**"
@@ -85,7 +86,7 @@ jobs:
           ./gradlew :app:assembleDebug --warning-mode all --stacktrace
 
       - name: Validate Android debug, tests, lint, and minified release
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/home-novedades-marcas-convergence' || github.ref == 'refs/heads/fix/release-test-suite'))
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/home-novedades-marcas-convergence' || github.ref == 'refs/heads/fix/release-test-suite' || github.ref == 'refs/heads/fix/bottom-nav-safe-area'))
         run: |
           set +e
           ./gradlew clean :app:assembleDebug :app:lintDebug test :app:assembleRelease --warning-mode all --stacktrace
@@ -107,7 +108,7 @@ jobs:
             app/build/test-results/**/*.xml
             app/build/reports/tests/**
       - name: Validate R8 outputs and release manifest
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/home-novedades-marcas-convergence' || github.ref == 'refs/heads/fix/release-test-suite'))
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/home-novedades-marcas-convergence' || github.ref == 'refs/heads/fix/release-test-suite' || github.ref == 'refs/heads/fix/bottom-nav-safe-area'))
         shell: bash
         run: |
           set -euo pipefail

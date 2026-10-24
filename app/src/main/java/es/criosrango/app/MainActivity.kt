@@ -494,7 +494,7 @@ private fun CriosRangoApp(
                     cartQuantity = cartQuantity,
                     onTabSelected = { selectRootTab(it) },
                     topBar = {},
-                    bottomNavigationModifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()
+                    bottomNavigationModifier = Modifier.fillMaxWidth()
                 ) { shellPadding ->
                 es.criosrango.shared.StoreCheckoutScreen(
                     checkoutStore = sharedCheckoutStore, paymentStore = sharedPaymentStore,
@@ -544,7 +544,7 @@ private fun CriosRangoApp(
                     cartQuantity = cartQuantity,
                     onTabSelected = { selectRootTab(it) },
                     topBar = {},
-                    bottomNavigationModifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()
+                    bottomNavigationModifier = Modifier.fillMaxWidth()
                 ) { shellPadding ->
                     Box(Modifier.fillMaxSize().padding(bottom = shellPadding.calculateBottomPadding())) {
                         ProductDetail(
@@ -578,10 +578,7 @@ private fun CriosRangoApp(
                         { openUtilityTab(AppTab.CART) }
                     )
                 },
-                bottomNavigationModifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.background)
-                    .navigationBarsPadding()
+                bottomNavigationModifier = Modifier.fillMaxWidth()
             ) { padding ->
                 when {
                     error != null && tab != AppTab.HOME && tab != AppTab.ACCOUNT && tab != AppTab.CART && !catalogHasUsableContent(tab, products, homeProducts, activeCategoryProducts) -> StoreErrorState(error!!, padding, viewModel::retryLastOperation)
