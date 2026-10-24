@@ -16,11 +16,18 @@ import platform.UIKit.UIGestureRecognizerDelegateProtocol
 import platform.UIKit.UIGestureRecognizerStateEnded
 import platform.UIKit.UIRectEdgeLeft
 import platform.UIKit.UIScreenEdgePanGestureRecognizer
+import kotlinx.cinterop.StableRef
+import kotlinx.cinterop.asCPointer
 import platform.darwin.NSObject
 import platform.darwin.ObjCAction
+import platform.darwin.OBJC_ASSOCIATION_RETAIN_NONATOMIC
+import platform.darwin.objc_setAssociatedObject
 
 private var iosPaymentStore: StorePaymentStore? = null
 private var iosRootViewController: UIViewController? = null
+
+// The key is process-lifetime metadata only; the associated target itself is retained by each controller.
+private val edgeBackTargetAssociationKey = StableRef.create(Unit).asCPointer()
 
 private class IosEdgeBackTarget(private val coordinator: IosBackCoordinator) : NSObject(), UIGestureRecognizerDelegateProtocol {
     @ObjCAction fun handleEdgePan(recognizer: UIScreenEdgePanGestureRecognizer) {
@@ -72,6 +79,8 @@ fun MainViewController() : UIViewController {
         }
     }
     val edgeBackTarget = IosEdgeBackTarget(backCoordinator)
+    // Strongly tie the target to this controller's lifetime instead of relying on target/action retention.
+    objc_setAssociatedObject(controller, edgeBackTargetAssociationKey, edgeBackTarget, OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     val edgeBackRecognizer = UIScreenEdgePanGestureRecognizer(target = edgeBackTarget, action = NSSelectorFromString("handleEdgePan:"))
     edgeBackRecognizer.edges = UIRectEdgeLeft
     edgeBackRecognizer.delegate = edgeBackTarget
