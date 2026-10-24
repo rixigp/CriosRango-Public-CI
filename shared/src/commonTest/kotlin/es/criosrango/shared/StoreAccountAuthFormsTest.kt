@@ -45,7 +45,7 @@ class StoreAccountAuthFormsTest {
 
     @Test
     fun registerValidationMatchesGoldenAndLeavesPasswordUntrimmed() {
-        val owner = StoreRegisterOwner(repository { error("should not call network") }.first)
+        val owner = StoreRegisterOwner(repository(response = { _ -> error("should not call network") }).first)
         assertTrue(owner.validate().containsKey("firstName"))
         assertTrue(owner.validate().containsKey("lastName"))
         assertTrue(owner.validate().containsKey("email"))
