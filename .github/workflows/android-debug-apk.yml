@@ -16,7 +16,6 @@ on:
       - kmp-migration
       - compose-multiplatform-convergence
       - home-novedades-marcas-convergence
-      - fix/release-test-suite
     paths:
       - "app/**"
       - "shared/**"

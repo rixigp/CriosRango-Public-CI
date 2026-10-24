@@ -2,7 +2,7 @@ name: iOS FAST Simulator Debug
 
 on:
   push:
-    branches: [main, compose-multiplatform-convergence, outlet-full-shared-convergence, home-novedades-marcas-convergence, fix/release-test-suite]
+    branches: [main, compose-multiplatform-convergence, outlet-full-shared-convergence, home-novedades-marcas-convergence]
     paths:
       - "app/**"
       - "shared/**"
