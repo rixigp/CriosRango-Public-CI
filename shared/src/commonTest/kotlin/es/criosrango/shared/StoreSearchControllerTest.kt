@@ -4,10 +4,10 @@ import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreGlobalBrand
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -20,11 +20,17 @@ import kotlin.test.assertTrue
 class StoreSearchControllerTest {
     private class FakeSource : StoreSearchDataSource {
         val requests = mutableListOf<Pair<String, CompletableDeferred<List<StoreProduct>>>>()
+        private val requestCount = MutableStateFlow(0)
         var fail = false
+
+        suspend fun awaitRequestCount(count: Int) {
+            requestCount.first { it >= count }
+        }
         override suspend fun search(query: String): List<StoreProduct> {
             if (fail) error("network down")
             val deferred = CompletableDeferred<List<StoreProduct>>()
             requests += query to deferred
+            requestCount.value = requests.size
             return deferred.await()
         }
         override suspend fun categories() = emptyList<es.criosrango.shared.model.StoreCategory>()
@@ -87,15 +93,15 @@ class StoreSearchControllerTest {
         val source = FakeSource()
         val controller = StoreSearchController(backgroundScope, source, 0)
         controller.onQueryChanged("A")
-        advanceUntilIdle()
+        source.awaitRequestCount(1)
         val a = source.requests.first().second
         controller.onQueryChanged("B")
-        advanceUntilIdle()
+        source.awaitRequestCount(2)
         val b = source.requests.last().second
         b.complete(listOf(StoreProduct(id=2,name="B")))
-        advanceUntilIdle()
+        controller.state.first { it.products.map(StoreProduct::id) == listOf(2) }
         a.complete(listOf(StoreProduct(id=1,name="A")))
-        advanceUntilIdle()
+        runCurrent()
         assertEquals("B", controller.state.value.query)
         assertEquals(listOf(2), controller.state.value.products.map { it.id })
     }
@@ -104,13 +110,13 @@ class StoreSearchControllerTest {
         source.fail = true
         val controller = StoreSearchController(backgroundScope, source, 0)
         controller.onQueryChanged("camiseta")
-        advanceUntilIdle()
+        controller.state.first { it.errorMessage == "network down" }
         assertEquals("network down", controller.state.value.errorMessage)
         source.fail = false
         controller.retry()
-        advanceUntilIdle()
+        source.awaitRequestCount(1)
         source.requests.last().second.complete(listOf(StoreProduct(id=7,name="camiseta")))
-        advanceUntilIdle()
+        controller.state.first { it.products.map(StoreProduct::id) == listOf(7) && it.errorMessage == null }
         assertNull(controller.state.value.errorMessage)
         assertEquals(listOf(7), controller.state.value.products.map { it.id })
     }
@@ -118,9 +124,9 @@ class StoreSearchControllerTest {
         val source = FakeSource()
         val controller = StoreSearchController(backgroundScope, source, 0)
         controller.onQueryChanged("none")
-        advanceUntilIdle()
+        source.awaitRequestCount(1)
         source.requests.last().second.complete(emptyList())
-        advanceUntilIdle()
+        controller.state.first { it.hasSearched && it.products.isEmpty() }
         assertTrue(controller.state.value.hasSearched)
         assertTrue(controller.state.value.products.isEmpty())
     }
