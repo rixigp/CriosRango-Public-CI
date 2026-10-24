@@ -1,17 +1,34 @@
 package es.criosrango.shared
 
 import androidx.compose.ui.window.ComposeUIViewController
+import androidx.compose.runtime.CompositionLocalProvider
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.api.StoreApiClient
 import es.criosrango.shared.loyalty.LoyaltyRepository
 import platform.Foundation.NSURL
 import platform.Foundation.NSBundle
+import platform.Foundation.NSSelectorFromString
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
 import platform.UIKit.UIViewController
+import platform.UIKit.UIGestureRecognizer
+import platform.UIKit.UIGestureRecognizerDelegateProtocol
+import platform.UIKit.UIGestureRecognizerStateEnded
+import platform.UIKit.UIRectEdgeLeft
+import platform.UIKit.UIScreenEdgePanGestureRecognizer
+import platform.darwin.NSObject
+import platform.darwin.ObjCAction
 
 private var iosPaymentStore: StorePaymentStore? = null
 private var iosRootViewController: UIViewController? = null
+
+private class IosEdgeBackTarget(private val coordinator: IosBackCoordinator) : NSObject(), UIGestureRecognizerDelegateProtocol {
+    @ObjCAction fun handleEdgePan(recognizer: UIScreenEdgePanGestureRecognizer) {
+        if (recognizer.state != UIGestureRecognizerStateEnded) return
+        if (recognizer.translationInView(recognizer.view).x >= 72.0) coordinator.dispatchBack()
+    }
+    override fun gestureRecognizer(gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWithGestureRecognizer: UIGestureRecognizer): Boolean = true
+}
 private val iosPushNavigation = androidx.compose.runtime.mutableStateOf<IosPushNavigation?>(null)
 
 fun MainViewController() : UIViewController {
@@ -33,7 +50,9 @@ fun MainViewController() : UIViewController {
     val paymentStore = StorePaymentStore(storeApi, cartStore, pendingStore)
     iosPaymentStore = paymentStore
 
+    val backCoordinator = IosBackCoordinator()
     val controller = ComposeUIViewController {
+        CompositionLocalProvider(LocalIosBackCoordinator provides backCoordinator) {
         CriosRangoIOSRootScreen(
         storeApi = storeApi,
         accountRepository = accountRepository,
@@ -50,7 +69,13 @@ fun MainViewController() : UIViewController {
             pushNavigation = iosPushNavigation.value,
             onPushNavigationConsumed = { iosPushNavigation.value = null }
         )
+        }
     }
+    val edgeBackTarget = IosEdgeBackTarget(backCoordinator)
+    val edgeBackRecognizer = UIScreenEdgePanGestureRecognizer(target = edgeBackTarget, action = NSSelectorFromString("handleEdgePan:"))
+    edgeBackRecognizer.edges = UIRectEdgeLeft
+    edgeBackRecognizer.delegate = edgeBackTarget
+    controller.view.addGestureRecognizer(edgeBackRecognizer)
     iosRootViewController = controller
     return controller
 }

@@ -282,6 +282,7 @@ fun StoreProductDetailFullscreenGallery(
     onDismiss: () -> Unit
 ) {
     if (imageCount <= 0) return
+    IosBackHandler(IosBackPriority.OVERLAY, onBack = onDismiss)
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         val pagerState = rememberPagerState(initialPage = initialPage.coerceIn(0, imageCount - 1), pageCount = { imageCount })
         Box(Modifier.fillMaxSize().background(Color.Black)) {

@@ -118,6 +118,19 @@ fun CriosRangoIOSAccountScreen(
     var selectedInfoPage by remember { mutableStateOf<AccountInfoPage?>(null) }
     var forgotReturnPage by remember { mutableStateOf(IosAccountPage.LOGIN) }
     var addressReturnPage by remember { mutableStateOf(IosAccountPage.HOME) }
+    if (page == IosAccountPage.REGISTER) IosBackHandler(IosBackPriority.OVERLAY) { page = IosAccountPage.LOGIN }
+    if (page == IosAccountPage.FORGOT) IosBackHandler(IosBackPriority.OVERLAY) { page = forgotReturnPage }
+    IosBackHandler(IosBackPriority.ACCOUNT) {
+        when (page) {
+            IosAccountPage.HOME -> onBackFromRoot()
+            IosAccountPage.LOGIN, IosAccountPage.REGISTER -> if (onBackFromLogin != null) onBackFromLogin() else page = IosAccountPage.HOME
+            IosAccountPage.FORGOT -> page = forgotReturnPage
+            IosAccountPage.PROFILE, IosAccountPage.ORDERS, IosAccountPage.WALLET, IosAccountPage.INFO, IosAccountPage.HELP -> page = IosAccountPage.HOME
+            IosAccountPage.DATA -> page = IosAccountPage.PROFILE
+            IosAccountPage.ADDRESS -> page = addressReturnPage
+            IosAccountPage.ORDER_DETAIL -> page = IosAccountPage.ORDERS
+        }
+    }
     val scope = rememberCoroutineScope()
     val registerOwner = remember(repository) { StoreRegisterOwner(repository) }
     val forgotPasswordOwner = remember(repository) { StoreForgotPasswordOwner(repository) }
@@ -347,6 +360,7 @@ fun CriosRangoIOSAccountScreen(
                 }) }
             }
             returnPickerOrder?.let { order ->
+                IosBackHandler(IosBackPriority.OVERLAY) { returnPickerOrder = null }
                 val requests = storeReturnRequests(order)
                 AlertDialog(
                     onDismissRequest = { returnPickerOrder = null },
@@ -861,6 +875,7 @@ fun BirthDatePickerField(
         }
     )
     if (open) {
+        IosBackHandler(IosBackPriority.OVERLAY) { open = false }
         val state = androidx.compose.material3.rememberDatePickerState(
             initialSelectedDateMillis = birthDateToEpochMillis(birthDate)
         )

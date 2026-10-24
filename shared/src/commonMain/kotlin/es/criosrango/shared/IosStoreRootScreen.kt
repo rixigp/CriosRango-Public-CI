@@ -202,6 +202,7 @@ fun CriosRangoIOSRootScreen(
     var categorySnapshotRetryGeneration by remember { mutableStateOf(0) }
     fun openCatalog(page: IosCatalogPage) { if (catalogPage != page) catalogHistory.add(catalogPage); catalogPage = page }
     fun resetCatalog() { catalogHistory.clear(); catalogPage = IosCatalogPage.Root; catalogOriginHome = false }
+    IosBackHandler(IosBackPriority.ROOT, canGoBack = section != IosRootSection.HOME) { resetCatalog(); section = IosRootSection.HOME }
     fun retryCategorySnapshot() {
         categorySnapshot = null
         categorySnapshotError = null
@@ -443,7 +444,9 @@ fun CriosRangoIOSRootScreen(
                     categorySnapshotError = categorySnapshotError,
                     onRetryCategorySnapshot = ::retryCategorySnapshot
                 )
-                IosRootSection.CART -> StoreCartScreen(
+                IosRootSection.CART -> {
+                    IosBackHandler(IosBackPriority.CART) { resetCatalog(); section = IosRootSection.HOME }
+                    StoreCartScreen(
                     storeApi = storeApi,
                     cartController = cartController,
                     loyaltyRepository = loyaltyRepository,
@@ -456,7 +459,8 @@ fun CriosRangoIOSRootScreen(
                     onLogin = { accountLoginFromCart = true; resetCatalog(); section = IosRootSection.ACCOUNT },
                     promotionBearerTokenProvider = { accountTokenStore.load() },
                     refreshOnEnter = false
-                )
+                    )
+                }
                 IosRootSection.ACCOUNT -> CriosRangoIOSAccountScreen(
                     repository = accountRepository,
                     sessionState = accountSessionState,
@@ -492,6 +496,7 @@ fun CriosRangoIOSRootScreen(
         if (showStartupBranding) StoreStartupBranding()
         }
         postOrderSuccess?.let { success ->
+            IosBackHandler(IosBackPriority.OVERLAY, canGoBack = false) {}
             AlertDialog(
                 onDismissRequest = {},
                 title = { Text("Pedido recibido") },
@@ -618,6 +623,8 @@ fun StoreCartScreen(
     var loyaltyError by remember { mutableStateOf<String?>(null) }
     var showWalletDialog by remember { mutableStateOf(false) }
     var showWalletInfoDialog by remember { mutableStateOf(false) }
+    if (showWalletDialog) IosBackHandler(IosBackPriority.OVERLAY) { if (!loyaltyLoading) showWalletDialog = false }
+    if (showWalletInfoDialog) IosBackHandler(IosBackPriority.OVERLAY) { showWalletInfoDialog = false }
     var pendingRedeemPoints by remember { mutableStateOf<Int?>(null) }
     var pendingRequestId by remember { mutableStateOf<String?>(null) }
     val loyaltyScope = rememberCoroutineScope()
@@ -694,6 +701,7 @@ fun StoreCartScreen(
     val couponLoading = cartUiState.couponLoading
     val couponError = cartUiState.couponError
     var clearCartConfirm by remember { mutableStateOf(false) }
+    if (clearCartConfirm) IosBackHandler(IosBackPriority.OVERLAY) { clearCartConfirm = false }
     var couponExpanded by remember { mutableStateOf(false) }
     var couponCode by remember { mutableStateOf("") }
     val promotionRepository = remember(promotionBearerTokenProvider) { PromotionRepository(bearerTokenProvider = promotionBearerTokenProvider) }
