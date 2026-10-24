@@ -132,13 +132,46 @@ jobs:
         shell: bash
         env:
           TARGET_SHA: ${{ steps.metadata.outputs.target_sha }}
-          SIM_UDID: ${{ steps.simulator.outputs.udid }}
-          SIM_NAME: ${{ steps.simulator.outputs.name }}
         run: |
           set -euo pipefail
           REPORT=ios-fast-debug-artifacts/ios-fast-simulator-debug-report.txt
           XCODE_LOG=ios-fast-debug-artifacts/ios-fast-xcodebuild.log
+          # Re-resolve the destination immediately before xcodebuild. The simulator
+          # selected/booted in the earlier step may have disappeared from CoreSimulator.
+          DEVICE_INFO="$(xcrun simctl list devices available -j | python3 -c '
+          import json,sys
+          d=json.load(sys.stdin); devices=[]
+          for runtime, entries in d.get("devices",{}).items():
+              if "iOS" not in runtime: continue
+              for x in entries:
+                  if x.get("isAvailable") and x.get("name","").startswith("iPhone"):
+                      devices.append((runtime,x))
+          preferred=("iPhone 17 Pro","iPhone 17","iPhone 16 Pro","iPhone 16","iPhone 15 Pro","iPhone 15")
+          for name in preferred:
+              matches=[(r,x) for r,x in devices if x["name"]==name]
+              if matches:
+                  r,x=sorted(matches,key=lambda z:z[0])[-1]
+                  print(r+"|"+x["name"]+"|"+x["udid"]); raise SystemExit
+          if devices:
+              r,x=sorted(devices,key=lambda z:(z[0],z[1]["name"]))[-1]
+              print(r+"|"+x["name"]+"|"+x["udid"]); raise SystemExit
+          raise SystemExit("No available iPhone Simulator at build time")')"
+          IFS='|' read -r SIM_RUNTIME SIM_NAME SIM_UDID <<< "$DEVICE_INFO"
+          test -n "$SIM_UDID"
+          xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
+          xcrun simctl bootstatus "$SIM_UDID" -b
           DESTINATION="platform=iOS Simulator,id=$SIM_UDID"
+          # Validate that the exact destination is still available immediately before build.
+          export SIM_UDID
+          xcrun simctl list devices available -j | python3 -c '
+          import json,os,sys
+          wanted=os.environ["SIM_UDID"]
+          d=json.load(sys.stdin)
+          found=[x for entries in d.get("devices",{}).values() for x in entries if x.get("udid")==wanted and x.get("isAvailable")]
+          if not found: raise SystemExit("Selected simulator is no longer available before xcodebuild: "+wanted)
+          print("Validated simulator destination: "+found[0]["name"]+" ("+wanted+")")'
+          echo "udid=$SIM_UDID" >> "$GITHUB_OUTPUT"
+          echo "name=$SIM_NAME" >> "$GITHUB_OUTPUT"
           DERIVED_DATA="$RUNNER_TEMP/CriosRangoDebugDerivedData"
           APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/CriosRango.app"
           SDK_VERSION="$(xcrun --sdk iphonesimulator --show-sdk-version)"
@@ -196,8 +229,8 @@ jobs:
         if: steps.ios_build.outcome == 'success'
         timeout-minutes: 7
         env:
-          SIM_UDID: ${{ steps.simulator.outputs.udid }}
-          SIM_NAME: ${{ steps.simulator.outputs.name }}
+          SIM_UDID: ${{ steps.ios_build.outputs.udid }}
+          SIM_NAME: ${{ steps.ios_build.outputs.name }}
         shell: bash
         run: |
           set -uo pipefail
