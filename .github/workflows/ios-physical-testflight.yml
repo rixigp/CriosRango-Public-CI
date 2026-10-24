@@ -113,7 +113,7 @@ jobs:
           BASE_BUILD="$(grep -m1 'CURRENT_PROJECT_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*CURRENT_PROJECT_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
           [[ "$VERSION" == "2.0.1" ]] || { echo "::error::Expected marketing version 2.0.1, found $VERSION"; exit 1; }
           [[ "$BASE_BUILD" == "20002" ]] || { echo "::error::Expected frozen project build baseline 20002, found $BASE_BUILD"; exit 1; }
-          BUILD_NUMBER=$((20002 + RUN_NUMBER))
+          BUILD_NUMBER=20175
           [[ "$BUILD_NUMBER" -gt 20002 ]] || exit 1
           START_EPOCH="$(date +%s)"
           echo "start_epoch=$START_EPOCH" >> "$GITHUB_OUTPUT"
