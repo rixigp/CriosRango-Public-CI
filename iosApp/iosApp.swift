@@ -1,4 +1,5 @@
 import UIKit
+import FirebaseCore
 import Shared
 import UserNotifications
 
@@ -27,6 +28,9 @@ final class CriosRangoIOSApp: UIResponder, UIApplicationDelegate, UNUserNotifica
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil
     ) -> Bool {
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
         UNUserNotificationCenter.current().delegate = self
         PushNotificationBridge.shared.configure()
         return true
