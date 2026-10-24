@@ -39,6 +39,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.navigationBarsPadding
 
 enum class StoreMainTab { HOME, CATEGORIES, OUTLET, CART, ACCOUNT }
 
@@ -55,11 +56,12 @@ fun StoreBottomNavigation(
         color = MaterialTheme.colorScheme.background,
         shadowElevation = 3.dp
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            listOf(
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                listOf(
                 StoreMainTab.HOME to "Inicio",
                 StoreMainTab.CATEGORIES to "Categorías",
                 StoreMainTab.OUTLET to "Outlet",
@@ -107,7 +109,9 @@ fun StoreBottomNavigation(
                         overflow = TextOverflow.Clip
                     )
                 }
+                }
             }
+            Spacer(Modifier.navigationBarsPadding())
         }
     }
 }
