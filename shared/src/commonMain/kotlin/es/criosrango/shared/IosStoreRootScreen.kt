@@ -200,6 +200,10 @@ fun CriosRangoIOSRootScreen(
     var categorySnapshotLoading by remember { mutableStateOf(true) }
     var categorySnapshotError by remember { mutableStateOf<String?>(null) }
     var categorySnapshotRetryGeneration by remember { mutableStateOf(0) }
+    var outletCategorySnapshot by remember { mutableStateOf<List<StoreCategory>?>(null) }
+    var outletCategorySnapshotLoading by remember { mutableStateOf(true) }
+    var outletCategorySnapshotError by remember { mutableStateOf<String?>(null) }
+    var outletCategorySnapshotRetryGeneration by remember { mutableStateOf(0) }
     fun openCatalog(page: IosCatalogPage) { if (catalogPage != page) catalogHistory.add(catalogPage); catalogPage = page }
     fun resetCatalog() { catalogHistory.clear(); catalogPage = IosCatalogPage.Root; catalogOriginHome = false }
     fun retryCategorySnapshot() {
@@ -207,6 +211,11 @@ fun CriosRangoIOSRootScreen(
         categorySnapshotError = null
         categorySnapshotLoading = true
         categorySnapshotRetryGeneration++
+    }
+    fun retryOutletCategorySnapshot() {
+        outletCategorySnapshotError = null
+        outletCategorySnapshotLoading = true
+        outletCategorySnapshotRetryGeneration++
     }
     fun backCatalog() { catalogPage = if (catalogHistory.isNotEmpty()) catalogHistory.removeAt(catalogHistory.lastIndex) else IosCatalogPage.Root }
 
@@ -224,6 +233,23 @@ fun CriosRangoIOSRootScreen(
             categorySnapshotError = "No se han podido cargar las categorías."
         } finally {
             categorySnapshotLoading = false
+        }
+    }
+
+    LaunchedEffect(section, catalogPage, outletCategorySnapshotRetryGeneration) {
+        if (section != IosRootSection.OUTLET || catalogPage !is IosCatalogPage.Outlet ||
+            outletCategorySnapshot != null || outletCategorySnapshotError != null
+        ) return@LaunchedEffect
+        outletCategorySnapshotLoading = true
+        try {
+            outletCategorySnapshot = storeApi.categories(perPage = 100)
+            outletCategorySnapshotError = null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            outletCategorySnapshotError = error.message ?: "No se han podido cargar las categorías."
+        } finally {
+            outletCategorySnapshotLoading = false
         }
     }
 
@@ -404,7 +430,11 @@ fun CriosRangoIOSRootScreen(
                                 categorySnapshot = categorySnapshot,
                                 categorySnapshotLoading = categorySnapshotLoading,
                                 categorySnapshotError = categorySnapshotError,
-                                onRetryCategorySnapshot = ::retryCategorySnapshot
+                                onRetryCategorySnapshot = ::retryCategorySnapshot,
+                                outletCategorySnapshot = outletCategorySnapshot,
+                                outletCategorySnapshotLoading = outletCategorySnapshotLoading,
+                                outletCategorySnapshotError = outletCategorySnapshotError,
+                                onRetryOutletCategorySnapshot = ::retryOutletCategorySnapshot
                             )
                         }
                     }
@@ -441,7 +471,11 @@ fun CriosRangoIOSRootScreen(
                     categorySnapshot = categorySnapshot,
                     categorySnapshotLoading = categorySnapshotLoading,
                     categorySnapshotError = categorySnapshotError,
-                    onRetryCategorySnapshot = ::retryCategorySnapshot
+                    onRetryCategorySnapshot = ::retryCategorySnapshot,
+                    outletCategorySnapshot = outletCategorySnapshot,
+                    outletCategorySnapshotLoading = outletCategorySnapshotLoading,
+                    outletCategorySnapshotError = outletCategorySnapshotError,
+                    onRetryOutletCategorySnapshot = ::retryOutletCategorySnapshot
                 )
                 IosRootSection.CART -> StoreCartScreen(
                     storeApi = storeApi,
