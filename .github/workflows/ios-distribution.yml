@@ -29,6 +29,7 @@ env:
   EXPECTED_VERSION_NAME: "2.0.1"
   EXPECTED_VERSION_CODE: "20002"
   EXPECTED_PROFILE_NAME: "CriosRango AppStore 2.0.1"
+  TARGET_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}
 
 jobs:
   ios-distribution:
@@ -40,14 +41,14 @@ jobs:
       - name: Checkout exact target SHA
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.target_sha }}
+          ref: ${{ env.TARGET_SHA }}
 
       - name: Verify checked out SHA
         shell: bash
         run: |
           set -euo pipefail
           ACTUAL_SHA="$(git rev-parse HEAD)"
-          if [[ "$ACTUAL_SHA" != "${{ inputs.target_sha }}" ]]; then
+          if [[ "$ACTUAL_SHA" != "$TARGET_SHA" ]]; then
             echo "::error::Checked out SHA does not match target_sha"
             exit 1
           fi
@@ -615,7 +616,7 @@ jobs:
           REPORT="$GITHUB_WORKSPACE/CriosRango-v${EXPECTED_VERSION_NAME}-build${EXPECTED_VERSION_CODE}-ios-release-report.txt"
           {
             echo "IOS DISTRIBUTION RELEASE REPORT"
-            echo "target_sha=${{ inputs.target_sha }}"
+            echo "target_sha=${TARGET_SHA}"
             echo "version=${EXPECTED_VERSION_NAME}"
             echo "build=${EXPECTED_VERSION_CODE}"
             echo "bundle_id=${EXPECTED_BUNDLE_ID}"
