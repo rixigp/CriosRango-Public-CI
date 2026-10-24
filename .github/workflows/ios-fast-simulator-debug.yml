@@ -126,6 +126,20 @@ jobs:
           xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
           xcrun simctl bootstatus "$SIM_UDID" -b
 
+      - name: Reconstruct and validate Firebase iOS configuration
+        shell: bash
+        env:
+          FIREBASE_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          set -euo pipefail
+          [[ -n "${FIREBASE_PLIST_BASE64:-}" ]] || { echo "::error::Missing required Actions secret GOOGLE_SERVICE_INFO_PLIST_BASE64"; exit 1; }
+          printf '%s' "$FIREBASE_PLIST_BASE64" | base64 --decode > iosApp/GoogleService-Info.plist
+          plutil -lint iosApp/GoogleService-Info.plist >/dev/null
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :BUNDLE_ID' iosApp/GoogleService-Info.plist)
+          PROJECT_ID=$(/usr/libexec/PlistBuddy -c 'Print :PROJECT_ID' iosApp/GoogleService-Info.plist)
+          [[ "$BUNDLE_ID" == "es.criosrango.app" ]] || { echo "::error::Firebase plist bundle ID mismatch"; exit 1; }
+          [[ "$PROJECT_ID" == "criosrango-1a2c1" ]] || { echo "::error::Firebase plist project ID mismatch"; exit 1; }
+          echo "Firebase iOS configuration validated (values not logged)."
       - name: Build Debug app for Simulator
         id: ios_build
         timeout-minutes: 30
@@ -468,6 +482,11 @@ jobs:
             echo "screenshot=$HOMESHOT"
           } >> "$REPORT"
           cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove temporary Firebase iOS configuration
+        if: always()
+        shell: bash
+        run: rm -f iosApp/GoogleService-Info.plist
 
       - name: Upload Debug Simulator evidence even on failure
         if: always()

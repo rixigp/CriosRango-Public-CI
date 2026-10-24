@@ -336,6 +336,20 @@ jobs:
           test -f "$RELEASE_ENTITLEMENTS"
           test "$(/usr/libexec/PlistBuddy -c 'Print :aps-environment' "$RELEASE_ENTITLEMENTS")" = "production"
 
+      - name: Reconstruct and validate Firebase iOS configuration
+        shell: bash
+        env:
+          FIREBASE_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          set -euo pipefail
+          [[ -n "${FIREBASE_PLIST_BASE64:-}" ]] || { echo "::error::Missing required Actions secret GOOGLE_SERVICE_INFO_PLIST_BASE64"; exit 1; }
+          printf '%s' "$FIREBASE_PLIST_BASE64" | base64 --decode > iosApp/GoogleService-Info.plist
+          plutil -lint iosApp/GoogleService-Info.plist >/dev/null
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :BUNDLE_ID' iosApp/GoogleService-Info.plist)
+          PROJECT_ID=$(/usr/libexec/PlistBuddy -c 'Print :PROJECT_ID' iosApp/GoogleService-Info.plist)
+          [[ "$BUNDLE_ID" == "es.criosrango.app" ]] || { echo "::error::Firebase plist bundle ID mismatch"; exit 1; }
+          [[ "$PROJECT_ID" == "criosrango-1a2c1" ]] || { echo "::error::Firebase plist project ID mismatch"; exit 1; }
+          echo "Firebase iOS configuration validated (values not logged)."
       - name: Archive signed iOS Release
         id: archive
         env:
@@ -662,3 +676,8 @@ jobs:
           fi
           rm -f "${P12_PATH:-}" "${MODERN_PROFILE_PATH:-}" "${LEGACY_PROFILE_PATH:-}" "${PROFILE_PATH:-}" "${PROFILE_PLIST:-}" "${RELEASE_ENTITLEMENTS:-}" "${API_KEY_PATH:-}"
           rm -f "$RUNNER_TEMP/ExportOptions.plist" "$RUNNER_TEMP/archive-signed-entitlements.plist" "$RUNNER_TEMP/ipa-signed-entitlements.plist" "$RUNNER_TEMP/embedded-profile.plist"
+
+      - name: Remove temporary Firebase iOS configuration
+        if: always()
+        shell: bash
+        run: rm -f iosApp/GoogleService-Info.plist
