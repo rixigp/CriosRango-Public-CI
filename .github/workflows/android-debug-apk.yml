@@ -95,6 +95,18 @@ jobs:
             cat app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
           fi
           exit $STATUS
+      - name: Upload Android test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-test-reports
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            shared/build/test-results/**/*.xml
+            shared/build/reports/tests/**
+            app/build/test-results/**/*.xml
+            app/build/reports/tests/**
       - name: Validate R8 outputs and release manifest
         if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/home-novedades-marcas-convergence' || github.ref == 'refs/heads/fix/release-test-suite'))
         shell: bash
