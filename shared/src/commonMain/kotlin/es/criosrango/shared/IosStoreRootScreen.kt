@@ -74,7 +74,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.path
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.loyalty.LoyaltyRepository
@@ -200,13 +199,23 @@ fun CriosRangoIOSRootScreen(
     var categorySnapshotLoading by remember { mutableStateOf(true) }
     var categorySnapshotError by remember { mutableStateOf<String?>(null) }
     var categorySnapshotRetryGeneration by remember { mutableStateOf(0) }
+    var outletCategorySnapshot by remember { mutableStateOf<List<StoreCategory>?>(null) }
+    var outletCategorySnapshotLoading by remember { mutableStateOf(true) }
+    var outletCategorySnapshotError by remember { mutableStateOf<String?>(null) }
+    var outletCategorySnapshotRetryGeneration by remember { mutableStateOf(0) }
     fun openCatalog(page: IosCatalogPage) { if (catalogPage != page) catalogHistory.add(catalogPage); catalogPage = page }
     fun resetCatalog() { catalogHistory.clear(); catalogPage = IosCatalogPage.Root; catalogOriginHome = false }
+    IosBackHandler(IosBackPriority.ROOT, canGoBack = section != IosRootSection.HOME) { resetCatalog(); section = IosRootSection.HOME }
     fun retryCategorySnapshot() {
         categorySnapshot = null
         categorySnapshotError = null
         categorySnapshotLoading = true
         categorySnapshotRetryGeneration++
+    }
+    fun retryOutletCategorySnapshot() {
+        outletCategorySnapshotError = null
+        outletCategorySnapshotLoading = true
+        outletCategorySnapshotRetryGeneration++
     }
     fun backCatalog() { catalogPage = if (catalogHistory.isNotEmpty()) catalogHistory.removeAt(catalogHistory.lastIndex) else IosCatalogPage.Root }
 
@@ -224,6 +233,23 @@ fun CriosRangoIOSRootScreen(
             categorySnapshotError = "No se han podido cargar las categorías."
         } finally {
             categorySnapshotLoading = false
+        }
+    }
+
+    LaunchedEffect(section, catalogPage, outletCategorySnapshotRetryGeneration) {
+        if (section != IosRootSection.OUTLET || catalogPage !is IosCatalogPage.Outlet ||
+            outletCategorySnapshot != null || outletCategorySnapshotError != null
+        ) return@LaunchedEffect
+        outletCategorySnapshotLoading = true
+        try {
+            outletCategorySnapshot = storeApi.categories(perPage = 100)
+            outletCategorySnapshotError = null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            outletCategorySnapshotError = error.message ?: "No se han podido cargar las categorías."
+        } finally {
+            outletCategorySnapshotLoading = false
         }
     }
 
@@ -315,7 +341,6 @@ fun CriosRangoIOSRootScreen(
                     onCart = { resetCatalog(); section = IosRootSection.CART }
                 )
             },
-            bottomNavigationModifier = Modifier.navigationBarsPadding()
         ) { paddingValues ->
             val padding = paddingValues
             Column(Modifier.fillMaxSize()) {
@@ -404,7 +429,11 @@ fun CriosRangoIOSRootScreen(
                                 categorySnapshot = categorySnapshot,
                                 categorySnapshotLoading = categorySnapshotLoading,
                                 categorySnapshotError = categorySnapshotError,
-                                onRetryCategorySnapshot = ::retryCategorySnapshot
+                                onRetryCategorySnapshot = ::retryCategorySnapshot,
+                                outletCategorySnapshot = outletCategorySnapshot,
+                                outletCategorySnapshotLoading = outletCategorySnapshotLoading,
+                                outletCategorySnapshotError = outletCategorySnapshotError,
+                                onRetryOutletCategorySnapshot = ::retryOutletCategorySnapshot
                             )
                         }
                     }
@@ -441,9 +470,15 @@ fun CriosRangoIOSRootScreen(
                     categorySnapshot = categorySnapshot,
                     categorySnapshotLoading = categorySnapshotLoading,
                     categorySnapshotError = categorySnapshotError,
-                    onRetryCategorySnapshot = ::retryCategorySnapshot
+                    onRetryCategorySnapshot = ::retryCategorySnapshot,
+                    outletCategorySnapshot = outletCategorySnapshot,
+                                outletCategorySnapshotLoading = outletCategorySnapshotLoading,
+                                outletCategorySnapshotError = outletCategorySnapshotError,
+                                onRetryOutletCategorySnapshot = ::retryOutletCategorySnapshot
                 )
-                IosRootSection.CART -> StoreCartScreen(
+                IosRootSection.CART -> {
+                    IosBackHandler(IosBackPriority.CART) { resetCatalog(); section = IosRootSection.HOME }
+                    StoreCartScreen(
                     storeApi = storeApi,
                     cartController = cartController,
                     loyaltyRepository = loyaltyRepository,
@@ -456,7 +491,8 @@ fun CriosRangoIOSRootScreen(
                     onLogin = { accountLoginFromCart = true; resetCatalog(); section = IosRootSection.ACCOUNT },
                     promotionBearerTokenProvider = { accountTokenStore.load() },
                     refreshOnEnter = false
-                )
+                    )
+                }
                 IosRootSection.ACCOUNT -> CriosRangoIOSAccountScreen(
                     repository = accountRepository,
                     sessionState = accountSessionState,
@@ -492,6 +528,7 @@ fun CriosRangoIOSRootScreen(
         if (showStartupBranding) StoreStartupBranding()
         }
         postOrderSuccess?.let { success ->
+            IosBackHandler(IosBackPriority.OVERLAY, canGoBack = false) {}
             AlertDialog(
                 onDismissRequest = {},
                 title = { Text("Pedido recibido") },
@@ -618,6 +655,8 @@ fun StoreCartScreen(
     var loyaltyError by remember { mutableStateOf<String?>(null) }
     var showWalletDialog by remember { mutableStateOf(false) }
     var showWalletInfoDialog by remember { mutableStateOf(false) }
+    if (showWalletDialog) IosBackHandler(IosBackPriority.OVERLAY) { if (!loyaltyLoading) showWalletDialog = false }
+    if (showWalletInfoDialog) IosBackHandler(IosBackPriority.OVERLAY) { showWalletInfoDialog = false }
     var pendingRedeemPoints by remember { mutableStateOf<Int?>(null) }
     var pendingRequestId by remember { mutableStateOf<String?>(null) }
     val loyaltyScope = rememberCoroutineScope()
@@ -694,6 +733,7 @@ fun StoreCartScreen(
     val couponLoading = cartUiState.couponLoading
     val couponError = cartUiState.couponError
     var clearCartConfirm by remember { mutableStateOf(false) }
+    if (clearCartConfirm) IosBackHandler(IosBackPriority.OVERLAY) { clearCartConfirm = false }
     var couponExpanded by remember { mutableStateOf(false) }
     var couponCode by remember { mutableStateOf("") }
     val promotionRepository = remember(promotionBearerTokenProvider) { PromotionRepository(bearerTokenProvider = promotionBearerTokenProvider) }

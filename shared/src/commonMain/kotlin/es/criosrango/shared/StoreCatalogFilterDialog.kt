@@ -74,6 +74,7 @@ fun StoreCatalogFilterDialog(
         else (matching + brands.filter { it in selectedBrands }).distinct()
     }
 
+    IosBackHandler(IosBackPriority.OVERLAY, onBack = onDismiss)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Filtros") },

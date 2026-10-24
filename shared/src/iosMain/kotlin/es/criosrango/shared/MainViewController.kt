@@ -1,17 +1,43 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package es.criosrango.shared
 
 import androidx.compose.ui.window.ComposeUIViewController
+import androidx.compose.runtime.CompositionLocalProvider
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.api.StoreApiClient
 import es.criosrango.shared.loyalty.LoyaltyRepository
 import platform.Foundation.NSURL
 import platform.Foundation.NSBundle
+import platform.Foundation.NSSelectorFromString
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
 import platform.UIKit.UIViewController
+import platform.UIKit.UIGestureRecognizer
+import platform.UIKit.UIGestureRecognizerDelegateProtocol
+import platform.UIKit.UIGestureRecognizerStateEnded
+import platform.UIKit.UIRectEdgeLeft
+import platform.UIKit.UIScreenEdgePanGestureRecognizer
+import kotlinx.cinterop.StableRef
+import kotlinx.cinterop.useContents
+import platform.darwin.NSObject
+import kotlinx.cinterop.ObjCAction
+import platform.objc.OBJC_ASSOCIATION_RETAIN_NONATOMIC
+import platform.objc.objc_setAssociatedObject
 
 private var iosPaymentStore: StorePaymentStore? = null
 private var iosRootViewController: UIViewController? = null
+
+// The key is process-lifetime metadata only; the associated target itself is retained by each controller.
+private val edgeBackTargetAssociationKey = StableRef.create(Unit).asCPointer()
+
+private class IosEdgeBackTarget(private val coordinator: IosBackCoordinator) : NSObject(), UIGestureRecognizerDelegateProtocol {
+    @ObjCAction fun handleEdgePan(recognizer: UIScreenEdgePanGestureRecognizer) {
+        if (recognizer.state != UIGestureRecognizerStateEnded) return
+        if (recognizer.translationInView(recognizer.view).useContents { x } >= 72.0) coordinator.dispatchBack()
+    }
+    override fun gestureRecognizer(gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWithGestureRecognizer: UIGestureRecognizer): Boolean = true
+}
 private val iosPushNavigation = androidx.compose.runtime.mutableStateOf<IosPushNavigation?>(null)
 
 fun MainViewController() : UIViewController {
@@ -33,7 +59,9 @@ fun MainViewController() : UIViewController {
     val paymentStore = StorePaymentStore(storeApi, cartStore, pendingStore)
     iosPaymentStore = paymentStore
 
+    val backCoordinator = IosBackCoordinator()
     val controller = ComposeUIViewController {
+        CompositionLocalProvider(LocalIosBackCoordinator provides backCoordinator) {
         CriosRangoIOSRootScreen(
         storeApi = storeApi,
         accountRepository = accountRepository,
@@ -50,7 +78,15 @@ fun MainViewController() : UIViewController {
             pushNavigation = iosPushNavigation.value,
             onPushNavigationConsumed = { iosPushNavigation.value = null }
         )
+        }
     }
+    val edgeBackTarget = IosEdgeBackTarget(backCoordinator)
+    // Strongly tie the target to this controller's lifetime instead of relying on target/action retention.
+    objc_setAssociatedObject(controller, edgeBackTargetAssociationKey, edgeBackTarget, OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    val edgeBackRecognizer = UIScreenEdgePanGestureRecognizer(target = edgeBackTarget, action = NSSelectorFromString("handleEdgePan:"))
+    edgeBackRecognizer.edges = UIRectEdgeLeft
+    edgeBackRecognizer.delegate = edgeBackTarget
+    controller.view.addGestureRecognizer(edgeBackRecognizer)
     iosRootViewController = controller
     return controller
 }

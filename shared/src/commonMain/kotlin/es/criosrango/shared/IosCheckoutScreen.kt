@@ -158,6 +158,7 @@ fun StoreCheckoutScreen(
         StoreCardPaymentState.RECONCILING
     )
     val checkoutBusy = phase == StoreCheckoutPhase.LOADING || phase == StoreCheckoutPhase.CREATING_ORDER
+    IosBackHandler(IosBackPriority.CHECKOUT, canGoBack = !paymentInProgress && !checkoutBusy, onBack = onBack)
     val freeShippingProgress = checkoutFreeShippingProgress(
         cart.totals.consumerSubtotal(),
         cart.totals.currencyMinorUnit
@@ -421,6 +422,7 @@ fun StoreCheckoutScreen(
             checkoutStore.clearCreatedOrder()
             onManualOrderCompleted()
         }
+        IosBackHandler(IosBackPriority.OVERLAY, onBack = closeBizumConfirmation)
         AlertDialog(
             onDismissRequest = closeBizumConfirmation,
             title = { Text("Pedido recibido") },

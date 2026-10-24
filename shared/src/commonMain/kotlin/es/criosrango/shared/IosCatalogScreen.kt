@@ -66,9 +66,15 @@ internal fun IosCatalogScreen(
     categorySnapshot: List<StoreCategory>?,
     categorySnapshotLoading: Boolean,
     categorySnapshotError: String?,
-    onRetryCategorySnapshot: () -> Unit
+    onRetryCategorySnapshot: () -> Unit,
+    outletCategorySnapshot: List<StoreCategory>?,
+    outletCategorySnapshotLoading: Boolean,
+    outletCategorySnapshotError: String?,
+    onRetryOutletCategorySnapshot: () -> Unit
 ) {
     val rootFilterState by rootFilterOwner.state.collectAsState()
+    if (rootFilterState.dialogVisible) IosBackHandler(IosBackPriority.OVERLAY) { rootFilterOwner.cancel() }
+    IosBackHandler(IosBackPriority.CATALOG, onBack = onBack)
     // This state is owned above the page switch so Outlet → Product → Outlet restores presentation.
     var showOutletChooser by remember(outletController) { mutableStateOf(true) }
     val outletGridState = rememberLazyGridState()
@@ -91,22 +97,6 @@ internal fun IosCatalogScreen(
         IosCatalogPage.Search -> StoreSearchScreen(storeApi = storeApi, controller = storeSearchController(storeApi), padding = padding, onProduct = onOpenProduct, onCategory = onOpenCategory, onBack = onBack)
         IosCatalogPage.Brands -> IosBrandsScreen(brandsController, padding, onOpenProduct, onBack)
         is IosCatalogPage.Outlet -> {
-            var categories by remember { mutableStateOf<List<StoreCategory>?>(null) }
-            var loading by remember { mutableStateOf(true) }
-            var loadError by remember { mutableStateOf<String?>(null) }
-            var retryToken by remember { mutableStateOf(0) }
-            LaunchedEffect(retryToken) {
-                loading = true
-                loadError = null
-                try {
-                    categories = storeApi.categories(100)
-                } catch (exception: Exception) {
-                    // Keep the last successful snapshot visible during a failed refresh.
-                    if (categories == null) loadError = exception.message ?: "No se han podido cargar las categorías."
-                } finally {
-                    loading = false
-                }
-            }
             IosOutletScreen(
                 storeApi = storeApi,
                 padding = padding,
@@ -115,12 +105,12 @@ internal fun IosCatalogScreen(
                 showOutletChooser = showOutletChooser,
                 onShowOutletChooserChange = { showOutletChooser = it },
                 gridState = outletGridState,
-                categories = categories,
+                categories = outletCategorySnapshot,
                 initialCategoryId = page.categoryId,
                 season = page.season,
-                categoriesLoading = loading,
-                categoriesError = loadError,
-                onRetry = { retryToken++ },
+                categoriesLoading = outletCategorySnapshotLoading,
+                categoriesError = outletCategorySnapshotError,
+                onRetry = onRetryOutletCategorySnapshot,
                 onProduct = onOpenProduct,
                 onBack = onBack
             )
