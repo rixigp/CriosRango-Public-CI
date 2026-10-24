@@ -1,6 +1,18 @@
 name: iOS Distribution Archive
 
 on:
+  push:
+    branches: [fix/ios-crashlytics]
+    paths:
+      - "app/**"
+      - "shared/**"
+      - "iosApp/**"
+      - "gradle/**"
+      - "gradle.properties"
+      - "settings.gradle.kts"
+      - "build.gradle.kts"
+      - ".github/workflows/ios-distribution.yml"
+      - ".github/workflows/ios-fast-simulator-debug.yml"
   workflow_dispatch:
     inputs:
       target_sha:
