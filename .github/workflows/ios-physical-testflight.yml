@@ -292,10 +292,6 @@ jobs:
             -destination 'generic/platform=iOS' \
             -archivePath "$ARCHIVE" \
             -derivedDataPath "$DERIVED" \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
-            CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
             CODE_SIGN_ENTITLEMENTS="$RELEASE_ENTITLEMENTS" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             MARKETING_VERSION=2.0.1 \
