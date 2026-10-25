@@ -268,7 +268,7 @@ class StoreHomeControllerTest {
                 "category_bautizo", "category_bebe_nina", "category_bebe_nino",
                 "category_calzado", "category_comunion_nina", "category_comunion_nino",
                 "category_hombre", "category_mujer", "category_nina", "category_nino",
-                "category_recien_nacido"
+                "category_recien_nacido", "category_outlet"
             ),
             HOME_ROOT_CATEGORIES.map { it.imageKey }
         )
@@ -279,7 +279,10 @@ class StoreHomeControllerTest {
         assertEquals(HOME_CATEGORY_COUNT, HOME_ROOT_CATEGORIES.map { it.category.id }.distinct().size)
         assertTrue(HOME_ROOT_CATEGORIES.all { it.category.parent == 0 })
         assertTrue(HOME_ROOT_CATEGORIES.all { it.category.count == 0 })
-        assertTrue(HOME_ROOT_CATEGORIES.all { it.category.slug.isEmpty() })
+        assertEquals(
+            listOf("", "", "", "", "", "", "", "", "", "", "", "outlet"),
+            HOME_ROOT_CATEGORIES.map { it.category.slug }
+        )
     }
 
     @Test
