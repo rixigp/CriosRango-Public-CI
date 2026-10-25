@@ -216,7 +216,7 @@ fun StoreProfileScreen(
     onUserChanged: (AccountUser) -> Unit,
     onSessionExpired: () -> Unit,
     onBack: () -> Unit,
-    bodyHorizontalPadding: androidx.compose.ui.unit.Dp = 0.dp
+    bodyHorizontalPadding: androidx.compose.ui.unit.Dp = 20.dp
 ) {
     val owner = remember(repository, sessionState) { StoreProfileOwner(repository, sessionState) }
     val scope = rememberCoroutineScope()
@@ -269,7 +269,7 @@ fun StoreAddressScreen(
     addressOwner: StoreAddressOwner,
     onSessionExpired: () -> Unit,
     onBack: () -> Unit,
-    bodyHorizontalPadding: androidx.compose.ui.unit.Dp = 0.dp
+    bodyHorizontalPadding: androidx.compose.ui.unit.Dp = 20.dp
 ) {
     val snapshot by addressOwner.snapshot.collectAsState()
     val scope = rememberCoroutineScope()
