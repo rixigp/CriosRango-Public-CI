@@ -34,8 +34,8 @@
                         <constraints>
                             <constraint firstItem="A10000090000000000000001" firstAttribute="centerX" secondItem="A10000070000000000000001" secondAttribute="centerX" id="A100000C0000000000000001"/>
                             <constraint firstItem="A10000090000000000000001" firstAttribute="centerY" secondItem="A10000070000000000000001" secondAttribute="centerY" id="A100000D0000000000000001"/>
-                            <constraint firstItem="A10000090000000000000001" firstAttribute="width" constant="240" id="A100000E0000000000000001"/>
-                            <constraint firstItem="A10000090000000000000001" firstAttribute="height" constant="240" id="A100000F0000000000000001"/>
+                            <constraint firstItem="A10000090000000000000001" firstAttribute="width" constant="310" id="A100000E0000000000000001"/>
+                            <constraint firstItem="A10000090000000000000001" firstAttribute="height" constant="310" id="A100000F0000000000000001"/>
                         </constraints>
                     </view>
                 </viewController>
