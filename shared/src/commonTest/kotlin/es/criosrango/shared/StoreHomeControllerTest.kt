@@ -260,7 +260,7 @@ class StoreHomeControllerTest {
             HOME_ROOT_CATEGORIES.map { it.category.id }
         )
         assertEquals(
-            listOf("Bautizo", "Bebe niña", "Bebé niño", "Calzado", "Comunión niña", "Comunión niño", "Hombre", "Mujer", "Niña", "Niño", "Recién nacido"),
+            listOf("Bautizo", "Bebe niña", "Bebé niño", "Calzado", "Comunión niña", "Comunión niño", "Hombre", "Mujer", "Niña", "Niño", "Recién nacido", "Outlet"),
             HOME_ROOT_CATEGORIES.map { it.category.name }
         )
         assertEquals(
@@ -277,7 +277,6 @@ class StoreHomeControllerTest {
         assertEquals(HOME_ROOT_CATEGORIES.map { it.imageKey }.toSet(), STORE_HOME_CATEGORY_IMAGES.keys)
         assertTrue(STORE_HOME_CATEGORY_IMAGES.keys.none { it.startsWith("http", ignoreCase = true) })
         assertEquals(HOME_CATEGORY_COUNT, HOME_ROOT_CATEGORIES.map { it.category.id }.distinct().size)
-        assertFalse(HOME_ROOT_CATEGORIES.any { it.category.id == 445 })
         assertTrue(HOME_ROOT_CATEGORIES.all { it.category.parent == 0 })
         assertTrue(HOME_ROOT_CATEGORIES.all { it.category.count == 0 })
         assertTrue(HOME_ROOT_CATEGORIES.all { it.category.slug.isEmpty() })
