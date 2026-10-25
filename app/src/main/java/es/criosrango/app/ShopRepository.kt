@@ -246,7 +246,6 @@ class StoreRepository(private val api: StoreApi) {
         return accumulated
             .filter { it.name.isNotBlank() && it.slug.isNotBlank() }
             .distinctBy { it.slug.trim().lowercase(java.util.Locale.ROOT) }
-            .map { it.withPackagedLogoFallback() }
             .sortedBy { it.name.lowercase(java.util.Locale.ROOT) }
     }
 

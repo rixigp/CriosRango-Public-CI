@@ -283,7 +283,7 @@ class SharedCatalogStoreApiAdapter(
                         count = brand.count,
                         imageUrl = brand.image?.src?.takeIf { it.isNotBlank() }
                             ?: brand.image?.thumbnail?.takeIf { it.isNotBlank() }
-                    ).withPackagedLogoFallback()
+                    )
                 }
         } catch (exception: Exception) {
             throw exception.toAndroidCatalogException()

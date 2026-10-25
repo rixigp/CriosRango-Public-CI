@@ -1,11 +1,21 @@
 package es.criosrango.app
 
+
 import com.google.gson.annotations.SerializedName
 import com.google.gson.JsonElement
 import androidx.core.text.HtmlCompat
 import java.text.Normalizer
 import java.util.Locale
 import es.criosrango.shared.model.normalizePaymentGatewayIds
+
+data class BrandTerm(
+    val id: Int = 0,
+    val name: String,
+    val slug: String,
+    val count: Int = 0,
+    val imageUrl: String? = null
+)
+
 
 const val STORE_API_BASE_URL = "https://criosrango.es/wp-json/wc/store/v1/"
 
