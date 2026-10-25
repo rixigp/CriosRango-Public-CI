@@ -256,7 +256,7 @@ class StoreHomeControllerTest {
     fun homeCategoriesAreTheExactCuratedSharedList() {
         assertEquals(HOME_CATEGORY_COUNT, HOME_ROOT_CATEGORIES.size)
         assertEquals(
-            listOf(560, 292, 294, 420, 504, 509, 70, 71, 68, 310, 67),
+            listOf(560, 292, 294, 420, 504, 509, 70, 71, 68, 310, 67, 445),
             HOME_ROOT_CATEGORIES.map { it.category.id }
         )
         assertEquals(
