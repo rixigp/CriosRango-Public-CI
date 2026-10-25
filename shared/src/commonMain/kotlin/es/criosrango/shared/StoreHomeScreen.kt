@@ -59,6 +59,7 @@ import es.criosrango.shared.generated.resources.category_hombre
 import es.criosrango.shared.generated.resources.category_mujer
 import es.criosrango.shared.generated.resources.category_nina
 import es.criosrango.shared.generated.resources.category_nino
+import es.criosrango.shared.generated.resources.category_outlet
 import es.criosrango.shared.generated.resources.category_recien_nacido
 import org.jetbrains.compose.resources.painterResource
 import androidx.compose.foundation.Image
