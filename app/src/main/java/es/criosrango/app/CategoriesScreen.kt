@@ -557,7 +557,7 @@ internal fun CategoryList(categories: List<ProductCategory>, allCategories: List
     es.criosrango.shared.StoreCategoriesScreen(
         categories = visibleCategories.map { es.criosrango.shared.model.StoreCategory(id=it.id,parent=it.parent,name=it.name,slug=it.slug,count=it.count) },
         loading = loading, errorMessage = null, onBack = onBack,
-        onCategory = { selected -> visibleCategories.firstOrNull { it.id == selected.id }?.let(onOpen) },
+        onCategory = { selected -> categories.firstOrNull { it.id == selected.id }?.let(onOpen) },
         onRootFilter = onRootFilter, onRetry = onRetry, showEmptyRetry = showEmptyRetry, modifier = Modifier.padding(padding)
     )
 }

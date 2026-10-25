@@ -19,7 +19,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 const val HOME_NOVEDADES_LIMIT = 8
 const val HOME_BRANDS_MAX = 16
 const val HOME_BRANDS_VISUAL_PAGE_SIZE = 8
-const val HOME_CATEGORY_COUNT = 11
+const val HOME_CATEGORY_COUNT = 12
 const val STORE_HOME_HERO_READY_TIMEOUT_MS = 4_000L
 
 internal val STORE_HOME_HERO_IMAGES = listOf(
@@ -83,7 +83,8 @@ val HOME_ROOT_CATEGORIES: List<StoreHomeCategory> = listOf(
     StoreHomeCategory(StoreCategory(id = 71, parent = 0, name = "Mujer", count = 0, slug = ""), "category_mujer"),
     StoreHomeCategory(StoreCategory(id = 68, parent = 0, name = "Niña", count = 0, slug = ""), "category_nina"),
     StoreHomeCategory(StoreCategory(id = 310, parent = 0, name = "Niño", count = 0, slug = ""), "category_nino"),
-    StoreHomeCategory(StoreCategory(id = 67, parent = 0, name = "Recién nacido", count = 0, slug = ""), "category_recien_nacido")
+    StoreHomeCategory(StoreCategory(id = 67, parent = 0, name = "Recién nacido", count = 0, slug = ""), "category_recien_nacido"),
+    StoreHomeCategory(StoreCategory(id = 445, parent = 0, name = "Outlet", count = 0, slug = "outlet"), "category_outlet")
 )
 
  /** Fallback Outlet season destinations already used by Android when Store API omits these child terms. */

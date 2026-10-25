@@ -75,7 +75,8 @@ internal val STORE_HOME_CATEGORY_IMAGES = mapOf(
     "category_mujer" to Res.drawable.category_mujer,
     "category_nina" to Res.drawable.category_nina,
     "category_nino" to Res.drawable.category_nino,
-    "category_recien_nacido" to Res.drawable.category_recien_nacido
+    "category_recien_nacido" to Res.drawable.category_recien_nacido,
+    "category_outlet" to Res.drawable.category_outlet
 )
 
 internal fun storeHomeBrandPages(state: StoreHomeState): List<List<StoreGlobalBrand>> =

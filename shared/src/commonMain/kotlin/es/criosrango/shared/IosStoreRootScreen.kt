@@ -366,12 +366,7 @@ fun CriosRangoIOSRootScreen(
                         homeController = homeController,
                         cartStore = cartStore,
                         padding = padding,
-                        onCategory = {
-                            section = IosRootSection.CATEGORIES
-                            resetCatalog()
-                            catalogOriginHome = true
-                            openCatalog(IosCatalogPage.Category(it))
-                        },
+                        onCategory = { category -> if (category.id == 445 || category.slug.equals("outlet", true) || category.name.equals("Outlet", true)) { section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(iosHomeOutletPage(null)) } else { section = IosRootSection.CATEGORIES; resetCatalog(); catalogOriginHome = true; openCatalog(IosCatalogPage.Category(category)) } },
                         onProduct = {
                             section = IosRootSection.CATEGORIES
                             resetCatalog()
@@ -405,7 +400,7 @@ fun CriosRangoIOSRootScreen(
                                 page = catalogPage,
                                 cartStore = cartStore,
                                 outletController = outletController,
-                                onOpenCategory = { openCatalog(IosCatalogPage.Category(it)) },
+                                onOpenCategory = { category -> if (category.id == 445 || category.slug.equals("outlet", true) || category.name.equals("Outlet", true)) { section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(iosHomeOutletPage(null)) } else openCatalog(IosCatalogPage.Category(category)) },
                                 onOpenRootFilter = { scope -> rootFilterOwner.open(scope) },
                                 onOpenProduct = { openCatalog(IosCatalogPage.Product(it)) },
                                 onBack = {
@@ -446,7 +441,7 @@ fun CriosRangoIOSRootScreen(
                     page = catalogPage,
                     cartStore = cartStore,
                     outletController = outletController,
-                    onOpenCategory = { openCatalog(IosCatalogPage.Category(it)) },
+                    onOpenCategory = { category -> if (category.id == 445 || category.slug.equals("outlet", true) || category.name.equals("Outlet", true)) { section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(iosHomeOutletPage(null)) } else openCatalog(IosCatalogPage.Category(category)) },
                     onOpenRootFilter = { scope -> rootFilterOwner.open(scope) },
                     onOpenProduct = { openCatalog(IosCatalogPage.Product(it)) },
                     onBack = {

@@ -38,6 +38,7 @@ import es.criosrango.shared.generated.resources.category_mujer
 import es.criosrango.shared.generated.resources.category_nina
 import es.criosrango.shared.generated.resources.category_nino
 import es.criosrango.shared.generated.resources.category_recien_nacido
+import es.criosrango.shared.generated.resources.category_outlet
 import es.criosrango.shared.model.StoreCategory
 import org.jetbrains.compose.resources.painterResource
 
@@ -71,6 +72,7 @@ private fun rootCategoryResource(category: StoreCategory) = when {
     normalizedRootCategoryName(category.name) == "mujer" -> Res.drawable.category_mujer
     normalizedRootCategoryName(category.name) == "nina" -> Res.drawable.category_nina
     normalizedRootCategoryName(category.name) == "nino" -> Res.drawable.category_nino
+    normalizedRootCategoryName(category.name) == "outlet" -> Res.drawable.category_outlet
     else -> null
 }
 
@@ -133,10 +135,7 @@ fun StoreCategoriesGrid(
     imageToLabelSpacing: Dp = 8.dp,
     imageScale: Float = 1f
 ) {
-    val visible = categories.filter {
-        it.parent == 0 && !it.name.equals("Outlet", ignoreCase = true) &&
-            !it.slug.equals("outlet", ignoreCase = true)
-    }.distinctBy { it.id }
+    val visible = (categories.filter { it.parent == 0 }.distinctBy { it.id } + StoreCategory(id = 445, parent = 0, name = "Outlet", slug = "outlet", count = 0)).distinctBy { it.id }
     val rows = visible.chunked(3)
     LazyColumn(
         modifier = modifier,
