@@ -1,9 +1,6 @@
 name: Catalog read-only audit
 
 on:
-  push:
-    branches:
-      - kmp-migration
   workflow_dispatch:
 
 permissions:
