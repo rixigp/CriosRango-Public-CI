@@ -306,27 +306,39 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            CODE_SIGN_STYLE=Automatic \
+            CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="$EXPECTED_TEAM_ID" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="CriosRango AppStore 2.0.1" \
             CODE_SIGN_ENTITLEMENTS="$RELEASE_ENTITLEMENTS" \
             MARKETING_VERSION="$VERSION_NAME" \
             CURRENT_PROJECT_VERSION="$VERSION_CODE" \
             -showBuildSettings > "$SETTINGS_FILE"
 
-          for KEY in CONFIGURATION PRODUCT_BUNDLE_IDENTIFIER PRODUCT_NAME CODE_SIGN_STYLE DEVELOPMENT_TEAM CODE_SIGN_IDENTITY CODE_SIGN_ENTITLEMENTS MARKETING_VERSION CURRENT_PROJECT_VERSION SWIFT_OPTIMIZATION_LEVEL FRAMEWORK_SEARCH_PATHS; do
+          for KEY in CONFIGURATION PRODUCT_BUNDLE_IDENTIFIER PRODUCT_NAME CODE_SIGN_STYLE DEVELOPMENT_TEAM CODE_SIGN_IDENTITY PROVISIONING_PROFILE_SPECIFIER CODE_SIGN_ENTITLEMENTS MARKETING_VERSION CURRENT_PROJECT_VERSION SWIFT_OPTIMIZATION_LEVEL FRAMEWORK_SEARCH_PATHS; do
             grep -E "^[[:space:]]*$KEY[[:space:]]*=" "$SETTINGS_FILE" || true
           done
 
           EFFECTIVE_CONFIGURATION="$(awk -F ' = ' '/^[[:space:]]*CONFIGURATION = / {print $2; exit}' "$SETTINGS_FILE")"
           EFFECTIVE_BUNDLE_ID="$(awk -F ' = ' '/^[[:space:]]*PRODUCT_BUNDLE_IDENTIFIER = / {print $2; exit}' "$SETTINGS_FILE")"
+          EFFECTIVE_SIGNING_STYLE="$(awk -F ' = ' '/^[[:space:]]*CODE_SIGN_STYLE = / {print $2; exit}' "$SETTINGS_FILE")"
           EFFECTIVE_TEAM="$(awk -F ' = ' '/^[[:space:]]*DEVELOPMENT_TEAM = / {print $2; exit}' "$SETTINGS_FILE")"
+          EFFECTIVE_SIGNING_IDENTITY="$(awk -F ' = ' '/^[[:space:]]*CODE_SIGN_IDENTITY = / {print $2; exit}' "$SETTINGS_FILE")"
+          EFFECTIVE_PROFILE="$(awk -F ' = ' '/^[[:space:]]*PROVISIONING_PROFILE_SPECIFIER = / {print $2; exit}' "$SETTINGS_FILE")"
           EFFECTIVE_ENTITLEMENTS="$(awk -F ' = ' '/^[[:space:]]*CODE_SIGN_ENTITLEMENTS = / {print $2; exit}' "$SETTINGS_FILE")"
           EFFECTIVE_VERSION="$(awk -F ' = ' '/^[[:space:]]*MARKETING_VERSION = / {print $2; exit}' "$SETTINGS_FILE")"
           EFFECTIVE_BUILD="$(awk -F ' = ' '/^[[:space:]]*CURRENT_PROJECT_VERSION = / {print $2; exit}' "$SETTINGS_FILE")"
 
           test "$EFFECTIVE_CONFIGURATION" = "Release"
           test "$EFFECTIVE_BUNDLE_ID" = "$EXPECTED_BUNDLE_ID"
+          test "$EFFECTIVE_SIGNING_STYLE" = "Manual"
           test "$EFFECTIVE_TEAM" = "$EXPECTED_TEAM_ID"
+          test "$EFFECTIVE_SIGNING_IDENTITY" = "Apple Distribution"
+          test "$EFFECTIVE_PROFILE" = "CriosRango AppStore 2.0.1"
+          if [[ "$EFFECTIVE_SIGNING_STYLE" == "Automatic" && "$EFFECTIVE_PROFILE" == "CriosRango AppStore 2.0.1" ]]; then
+            echo "::error::Automatic signing cannot be combined with the manually specified App Store provisioning profile"
+            exit 1
+          fi
           test "$EFFECTIVE_ENTITLEMENTS" = "$RELEASE_ENTITLEMENTS"
           test "$EFFECTIVE_VERSION" = "$EXPECTED_VERSION_NAME"
           test "$EFFECTIVE_BUILD" = "$EXPECTED_VERSION_CODE"
@@ -370,8 +382,10 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -archivePath "$ARCHIVE_PATH" \
-            CODE_SIGN_STYLE=Automatic \
+            CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="$EXPECTED_TEAM_ID" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="CriosRango AppStore 2.0.1" \
             CODE_SIGN_ENTITLEMENTS="$RELEASE_ENTITLEMENTS" \
             MARKETING_VERSION="$VERSION_NAME" \
             CURRENT_PROJECT_VERSION="$VERSION_CODE" \
