@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       confirm_upload:
-        description: "Type UPLOAD_1.0.1_20003 to confirm transport upload only"
+        description: "Type UPLOAD_1.0.1_20004 to confirm transport upload only"
         required: true
         type: string
 
@@ -17,7 +17,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: ios-appstore-upload-1.0.1-20003
+  group: ios-appstore-upload-1.0.1-20004
   cancel-in-progress: false
 
 env:
@@ -27,9 +27,9 @@ env:
   EXPECTED_BUNDLE_ID: "es.criosrango.app"
   EXPECTED_TEAM_ID: "3793344J72"
   EXPECTED_VERSION_NAME: "1.0.1"
-  EXPECTED_VERSION_CODE: "20003"
-  EXPECTED_IPA_ARTIFACT: "CriosRango-v1.0.1-build20003-ipa"
-  EXPECTED_REPORT_ARTIFACT: "CriosRango-v1.0.1-build20003-ios-release-report"
+  EXPECTED_VERSION_CODE: "20004"
+  EXPECTED_IPA_ARTIFACT: "CriosRango-v1.0.1-build20004-ipa"
+  EXPECTED_REPORT_ARTIFACT: "CriosRango-v1.0.1-build20004-ios-release-report"
 
 jobs:
   upload-app-store-connect:
@@ -45,7 +45,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${{ inputs.confirm_upload }}" != "UPLOAD_1.0.1_20003" ]]; then
+          if [[ "${{ inputs.confirm_upload }}" != "UPLOAD_1.0.1_20004" ]]; then
             echo "::error::Upload confirmation text does not match the required value"
             exit 1
           fi
