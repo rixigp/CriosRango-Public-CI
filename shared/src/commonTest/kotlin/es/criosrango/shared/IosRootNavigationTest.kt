@@ -10,6 +10,41 @@ class IosRootNavigationTest {
     }
 
     @Test
+    fun novedadesAndBrandsOpenedFromHomeKeepHomeSelected() {
+        assertEquals(StoreMainTab.HOME, iosSelectedRootTab(IosRootSection.CATEGORIES, catalogOriginHome = true))
+    }
+
+    @Test
+    fun homeOutletSeasonUsesOutletRootRatherThanSeasonGenderCategory() {
+        val winter = iosHomeOutletPage(IosOutletSeason.WINTER)
+        val summer = iosHomeOutletPage(IosOutletSeason.SUMMER)
+        val all = iosHomeOutletPage(null)
+        assertEquals(445, winter.categoryId)
+        assertEquals(IosOutletSeason.WINTER, winter.season)
+        assertEquals(445, summer.categoryId)
+        assertEquals(IosOutletSeason.SUMMER, summer.season)
+        assertEquals(445, all.categoryId)
+        assertEquals(null, all.season)
+        assertEquals(StoreMainTab.HOME, iosSelectedRootTab(IosRootSection.OUTLET, catalogOriginHome = true))
+    }
+
+    @Test
+    fun pushOrderDestinationPreservesExactIdForColdAndWarmNavigationEvents() {
+        val coldStart = IosPushNavigation("order_status", 57628)
+        val whileAccountOpen = IosPushNavigation("order_status", 58201)
+
+        assertEquals(PushDestination.Order(57628), coldStart.destination)
+        assertEquals(PushDestination.Order(58201), whileAccountOpen.destination)
+    }
+
+    @Test
+    fun invalidPushOrderIdDoesNotCreateOrderDestination() {
+        assertEquals(PushDestination.Ignore, IosPushNavigation("order_status", null).destination)
+        assertEquals(PushDestination.Ignore, IosPushNavigation("order_status", 0).destination)
+        assertEquals(PushDestination.Ignore, IosPushNavigation("order_status", -1).destination)
+    }
+
+    @Test
     fun mainSectionsAreHomeCategoriesOutletCartAccount() {
         assertEquals(
             listOf(IosRootSection.HOME, IosRootSection.CATEGORIES, IosRootSection.OUTLET, IosRootSection.CART, IosRootSection.ACCOUNT),

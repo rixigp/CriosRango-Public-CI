@@ -1,5 +1,6 @@
 package es.criosrango.shared
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
@@ -11,6 +12,29 @@ import kotlin.test.assertTrue
 
 class CatalogPaginatorTest {
     private data class Item(val id: Int)
+
+    @Test
+    fun start_rethrows_cancellation_instead_of_publishing_it_as_a_catalog_error() = runTest {
+        val paginator = paginator()
+        val cancellation = CancellationException("The coroutine scope left the composition")
+        val thrown = kotlin.test.assertFailsWith<CancellationException> {
+            paginator.start("category:70") { _, _ -> throw cancellation }
+        }
+        assertEquals(cancellation, thrown)
+        assertEquals(null, paginator.state.value.initialError)
+    }
+
+    @Test
+    fun loadNext_rethrows_cancellation_instead_of_publishing_it_as_a_catalog_error() = runTest {
+        val paginator = paginator()
+        paginator.start("category:70") { _, _ -> CatalogPage((1..12).map(::Item), hasMore = true) }
+        val cancellation = CancellationException("The coroutine scope left the composition")
+        val thrown = kotlin.test.assertFailsWith<CancellationException> {
+            paginator.loadNext { _, _ -> throw cancellation }
+        }
+        assertEquals(cancellation, thrown)
+        assertEquals(null, paginator.state.value.appendError)
+    }
 
     private fun paginator() = CatalogPaginator<Item>(identity = { it.id })
 
@@ -145,4 +169,32 @@ class CatalogPaginatorTest {
         assertEquals(1, paginator.state.value.currentPage)
         assertFalse(paginator.state.value.hasMore)
     }
+    @Test
+    fun deterministic_fake_loader_appends_two_pages_without_networking() = runTest {
+        val paginator = paginator()
+        val requestedPages = mutableListOf<Pair<Int, Int>>()
+        suspend fun loadPage(page: Int, perPage: Int): CatalogPage<Item> {
+            requestedPages += page to perPage
+            return when (page) {
+                1 -> CatalogPage((1001..1012).map(::Item), hasMore = true, totalItems = 13)
+                2 -> CatalogPage(listOf(Item(2001)), hasMore = false, totalItems = 13)
+                else -> error("Unexpected page: " + page)
+            }
+        }
+
+        paginator.start("root-filter-test", ::loadPage)
+        assertEquals((1001..1012).toList(), paginator.state.value.items.map { it.id })
+        assertEquals(1, paginator.state.value.currentPage)
+        assertTrue(paginator.state.value.hasMore)
+
+        paginator.loadNext(::loadPage)
+        assertEquals((1001..1012).toList() + 2001, paginator.state.value.items.map { it.id })
+        assertEquals(13, paginator.state.value.items.size)
+        assertEquals(2, paginator.state.value.currentPage)
+        assertFalse(paginator.state.value.hasMore)
+        assertFalse(paginator.state.value.isAppending)
+        assertEquals(null, paginator.state.value.appendError)
+        assertEquals(listOf(1 to 12, 2 to 12), requestedPages)
+    }
+
 }

@@ -2,6 +2,7 @@ package es.criosrango.shared.api
 
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
+import io.ktor.http.encodeURLPathPart
 import es.criosrango.shared.account.AccountTokenStore
 import es.criosrango.shared.createStoreHttpClient
 import es.criosrango.shared.model.StoreCart
@@ -13,7 +14,12 @@ import es.criosrango.shared.model.SelectShippingRateRequest
 import es.criosrango.shared.model.CheckoutResponse
 import es.criosrango.shared.model.CreateOrderRequest
 import es.criosrango.shared.model.StoreCategory
+import es.criosrango.shared.model.StoreGlobalAttribute
+import es.criosrango.shared.model.StoreGlobalAttributeTerm
+import es.criosrango.shared.model.StoreGlobalTag
+import es.criosrango.shared.model.StoreGlobalBrand
 import es.criosrango.shared.model.StoreProduct
+import es.criosrango.shared.model.StoreProductAttributeFilter
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
@@ -29,6 +35,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -72,6 +80,15 @@ class InMemoryStoreSessionStore(
     override var cookieHeader: String? = null
 ) : StoreSessionStore
 
+data class StoreApiProductPage(val items: List<StoreProduct>, val totalItems: Int?, val totalPages: Int?)
+
+@Serializable
+data class StoreHomeMediaConfigResponse(
+    @SerialName("hero_images") val heroImages: List<String>? = null,
+    @SerialName("outlet_winter_image") val outletWinterImage: String? = null,
+    @SerialName("outlet_summer_image") val outletSummerImage: String? = null
+)
+
 class StoreApiException(
     val statusCode: Int,
     val apiCode: String?,
@@ -79,6 +96,8 @@ class StoreApiException(
     val removedCoupons: Map<String, kotlinx.serialization.json.JsonElement> = emptyMap(),
     val updatedCart: StoreCart? = null
 ) : Exception(message)
+
+class StoreProductBatchConsistencyException(message: String) : IllegalStateException(message)
 
 class StoreApiClient(
     private val baseUrl: String = "https://criosrango.es/wp-json/wc/store/v1/",
@@ -166,7 +185,7 @@ class StoreApiClient(
     suspend fun applyCoupon(code: String): StoreCart {
         val normalizedCode = code.trim()
         require(normalizedCode.isNotEmpty()) { "El código del cupón no puede estar vacío." }
-        return executeCart {
+        return executeCart<StoreCart> {
             client.post(baseUrl + "cart/apply-coupon") {
                 sessionHeaders()
                 url { parameter("code", normalizedCode) }
@@ -228,6 +247,14 @@ class StoreApiClient(
             }
         }
 
+    suspend fun homeMediaConfig(): StoreHomeMediaConfigResponse {
+        val response = client.get("https://www.criosrango.es/wp-json/criosrango/v1/home-config")
+        if (!response.status.isSuccess()) {
+            error("Home media config HTTP " + response.status.value)
+        }
+        return json.decodeFromString(response.bodyAsText())
+    }
+
     suspend fun outletAvailability(): es.criosrango.shared.model.OutletAvailability =
         executeCart {
             client.get("https://criosrango.es/wp-json/criosrango/v1/outlet-availability") {
@@ -237,6 +264,11 @@ class StoreApiClient(
 
     suspend fun product(id: Int): StoreProduct =
         client.get(baseUrl + "products/" + id).body()
+
+    suspend fun productBySlug(slug: String): StoreProduct {
+        require(slug.isNotBlank()) { "La URL del producto no contiene un slug válido." }
+        return client.get(baseUrl + "products/" + slug.encodeURLPathPart()).body()
+    }
 
     suspend fun productWithVariationAvailability(id: Int): StoreProduct {
         val product = product(id)
@@ -275,7 +307,10 @@ class StoreApiClient(
         order: String? = null,
         after: String? = null,
         featured: Boolean? = null,
-        tag: String? = null
+        tag: String? = null,
+        attributeFilters: List<StoreProductAttributeFilter> = emptyList(),
+        tagIds: List<Int> = emptyList(),
+        brand: String? = null
     ): List<StoreProduct> =
         client.get("${baseUrl}products") {
             parameter("per_page", perPage)
@@ -286,11 +321,51 @@ class StoreApiClient(
             order?.let { parameter("order", it) }
             after?.let { parameter("after", it) }
             featured?.let { parameter("featured", it) }
+            brand?.let { parameter("brand", it) }
             tag?.let { parameter("tag", it) }
+            tagIds.takeIf { it.isNotEmpty() }?.let { parameter("tag", it.joinToString(",")) }
+            attributeFilters.forEachIndexed { index, filter ->
+                parameter("attributes[$index][attribute]", filter.taxonomy)
+                parameter("attributes[$index][term_id]", filter.termIds.joinToString(","))
+            }
         }.body()
 
-    suspend fun categories(perPage: Int = 100): List<StoreCategory> =
-        client.get("${baseUrl}products/categories") { parameter("per_page", perPage) }.body()
+    suspend fun productsByIds(ids: List<Int>): List<StoreProduct> {
+        if (ids.isEmpty()) return emptyList()
+        val requested = ids.distinct()
+        val returned: List<StoreProduct> = client.get("${baseUrl}products") {
+            parameter("include", requested.joinToString(",")); parameter("orderby", "include"); parameter("per_page", requested.size)
+        }.body()
+        val byId = returned.associateBy { it.id }
+        val missing = requested.filterNot { byId.containsKey(it) }
+        if (missing.isNotEmpty()) throw StoreProductBatchConsistencyException("Store API batch omitted backend-selected product IDs: ${missing.joinToString(",")}")
+        return requested.map { byId.getValue(it) }
+    }
+
+    suspend fun globalAttributes(perPage: Int = 100): List<StoreGlobalAttribute> =
+        client.get("${baseUrl}products/attributes") { parameter("per_page", perPage) }.body()
+
+    suspend fun globalAttributeTerms(attributeId: Int, perPage: Int = 100): List<StoreGlobalAttributeTerm> =
+        client.get("${baseUrl}products/attributes/$attributeId/terms") { parameter("per_page", perPage) }.body()
+
+    suspend fun productTags(perPage: Int = 100): List<StoreGlobalTag> =
+        client.get("${baseUrl}products/tags") { parameter("per_page", perPage) }.body()
+
+    /** Real WooCommerce product_brand terms, not product tags. */
+    suspend fun productBrands(perPage: Int = 100, page: Int = 1, hideEmpty: Boolean = true): List<StoreGlobalBrand> =
+        client.get("${baseUrl}products/brands") { parameter("per_page", perPage); parameter("page", page); parameter("hide_empty", hideEmpty) }.body()
+
+    suspend fun categories(perPage: Int = 100, page: Int = 1): List<StoreCategory> =
+        client.get("${baseUrl}products/categories") { parameter("per_page", perPage); parameter("page", page) }.body()
+
+    suspend fun productsPage(perPage: Int, page: Int, categoryIds: List<Int> = emptyList(), orderBy: String = "date", order: String = "desc"): StoreApiProductPage {
+        val response = client.get("${baseUrl}products") {
+            parameter("per_page", perPage); parameter("page", page); parameter("orderby", orderBy); parameter("order", order)
+            categoryIds.distinct().takeIf { it.isNotEmpty() }?.let { parameter("category", it.joinToString(",")); parameter("category_operator", "in") }
+        }
+        val items: List<StoreProduct> = response.body()
+        return StoreApiProductPage(items, response.headers["X-WP-Total"]?.toIntOrNull(), response.headers["X-WP-TotalPages"]?.toIntOrNull())
+    }
 
     internal suspend fun productsWithRawJson(perPage: Int = 12, page: Int = 1, category: Int? = null): Pair<String, List<StoreProduct>> {
         val response = client.get("${baseUrl}products") {

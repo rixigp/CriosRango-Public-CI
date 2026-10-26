@@ -5,6 +5,8 @@ import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import es.criosrango.shared.AndroidClaimOrderStore
+import es.criosrango.shared.StoreAccountAuthStatus
+import es.criosrango.shared.StoreAccountSessionState
 import es.criosrango.shared.account.AccountClaimOrderResponse
 import es.criosrango.shared.account.AccountCustomerAddress
 import es.criosrango.shared.account.AccountOrderItem
@@ -105,16 +107,16 @@ class AccountRepository(context: Context) {
     private val application = context.applicationContext
     private val session = AccountSessionStore.shared(context.applicationContext)
     private val claimOrderStore = AndroidClaimOrderStore(context.applicationContext)
-    private val sharedAccountRepository = SharedAccountRepository(
+    internal val sharedRepository = SharedAccountRepository(
         tokenStore = session,
         claimOrderStore = claimOrderStore
     )
 
     val hasSession: Boolean
-        get() = sharedAccountRepository.hasSession
+        get() = sharedRepository.hasSession
 
     suspend fun login(login: String, password: String): AccountUser =
-        sharedAccountRepository.login(login, password)
+        sharedRepository.login(login, password)
 
     suspend fun registerAccount(
         email: String,
@@ -124,19 +126,19 @@ class AccountRepository(context: Context) {
         phone: String,
         birthDate: String? = null
     ): AccountUser =
-        sharedAccountRepository.register(email, password, firstName, lastName, phone, birthDate)
+        sharedRepository.register(email, password, firstName, lastName, phone, birthDate)
 
     suspend fun forgotPassword(login: String): String =
-        sharedAccountRepository.forgotPassword(login)
+        sharedRepository.forgotPassword(login)
 
     suspend fun me(): AccountUser =
-        sharedAccountRepository.me()
+        sharedRepository.me()
 
     suspend fun customerAddress(): AccountCustomerAddress =
-        sharedAccountRepository.customerAddress()
+        sharedRepository.customerAddress()
 
     suspend fun saveCustomerAddress(address: AccountCustomerAddress) {
-        sharedAccountRepository.saveCustomerAddress(address)
+        sharedRepository.saveCustomerAddress(address)
     }
 
     suspend fun updateAccountDetails(firstName: String, lastName: String) {
@@ -151,38 +153,49 @@ class AccountRepository(context: Context) {
     }
 
     suspend fun orders(): List<AccountOrderSummary> =
-        sharedAccountRepository.orders(20).orders
+        sharedRepository.orders(20).orders
 
     fun prepareClaimOrder(orderId: Int, orderKey: String): Boolean =
-        sharedAccountRepository.prepareClaimOrder(orderId, orderKey)
+        sharedRepository.prepareClaimOrder(orderId, orderKey)
 
     fun pendingClaimOrder() =
-        sharedAccountRepository.pendingClaimOrder()
+        sharedRepository.pendingClaimOrder()
 
     suspend fun claimOrder(orderId: Int, orderKey: String): AccountClaimOrderResponse =
-        sharedAccountRepository.claimOrder(orderId, orderKey)
+        sharedRepository.claimOrder(orderId, orderKey)
 
     suspend fun claimPendingOrder(): AccountClaimOrderResponse? =
-        sharedAccountRepository.claimPendingOrder()
+        sharedRepository.claimPendingOrder()
 
     suspend fun logout() {
         try {
-            runCatching { PushNotificationController.unregister(application) }
-            sharedAccountRepository.logout()
+            runCatching { PushNotificationController.unregisterAwait(application) }
+            sharedRepository.logout()
         } finally {
-            sharedAccountRepository.clearLocalSession()
+            sharedRepository.clearLocalSession()
         }
     }
 
     fun clearLocalSession() {
-        sharedAccountRepository.clearLocalSession()
+        sharedRepository.clearLocalSession()
     }
 }
 
-enum class AccountAuthState { CHECKING, AUTHENTICATED, UNAUTHENTICATED }
+typealias AccountAuthState = StoreAccountAuthStatus
 
 class AccountViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = AccountRepository(application)
+    internal val sharedRepository get() = repository.sharedRepository
+    internal val sharedAuthSession = StoreAccountSessionState(repository.sharedRepository)
+    internal val sharedOrdersOwner by lazy { es.criosrango.shared.StoreOrdersOwner(repository.sharedRepository, sharedAuthSession) }
+    internal val sharedAddressOwner by lazy { es.criosrango.shared.StoreAddressOwner(repository.sharedRepository) }
+
+    fun publishProfileUser(user: AccountUser) {
+        _user.value = user
+        sharedAuthSession.publishAuthenticatedUser(user)
+        _accountDataError.value = null
+        _accountDataNotice.value = "Datos actualizados"
+    }
 
     private val _authState = MutableStateFlow(AccountAuthState.CHECKING)
     val authState = _authState.asStateFlow()
@@ -198,9 +211,6 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
 
     private val _loading = MutableStateFlow(false)
     val loading = _loading.asStateFlow()
-
-    private val _forgotPasswordLoading = MutableStateFlow(false)
-    val forgotPasswordLoading = _forgotPasswordLoading.asStateFlow()
 
     private val _ordersRefreshing = MutableStateFlow(false)
     val ordersRefreshing = _ordersRefreshing.asStateFlow()
@@ -289,15 +299,32 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
 
         restoreJob = viewModelScope.launch {
             try {
-                val restoredUser = try {
-                    repository.me()
-                } catch (exception: io.ktor.serialization.JsonConvertException) {
+                sharedAuthSession.restore()
+                if (generation != accountGeneration) return@launch
+                val authSnapshot = sharedAuthSession.snapshot.value
+                if (authSnapshot.status == AccountAuthState.UNAUTHENTICATED) {
                     invalidateSession()
                     return@launch
                 }
-                if (generation != accountGeneration) return@launch
+                val restoredUser = authSnapshot.user
+                if (authSnapshot.status != AccountAuthState.AUTHENTICATED || restoredUser == null) {
+                    val exception = authSnapshot.cause as? Exception
+                        ?: IllegalStateException(authSnapshot.error ?: "No hemos podido recuperar la sesión.")
+                    val storeError = exception.toStoreUiError(authenticated = true)
+                    if (storeError.type == StoreErrorType.SESSION_EXPIRED || !repository.hasSession) {
+                        invalidateSession()
+                        return@launch
+                    }
+                    // Keep the token and offer the existing retry path while the common session state remains CHECKING.
+                    _accountError.value = storeError
+                    _error.value = null
+                    _loading.value = false
+                    return@launch
+                }
                 _user.value = restoredUser
                 _authState.value = AccountAuthState.AUTHENTICATED
+                // restore() validates the persisted token before authenticated Push sync.
+                PushNotificationController.syncRegistration(getApplication())
 
                 try {
                     val loadedAddress = repository.customerAddress()
@@ -406,38 +433,21 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun createAccount(
-        firstName: String,
-        lastName: String,
-        email: String,
-        phone: String,
-        password: String,
-        birthDate: String?
-    ) {
-        if (firstName.isBlank() || lastName.isBlank()) {
-            _error.value = "Introduce tu nombre y apellidos."
-            return
-        }
-        if (email.isBlank()) {
-            _error.value = "Introduce tu correo electrónico."
-            return
-        }
-        if (password.length < 8) {
-            _error.value = "La contraseña debe tener al menos 8 caracteres."
-            return
-        }
-        if (!authActionGate.tryAcquire()) return
-
+    fun completeRegistration(created: AccountUser) {
         viewModelScope.launch {
             _loading.value = true
             _error.value = null
             _notice.value = null
             try {
-                val created = repository.registerAccount(email, password, firstName, lastName, phone, birthDate)
                 _user.value = created
+                sharedAuthSession.publishAuthenticatedUser(created)
                 _authState.value = AccountAuthState.AUTHENTICATED
-                val loadedAddress = try { repository.customerAddress() } catch (exception: Exception) {
-                    if (exception is HttpException && exception.code() == 401) {
+                // Registration/session persistence completes before Push reads account_token.
+                PushNotificationController.syncRegistration(getApplication())
+                val loadedAddress = try {
+                    repository.customerAddress()
+                } catch (exception: Exception) {
+                    if (exception is io.ktor.client.plugins.ResponseException && exception.response.status.value == 401) {
                         invalidateSession()
                         return@launch
                     }
@@ -446,8 +456,10 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 _address.value = loadedAddress
                 if (ordersLoadGate.tryAcquire()) {
                     try {
-                        _orders.value = try { repository.orders() } catch (exception: Exception) {
-                            if (exception is HttpException && exception.code() == 401) {
+                        _orders.value = try {
+                            repository.orders()
+                        } catch (exception: Exception) {
+                            if (exception is io.ktor.client.plugins.ResponseException && exception.response.status.value == 401) {
                                 invalidateSession()
                                 return@launch
                             }
@@ -458,45 +470,8 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
                 if (_authState.value == AccountAuthState.AUTHENTICATED) claimPendingOrderIfAuthenticated()
-            } catch (e: HttpException) {
-                _error.value = when (e.code()) {
-                    400 -> "Revisa los datos introducidos."
-                    409 -> "Ya existe una cuenta con ese correo electrónico."
-                    429 -> "Demasiados intentos. Espera unos minutos."
-                    else -> "No hemos podido crear la cuenta."
-                }
-            } catch (_: Exception) {
-                _error.value = "No hemos podido crear la cuenta."
             } finally {
                 _loading.value = false
-                authActionGate.release()
-            }
-        }
-    }
-
-    fun forgotPassword(login: String) {
-        if (login.isBlank()) {
-            _error.value = "Introduce tu correo electrónico."
-            return
-        }
-        if (!authActionGate.tryAcquire()) return
-
-        viewModelScope.launch {
-            _forgotPasswordLoading.value = true
-            _error.value = null
-            _notice.value = null
-            try {
-                _notice.value = repository.forgotPassword(login)
-            } catch (e: HttpException) {
-                _error.value = when (e.code()) {
-                    429 -> "Demasiadas solicitudes. Espera unos minutos."
-                    else -> "No hemos podido solicitar el cambio de contraseña."
-                }
-            } catch (_: Exception) {
-                _error.value = "No hemos podido solicitar el cambio de contraseña."
-            } finally {
-                _forgotPasswordLoading.value = false
-                authActionGate.release()
             }
         }
     }
@@ -513,9 +488,17 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
             _error.value = null
             _notice.value = null
             try {
-                val loggedUser = repository.login(login, password)
+                val loggedUser = sharedAuthSession.login(login, password)
+                if (loggedUser == null) {
+                    val authSnapshot = sharedAuthSession.snapshot.value
+                    _authState.value = authSnapshot.status
+                    _error.value = authSnapshot.error ?: "No hemos podido iniciar sesión."
+                    return@launch
+                }
                 _user.value = loggedUser
                 _authState.value = AccountAuthState.AUTHENTICATED
+                // sharedAuthSession.login has persisted the account token before returning.
+                PushNotificationController.syncRegistration(getApplication())
                 val loadedAddress = repository.customerAddress()
                 _address.value = loadedAddress
                 if (ordersLoadGate.tryAcquire()) {
@@ -559,7 +542,13 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         val generation = accountGeneration
         viewModelScope.launch {
             try {
-                repository.claimPendingOrder()
+                es.criosrango.shared.claimAndRefreshIfSuccessful(
+                    claim = { repository.claimPendingOrder() },
+                    refresh = {
+                        sharedOrdersOwner.onSessionChanged(_user.value?.id)
+                        sharedOrdersOwner.refresh()
+                    }
+                )
                 if (ordersLoadGate.tryAcquire()) {
                     try {
                         if (generation == accountGeneration) _orders.value = repository.orders()
@@ -587,7 +576,11 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             try {
                 repository.claimOrder(orderId, orderKey)
-                if (generation == accountGeneration) _orders.value = repository.orders()
+                if (generation == accountGeneration) {
+                    sharedOrdersOwner.onSessionChanged(_user.value?.id)
+                    runCatching { sharedOrdersOwner.refresh() }
+                    _orders.value = repository.orders()
+                }
             } catch (exception: Exception) {
                 if (generation != accountGeneration) return@launch
                 if (!handleAuthenticatedHttpError(exception, "No se ha podido actualizar el pedido.")) {
@@ -692,7 +685,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 // network errors, or a restored token that is already invalid.
                 ++accountGeneration
                 restoreJob?.cancel()
-                repository.clearLocalSession()
+                sharedAuthSession.logout()
                 _user.value = null
                 _address.value = null
                 _orders.value = emptyList()
@@ -705,7 +698,6 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 _addressSaveError.value = null
                 _addressSaveNotice.value = null
                 _loading.value = false
-                _forgotPasswordLoading.value = false
                 _ordersRefreshing.value = false
                 _savingAccountDetails.value = false
                 _savingAddress.value = false

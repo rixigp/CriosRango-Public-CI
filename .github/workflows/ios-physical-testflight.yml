@@ -1,71 +1,149 @@
 name: iOS Physical TestFlight
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "shared/**"
-      - "iosApp/**"
   workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Exact 40-character commit SHA to archive, sign and upload"
+        required: true
+        type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: ios-physical-testflight-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  resolve-target:
+    name: Resolve and freeze requested target SHA
+    runs-on: ubuntu-latest
+    outputs:
+      requested_sha: ${{ steps.resolve.outputs.requested_sha }}
+      resolved_sha: ${{ steps.resolve.outputs.resolved_sha }}
+      workflow_run_sha: ${{ steps.resolve.outputs.workflow_run_sha }}
+      branch: ${{ steps.resolve.outputs.branch }}
+    steps:
+      - name: Validate and freeze explicit target SHA
+        id: resolve
+        shell: bash
+        env:
+          DISPATCH_TARGET_SHA: ${{ inputs.target_sha }}
+          WORKFLOW_RUN_SHA: ${{ github.sha }}
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          REQUESTED_TARGET_SHA="$DISPATCH_TARGET_SHA"
+          [[ "$REQUESTED_TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::target_sha must be an exact lowercase 40-character commit SHA"; exit 1; }
+          RESOLVED_TARGET_SHA="$REQUESTED_TARGET_SHA"
+          TARGET_APPLICATION_SHA="$RESOLVED_TARGET_SHA"
+          echo "TARGET_APPLICATION_SHA=$TARGET_APPLICATION_SHA"
+          echo "REQUESTED_TARGET_SHA=$REQUESTED_TARGET_SHA"
+          echo "RESOLVED_TARGET_SHA=$RESOLVED_TARGET_SHA"
+          echo "BRANCH=$BRANCH_NAME"
+          echo "WORKFLOW_RUN_SHA=$WORKFLOW_RUN_SHA"
+          echo "requested_sha=$REQUESTED_TARGET_SHA" >> "$GITHUB_OUTPUT"
+          echo "resolved_sha=$RESOLVED_TARGET_SHA" >> "$GITHUB_OUTPUT"
+          echo "workflow_run_sha=$WORKFLOW_RUN_SHA" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+
   build-release-ipa:
     name: Archive, sign and validate iPhone IPA
+    needs: resolve-target
     runs-on: macos-26
     timeout-minutes: 90
-    concurrency:
-      group: ios-testflight-build-main
-      cancel-in-progress: true
     outputs:
       version: ${{ steps.metadata.outputs.version }}
       build_number: ${{ steps.metadata.outputs.build_number }}
       ipa_name: ${{ steps.metadata.outputs.ipa_name }}
       signing_ready: ${{ steps.credentials.outputs.ready }}
       start_epoch: ${{ steps.metadata.outputs.start_epoch }}
+      sha: ${{ steps.metadata.outputs.sha }}
     steps:
-      - name: Checkout exact push SHA
+      - name: Checkout exact resolved target SHA
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.resolve-target.outputs.resolved_sha }}
           fetch-depth: 1
 
-      - name: Verify SHA, branch, version and unique build
+      - name: Reconstruct and validate Firebase iOS configuration
+        shell: bash
+        env:
+          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$GOOGLE_SERVICE_INFO_PLIST_BASE64"
+          printf '%s' "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > iosApp/GoogleService-Info.plist
+          test -s iosApp/GoogleService-Info.plist
+          plutil -lint iosApp/GoogleService-Info.plist
+          /usr/libexec/PlistBuddy -c 'Print :GOOGLE_APP_ID' iosApp/GoogleService-Info.plist >/dev/null
+
+      - name: Verify target SHA, branch, version and unique build
         id: metadata
         shell: bash
         env:
-          EXPECTED_SHA: ${{ github.sha }}
-          BRANCH_NAME: ${{ github.ref_name }}
+          REQUESTED_TARGET_SHA: ${{ needs.resolve-target.outputs.requested_sha }}
+          RESOLVED_TARGET_SHA: ${{ needs.resolve-target.outputs.resolved_sha }}
+          EXPECTED_SHA: ${{ needs.resolve-target.outputs.resolved_sha }}
+          WORKFLOW_RUN_SHA: ${{ needs.resolve-target.outputs.workflow_run_sha }}
+          BRANCH_NAME: ${{ needs.resolve-target.outputs.branch }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
           ACTUAL_SHA="$(git rev-parse HEAD)"
-          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || { echo "::error::Checkout SHA mismatch"; exit 1; }
-          [[ "$BRANCH_NAME" == "main" ]] || { echo "::error::Only main is authorized"; exit 1; }
+          echo "REQUESTED_TARGET_SHA=$REQUESTED_TARGET_SHA"
+          echo "RESOLVED_TARGET_SHA=$RESOLVED_TARGET_SHA"
+          echo "CHECKOUT_SHA=$ACTUAL_SHA"
+          echo "TARGET_APPLICATION_SHA=$RESOLVED_TARGET_SHA"
+          echo "BRANCH=$BRANCH_NAME"
+          echo "WORKFLOW_RUN_SHA=$WORKFLOW_RUN_SHA"
+          [[ "$REQUESTED_TARGET_SHA" == "$RESOLVED_TARGET_SHA" ]] || { echo "::error::Requested/resolved SHA mismatch"; exit 1; }
+          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" && "$ACTUAL_SHA" == "$RESOLVED_TARGET_SHA" ]] || { echo "::error::Checkout SHA mismatch"; exit 1; }
+          [[ "$BRANCH_NAME" == "main" || "$BRANCH_NAME" == "compose-multiplatform-convergence" ]] || { echo "::error::Manual dispatch is only authorized on main or the convergence pilot branch"; exit 1; }
           VERSION="$(grep -m1 'MARKETING_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
           BASE_BUILD="$(grep -m1 'CURRENT_PROJECT_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*CURRENT_PROJECT_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
-          [[ "$VERSION" == "2.0.1" ]] || { echo "::error::Expected marketing version 2.0.1, found $VERSION"; exit 1; }
-          [[ "$BASE_BUILD" == "20002" ]] || { echo "::error::Expected frozen project build baseline 20002, found $BASE_BUILD"; exit 1; }
-          BUILD_NUMBER=$((20002 + RUN_NUMBER))
-          [[ "$BUILD_NUMBER" -gt 20002 ]] || exit 1
+          [[ "$VERSION" == "1.0.1" ]] || { echo "::error::Expected marketing version 1.0.1, found $VERSION"; exit 1; }
+          [[ "$BASE_BUILD" == "20003" ]] || { echo "::error::Expected project build baseline 20003, found $BASE_BUILD"; exit 1; }
+          BUILD_NUMBER=20003
+          [[ "$BUILD_NUMBER" == "20003" ]] || exit 1
           START_EPOCH="$(date +%s)"
           echo "start_epoch=$START_EPOCH" >> "$GITHUB_OUTPUT"
           echo "RUN_START_EPOCH=$START_EPOCH" >> "$GITHUB_ENV"
           mkdir -p release-artifacts
-          printf 'IOS PHYSICAL TESTFLIGHT REPORT\nSHA=%s\nBRANCH=%s\nVERSION=%s\nBUILD=%s\nBUNDLE_ID=es.criosrango.app\nARCHIVE=NOT_FOUND\nIPA=NOT_FOUND\nSIGNATURE=RED\nAPP_STORE_VALIDATION=RED\nUPLOAD=RED\nTESTFLIGHT_UPLOAD=FAILURE\nFAMILIA_GROUP=NOT_CONFIRMED\n' "$ACTUAL_SHA" "$BRANCH_NAME" "$VERSION" "$BUILD_NUMBER" > release-artifacts/ios-physical-testflight-report.txt
+          printf 'IOS PHYSICAL TESTFLIGHT REPORT\nREQUESTED_TARGET_SHA=%s\nRESOLVED_TARGET_SHA=%s\nCHECKOUT_SHA=%s\nWORKFLOW_RUN_SHA=%s\nARCHIVED_SHA=NOT_ARCHIVED\nSHARED_IOS_COMPILED_FROM_TARGET_SHA=NOT_VERIFIED\nSHA=%s\nBRANCH=%s\nVERSION=%s\nBUILD=%s\nBUNDLE_ID=es.criosrango.app\nARCHIVE=NOT_FOUND\nIPA=NOT_FOUND\nSIGNATURE=RED\nAPP_STORE_VALIDATION=RED\nUPLOAD=RED\nTESTFLIGHT_UPLOAD=FAILURE\nFAMILIA_GROUP=NOT_CONFIRMED\n' "$REQUESTED_TARGET_SHA" "$RESOLVED_TARGET_SHA" "$ACTUAL_SHA" "$WORKFLOW_RUN_SHA" "$ACTUAL_SHA" "$BRANCH_NAME" "$VERSION" "$BUILD_NUMBER" > release-artifacts/ios-physical-testflight-report.txt
           echo "sha=$ACTUAL_SHA" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
           echo "ipa_name=CriosRango-${VERSION}-${BUILD_NUMBER}.ipa" >> "$GITHUB_OUTPUT"
           {
             echo "### iOS Physical TestFlight"
+            echo "- Requested target SHA: $REQUESTED_TARGET_SHA"
+            echo "- Resolved target SHA: $RESOLVED_TARGET_SHA"
+            echo "- Checkout SHA: $ACTUAL_SHA"
+            echo "- Workflow run SHA (context only): $WORKFLOW_RUN_SHA"
             echo "- SHA: $ACTUAL_SHA"
             echo "- Branch: $BRANCH_NAME"
             echo "- Version: $VERSION"
             echo "- Generated build: $BUILD_NUMBER"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install Java 17 for Kotlin Multiplatform
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configure Gradle caching
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Cache Kotlin/Native Konan downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: macos-konan-physical-v1-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', 'shared/build.gradle.kts', 'gradle.properties') }}
+          restore-keys: |
+            macos-konan-physical-v1-
 
       - name: Check existing signing and App Store Connect secrets
         id: credentials
@@ -121,7 +199,7 @@ jobs:
           APP_IDENTIFIER=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/profile.plist")
           PROFILE_APS=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:aps-environment' "$RUNNER_TEMP/profile.plist")
           PROFILE_GET_TASK_ALLOW=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:get-task-allow' "$RUNNER_TEMP/profile.plist" 2>/dev/null || true)
-          [[ "$PROFILE_NAME" == "CriosRango AppStore 2.0.1" && "$TEAM_ID" == "3793344J72" && "$APP_IDENTIFIER" == "$TEAM_ID.es.criosrango.app" && "$PROFILE_APS" == "production" ]] || { echo "::error::Provisioning profile does not match the known 2.0.1 App Store profile"; exit 1; }
+          [[ "$PROFILE_NAME" == "CriosRango AppStore 2.0.1" && "$TEAM_ID" == "3793344J72" && "$APP_IDENTIFIER" == "$TEAM_ID.es.criosrango.app" && "$PROFILE_APS" == "production" ]] || { echo "::error::Provisioning profile does not match the known App Store profile"; exit 1; }
           [[ "$PROFILE_GET_TASK_ALLOW" != "true" && "$PROFILE_GET_TASK_ALLOW" != "YES" ]] || { echo "::error::Distribution profile unexpectedly enables get-task-allow"; exit 1; }
           RELEASE_ENTITLEMENTS="$RUNNER_TEMP/CriosRango-release.entitlements"
           cp iosApp/iosApp.entitlements "$RELEASE_ENTITLEMENTS"
@@ -145,6 +223,15 @@ jobs:
           echo "signature=GREEN" >> "$GITHUB_OUTPUT"
           echo "Existing Apple Distribution identity and exact bundle-ID provisioning profile installed." >> release-artifacts/signing.log
 
+      - name: Clean shared build outputs before archive
+        if: steps.signing.outcome == 'success'
+        shell: bash
+        env:
+          GRADLE_OPTS: -Dorg.gradle.caching=false
+        run: |
+          set -euo pipefail
+          ./gradlew --no-build-cache clean
+
       - name: Archive Release for physical iPhone
         if: steps.signing.outcome == 'success'
         id: archive
@@ -152,8 +239,14 @@ jobs:
         shell: bash
         env:
           BUILD_NUMBER: ${{ steps.metadata.outputs.build_number }}
+          EXPECTED_SHA: ${{ needs.resolve-target.outputs.resolved_sha }}
+          GRADLE_OPTS: -Dorg.gradle.caching=false
         run: |
           set -euo pipefail
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || { echo "::error::Pre-archive SHA mismatch; archive blocked"; exit 1; }
+          echo "PRE_ARCHIVE_CHECKOUT_SHA=$ACTUAL_SHA"
+          echo "PRE_ARCHIVE_EXPECTED_SHA=$EXPECTED_SHA"
           ARCHIVE="$RUNNER_TEMP/CriosRango.xcarchive"
           DERIVED="$RUNNER_TEMP/CriosRangoDerivedData"
           if /usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' iosApp/Info.plist >/dev/null 2>&1; then
@@ -170,13 +263,9 @@ jobs:
             -destination 'generic/platform=iOS' \
             -archivePath "$ARCHIVE" \
             -derivedDataPath "$DERIVED" \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
-            CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
             CODE_SIGN_ENTITLEMENTS="$RELEASE_ENTITLEMENTS" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-            MARKETING_VERSION=2.0.1 \
+            MARKETING_VERSION=1.0.1 \
             archive 2>&1 | tee release-artifacts/xcodebuild-archive.log
           BUILD_STATUS=${PIPESTATUS[0]}
           set -e
@@ -186,6 +275,10 @@ jobs:
           fi
           echo "ARCHIVE_PATH=$ARCHIVE" >> "$GITHUB_ENV"
           echo "ARCHIVE=FOUND" >> "$GITHUB_OUTPUT"
+          grep -Fq ':shared:embedAndSignAppleFrameworkForXcode' release-artifacts/xcodebuild-archive.log || { echo "::error::Kotlin Multiplatform framework build task not visible in archive log"; exit 1; }
+          grep -Eq 'BUILD SUCCESSFUL|BUILD SUCCESSFUL in' release-artifacts/xcodebuild-archive.log || { echo "::error::Kotlin Multiplatform Gradle success not visible in archive log"; exit 1; }
+          sed -i '' "s/^ARCHIVED_SHA=.*/ARCHIVED_SHA=$ACTUAL_SHA/" release-artifacts/ios-physical-testflight-report.txt
+          sed -i '' "s/^SHARED_IOS_COMPILED_FROM_TARGET_SHA=.*/SHARED_IOS_COMPILED_FROM_TARGET_SHA=YES/" release-artifacts/ios-physical-testflight-report.txt
           ditto "$ARCHIVE/dSYMs" release-artifacts/dSYMs 2>/dev/null || true
 
       - name: Export signed App Store IPA and validate bundle
@@ -286,18 +379,15 @@ jobs:
 
   upload-testflight:
     name: Validate and upload to internal TestFlight
-    needs: build-release-ipa
-    if: needs.build-release-ipa.result == 'success'
+    needs: [resolve-target, build-release-ipa]
+    if: needs.resolve-target.result == 'success' && needs.build-release-ipa.result == 'success'
     runs-on: macos-26
     timeout-minutes: 150
-    concurrency:
-      group: ios-testflight-upload-main
-      cancel-in-progress: false
     steps:
-      - name: Checkout exact source SHA
+      - name: Checkout exact resolved target SHA
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.resolve-target.outputs.resolved_sha }}
           fetch-depth: 1
 
       - name: Download signed IPA and evidence
@@ -306,18 +396,30 @@ jobs:
           name: ios-physical-testflight-build-${{ github.run_id }}
           path: release-artifacts
 
-      - name: Skip stale SHA before starting any Apple upload
+      - name: Verify downloaded IPA and checkout match exact target SHA
         id: freshness
         shell: bash
+        env:
+          REQUESTED_TARGET_SHA: ${{ needs.resolve-target.outputs.requested_sha }}
+          RESOLVED_TARGET_SHA: ${{ needs.resolve-target.outputs.resolved_sha }}
+          EXPECTED_SHA: ${{ needs.resolve-target.outputs.resolved_sha }}
+          WORKFLOW_RUN_SHA: ${{ needs.resolve-target.outputs.workflow_run_sha }}
         run: |
           set -euo pipefail
-          LATEST_SHA="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
-          if [[ "$LATEST_SHA" != "$GITHUB_SHA" ]]; then
-            echo "Current main is $LATEST_SHA; this build is stale ($GITHUB_SHA). No Apple upload started." | tee -a release-artifacts/ios-physical-testflight-report.txt
-            echo "current=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          echo "REQUESTED_TARGET_SHA=$REQUESTED_TARGET_SHA"
+          echo "RESOLVED_TARGET_SHA=$RESOLVED_TARGET_SHA"
+          echo "CHECKOUT_SHA=$ACTUAL_SHA"
+          echo "WORKFLOW_RUN_SHA=$WORKFLOW_RUN_SHA"
+          [[ "$REQUESTED_TARGET_SHA" == "$RESOLVED_TARGET_SHA" ]] || { echo "::error::Requested/resolved SHA mismatch in upload job"; exit 1; }
+          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || { echo "::error::Upload checkout SHA differs from resolved target SHA"; exit 1; }
+          grep -Fx "REQUESTED_TARGET_SHA=$REQUESTED_TARGET_SHA" release-artifacts/ios-physical-testflight-report.txt
+          grep -Fx "RESOLVED_TARGET_SHA=$RESOLVED_TARGET_SHA" release-artifacts/ios-physical-testflight-report.txt
+          grep -Fx "CHECKOUT_SHA=$EXPECTED_SHA" release-artifacts/ios-physical-testflight-report.txt
+          grep -Fx "ARCHIVED_SHA=$EXPECTED_SHA" release-artifacts/ios-physical-testflight-report.txt
+          grep -Fx "SHARED_IOS_COMPILED_FROM_TARGET_SHA=YES" release-artifacts/ios-physical-testflight-report.txt
           echo "current=true" >> "$GITHUB_OUTPUT"
+          echo "Verified requested, resolved, archive checkout and upload checkout all match $EXPECTED_SHA" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install App Store Connect API key
         if: steps.freshness.outputs.current == 'true'
@@ -447,13 +549,15 @@ jobs:
 
           group_response = request_asc(
             token, :get,
-            asc_query('/v1/betaGroups', [['filter[app]', app_id], ['filter[name]', 'Familia'], ['limit', '200']])
+            asc_query('/v1/betaGroups', [['filter[app]', app_id], ['filter[name]', 'Familia'], ['fields[betaGroups]', 'name,isInternalGroup,hasAccessToAllBuilds'], ['limit', '200']])
           )
           groups = group_response['data'] || []
           group = groups.find { |item| item.dig('attributes', 'name') == 'Familia' && item.dig('attributes', 'isInternalGroup') == true }
           raise 'Internal TestFlight group Familia was not found for es.criosrango.app' unless group
           group_id = group.fetch('id')
+          has_access_to_all_builds = group.dig('attributes', 'hasAccessToAllBuilds') == true
           puts "Internal TestFlight group Familia resolved."
+          puts "Internal group automatic distribution: #{has_access_to_all_builds}"
 
           deadline = Time.now + 7200
           build = nil
@@ -481,19 +585,23 @@ jobs:
           end
 
           build_id = build.fetch('id')
-          existing = request_asc(
-            token, :get,
-            asc_query("/v1/betaGroups/#{group_id}/relationships/builds", [['limit', '200']])
-          )
-          already_associated = (existing['data'] || []).any? { |item| item['id'] == build_id }
-          unless already_associated
-            request_asc(
-              token, :post,
-              "/v1/betaGroups/#{group_id}/relationships/builds",
-              { data: [{ type: 'builds', id: build_id }] }
+          if has_access_to_all_builds
+            puts "Internal group Familia has automatic distribution enabled; build #{build_number} is available without explicit association."
+          else
+            existing = request_asc(
+              token, :get,
+              asc_query("/v1/betaGroups/#{group_id}/relationships/builds", [['limit', '200']])
             )
+            already_associated = (existing['data'] || []).any? { |item| item['id'] == build_id }
+            unless already_associated
+              request_asc(
+                token, :post,
+                "/v1/betaGroups/#{group_id}/relationships/builds",
+                { data: [{ type: 'builds', id: build_id }] }
+              )
+            end
+            puts "Build #{build_number} is processed and explicitly associated with internal group Familia."
           end
-          puts "Build #{build_number} is processed and associated with internal group Familia."
           puts "External distribution: NOT_REQUESTED; App Review: NOT_SUBMITTED."
           RUBY
           echo "familia=GREEN" >> "$GITHUB_OUTPUT"
@@ -502,7 +610,6 @@ jobs:
         if: always()
         shell: bash
         env:
-          FRESH: ${{ steps.freshness.outputs.current }}
           VALIDATION: ${{ steps.validate.outputs.validation }}
           UPLOAD: ${{ steps.upload.outputs.upload }}
           FAMILIA: ${{ steps.familia.outputs.familia }}
@@ -513,21 +620,14 @@ jobs:
           set -u
           REPORT=release-artifacts/ios-physical-testflight-report.txt
           [[ -f "$REPORT" ]] || printf 'IOS PHYSICAL TESTFLIGHT REPORT\n' > "$REPORT"
-          if [[ "$FRESH" != true ]]; then
-            sed -i '' 's/^APP_STORE_VALIDATION=.*/APP_STORE_VALIDATION=RED/' "$REPORT" 2>/dev/null || true
-            sed -i '' 's/^UPLOAD=.*/UPLOAD=SKIPPED_STALE_SHA/' "$REPORT" 2>/dev/null || echo "UPLOAD=SKIPPED_STALE_SHA" >> "$REPORT"
-            sed -i '' 's/^TESTFLIGHT_UPLOAD=.*/TESTFLIGHT_UPLOAD=NOT_STARTED/' "$REPORT" 2>/dev/null || echo "TESTFLIGHT_UPLOAD=NOT_STARTED" >> "$REPORT"
-            sed -i '' 's/^FAMILIA_GROUP=.*/FAMILIA_GROUP=NOT_ATTEMPTED/' "$REPORT" 2>/dev/null || echo "FAMILIA_GROUP=NOT_ATTEMPTED" >> "$REPORT"
-          else
-            [[ "$VALIDATION" == GREEN ]] && VALIDATION_STATUS=GREEN || VALIDATION_STATUS=RED
-            [[ "$UPLOAD" == GREEN ]] && UPLOAD_STATUS=GREEN || UPLOAD_STATUS=RED
-            [[ "$UPLOAD" == GREEN ]] && TF_STATUS=SUCCESS || TF_STATUS=FAILURE
-            [[ "$FAMILIA" == GREEN ]] && GROUP_STATUS=ASSOCIATED || GROUP_STATUS=PENDING_OR_FAILED
-            sed -i '' "s/^APP_STORE_VALIDATION=.*/APP_STORE_VALIDATION=$VALIDATION_STATUS/" "$REPORT"
-            sed -i '' "s/^UPLOAD=.*/UPLOAD=$UPLOAD_STATUS/" "$REPORT"
-            sed -i '' "s/^TESTFLIGHT_UPLOAD=.*/TESTFLIGHT_UPLOAD=$TF_STATUS/" "$REPORT"
-            sed -i '' "s/^FAMILIA_GROUP=.*/FAMILIA_GROUP=$GROUP_STATUS/" "$REPORT"
-          fi
+          [[ "$VALIDATION" == GREEN ]] && VALIDATION_STATUS=GREEN || VALIDATION_STATUS=RED
+          [[ "$UPLOAD" == GREEN ]] && UPLOAD_STATUS=GREEN || UPLOAD_STATUS=RED
+          [[ "$UPLOAD" == GREEN ]] && TF_STATUS=SUCCESS || TF_STATUS=FAILURE
+          [[ "$FAMILIA" == GREEN ]] && GROUP_STATUS=AVAILABLE || GROUP_STATUS=PENDING_OR_FAILED
+          sed -i '' "s/^APP_STORE_VALIDATION=.*/APP_STORE_VALIDATION=$VALIDATION_STATUS/" "$REPORT"
+          sed -i '' "s/^UPLOAD=.*/UPLOAD=$UPLOAD_STATUS/" "$REPORT"
+          sed -i '' "s/^TESTFLIGHT_UPLOAD=.*/TESTFLIGHT_UPLOAD=$TF_STATUS/" "$REPORT"
+          sed -i '' "s/^FAMILIA_GROUP=.*/FAMILIA_GROUP=$GROUP_STATUS/" "$REPORT"
           sed -i '' "s/^VERSION=.*/VERSION=$VERSION/" "$REPORT"
           sed -i '' "s/^BUILD=.*/BUILD=$BUILD_NUMBER/" "$REPORT"
           sed -i '' "s/^TOTAL_DURATION=.*/TOTAL_DURATION=$(( $(date +%s) - RUN_START_EPOCH )) seconds/" "$REPORT"

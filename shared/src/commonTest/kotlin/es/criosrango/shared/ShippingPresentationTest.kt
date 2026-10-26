@@ -5,6 +5,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import es.criosrango.shared.model.StoreShippingOption
+import es.criosrango.shared.model.StoreShippingPackage
+import es.criosrango.shared.model.StoreShippingDestination
 
 class ShippingPresentationTest {
     @Test
@@ -40,5 +42,39 @@ class ShippingPresentationTest {
         assertEquals("local_pickup", parsed.methodId)
         assertTrue(parsed.selected)
         assertEquals("0", parsed.price)
+    }
+
+    @Test
+    fun taranconHidesCorreosExpressButKeepsFreeDeliveryAndPickup() {
+        val packages = listOf(
+            StoreShippingPackage(
+                packageId = 1,
+                destination = StoreShippingDestination(city = "Tarancón", state = "CU", postcode = "16400", country = "ES"),
+                rates = listOf(
+                    StoreShippingOption(rateId = "local_pickup:2", name = "Envío a Tarancón", methodId = "local_pickup", price = "0"),
+                    StoreShippingOption(rateId = "local_pickup:6", name = "Recogida en tienda", methodId = "local_pickup", price = "0"),
+                    StoreShippingOption(rateId = "flat_rate:4", name = "Correos Express", methodId = "flat_rate", price = "500")
+                )
+            )
+        )
+        val visible = filterStoreShippingPackagesForDestination(packages).single().rates
+        assertEquals(listOf("local_pickup:2", "local_pickup:6"), visible.map { it.rateId })
+    }
+
+    @Test
+    fun correosExpressRemainsForOtherDestinations() {
+        val packages = listOf(
+            StoreShippingPackage(
+                packageId = 1,
+                destination = StoreShippingDestination(city = "Cuenca", state = "CU", postcode = "16001", country = "ES"),
+                rates = listOf(
+                    StoreShippingOption(rateId = "flat_rate:4", name = "Correos Express", methodId = "flat_rate", price = "500")
+                )
+            )
+        )
+        assertEquals(
+            listOf("flat_rate:4"),
+            filterStoreShippingPackagesForDestination(packages).single().rates.map { it.rateId }
+        )
     }
 }

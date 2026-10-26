@@ -3,46 +3,69 @@ import UIKit
 import UserNotifications
 import Shared
 
+/// Native APNs/notification bridge only. All HTTP is owned by Shared PushDeviceRegistration.
 final class PushNotificationBridge: NSObject {
     static let shared = PushNotificationBridge()
-    private let endpoint = URL(string: "https://criosrango.es/wp-json/criosrango/v1/push/device")!
     private let defaults = UserDefaults.standard
+    private let tokenKey = "criosrango_apns_token"
+    private let pendingUnregisterKey = "criosrango_push_pending_unregister_token"
+    private var refreshObserver: NSObjectProtocol?
+
     func configure() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert,.sound,.badge]) { granted,_ in
-            if granted { DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() } }
+        if refreshObserver == nil {
+            refreshObserver = NotificationCenter.default.addObserver(
+                forName: Notification.Name("criosrango.push.refresh-registration"),
+                object: nil, queue: .main
+            ) { [weak self] _ in self?.refreshRegistration() }
         }
+        requestOrRegisterForNotifications()
     }
-    func refreshRegistration() {
+
+    private func requestOrRegisterForNotifications() {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
-            if settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional {
-                DispatchQueue.main.async {
-                    UIApplication.shared.registerForRemoteNotifications()
-                    self.syncStoredRegistration()
+            let status: String
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral: status = "AUTORIZADO"
+            case .denied: status = "DENEGADO"
+            case .notDetermined: status = "NO DETERMINADO"
+            @unknown default: status = "NO DETERMINADO"
+            }
+            IosPushDiagnostics.shared.recordPermission(status: status)
+            if settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional || settings.authorizationStatus == .ephemeral {
+                IosPushDiagnostics.shared.recordRegistrationRequested()
+                DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
+            } else if settings.authorizationStatus == .notDetermined {
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                    IosPushDiagnostics.shared.recordPermission(status: granted ? "AUTORIZADO" : "DENEGADO")
+                    if let error {
+                        IosPushDiagnostics.shared.recordRegistrationFailure(errorClass: String(describing: type(of: error)), message: error.localizedDescription)
+                    }
+                    if granted {
+                        IosPushDiagnostics.shared.recordRegistrationRequested()
+                        DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() }
+                    }
                 }
             }
         }
     }
 
-    func didRegister(deviceToken: Data) {
-        let token=deviceToken.map{String(format:"%02x",$0)}.joined()
-        defaults.set(token,forKey:"criosrango_apns_token")
-        syncStoredRegistration()
+    func refreshRegistration() {
+        requestOrRegisterForNotifications()
+        // A lifecycle trigger enters the same app-scoped Kotlin coordinator.
+        IosPushSyncBridgeKt.requestIosPushSync()
     }
 
-    private func syncStoredRegistration() {
-        guard let token=defaults.string(forKey:"criosrango_apns_token") else { return }
-        var request=URLRequest(url:endpoint)
-        request.httpMethod="POST"
-        request.setValue("application/json",forHTTPHeaderField:"Content-Type")
-        if let accountToken=IosAccountTokenStore().load() {
-            request.setValue("Bearer \(accountToken)",forHTTPHeaderField:"Authorization")
+    func didRegister(deviceToken: Data) {
+        let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+        let previous = defaults.string(forKey: tokenKey)
+        if let previous, previous != token { defaults.set(previous, forKey: pendingUnregisterKey) }
+        let changed = previous != token
+        defaults.set(token, forKey: tokenKey)
+        IosPushDiagnostics.shared.recordToken(token: token)
+        if changed {
+            IosPushSyncBridgeKt.requestIosPushTokenSync()
+        } else {
+            IosPushSyncBridgeKt.requestIosPushSync()
         }
-        request.httpBody=try? JSONSerialization.data(withJSONObject:[
-            "platform":"ios",
-            "token":token,
-            "new_products":defaults.object(forKey:"criosrango_push_new_products") as? Bool ?? true,
-            "order_updates":defaults.object(forKey:"criosrango_push_order_updates") as? Bool ?? true
-        ])
-        URLSession.shared.dataTask(with:request).resume()
     }
 }

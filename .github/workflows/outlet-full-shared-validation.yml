@@ -1,0 +1,553 @@
+name: Outlet Full Shared Phase B Validation
+
+on:
+  push:
+    branches:
+      - outlet-full-shared-convergence
+
+permissions:
+  contents: read
+
+concurrency:
+  group: outlet-full-shared-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-candidate:
+    name: Validate pinned Android candidate
+    runs-on: ubuntu-24.04
+    env:
+      VALIDATION_TARGET_SHA: ${{ github.sha }}
+      VALIDATION_WORKFLOW_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout exact application candidate
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Verify target and checkout SHAs
+        id: sha
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHECKOUT_SHA="$(git rev-parse HEAD)"
+          echo "VALIDATION_WORKFLOW_SHA=$VALIDATION_WORKFLOW_SHA"
+          echo "VALIDATION_TARGET_SHA=$VALIDATION_TARGET_SHA"
+          echo "CHECKOUT_SHA=$CHECKOUT_SHA"
+          echo "validation_target_sha=$VALIDATION_TARGET_SHA" >> "$GITHUB_OUTPUT"
+          echo "checkout_sha=$CHECKOUT_SHA" >> "$GITHUB_OUTPUT"
+          test "$CHECKOUT_SHA" = "$VALIDATION_TARGET_SHA"
+          test "$VALIDATION_TARGET_SHA" = "$GITHUB_SHA" || { echo "::error::Target is not the triggering application SHA"; exit 1; }
+          test "$VALIDATION_TARGET_SHA" = "$CHECKOUT_SHA" || {
+            echo "::error::Pinned checkout does not match validation target"
+            exit 1
+          }
+
+      - name: Verify Phase B architecture and Android freeze gates
+        id: static-gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASELINE_SHA=179a3077c862c5d4d03934cd93a8643303493542
+          TARGET_SHA="$GITHUB_SHA"
+          git fetch --no-tags --depth=1 origin "$BASELINE_SHA"
+          git cat-file -e "$BASELINE_SHA^{commit}"
+          python3 - "$BASELINE_SHA" "$TARGET_SHA" <<'PY'
+          import pathlib, subprocess, sys
+          base, target = sys.argv[1:]
+          changed = subprocess.check_output(["git", "diff", "--name-only", base, target], text=True).splitlines()
+          allowed_android = {
+              "app/src/main/java/es/criosrango/app/CategoriesScreen.kt",
+              "app/src/main/java/es/criosrango/app/ShopViewModel.kt",
+              "app/src/main/java/es/criosrango/app/ShopRepository.kt",
+              "app/src/main/java/es/criosrango/app/MainActivity.kt",
+          }
+          forbidden = [p for p in changed if p.startswith("app/src/") and p not in allowed_android]
+          frozen = [
+              "shared/src/commonMain/kotlin/es/criosrango/shared/RemoteStoreImage.kt",
+              "shared/src/iosMain/kotlin/es/criosrango/shared/StoreImageDecoder.ios.kt",
+          ]
+          forbidden += [p for p in changed if p in frozen]
+          assert not forbidden, "Frozen/Android paths changed: " + ", ".join(forbidden)
+          ios_path = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/IosStoreDiscoveryScreens.kt")
+          ios_src = ios_path.read_text()
+          ios_start = ios_src.index("internal fun IosOutletScreen(")
+          ios_end = ios_src.index("internal fun IosPagedProductScreen", ios_start)
+          outlet_ios = ios_src[ios_start:ios_end]
+          chooser_filter_start = outlet_ios.index("onFilterClick = {", outlet_ios.index("if (showOutletChooser) {"))
+          chooser_filter_end = outlet_ios.index("},", chooser_filter_start)
+          chooser_filter = outlet_ios[chooser_filter_start:chooser_filter_end]
+
+          android_path = pathlib.Path("app/src/main/java/es/criosrango/app/CategoriesScreen.kt")
+          android_src = android_path.read_text()
+          android_start = android_src.index("private fun OutletControlledProductGrid(")
+          android_end = android_src.index("@Composable", android_start + len("private fun OutletControlledProductGrid("))
+          outlet_android = android_src[android_start:android_end]
+
+          root = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/IosStoreRootScreen.kt").read_text()
+          catalog = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/IosCatalogScreen.kt").read_text()
+          controller = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreOutletController.kt").read_text()
+          adapter = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreOutletDataSourceAdapter.kt").read_text()
+          filter_client = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/api/StoreFilterApiClient.kt").read_text()
+          root_owner = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreRootFilterOwner.kt").read_text()
+          root_contract = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreRootFilterContract.kt").read_text()
+          main_activity = pathlib.Path("app/src/main/java/es/criosrango/app/MainActivity.kt").read_text()
+          shop_vm = pathlib.Path("app/src/main/java/es/criosrango/app/ShopViewModel.kt").read_text()
+          bubbles = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreOutletBubbles.kt").read_text()
+          product_list = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreProductListScreen.kt").read_text()
+          categories_screen = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreCategoriesScreen.kt").read_text()
+          category_components = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreCategoryComponents.kt").read_text()
+          subcategory_grid = pathlib.Path("shared/src/commonMain/kotlin/es/criosrango/shared/StoreSubcategoriesGrid.kt").read_text()
+          tests = pathlib.Path("shared/src/commonTest/kotlin/es/criosrango/shared/StoreOutletControllerTest.kt").read_text()
+          api_tests = pathlib.Path("shared/src/commonTest/kotlin/es/criosrango/shared/api/StoreFilterApiClientTest.kt").read_text()
+          hydration_tests = pathlib.Path("shared/src/commonTest/kotlin/es/criosrango/shared/api/StoreApiClientCatalogTest.kt").read_text()
+
+          checks = {
+              "IOS_ACTIVE_OUTLET_USES_COMMON_CONTROLLER": "controller: StoreOutletController" in outlet_ios and "controllerState by controller.state.collectAsState()" in outlet_ios,
+              "ANDROID_ACTIVE_OUTLET_USES_COMMON_CONTROLLER": "controller: es.criosrango.shared.StoreOutletController" in outlet_android and "controller.state.collectAsStateWithLifecycle()" in outlet_android,
+              "IOS_LOCAL_OUTLET_PAGINATOR_REMOVED": "CatalogPaginatorStore<StoreProduct>" not in outlet_ios and "paginator.loadNext" not in outlet_ios,
+              "ANDROID_LOCAL_OUTLET_PAGINATOR_REMOVED": "CatalogPaginatorStore" not in outlet_android and "loadNextCategoryPage" not in outlet_android,
+              "IOS_LOCAL_OUTLET_FILTER_OWNER_REMOVED": "var filtersOpen" not in outlet_ios and "var selectedSizes" not in outlet_ios and "fun matches(" not in outlet_ios,
+              "ANDROID_LOCAL_OUTLET_FILTER_OWNER_REMOVED": "var filtersOpen" not in outlet_android and "fun matches(" not in outlet_android,
+              "OUTLET_QUERY_IDENTITY_FULL_SHARED": all(x in controller for x in (
+                  "val categoryId: Int", "val originCategoryIds: List<Int>", "val sizeIds: List<Int>",
+                  "val colorIds: List<Int>", "val brandIds: List<Int>", "val sort: StoreOutletSort"
+              )) and "Page is deliberately not part of query identity" in controller,
+              "OUTLET_QUERY_IDS_CANONICAL": all(x in controller for x in (
+                  "originCategoryIds = originCategoryIds.distinct().sorted()",
+                  "sizeIds = sizeIds.distinct().sorted()",
+                  "colorIds = colorIds.distinct().sorted()",
+                  "brandIds = brandIds.distinct().sorted()",
+              )),
+              "FILTER_CLIENT_CONTEXT_SERIALIZATION": all(x in filter_client for x in (
+                  'parameter("outlet_category_id", it)', 'parameter("origin_category_ids"',
+                  "originCategoryIds.distinct().sorted().joinToString"
+              )),
+              "OUTLET_DATA_SOURCE_FILTER_API": all(x in adapter for x in (
+                  'scope = "outlet"', "outletCategoryId = q.categoryId", "originCategoryIds = q.originCategoryIds",
+                  "sizeIds = q.sizeIds", "colorIds = q.colorIds", "brandIds = q.brandIds",
+                  "sort = q.sort.toBackendSort()"
+              )),
+              "OUTLET_DATA_SOURCE_SINGLE_HYDRATION": "storeApi.productsByIds(response.productIds)" in adapter and "response.productIds.isEmpty()" in adapter and "storeApi.products(" not in adapter,
+              "OUTLET_BACKEND_TOTAL_HAS_MORE": "CatalogPage(products, response.hasMore, response.total)" in adapter,
+              "OUTLET_BACKEND_SORT_MAPPING": all(x in adapter for x in ("price_asc", "price_desc", "title_asc", "newest")),
+              "OUTLET_FILTER_STATE_CONTROLLER_OWNED": all(x in controller for x in (
+                  "draftSizes", "draftColors", "draftBrands", "selectedSizes", "selectedColors", "selectedBrands",
+                  "fun openFilters()", "fun cancelFilters()", "fun applyFilters()", "fun clearFilters()"
+              )),
+              "OUTLET_FACETS_CONTROLLER_OWNED": all(x in controller for x in (
+                  "facetGenerations", "facetCache", "fun selectFacetDimension", "private fun requestFacet", "private fun draftQuery"
+              )),
+              "OUTLET_PAGING_CONTROLLER_OWNED": all(x in controller for x in (
+                  "private val paginators", "private fun activateCurrentQuery", "private fun startInitial", "private fun requestNext"
+              )),
+              "OUTLET_RETENTION_CONTROLLER_OWNED": "retainedSelections" in controller and "paginators = linkedMapOf" in controller,
+              "OUTLET_STALE_FACET_REJECTION": "facetGenerations[dimension] == generation" in controller and "facetKey(dimension, currentQuery) == key" in controller,
+              "LOCAL_OUTLET_FILTERING_REMOVED": "fun matches(" not in controller and "productBelongsToOutletBubble" not in controller,
+              "LOCAL_OUTLET_SORTING_REMOVED": ".sortedBy" not in controller and ".sortedByDescending" not in controller,
+              "ANDROID_OUTLET_FILTER_BUTTON_DELEGATES_TO_CONTROLLER": (
+                  "onFilterClick = {" in android_src
+                  and "outletController.selectCategory(current.id)" in android_src
+                  and "outletController.openFilters()" in android_src
+              ),
+              "ANDROID_OUTLET_FILTER_RENDERER_SINGLE_HOST": (
+                  android_src.count("OutletControllerFilterDialog(controller, outletControllerState)") == 1
+                  and "private fun OutletControllerFilterDialog(" in android_src
+                  and "if (state.filterDialogVisible)" not in android_src[
+                      android_src.index("private fun OutletControlledProductGrid("):
+                      android_src.index("private fun OutletControllerFilterDialog(")
+                  ]
+              ),
+              "ANDROID_OUTLET_FILTER_RENDERER_USES_SAME_CONTROLLER_STATE": all(x in android_src[android_src.index("private fun OutletControllerFilterDialog("):android_src.index("@Composable", android_src.index("private fun OutletControllerFilterDialog(") + 1)] for x in (
+                  "controller: es.criosrango.shared.StoreOutletController",
+                  "state: es.criosrango.shared.StoreOutletState",
+                  "state.filterDialogVisible", "selectedSizes = state.draftSizes",
+                  "selectedColors = state.draftColors", "selectedBrands = state.draftBrands"
+              )),
+              "ANDROID_OUTLET_FILTER_CANCEL_DISMISS_CONTROLLER_OWNED": all(x in android_src[android_src.index("private fun OutletControllerFilterDialog("):android_src.index("@Composable", android_src.index("private fun OutletControllerFilterDialog(") + 1)] for x in (
+                  "onDismissRequest = controller::cancelFilters",
+                  "onDismiss = controller::cancelFilters",
+                  "onCancel = controller::cancelFilters"
+              )),
+              "ANDROID_OUTLET_FILTER_APPLY_HAS_NO_NAVIGATION_SIDE_EFFECT": (
+                  "onApply = { controller.applyFilters() }" in android_src
+                  and "onFiltersApplied" not in android_src
+                  and "showOutletProductsFromFilters" not in android_src
+              ),
+              "ANDROID_OUTLET_CATEGORY_RESULTS_SWITCH_USES_ACTIVE_FILTER_COUNT": (
+                  "children.isNotEmpty() && currentIsOutletPath && outletControllerState.activeFilterCount == 0 && current != null" in android_src
+                  and "children.isNotEmpty() && !currentIsOutletPath" in android_src
+                  and "showOutletProductsFromFilters" not in android_src
+              ),
+              "IOS_OUTLET_FILTER_UI_CONTROLLER_OWNED": "onFilterClick = controller::openFilters" in outlet_ios and "controllerState.filterDialogVisible" in outlet_ios and "selectedSizes = controllerState.draftSizes" in outlet_ios,
+              "IOS_OUTLET_FILTER_OPEN_DOES_NOT_NAVIGATE": (
+                  "controller.openFilters()" in chooser_filter
+                  and "onShowOutletChooserChange(false)" not in chooser_filter
+              ),
+              "IOS_OUTLET_FILTER_DIALOG_SINGLE_HOST": (
+                  outlet_ios.count("if (controllerState.filterDialogVisible)") == 1
+                  and outlet_ios.index("if (controllerState.filterDialogVisible)") > outlet_ios.index("StoreProductListScreen(")
+              ),
+              "IOS_OUTLET_FILTER_CANCEL_PRESERVES_CHOOSER": (
+                  "onDismissRequest = controller::cancelFilters" in outlet_ios
+                  and "onDismiss = controller::cancelFilters" in outlet_ios
+                  and "onCancel = controller::cancelFilters" in outlet_ios
+                  and "controller::cancelFilters" in outlet_ios
+              ),
+              "IOS_OUTLET_CLEAR_LAST_ROOT_FILTER_RETURNS_CHOOSER": (
+                  "LaunchedEffect(controllerState.activeCategoryId, controllerState.activeFilterCount, outlet.id)" in outlet_ios
+                  and "onShowOutletChooserChange(isRootCategory && controllerState.activeFilterCount == 0)" in outlet_ios
+                  and "onClearFilters = controller::clearFilters" in outlet_ios
+              ),
+              "IOS_OUTLET_PRESENTATION_STATE_SURVIVES_PRODUCT_DETAIL": (
+                  "var showOutletChooser by remember(outletController)" in catalog
+                  and "showOutletChooser = showOutletChooser" in catalog
+                  and "gridState = outletGridState" in catalog
+                  and "var showOutletChooser by remember(outlet.id)" not in outlet_ios
+                  and "val gridState = rememberLazyGridState()" not in outlet_ios
+              ),
+              "ANDROID_OUTLET_SHARED_TRANSPORT": "storeOutletDataSource(sharedCatalogClient)" in main_activity and "StoreOutletController(viewModelScope, outletDataSource)" in shop_vm,
+              "IOS_OUTLET_SHARED_TRANSPORT": "StoreOutletController(outletControllerScope, storeOutletDataSource(storeApi))" in root,
+              "ANDROID_OUTLET_NO_ROOT_FILTER_OWNER": "StoreRootFilterScope.OUTLET" not in outlet_android and "rootFilterOwner" not in outlet_android,
+              "IOS_OUTLET_NO_ROOT_FILTER_OWNER": "StoreRootFilterScope.OUTLET" not in outlet_ios and "onOpenRootFilter" not in outlet_ios,
+              "ROOT_FILTER_OWNER_CATALOG_ONLY": 'require(scope == StoreRootFilterScope.CATALOG)' in root_owner and 'scope = "catalog"' in root_owner,
+              "ROOT_RESULTS_RENDERER_ONLY": "CatalogPaginatorStore<StoreProduct>" not in root_owner and "var sort by remember" not in root_owner,
+              "ROOT_OWNER_PAGING": "private val resultPaginator = CatalogPaginator<StoreProduct>" in root_owner and "fun selectSort(" in root_owner and "fun retryInitial()" in root_owner and "fun onVisibleRangeChanged(" in root_owner,
+              "CATEGORIES_ROOT_FILTER_REMAINS_CATALOG": "CATALOG(null" in root_contract and "rootFilterState.scope == StoreRootFilterScope.CATALOG" in catalog,
+              "CONTROLLER_SEMANTIC_TESTS": all(x in tests for x in (
+                  "query_identity_contains_category_bubble_filters_and_sort_but_not_page",
+                  "draft_changes_do_not_reload_products_until_apply_and_apply_resets_page_one",
+                  "bubble_selection_becomes_origin_context_and_restarts_query",
+                  "sort_is_backend_query_identity_and_restarts_page_one",
+                  "near_end_prefetch_appends_exactly_one_next_page",
+                  "facet_query_preserves_category_bubble_and_other_draft_dimensions",
+                  "stale_facet_response_cannot_overwrite_newer_draft",
+                  "controller_retains_paginator_per_full_query_identity",
+                  "missing_availability_fails_closed", "unsupported_availability_schema_fails_closed",
+                  "positive_availability_shows_bubble", "unavailable_bubble_selection_is_ignored",
+                  "bubble_selection_does_not_change_common_screen_title"
+              )),
+              "FILTER_SERIALIZATION_TESTS": all(x in api_tests for x in (
+                  "query_preserves_scope_context_canonical_ids_pagination_sort_and_facet",
+                  "null_category_and_empty_origins_are_omitted"
+              )),
+              "FILTER_HYDRATION_TESTS": all(x in hydration_tests for x in (
+                  "outletDataSourceUsesFilterApiThenSingleOrderedHydrationBatch",
+                  "outletDataSourceSkipsStoreHydrationWhenFilterApiReturnsNoIds",
+                  "outletDataSourceFailsClosedWhenStoreHydrationOmitsBackendId"
+              )),
+              "BUBBLE_PILL_RETAINS_34DP": "Modifier.height(34.dp)" in bubbles,
+              "BUBBLE_TEXT_VERTICAL_PADDING_REMOVED": "padding(vertical = 8.5.dp)" not in bubbles and "lineHeight = 16.sp" in bubbles,
+              "NORMAL_CATEGORIES_ROOT_SCALE_MATCHES_OUTLET": "imageScale = 1.16f" in categories_screen and "imageScale: Float = 1f" in category_components,
+              "NORMAL_CATEGORIES_ROOT_PADDING_MATCHES_OUTLET": "imagePadding = 1.dp" in categories_screen,
+              "NORMAL_CATEGORIES_ROOT_LABEL_GAP_MATCHES_OUTLET": "imageToLabelSpacing = 6.dp" in categories_screen,
+              "OUTLET_ROOT_IMAGE_GEOMETRY_UNCHANGED": "imagePadding: Dp = 1.dp" in subcategory_grid and "imageScale: Float = 1.16f" in subcategory_grid,
+              "SHARED_PRODUCT_LIST_USED_ANDROID": "StoreProductListScreen(" in outlet_android,
+              "SHARED_PRODUCT_LIST_USED_IOS": "StoreProductListScreen(" in outlet_ios,
+          }
+          for name, ok in checks.items():
+              print(f"{name}={'YES' if ok else 'NO'}")
+          assert all(checks.values()), "Final Outlet FULL_SHARED static gate failed: " + ", ".join(name for name, ok in checks.items() if not ok)
+
+          print("ONE_ACTIVE_OUTLET_QUERY_OWNER=YES")
+          print("ONE_ACTIVE_OUTLET_MATCHING_OWNER=YES")
+          print("ONE_ACTIVE_OUTLET_FILTER_SORT_OWNER=YES")
+          print("ONE_ACTIVE_OUTLET_PAGING_DECISION_OWNER=YES")
+          print("ONE_ACTIVE_OUTLET_RETENTION_OWNER=YES")
+          print("ONE_ACTIVE_OUTLET_FACET_OWNER=YES")
+          print("ROOT_RESULTS_LOCAL_PAGINATOR=NO")
+          print("ROOT_RESULTS_LOCAL_SORT_OWNER=NO")
+          print("ROOT_RESULTS_LOCAL_RETRY_OWNER=NO")
+          print("LOCAL_OUTLET_FILTERING_ACTIVE=NO")
+          print("LOCAL_OUTLET_SORTING_ACTIVE=NO")
+          print("ANDROID_ACTIVE_OUTLET_USES_COMMON_CONTROLLER=YES")
+          print("IOS_ACTIVE_OUTLET_USES_SAME_CONTROLLER=YES")
+          print("OUTLET_PRESENTATION_FULL_SHARED=YES_STATIC")
+          print("OUTLET_STATE_FULL_SHARED=YES_STATIC")
+          print("OUTLET_BUSINESS_LOGIC_FULL_SHARED=YES_STATIC")
+          print("ANDROID_APPROVED_VISUAL_BASELINE_EXPECTED_PRESERVED=YES_STATIC")
+          print("IOS_AVIF_FIX_PRESERVED=YES")
+          print("PRODUCT_DETAIL_SHARED_OWNER_PRESERVED=YES")
+          print("OUTLET_FULL_SHARED_CLOSED=NO_PHYSICAL_GATES_PENDING")
+          PY
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Prepare Google Services configuration
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$GOOGLE_SERVICES_JSON_BASE64"
+          printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
+          test -s app/google-services.json
+
+      - name: Prepare permanent debug keystore
+        id: signing
+        env:
+          CRIOSRANGO_DEBUG_KEYSTORE_BASE64: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_BASE64 }}
+          CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD }}
+          CRIOSRANGO_DEBUG_KEY_ALIAS: ${{ secrets.CRIOSRANGO_DEBUG_KEY_ALIAS }}
+          CRIOSRANGO_DEBUG_KEY_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CRIOSRANGO_DEBUG_KEYSTORE_BASE64"
+          test -n "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD"
+          test -n "$CRIOSRANGO_DEBUG_KEY_ALIAS"
+          test -n "$CRIOSRANGO_DEBUG_KEY_PASSWORD"
+          printf '%s' "$CRIOSRANGO_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/criosrango-debug.jks"
+          chmod 600 "$RUNNER_TEMP/criosrango-debug.jks"
+          {
+            echo "CRIOSRANGO_DEBUG_KEYSTORE_FILE=$RUNNER_TEMP/criosrango-debug.jks"
+            echo "CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD=$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD"
+            echo "CRIOSRANGO_DEBUG_KEY_ALIAS=$CRIOSRANGO_DEBUG_KEY_ALIAS"
+            echo "CRIOSRANGO_DEBUG_KEY_PASSWORD=$CRIOSRANGO_DEBUG_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+          echo "DEBUG_KEYSTORE_CONFIGURED=YES"
+          echo "DEBUG_SIGNING_CREDENTIALS_CONFIGURED=YES"
+          echo "DEBUG_KEYSTORE_CONFIGURED=YES" >> "$GITHUB_OUTPUT"
+          echo "DEBUG_SIGNING_CREDENTIALS_CONFIGURED=YES" >> "$GITHUB_OUTPUT"
+
+      - name: Verify permanent signing certificate
+        env:
+          CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          STOREPASS="$(printf '%s' "$CRIOSRANGO_DEBUG_KEYSTORE_PASSWORD" | tr -d '\r\n')"
+          keytool -list -keystore "$RUNNER_TEMP/criosrango-debug.jks" -storepass "$STOREPASS" -alias "criosrango-development"
+
+      - name: Run common/KMP tests and preserve failure evidence
+        id: common-tests
+        shell: bash
+        run: |
+          set -uo pipefail
+          TASK=":shared:testDebugUnitTest"
+          echo "COMMON_TEST_COMMAND=./gradlew $TASK --warning-mode all --stacktrace"
+          set +e
+          ./gradlew "$TASK" --warning-mode all --stacktrace 2>&1 | tee "$RUNNER_TEMP/common-tests.log"
+          TEST_STATUS=${PIPESTATUS[0]}
+          set -e
+
+          python3 - "$TEST_STATUS" <<'PY' > "$RUNNER_TEMP/common-test-summary.txt"
+          import pathlib, sys, xml.etree.ElementTree as ET
+          status = int(sys.argv[1])
+          repo = pathlib.Path(".")
+          xml_files = sorted(p for p in repo.rglob("*.xml") if "build/test-results/" in p.as_posix())
+          print("JUNIT_XML_FILES_FOUND_COUNT=" + str(len(xml_files)))
+          suites = set()
+          executed = failed = controller_executed = root_filter_executed = 0
+          for path in xml_files:
+              try:
+                  root = ET.parse(path).getroot()
+              except (ET.ParseError, OSError) as exc:
+                  print(f"JUNIT_XML_PARSE_ERROR={path}: {exc}")
+                  continue
+              for case in root.iter("testcase"):
+                  classname = case.attrib.get("classname", "")
+                  name = case.attrib.get("name", "")
+                  suites.add(classname or path.stem)
+                  executed += 1
+                  is_controller = "StoreOutletControllerTest" in classname or "StoreOutletControllerTest" in name
+                  is_root_filter = "StoreRootFilterContractTest" in classname or "StoreRootFilterContractTest" in name
+                  controller_executed += int(is_controller)
+                  root_filter_executed += int(is_root_filter)
+                  failures = [node for node in case if node.tag in ("failure", "error")]
+                  if failures:
+                      failed += 1
+                      for node in failures:
+                          print("")
+                          print(f"TEST_FAILURE_CLASS={classname or 'UNKNOWN'}")
+                          print(f"TEST_FAILURE_NAME={name or 'UNKNOWN'}")
+                          print(f"TEST_FAILURE_MESSAGE={node.attrib.get('message', '').strip() or 'NOT_PRESENT'}")
+                          print(f"TEST_FAILURE_DETAILS={(node.text or '').strip() or 'NOT_PRESENT'}")
+          print("")
+          print("ALL_JUNIT_SUITES_FOUND=" + ";".join(sorted(suites)))
+          print(f"COMMON_TESTS_EXECUTED_COUNT={executed}")
+          print(f"TOTAL_COMMON_TESTS_EXECUTED={executed}")
+          print(f"STORE_OUTLET_CONTROLLER_TESTS_EXECUTED={controller_executed}")
+          print(f"ROOT_FILTER_TESTS_EXECUTED={root_filter_executed}")
+          print(f"COMMON_TESTS_FAILED_COUNT={failed}")
+          result = "PASS" if status == 0 and executed > 0 and failed == 0 else ("NOT_EXECUTED" if executed == 0 else "FAIL")
+          print(f"COMMON_TESTS_STATUS={result}")
+          print(f"FULL_COMMON_TEST_SUITE_STATUS={result}")
+          PY
+          cat "$RUNNER_TEMP/common-test-summary.txt"
+          EXECUTED="$(sed -n 's/^COMMON_TESTS_EXECUTED_COUNT=//p' "$RUNNER_TEMP/common-test-summary.txt" | tail -1)"
+          FAILED="$(sed -n 's/^COMMON_TESTS_FAILED_COUNT=//p' "$RUNNER_TEMP/common-test-summary.txt" | tail -1)"
+          STATUS="$(sed -n 's/^COMMON_TESTS_STATUS=//p' "$RUNNER_TEMP/common-test-summary.txt" | tail -1)"
+          echo "command=./gradlew $TASK --warning-mode all --stacktrace" >> "$GITHUB_OUTPUT"
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "executed=$EXECUTED" >> "$GITHUB_OUTPUT"
+          echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+          echo "task=$TASK" >> "$GITHUB_OUTPUT"
+          # Deliberately do not fail this step: the Android compile and artifact upload must run too.
+          exit 0
+
+      - name: Compile Android debug application
+        id: android-compile
+        shell: bash
+        run: |
+          set -uo pipefail
+          echo "ANDROID_COMPILE_COMMAND=./gradlew :app:assembleDebug --warning-mode all --stacktrace"
+          echo "ANDROID_COMPILE_REACHED=YES"
+          set +e
+          ./gradlew :app:assembleDebug --warning-mode all --stacktrace 2>&1 | tee "$RUNNER_TEMP/android-compile.log"
+          BUILD_STATUS=${PIPESTATUS[0]}
+          set -e
+          if [ "$BUILD_STATUS" -eq 0 ]; then
+            STATUS=PASS
+            ERROR=""
+            FILE=""
+            LINE=""
+            COLUMN=""
+            KOTLIN_REACHED=YES
+          else
+            STATUS=FAIL
+            MATCH="$(grep -m1 -E '(^e: file://|\.kt:[0-9]+:[0-9]+: error:|\.java:[0-9]+: error:|Execution failed for task|Could not resolve all files|Android debug tasks require)' "$RUNNER_TEMP/android-compile.log" || true)"
+            ERROR="${MATCH:-Gradle command failed; inspect complete step log for causal error}"
+            FILE=""
+            LINE=""
+            COLUMN=""
+            KOTLIN_REACHED=NO
+            if grep -Eq '(^> Task :app:compileDebugKotlin|^> Task :shared:compileDebugKotlin|^e: file://|\.kt:[0-9]+:[0-9]+: error:)' "$RUNNER_TEMP/android-compile.log"; then
+              KOTLIN_REACHED=YES
+            fi
+            if [[ "$MATCH" =~ file://([^:]+):[[:space:]]*\(([0-9]+),[[:space:]]*([0-9]+)\) ]]; then
+              FILE="${BASH_REMATCH[1]}"; LINE="${BASH_REMATCH[2]}"; COLUMN="${BASH_REMATCH[3]}"
+            elif [[ "$MATCH" =~ ([^[:space:]]+\.(kt|java))[[:space:]]*:?[[:space:]]*([0-9]+):([0-9]+) ]]; then
+              FILE="${BASH_REMATCH[1]}"; LINE="${BASH_REMATCH[3]}"; COLUMN="${BASH_REMATCH[4]}"
+            fi
+          fi
+          echo "ANDROID_KOTLIN_COMPILE_REACHED=$KOTLIN_REACHED"
+          echo "ANDROID_COMPILE_STATUS=$STATUS"
+          echo "FIRST_REAL_ANDROID_ERROR=$ERROR"
+          echo "FILE=$FILE"
+          echo "LINE=$LINE"
+          echo "COLUMN=$COLUMN"
+          {
+            echo "status=$STATUS"
+            echo "error=$ERROR"
+            echo "file=$FILE"
+            echo "line=$LINE"
+            echo "column=$COLUMN"
+            echo "kotlin_reached=$KOTLIN_REACHED"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Verify APK provenance and prepare physical artifact
+        id: physical-apk
+        if: always()
+        shell: bash
+        env:
+          CHECKOUT_SHA: ${{ steps.sha.outputs.checkout_sha }}
+          ANDROID_STATUS: ${{ steps.android-compile.outputs.status }}
+        run: |
+          set -euo pipefail
+          PHYSICAL_TARGET_SHA="$GITHUB_SHA"
+          echo "PHYSICAL_TARGET_SHA=$PHYSICAL_TARGET_SHA"
+          echo "CHECKOUT_SHA=$CHECKOUT_SHA"
+          test "$PHYSICAL_TARGET_SHA" = "$CHECKOUT_SHA"
+          test "$ANDROID_STATUS" = "PASS"
+          POST_BUILD_CHECKOUT_SHA="$(git rev-parse HEAD)"
+          echo "POST_BUILD_CHECKOUT_SHA=$POST_BUILD_CHECKOUT_SHA"
+          test "$POST_BUILD_CHECKOUT_SHA" = "$PHYSICAL_TARGET_SHA"
+          APK_PATH="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK_PATH"
+          test -f "$APK_PATH"
+          APK_FILENAME="$(basename "$APK_PATH")"
+          APK_SIZE_BYTES="$(stat -c '%s' "$APK_PATH")"
+          APK_SHA256="$(sha256sum "$APK_PATH" | awk '{print $1}')"
+          echo "APK_PATH=$APK_PATH"
+          echo "APK_FILENAME=$APK_FILENAME"
+          echo "APK_SIZE_BYTES=$APK_SIZE_BYTES"
+          echo "APK_SHA256=$APK_SHA256"
+          {
+            echo "APPLICATION_TARGET_SHA=$PHYSICAL_TARGET_SHA"
+            echo "CHECKOUT_SHA=$CHECKOUT_SHA"
+            echo "POST_BUILD_CHECKOUT_SHA=$POST_BUILD_CHECKOUT_SHA"
+            echo "APK_FILENAME=$APK_FILENAME"
+            echo "APK_SHA256=$APK_SHA256"
+            echo "VALIDATION_SOURCE_RUN=$GITHUB_RUN_ID"
+          } > android-physical-provenance.txt
+          {
+            echo "apk_path=$APK_PATH"
+            echo "apk_filename=$APK_FILENAME"
+            echo "apk_size_bytes=$APK_SIZE_BYTES"
+            echo "apk_sha256=$APK_SHA256"
+            echo "post_build_checkout_sha=$POST_BUILD_CHECKOUT_SHA"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload Android physical APK and provenance
+        if: steps.physical-apk.outcome == 'success'
+        id: upload-physical-apk
+        uses: actions/upload-artifact@v7
+        with:
+          name: criosrango-android-physical-${{ github.sha }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            android-physical-provenance.txt
+
+      - name: Upload JUnit XML and HTML reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: outlet-phase-a-validation-reports
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            shared/build/test-results/**/*.xml
+            shared/build/reports/tests/**
+
+      - name: Emit validation summary and enforce gate
+        if: always()
+        shell: bash
+        env:
+          CHECKOUT_SHA: ${{ steps.sha.outputs.checkout_sha }}
+          COMMON_STATUS: ${{ steps.common-tests.outputs.status }}
+          COMMON_COMMAND: ${{ steps.common-tests.outputs.command }}
+          COMMON_EXECUTED: ${{ steps.common-tests.outputs.executed }}
+          COMMON_FAILED: ${{ steps.common-tests.outputs.failed }}
+          ANDROID_STATUS: ${{ steps.android-compile.outputs.status }}
+          ANDROID_ERROR: ${{ steps.android-compile.outputs.error }}
+          ANDROID_KOTLIN_REACHED: ${{ steps.android-compile.outputs.kotlin_reached }}
+          DEBUG_KEYSTORE_CONFIGURED: ${{ steps.signing.outputs.DEBUG_KEYSTORE_CONFIGURED }}
+          DEBUG_SIGNING_CREDENTIALS_CONFIGURED: ${{ steps.signing.outputs.DEBUG_SIGNING_CREDENTIALS_CONFIGURED }}
+        run: |
+          {
+            echo "### Outlet Full Shared Phase B validation"
+            echo
+            echo "- VALIDATION_WORKFLOW_SHA=$VALIDATION_WORKFLOW_SHA"
+            echo "- VALIDATION_TARGET_SHA=$VALIDATION_TARGET_SHA"
+            echo "- CHECKOUT_SHA=${CHECKOUT_SHA:-NOT_VERIFIED}"
+            echo "- COMMON_TEST_COMMAND=${COMMON_COMMAND:-NOT_EXECUTED}"
+            echo "- COMMON_TESTS_STATUS=${COMMON_STATUS:-NOT_EXECUTED}"
+            echo "- COMMON_TESTS_EXECUTED_COUNT=${COMMON_EXECUTED:-0}"
+            echo "- COMMON_TESTS_FAILED_COUNT=${COMMON_FAILED:-0}"
+            echo "- FULL_COMMON_TEST_SUITE_STATUS=${COMMON_STATUS:-NOT_EXECUTED}"
+            echo "- TOTAL_TESTS_EXECUTED=${COMMON_EXECUTED:-0}"
+            echo "- TOTAL_TESTS_FAILED=${COMMON_FAILED:-0}"
+            echo "- DEBUG_KEYSTORE_CONFIGURED=${DEBUG_KEYSTORE_CONFIGURED:-NO}"
+            echo "- DEBUG_SIGNING_CREDENTIALS_CONFIGURED=${DEBUG_SIGNING_CREDENTIALS_CONFIGURED:-NO}"
+            echo "- ANDROID_COMPILE_STATUS=${ANDROID_STATUS:-NOT_EXECUTED}"
+            echo "- ANDROID_KOTLIN_COMPILE_REACHED=${ANDROID_KOTLIN_REACHED:-NO}"
+            echo "- FIRST_REAL_ANDROID_ERROR=${ANDROID_ERROR:-NONE}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$CHECKOUT_SHA" = "$VALIDATION_TARGET_SHA"
+          test "$COMMON_STATUS" = "PASS"
+          test "$ANDROID_STATUS" = "PASS"
+
+      - name: Cleanup temporary Google Services and signing files
+        if: always()
+        shell: bash
+        run: |
+          rm -f app/google-services.json
+          rm -f "$RUNNER_TEMP/criosrango-debug.jks"

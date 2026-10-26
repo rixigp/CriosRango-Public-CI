@@ -190,13 +190,8 @@ private fun returnVariationDetails(item: AccountOrderItem): List<Pair<String, St
             }
         }
 
-private fun buildReturnWhatsAppMessage(order: AccountOrderSummary, item: AccountOrderItem): String = buildString {
-    append("Hola, quiero solicitar la devolución de un producto de mi pedido #${order.number}.\n\n")
-    append("Producto: ${item.name.cleanWooText()}\n")
-    append("Cantidad: ${item.quantity}\n")
-    returnVariationDetails(item).forEach { (label, value) -> append("$label: $value\n") }
-    append("\n¿Podéis indicarme cómo proceder?")
-}
+private fun buildReturnWhatsAppMessage(order: AccountOrderSummary, item: AccountOrderItem): String =
+    es.criosrango.shared.buildStoreReturnRequest(order, item).message
 
 private fun openWhatsAppReturnRequest(context: Context, order: AccountOrderSummary, item: AccountOrderItem) {
     val message = buildReturnWhatsAppMessage(order, item)
@@ -262,4 +257,40 @@ private fun DetailCard(title: String, content: @Composable ColumnScope.() -> Uni
 private fun orderAmount(value: String, currency: String): String {
     val amount = value.replace('.', ',')
     return if (currency.equals("EUR", true)) "$amount €" else "$amount $currency"
+}
+
+
+@Composable
+fun AccountReturnProductPicker(order: AccountOrderSummary, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("¿Qué producto quieres devolver?") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                order.items.forEachIndexed { index, item ->
+                    val details = returnVariationDetails(item)
+                    OutlinedButton(
+                        onClick = {
+                            onDismiss()
+                            openWhatsAppReturnRequest(context, order, item)
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = if (index == order.items.lastIndex) 0.dp else 8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.Transparent, contentColor = Color(0xFF183B35))
+                    ) {
+                        Column(Modifier.fillMaxWidth()) {
+                            Text(item.name.cleanWooText(), fontWeight = FontWeight.Medium)
+                            Text("Cantidad: ${item.quantity}", style = MaterialTheme.typography.bodySmall)
+                            details.forEach { (label, value) -> Text("$label: $value", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
+}
+
+fun requestReturnViaWhatsApp(context: Context, order: AccountOrderSummary, item: AccountOrderItem) {
+    openWhatsAppReturnRequest(context, order, item)
 }

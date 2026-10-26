@@ -283,7 +283,7 @@ class SharedCatalogStoreApiAdapter(
                         count = brand.count,
                         imageUrl = brand.image?.src?.takeIf { it.isNotBlank() }
                             ?: brand.image?.thumbnail?.takeIf { it.isNotBlank() }
-                    ).withPackagedLogoFallback()
+                    )
                 }
         } catch (exception: Exception) {
             throw exception.toAndroidCatalogException()
@@ -331,7 +331,67 @@ class SharedCatalogStoreApiAdapter(
     }
 }
 
-private fun SharedStoreProduct.toAndroid(): StoreProduct = StoreProduct(
+internal fun StoreProduct.toSharedOutletProduct(): SharedStoreProduct = SharedStoreProduct(
+    id = id,
+    name = name,
+    permalink = permalink,
+    type = type,
+    shortDescription = shortDescription,
+    description = description,
+    onSale = onSale,
+    prices = SharedProductPrices(prices.price, prices.regularPrice, prices.salePrice, prices.currencySymbol, prices.currencyMinorUnit),
+    images = images.map { SharedProductImage(src = it.src, thumbnail = it.thumbnail, srcSet = it.srcSet, alt = it.alt) },
+    categories = categories.map { category ->
+        SharedStoreCategory(
+            id = category.id, parent = category.parent, name = category.name, slug = category.slug,
+            count = category.count,
+            image = category.image?.let { SharedProductImage(src = it.src, thumbnail = it.thumbnail, srcSet = it.srcSet, alt = it.alt) }
+        )
+    },
+    extensions = extensions?.let { ext ->
+        SharedStoreProductExtensions(
+            criosrangoOutlet = ext.criosrangoOutlet?.let { SharedOutletOriginExtension(it.originalCategoryIds) }
+        )
+    },
+    tags = tags.map { SharedProductTag(id = it.id, name = it.name, slug = it.slug) },
+    attributes = attributes.map { attribute ->
+        SharedProductAttribute(
+            name = attribute.name,
+            taxonomy = attribute.taxonomy,
+            terms = attribute.terms.map { SharedAttributeTerm(name = it.name, slug = it.slug, default = it.default) }
+        )
+    },
+    variations = variations.map { variation ->
+        SharedProductVariation(
+            id = variation.id,
+            attributes = variation.attributes.map { SharedVariationAttribute(name = it.name, value = it.value) },
+            prices = SharedProductPrices(
+                variation.prices.price, variation.prices.regularPrice, variation.prices.salePrice,
+                variation.prices.currencySymbol, variation.prices.currencyMinorUnit
+            ),
+            images = variation.images.map { SharedProductImage(src = it.src, thumbnail = it.thumbnail, srcSet = it.srcSet, alt = it.alt) },
+            isInStock = variation.isInStock,
+            isPurchasable = variation.isPurchasable,
+            isOnBackorder = variation.isOnBackorder,
+            lowStockRemaining = variation.lowStockRemaining,
+            stockStatus = variation.stockStatus,
+            stockQuantity = variation.stockQuantity,
+            manageStock = variation.manageStock
+        )
+    },
+    isInStock = isInStock,
+    isPurchasable = isPurchasable,
+    isOnBackorder = isOnBackorder,
+    lowStockRemaining = lowStockRemaining,
+    stockStatus = stockStatus,
+    stockQuantity = stockQuantity,
+    manageStock = manageStock,
+    quantityLimits = quantityLimits?.let { SharedQuantityLimits(it.minimum, it.maximum, it.multipleOf) },
+    stockAvailability = stockAvailability?.let { SharedStockAvailability(it.text, it.className) },
+    addToCart = addToCart?.let { SharedAddToCart(it.minimum, it.maximum, it.multipleOf) }
+)
+
+internal fun SharedStoreProduct.toAndroid(): StoreProduct = StoreProduct(
     id = id,
     name = name,
     permalink = permalink,

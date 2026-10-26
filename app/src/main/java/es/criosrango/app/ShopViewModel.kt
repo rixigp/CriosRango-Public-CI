@@ -21,6 +21,10 @@ import kotlinx.coroutines.TimeoutCancellationException
 import es.criosrango.shared.CatalogPage
 import es.criosrango.shared.CatalogPaginator
 import es.criosrango.shared.CatalogPagingState
+import es.criosrango.shared.StoreOutletController
+import es.criosrango.shared.StoreOutletDataSource
+import es.criosrango.shared.StoreRootFilterScope
+import es.criosrango.shared.HOME_OUTLET_SEASON_CATEGORIES
 
 internal suspend fun clearPendingAfterPaidCartCleanup(clearCart: suspend () -> Boolean, clearPending: () -> Boolean): Boolean {
     if (!clearCart()) return false
@@ -47,7 +51,17 @@ internal val categoryCatalogLoadStatus = MutableStateFlow(CategoryLoadStatus())
 
 data class CategoryProductsState(val products: List<StoreProduct> = emptyList(), val loading: Boolean = false, val loaded: Boolean = false, val error: StoreUiError? = null, val requestVersion: Int = 0)
 
-class ShopViewModel(private val repository: StoreRepository, val cartStore: CartStore, val deliveryAddressStore: DeliveryAddressStore, private val pendingCardPaymentStore: PendingCardPaymentStore) : ViewModel() {
+class ShopViewModel(
+    private val repository: StoreRepository,
+    val cartStore: CartStore,
+    val deliveryAddressStore: DeliveryAddressStore,
+    private val pendingCardPaymentStore: PendingCardPaymentStore,
+    outletDataSource: StoreOutletDataSource = StoreOutletDataSource { _, _, _ -> CatalogPage(emptyList(), false) }
+) : ViewModel() {
+    val outletController = StoreOutletController(viewModelScope, outletDataSource)
+
+    fun outletProduct(productId: Int): StoreProduct? =
+        outletController.state.value.paging.items.firstOrNull { it.id == productId }?.toAndroid()
     private val _checkout = MutableStateFlow<CheckoutResponse?>(null)
     val checkout: StateFlow<CheckoutResponse?> = _checkout.asStateFlow()
     private val _checkoutError = MutableStateFlow<String?>(null)
@@ -55,16 +69,6 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private val _checkoutLoading = MutableStateFlow(false)
     val checkoutLoading: StateFlow<Boolean> = _checkoutLoading.asStateFlow()
     private val _products = MutableStateFlow<List<StoreProduct>>(emptyList())
-    private val brandProductsCache = mutableMapOf<String, CatalogPagingState<StoreProduct>>()
-    private val brandPaginators = mutableMapOf<String, CatalogPaginator<StoreProduct>>()
-    private val _brandPagingState = MutableStateFlow(CatalogPagingState<StoreProduct>())
-    val brandPagingState: StateFlow<CatalogPagingState<StoreProduct>> = _brandPagingState.asStateFlow()
-    private var brandStateSyncJob: Job? = null
-    private var activeBrand: BrandTerm? = null
-    private val _activeBrandProducts = MutableStateFlow<List<StoreProduct>>(emptyList())
-    val activeBrandProducts: StateFlow<List<StoreProduct>> = _activeBrandProducts.asStateFlow()
-    private val _activeBrandSlug = MutableStateFlow<String?>(null)
-    val activeBrandSlug: StateFlow<String?> = _activeBrandSlug.asStateFlow()
     val products: StateFlow<List<StoreProduct>> = _products.asStateFlow()
     private val _categoryProducts = MutableStateFlow<Map<Int, CategoryProductsState>>(emptyMap())
     val categoryProducts: StateFlow<Map<Int, CategoryProductsState>> = _categoryProducts.asStateFlow()
@@ -73,6 +77,8 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private val _activeCategoryProducts = MutableStateFlow<List<StoreProduct>>(emptyList())
     val activeCategoryProducts: StateFlow<List<StoreProduct>> = _activeCategoryProducts.asStateFlow()
     private val categoryPaginators = mutableMapOf<Int, CatalogPaginator<StoreProduct>>()
+    private val rootCatalogPaginator = CatalogPaginator<StoreProduct>(identity = { it.id })
+    private var rootCatalogActive = false
     private val _categoryPagingState = MutableStateFlow(CatalogPagingState<StoreProduct>())
     val categoryPagingState: StateFlow<CatalogPagingState<StoreProduct>> = _categoryPagingState.asStateFlow()
     private var categoryStateSyncJob: Job? = null
@@ -80,8 +86,6 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     val categories: StateFlow<List<ProductCategory>> = _categories.asStateFlow()
     private val _homeProducts = MutableStateFlow<List<StoreProduct>>(emptyList())
     val homeProducts: StateFlow<List<StoreProduct>> = _homeProducts.asStateFlow()
-    private val _brands = MutableStateFlow<List<BrandTerm>>(APP_BRANDS)
-    val brands: StateFlow<List<BrandTerm>> = _brands.asStateFlow()
     private val _selectedProduct = MutableStateFlow<StoreProduct?>(null)
     val selectedProduct: StateFlow<StoreProduct?> = _selectedProduct.asStateFlow()
     private val _selectedVariation = MutableStateFlow<StoreProduct?>(null)
@@ -97,7 +101,6 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         data object Home : CatalogOperation
         data class Category(val id: Int) : CatalogOperation
         data class Search(val query: String) : CatalogOperation
-        data class Brand(val brand: BrandTerm) : CatalogOperation
     }
 
     private var lastCatalogOperation: CatalogOperation = CatalogOperation.Home
@@ -114,20 +117,8 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     val paymentRedirect: StateFlow<PaymentRedirect?> = _paymentRedirect.asStateFlow()
     private var productsRequestVersion = 0
     private val searchResultCache = mutableMapOf<String, List<StoreProduct>>()
-    private var brandLoadJob: Job? = null
-
-    private fun loadBrands() {
-        brandLoadJob?.cancel()
-        brandLoadJob = viewModelScope.launch {
-            val loadedBrands = runCatching { repository.allBrands() }.getOrNull().orEmpty()
-            if (loadedBrands.isNotEmpty()) {
-                _brands.value = loadedBrands
-            }
-        }
-    }
 
     fun refreshHome() {
-        loadBrands()
         lastCatalogOperation = CatalogOperation.Home
         val requestVersion = ++productsRequestVersion
         categoryCatalogLoadStatus.value = CategoryLoadStatus()
@@ -136,19 +127,21 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
             supervisorScope {
                 val result = async { runCatching { repository.products() } }
                 val categoryResult = async { runCatching { repository.categories() } }
-                val recentResult = async { runCatching { repository.recentProducts() } }
                 val loadedProductsResult = result.await()
-                val loadedRecentResult = recentResult.await()
                 val loadedProducts = loadedProductsResult.getOrNull()
-                val loadedRecentProducts = loadedRecentResult.getOrNull()
-                if (requestVersion == productsRequestVersion && loadedProducts != null) _products.value = loadedProducts
-                if (requestVersion == productsRequestVersion && loadedRecentProducts != null) _homeProducts.value = loadedRecentProducts
-                if (requestVersion == productsRequestVersion && (!loadedProducts.isNullOrEmpty() || !loadedRecentProducts.isNullOrEmpty())) _initialLoading.value = false
+                if (requestVersion == productsRequestVersion && loadedProducts != null) {
+                    _products.value = loadedProducts
+                    // Home's recent-products preview is owned by StoreHomeController; reuse this
+                    // catalog snapshot for existing local search helpers instead of issuing a
+                    // second Home-specific recentProducts query.
+                    _homeProducts.value = loadedProducts
+                }
+                if (requestVersion == productsRequestVersion && !loadedProducts.isNullOrEmpty()) _initialLoading.value = false
                 if (requestVersion == productsRequestVersion) _isLoading.value = false
                 val loadedCategories = categoryResult.await().getOrNull()?.filter { it.count > 0 } ?: _categories.value
-                _categories.value = (loadedCategories + listOf(ProductCategory(id = 446, parent = 445, name = "Hombre invierno", count = 0, slug = "hombre-invierno-outlet"), ProductCategory(id = 475, parent = 445, name = "Hombre verano", count = 0, slug = "hombre-verano-outlet"))).distinctBy { it.id }
+                _categories.value = (loadedCategories + HOME_OUTLET_SEASON_CATEGORIES.map { category -> ProductCategory(id = category.id, parent = category.parent, name = category.name, count = category.count, slug = category.slug) }).distinctBy { it.id }
                 if (requestVersion == productsRequestVersion && _products.value.isEmpty() && _homeProducts.value.isEmpty()) {
-                    val failure = loadedProductsResult.exceptionOrNull() ?: loadedRecentResult.exceptionOrNull()
+                    val failure = loadedProductsResult.exceptionOrNull()
                     _error.value = (failure as? Exception)?.toStoreUiError() ?: StoreUiError(StoreErrorType.UNEXPECTED)
                 }
             }
@@ -205,7 +198,53 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         updateCategoryProducts(update.categoryId, CategoryProductsState(update.products.toList(), current?.loading == true, true, null, current?.requestVersion ?: 0))
     }
 
+    fun loadRootCatalog() {
+        rootCatalogActive = true
+        val requestVersion = ++productsRequestVersion
+        _activeCategoryId.value = null
+        categoryStateSyncJob?.cancel()
+        val currentState = rootCatalogPaginator.state.value
+        _categoryPagingState.value = currentState
+        _activeCategoryProducts.value = currentState.items
+        categoryCatalogLoadStatus.value = CategoryLoadStatus(null, if (currentState.currentPage > 0) CategoryLoadState.LOADED_WITH_RESULTS else CategoryLoadState.LOADING)
+        categoryStateSyncJob = viewModelScope.launch {
+            rootCatalogPaginator.state.collect { state ->
+                if (requestVersion != productsRequestVersion || !rootCatalogActive) return@collect
+                _categoryPagingState.value = state
+                _activeCategoryProducts.value = state.items
+                _isLoading.value = state.isInitialLoading
+                categoryCatalogLoadStatus.value = CategoryLoadStatus(null, when {
+                    state.initialError != null -> CategoryLoadState.ERROR
+                    state.isInitialLoading -> CategoryLoadState.LOADING
+                    state.items.isEmpty() -> CategoryLoadState.LOADED_EMPTY
+                    else -> CategoryLoadState.LOADED_WITH_RESULTS
+                })
+                if (state.initialError != null) _error.value = (state.initialError as? Exception)?.toStoreUiError() ?: StoreUiError(StoreErrorType.UNEXPECTED)
+                if (state.appendError != null) _error.value = (state.appendError as? Exception)?.toStoreUiError() ?: StoreUiError(StoreErrorType.UNEXPECTED)
+            }
+        }
+        if (currentState.currentPage > 0 || currentState.isInitialLoading) {
+            _isLoading.value = currentState.isInitialLoading
+            return
+        }
+        _isLoading.value = true
+        _error.value = null
+        viewModelScope.launch {
+            rootCatalogPaginator.start(StoreRootFilterScope.CATALOG.queryKey) { page, perPage ->
+                val items = repository.productsPage(StoreRootFilterScope.CATALOG.categoryQueryId, page, perPage)
+                CatalogPage(items = items, hasMore = items.size >= perPage)
+            }
+            if (requestVersion == productsRequestVersion && rootCatalogActive) {
+                val state = rootCatalogPaginator.state.value
+                _categoryPagingState.value = state
+                _activeCategoryProducts.value = state.items
+                _isLoading.value = state.isInitialLoading
+            }
+        }
+    }
+
     fun loadCategory(categoryId: Int) {
+        rootCatalogActive = false
         lastCatalogOperation = CatalogOperation.Category(categoryId)
         CategoryLoadTelemetry.tap(categoryId)
         val requestVersion = ++productsRequestVersion
@@ -262,6 +301,22 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     }
 
     fun loadNextCategoryPage() {
+        if (rootCatalogActive) {
+            val state = rootCatalogPaginator.state.value
+            if (state.isAppending || !state.hasMore || state.currentPage <= 0) return
+            viewModelScope.launch {
+                rootCatalogPaginator.loadNext { page, perPage ->
+                    val items = repository.productsPage(StoreRootFilterScope.CATALOG.categoryQueryId, page, perPage)
+                    CatalogPage(items = items, hasMore = items.size >= perPage)
+                }
+                if (rootCatalogActive) {
+                    val next = rootCatalogPaginator.state.value
+                    _categoryPagingState.value = next
+                    _activeCategoryProducts.value = next.items
+                }
+            }
+            return
+        }
         val categoryId = _activeCategoryId.value ?: return
         val paginator = categoryPaginators[categoryId] ?: return
         val state = paginator.state.value
@@ -308,77 +363,11 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
         }
     }
 
-    fun loadBrand(brand: BrandTerm) {
-        lastCatalogOperation = CatalogOperation.Brand(brand)
-        val requestVersion = ++productsRequestVersion
-        categoryCatalogLoadStatus.value = CategoryLoadStatus()
-        val brandKey = brand.slug.trim().lowercase()
-        activeBrand = brand
-        _activeBrandSlug.value = brandKey
-        brandStateSyncJob?.cancel()
-        val paginator = brandPaginators.getOrPut(brandKey) { CatalogPaginator(identity = { it.id }) }
-        val currentState = paginator.state.value
-        _brandPagingState.value = currentState
-        _activeBrandProducts.value = currentState.items
-        brandProductsCache[brandKey] = currentState
-        brandStateSyncJob = viewModelScope.launch {
-            paginator.state.collect { state ->
-                if (requestVersion != productsRequestVersion || _activeBrandSlug.value != brandKey) return@collect
-                _brandPagingState.value = state
-                _activeBrandProducts.value = state.items
-                brandProductsCache[brandKey] = state
-                if (state.initialError != null) _error.value = (state.initialError as? Exception)?.toStoreUiError() ?: StoreUiError(StoreErrorType.UNEXPECTED)
-                if (!state.isInitialLoading) _isLoading.value = false
-            }
-        }
-        if (currentState.currentPage > 0 || currentState.isInitialLoading) {
-            _isLoading.value = currentState.isInitialLoading
-            return
-        }
-        _brandPagingState.value = CatalogPagingState(isInitialLoading = true)
-        viewModelScope.launch {
-            _isLoading.value = true; _error.value = null
-            paginator.start(brandKey) { page, perPage ->
-                val items = repository.productsByBrandPage(brand, page, perPage)
-                CatalogPage(items = items, hasMore = items.size >= perPage)
-            }
-            if (requestVersion == productsRequestVersion && _activeBrandSlug.value == brandKey) {
-                val state = paginator.state.value
-                _brandPagingState.value = state
-                _activeBrandProducts.value = state.items
-                brandProductsCache[brandKey] = state
-                _isLoading.value = false
-                if (state.initialError != null) _error.value = (state.initialError as? Exception)?.toStoreUiError() ?: StoreUiError(StoreErrorType.UNEXPECTED)
-            }
-        }
-    }
-
-    fun loadNextBrandPage() {
-        val brandKey = _activeBrandSlug.value ?: return
-        val brand = activeBrand ?: return
-        val paginator = brandPaginators[brandKey] ?: return
-        val state = paginator.state.value
-        if (state.isAppending || !state.hasMore || state.currentPage <= 0) return
-        viewModelScope.launch {
-            paginator.loadNext { page, perPage ->
-                val items = repository.productsByBrandPage(brand, page, perPage)
-                CatalogPage(items = items, hasMore = items.size >= perPage)
-            }
-            if (_activeBrandSlug.value == brandKey && activeBrand?.slug?.trim()?.lowercase() == brandKey) {
-                val updated = paginator.state.value
-                _brandPagingState.value = updated
-                _activeBrandProducts.value = updated.items
-                brandProductsCache[brandKey] = updated
-            }
-        }
-    }
-
     fun retryLastOperation() {
         when (val operation = lastCatalogOperation) {
             CatalogOperation.Home -> refreshHome()
             is CatalogOperation.Category -> loadCategory(operation.id)
             is CatalogOperation.Search -> search(operation.query)
-            is CatalogOperation.Brand -> loadBrand(operation.brand)
         }
     }
 
@@ -421,6 +410,18 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
             if (!accepted && _selectedProduct.value?.id == item.productId) _selectedProduct.value = runCatching { repository.productWithVariationAvailability(item.productId) }.getOrNull()
         }
     }
+
+    fun addToSharedCart(item: CartItem, controller: es.criosrango.shared.StoreCartController) {
+        invalidateCheckout()
+        val id = item.variationId ?: item.productId
+        val variation = item.selectedAttributes.map { (attribute, value) ->
+            es.criosrango.shared.model.StoreCartVariation("pa_${normalizeAttributeValue(attribute)}", value)
+        }
+        controller.add(id, item.quantity, variation)
+    }
+
+    suspend fun refreshCartForSharedState() = cartStore.refresh()
+    suspend fun clearLegacySnapshotForSharedEmpty() = cartStore.clearSnapshotAfterSharedEmpty()
     fun canIncreaseCart(item: CartLine): Boolean = item.quantityLimits?.maximum?.takeUnless { it == 9999 }?.let { item.quantity < it } ?: true
     fun cartIncrement(item: CartLine): Int = item.quantityLimits?.multipleOf?.takeIf { it > 0 } ?: 1
     fun removeCartLine(item: CartLine) { invalidateCheckout(); viewModelScope.launch { cartStore.remove(item) } }
@@ -712,8 +713,15 @@ class ShopViewModel(private val repository: StoreRepository, val cartStore: Cart
     private fun clearCheckoutForNewGeneration() { _checkout.value = null; _checkoutError.value = null; _paymentRedirect.value = null; _bizumOrderId.value = null }
     fun openCartLine(item: CartLine) { viewModelScope.launch { val productId = item.parentProductId ?: item.id; _isLoading.value = true; _selectedVariation.value = null; _selectedProduct.value = runCatching { repository.productWithVariationAvailability(productId) }.getOrNull(); _isLoading.value = false } }
     fun clearError() { _error.value = null }
-    class Factory(private val repository: StoreRepository, private val cartStore: CartStore, private val deliveryAddressStore: DeliveryAddressStore, private val pendingCardPaymentStore: PendingCardPaymentStore) : ViewModelProvider.Factory {
+    class Factory(
+        private val repository: StoreRepository,
+        private val cartStore: CartStore,
+        private val deliveryAddressStore: DeliveryAddressStore,
+        private val pendingCardPaymentStore: PendingCardPaymentStore,
+        private val outletDataSource: StoreOutletDataSource
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T = ShopViewModel(repository, cartStore, deliveryAddressStore, pendingCardPaymentStore) as T
+        override fun <T : ViewModel> create(modelClass: Class<T>): T =
+            ShopViewModel(repository, cartStore, deliveryAddressStore, pendingCardPaymentStore, outletDataSource) as T
     }
 }

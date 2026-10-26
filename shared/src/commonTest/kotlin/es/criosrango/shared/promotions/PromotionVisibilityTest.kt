@@ -1,6 +1,7 @@
 package es.criosrango.shared.promotions
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -20,5 +21,23 @@ class PromotionVisibilityTest {
         assertFalse(wallet.isVisibleToAnonymous())
         assertFalse(explicitlyPersonal.isVisibleToAnonymous())
         assertFalse(loginRequired.isVisibleToAnonymous())
+    }
+
+    @Test
+    fun authenticatedCartShowsEveryEligiblePromotionFromSharedSource() {
+        val promotions = listOf(
+            Promotion(id = "sale", title = "Promoción A", code = "SALE"),
+            Promotion(id = "personal", title = "Promoción B", code = "WELCOME", personal = true, requiresLogin = true)
+        )
+        assertEquals(promotions, cartVisiblePromotions(promotions, authenticated = true))
+    }
+
+    @Test
+    fun anonymousCartUsesTheSameGuestEligibilityFilter() {
+        val promotions = listOf(
+            Promotion(id = "sale", title = "Promoción A", code = "SALE"),
+            Promotion(id = "personal", title = "Promoción B", code = "WELCOME", personal = true, requiresLogin = true)
+        )
+        assertEquals(listOf(promotions.first()), cartVisiblePromotions(promotions, authenticated = false))
     }
 }

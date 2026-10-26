@@ -25,8 +25,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.outlined.Chat
-import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
@@ -36,7 +34,6 @@ import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material.icons.outlined.Sell
-import androidx.compose.material.icons.outlined.Phone
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
@@ -55,10 +52,22 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import es.criosrango.shared.promotions.Promotion
 import es.criosrango.shared.promotions.PromotionRepository
-import es.criosrango.shared.promotions.isVisibleToAnonymous
-import es.criosrango.shared.loyalty.LoyaltyReward
-import es.criosrango.shared.loyalty.redeemableOptions
-import es.criosrango.shared.loyalty.subtractMoneyAmounts
+import es.criosrango.shared.StoreAccountHelpScreen
+import es.criosrango.shared.StoreAccountRootScreen
+import es.criosrango.shared.StorePageHeader
+import es.criosrango.shared.StoreOrdersOwner
+import es.criosrango.shared.StoreOrdersScreen
+import es.criosrango.shared.StoreOrderDetailScreen
+import es.criosrango.shared.StoreOrderSelectionResolution
+import es.criosrango.shared.StoreLoginScreen
+import es.criosrango.shared.StoreRegisterOwner
+import es.criosrango.shared.StoreRegisterScreen
+import es.criosrango.shared.StoreForgotPasswordOwner
+import es.criosrango.shared.StoreForgotPasswordScreen
+import es.criosrango.shared.StoreWalletOwner
+import es.criosrango.shared.StoreWalletScreen
+import es.criosrango.shared.CouponApplicationResult
+import es.criosrango.shared.loyalty.LoyaltyRepository
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,38 +76,38 @@ fun AccountLoginScreen(
     vm: AccountViewModel = viewModel(),
     openLoginOnStart: Boolean = false,
     initialOrderId: Int? = null,
+    onPushOrderConsumed: (Int) -> Unit = {},
     openPromotionsOnStart: Boolean = false,
     onAuthenticated: (() -> Unit)? = null,
     onPromotionsOpened: () -> Unit = {},
     onBackFromLogin: (() -> Unit)? = null,
+    onRootBack: () -> Unit = {},
     onRootBackAvailable: (Boolean) -> Unit = {},
     onBeforeLogout: suspend () -> Unit = {},
-    loyaltyViewModel: LoyaltyViewModel = viewModel(),
     applyWalletCoupon: suspend (String) -> Boolean = { false },
     cartCouponCodes: Set<String> = emptySet()
 ) {
+    val registerOwner = remember(vm.sharedRepository) { StoreRegisterOwner(vm.sharedRepository) }
+    val forgotPasswordOwner = remember(vm.sharedRepository) { StoreForgotPasswordOwner(vm.sharedRepository) }
     val authState by vm.authState.collectAsStateWithLifecycle()
     val user by vm.user.collectAsStateWithLifecycle()
     val orders by vm.orders.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
-    val forgotPasswordLoading by vm.forgotPasswordLoading.collectAsStateWithLifecycle()
     val ordersRefreshing by vm.ordersRefreshing.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val accountError by vm.accountError.collectAsStateWithLifecycle()
     val notificationContext = LocalContext.current
     val notice by vm.notice.collectAsStateWithLifecycle()
     val address by vm.address.collectAsStateWithLifecycle()
-    val loyaltyWallet by loyaltyViewModel.wallet.collectAsStateWithLifecycle()
-    val loyaltyLoading by loyaltyViewModel.loading.collectAsStateWithLifecycle()
-    val loyaltyError by loyaltyViewModel.error.collectAsStateWithLifecycle()
+    val loyaltyRepository = remember { LoyaltyRepository(AccountSessionStore.shared(notificationContext.applicationContext)) }
     val promotionRepository = remember {
         PromotionRepository(
             bearerTokenProvider = { AccountSessionStore.shared(notificationContext.applicationContext).load() }
         )
     }
-    var promotions by remember { mutableStateOf(emptyList<Promotion>()) }
-    var promotionsLoading by remember { mutableStateOf(false) }
-    var promotionsError by remember { mutableStateOf<String?>(null) }
+    val walletOwner = remember(loyaltyRepository, promotionRepository) {
+        StoreWalletOwner(loyaltyRepository, promotionRepository)
+    }
     var login by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showRegister by remember { mutableStateOf(false) }
@@ -106,6 +115,7 @@ fun AccountLoginScreen(
     var showLogin by remember { mutableStateOf(openLoginOnStart) }
     var selectedInfoPage by remember { mutableStateOf<AccountInfoPage?>(null) }
     val currentUser = user
+    LaunchedEffect(currentUser?.id) { walletOwner.onSessionChanged(currentUser?.id?.toString()) }
     var accountSection by remember {
         mutableStateOf(if (openPromotionsOnStart) AccountSection.WALLET else AccountSection.HOME)
     }
@@ -122,7 +132,55 @@ fun AccountLoginScreen(
         }
     }
     var selectedOrderId by remember { mutableStateOf<Int?>(initialOrderId) }
-    val selectedOrder = orders.firstOrNull { it.id == selectedOrderId }
+    var selectedOrderFromShared by remember { mutableStateOf<AccountOrderSummary?>(null) }
+    // onNewIntent can deliver another order while AccountLoginScreen remains composed.
+    // Treat each changed incoming id as a selection event, not an initial-only value.
+    LaunchedEffect(initialOrderId) {
+        if (initialOrderId != null && initialOrderId > 0) {
+            logAndroidPushRoute("ACCOUNT_RECEIVED=$initialOrderId")
+            selectedInfoPage = null
+            accountSection = AccountSection.ORDERS
+            showLogin = currentUser == null
+            selectedOrderFromShared = null
+            selectedOrderId = initialOrderId
+        }
+    }
+    val clearOrderSelection = {
+        val cleared = AccountOrderSelectionState(selectedOrderId, selectedOrderFromShared).clear()
+        selectedOrderId = cleared.orderId
+        selectedOrderFromShared = cleared.sharedOrder
+    }
+    var returnPickerOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
+    val sharedOrdersOwner = vm.sharedOrdersOwner
+    val sharedOrdersState by sharedOrdersOwner.state.collectAsStateWithLifecycle()
+    LaunchedEffect(currentUser?.id) { sharedOrdersOwner.onSessionChanged(currentUser?.id); selectedOrderFromShared = null }
+    LaunchedEffect(currentUser?.id, selectedOrderId) {
+        val id = selectedOrderId ?: return@LaunchedEffect
+        if (currentUser == null || selectedOrderFromShared != null) return@LaunchedEffect
+        when (val resolution = sharedOrdersOwner.resolveOrderById(id)) {
+            is StoreOrderSelectionResolution.Resolved -> if (selectedOrderId == id && resolution.order.id == id) selectedOrderFromShared = resolution.order
+            StoreOrderSelectionResolution.NotFound -> if (selectedOrderId == id && initialOrderId != id) selectedOrderId = null
+            StoreOrderSelectionResolution.Pending -> Unit
+            is StoreOrderSelectionResolution.TransientError -> Unit
+        }
+    }
+    val selectedOrder = AccountOrderSelectionState(selectedOrderId, selectedOrderFromShared).resolveFrom(sharedOrdersState.orders)
+    LaunchedEffect(initialOrderId, currentUser?.id, selectedOrder?.id) {
+        val targetOrderId = initialOrderId ?: return@LaunchedEffect
+        if (shouldConsumePendingOrder(targetOrderId, selectedOrder?.id, authenticated = currentUser != null)) {
+            logAndroidPushRoute("ORDER_SELECTED=$targetOrderId")
+            onPushOrderConsumed(targetOrderId)
+        }
+    }
+    LaunchedEffect(currentUser?.id, selectedOrderId, sharedOrdersState.loading, sharedOrdersState.refreshing, sharedOrdersState.error, sharedOrdersState.orders) {
+        val id = selectedOrderId ?: return@LaunchedEffect
+        if (currentUser == null || selectedOrderFromShared != null) return@LaunchedEffect
+        when (val resolution = sharedOrdersOwner.resolveSelection(id)) {
+            is StoreOrderSelectionResolution.Resolved -> if (selectedOrderId == id && resolution.order.id == id) selectedOrderFromShared = resolution.order
+            StoreOrderSelectionResolution.NotFound -> if (selectedOrderId == id && initialOrderId != id) selectedOrderId = null
+            StoreOrderSelectionResolution.Pending, is StoreOrderSelectionResolution.TransientError -> Unit
+        }
+    }
     val accountRootBackAvailable = selectedInfoPage == null && selectedOrder == null && !showLogin && accountSection == AccountSection.HOME
     SideEffect { onRootBackAvailable(accountRootBackAvailable) }
     val leaveLogin: () -> Unit = {
@@ -157,34 +215,12 @@ fun AccountLoginScreen(
         }
     }
 
-    LaunchedEffect(currentUser?.id, initialOrderId) {
-        if (currentUser != null && initialOrderId != null) selectedOrderId = initialOrderId
-    }
-
     LaunchedEffect(currentUser?.id) {
         if (currentUser != null) {
             showLogin = false
             if (openPromotionsOnStart) accountSection = AccountSection.WALLET
             PushNotificationController.initialize(notificationContext)
             onAuthenticated?.invoke()
-        }
-    }
-
-    LaunchedEffect(currentUser?.id, accountSection) {
-        if (currentUser != null && accountSection == AccountSection.ORDERS) {
-            vm.refreshOrders()
-        }
-        if (currentUser != null && accountSection == AccountSection.WALLET) {
-            loyaltyViewModel.refresh()
-            promotionsLoading = true
-            promotionsError = null
-            runCatching { promotionRepository.getPromotions() }
-                .onSuccess { promotions = it }
-                .onFailure {
-                    promotions = emptyList()
-                    promotionsError = it.message ?: "No se han podido cargar las promociones."
-                }
-            promotionsLoading = false
         }
     }
 
@@ -223,12 +259,13 @@ fun AccountLoginScreen(
 
     if (selectedInfoPage != null && selectedOrder == null) {
         Column(Modifier.fillMaxSize().padding(padding)) {
-            AccountInformationPageContent(selectedInfoPage!!, onBack = { selectedInfoPage = null; accountSection = AccountSection.HOME })
+            AccountInformationPageAdapter(selectedInfoPage!!, onBack = { selectedInfoPage = null; accountSection = AccountSection.HOME })
         }
         return
     }
 
-    BackHandler(enabled = selectedOrder != null) { selectedOrderId = null }
+    // System/gesture Back uses the same state transition as the detail header.
+    BackHandler(enabled = selectedOrder != null) { clearOrderSelection() }
     BackHandler(enabled = selectedOrder == null && !showLogin && accountSection != AccountSection.HOME) {
         accountSection = when (accountSection) {
             AccountSection.DATA, AccountSection.ADDRESSES -> AccountSection.PROFILE
@@ -241,43 +278,66 @@ fun AccountLoginScreen(
     }
 
     if (currentUser != null && selectedOrder != null) {
-        AccountOrderDetailScreenV2(padding, selectedOrder) { selectedOrderId = null }
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            StoreOrderDetailScreen(
+                order = selectedOrder,
+                onBack = { clearOrderSelection() },
+                onRequestReturn = { order ->
+                    if (order.items.size == 1) {
+                        requestReturnViaWhatsApp(notificationContext, order, order.items.first())
+                    } else if (order.items.isNotEmpty()) returnPickerOrder = order
+                }
+            )
+        }
+        returnPickerOrder?.let { order -> AccountReturnProductPicker(order) { returnPickerOrder = null } }
         return
     }
-
     if (currentUser != null) {
         val fullName = listOf(currentUser.firstName, currentUser.lastName).filter { it.isNotBlank() }.joinToString(" ")
         if (accountSection == AccountSection.ORDERS) {
-            PullToRefreshBox(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                isRefreshing = ordersRefreshing,
-                onRefresh = vm::refreshOrders
-            ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
-                    contentPadding = PaddingValues(top = 20.dp, bottom = 24.dp)
-                ) {
-                    AccountOrdersContent(orders, loading, accountError, { accountSection = AccountSection.HOME }, { selectedOrderId = it }, vm::refreshOrders)
-                }
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                StoreOrdersScreen(
+                    owner = sharedOrdersOwner,
+                    sessionState = vm.sharedAuthSession,
+                    onBack = { accountSection = AccountSection.HOME },
+                    onOpenOrder = { val selected = AccountOrderSelectionState().select(it); selectedOrderFromShared = selected.sharedOrder; selectedOrderId = selected.orderId },
+                    onSessionExpired = { vm.retrySession() }
+                )
             }
         } else {
             Column(
-                Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
-                    .then(if (accountSection == AccountSection.HELP) Modifier else Modifier.padding(horizontal = 24.dp))
+                Modifier.fillMaxSize().padding(padding)
+                    .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.HELP, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) Modifier else Modifier.verticalScroll(rememberScrollState()))
+                    .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.HELP, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES, AccountSection.WALLET)) Modifier else Modifier.padding(horizontal = 24.dp))
             ) {
-                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection == AccountSection.PROFILE) 8.dp else 20.dp))
+                if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection in setOf(AccountSection.HOME, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES, AccountSection.WALLET)) 0.dp else 20.dp))
                 when (accountSection) {
-                    AccountSection.HOME -> AccountHomeContentV2(
+                    AccountSection.HOME -> StoreAccountRootScreen(
+                        contentHorizontalPadding = 24.dp,
                         fullName = fullName,
                         email = currentUser.email,
+                        appVersion = BuildConfig.VERSION_NAME,
+                        onBack = onRootBack,
                         onOrders = { accountSection = AccountSection.ORDERS },
                         onWallet = { accountSection = AccountSection.WALLET },
                         onProfile = { accountSection = AccountSection.PROFILE },
                         onLogin = { showLogin = true },
                         onHelp = { accountSection = AccountSection.HELP },
-                        onInfoPage = { selectedInfoPage = it }
+                        onInfoPage = { selectedInfoPage = AccountInfoPage.valueOf(it.name) }
                     )
-                    AccountSection.PROFILE -> AccountProfileContent(loading, { accountSection = AccountSection.HOME }, { accountSection = AccountSection.DATA }, { accountSection = AccountSection.ADDRESSES }, { vm.clearAccountMessages(); showForgot = true }, { vm.logout(onBeforeLogout) {
+                    AccountSection.PROFILE -> es.criosrango.shared.StoreProfileMenuScreen(
+                        onBack = { accountSection = AccountSection.HOME },
+                        onPersonalData = { accountSection = AccountSection.DATA },
+                        onAddress = { accountSection = AccountSection.ADDRESSES },
+                        onPassword = { vm.clearAccountMessages(); showForgot = true },
+                        notificationPreferences = { PushNotificationPreferences() },
+                        onDeleteAccount = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(AccountDeletion.URL))
+                            runCatching { notificationContext.startActivity(intent) }.onFailure {
+                                Toast.makeText(notificationContext, "No se ha podido abrir la página de eliminación.", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onLogout = { vm.logout(onBeforeLogout) {
                             showLogin = true
                             showRegister = false
                             showForgot = false
@@ -286,72 +346,80 @@ fun AccountLoginScreen(
                             accountSection = AccountSection.HOME
                             vm.clearAccountMessages()
                         } })
-                    AccountSection.DATA -> AccountPersonalDataContent(vm, currentUser) { accountSection = AccountSection.PROFILE }
-                    AccountSection.ADDRESSES -> AccountAddressContent(vm, address) { accountSection = AccountSection.PROFILE }
+                    AccountSection.DATA -> es.criosrango.shared.StoreProfileScreen(
+                        repository = vm.sharedRepository,
+                        sessionState = vm.sharedAuthSession,
+                        user = currentUser,
+                        onUserChanged = vm::publishProfileUser,
+                        onSessionExpired = { vm.retrySession() },
+                        onBack = { accountSection = AccountSection.PROFILE },
+                        bodyHorizontalPadding = 24.dp
+                    )
+                    AccountSection.ADDRESSES -> es.criosrango.shared.StoreAddressScreen(
+                        repository = vm.sharedRepository,
+                        addressOwner = vm.sharedAddressOwner,
+                        onSessionExpired = { vm.retrySession() },
+                        onBack = { accountSection = AccountSection.PROFILE },
+                        bodyHorizontalPadding = 24.dp
+                    )
                     AccountSection.HELP -> AccountHelpContent { accountSection = AccountSection.HOME }
-                    AccountSection.WALLET -> AccountWalletContent(
+                    AccountSection.WALLET -> StoreWalletScreen(
+                        owner = walletOwner,
                         authenticated = currentUser != null,
-                        wallet = loyaltyWallet,
-                        loading = loyaltyLoading,
-                        error = loyaltyError,
-                        promotions = promotions,
-                        promotionsLoading = promotionsLoading,
-                        promotionsError = promotionsError,
+                        sessionId = currentUser?.id?.toString(),
                         cartCouponCodes = cartCouponCodes,
-                        onApplyPromotion = { code -> applyWalletCoupon(code) },
-                        onBack = { accountSection = AccountSection.HOME },
-                        onRefresh = loyaltyViewModel::refresh,
-                        onApplyReward = { reward -> loyaltyViewModel.applyPending(reward, applyWalletCoupon) },
-                        onRedeem = { points -> loyaltyViewModel.redeem(points, applyWalletCoupon) }
+                        onApplyCoupon = { code ->
+                            if (applyWalletCoupon(code)) CouponApplicationResult.Success
+                            else CouponApplicationResult.failure("No se ha podido aplicar el cupón al carrito.")
+                        },
+                        onBack = { accountSection = AccountSection.HOME }
                     )
                     AccountSection.ORDERS -> Unit
                 }
                 if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection == AccountSection.PROFILE) 12.dp else 24.dp))
             }
         }
-        if (showForgot) AccountForgotPasswordDialog(login, forgotPasswordLoading, error, notice, { showForgot = false; vm.clearAccountMessages() }, vm::forgotPassword)
+        if (showForgot) StoreForgotPasswordScreen(owner = forgotPasswordOwner, initialEmail = login, onDismiss = { showForgot = false; vm.clearAccountMessages() })
     } else if (!showLogin) {
         Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
+            Modifier.fillMaxSize().padding(padding)
+                    .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.HELP, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) Modifier else Modifier.verticalScroll(rememberScrollState()))
                 .then(if (accountSection == AccountSection.HELP) Modifier else Modifier.padding(horizontal = 24.dp))
         ) {
-            if (accountSection != AccountSection.HELP) Spacer(Modifier.height(20.dp))
+            if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection in setOf(AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) 8.dp else 20.dp))
             when (accountSection) {
                 AccountSection.HELP -> AccountHelpContent { accountSection = AccountSection.HOME }
-                else -> AccountHomeContentV2(
+                else -> StoreAccountRootScreen(
                     fullName = null,
                     email = null,
+                    appVersion = BuildConfig.VERSION_NAME,
+                    onBack = onRootBack,
                     onOrders = { showLogin = true },
                     onWallet = { showLogin = true },
                     onProfile = { showLogin = true },
                     onLogin = { showLogin = true },
                     onHelp = { accountSection = AccountSection.HELP },
-                    onInfoPage = { selectedInfoPage = it }
+                    onInfoPage = { selectedInfoPage = AccountInfoPage.valueOf(it.name) }
                 )
             }
             if (accountSection != AccountSection.HELP) Spacer(Modifier.height(24.dp))
         }
     } else {
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
-            CatalogScreenHeader(
-                title = "Iniciar sesión",
-                onBack = leaveLogin,
-                bottomPadding = 4.dp
+            StoreLoginScreen(
+                login = login,
+                password = password,
+                loading = loading,
+                error = error,
+                onLoginChanged = { login = it },
+                onPasswordChanged = { password = it },
+                onSubmit = { submittedLogin, submittedPassword -> vm.login(submittedLogin, submittedPassword) },
+                onForgotPassword = { vm.clearAccountMessages(); forgotPasswordOwner.reset(login); showForgot = true },
+                onRegister = { vm.clearAccountMessages(); registerOwner.reset(login); showRegister = true },
+                onBack = leaveLogin
             )
-            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                Spacer(Modifier.height(4.dp))
-                OutlinedTextField(login, { login = it }, label = { Text("Correo electrónico") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(12.dp))
-                OutlinedTextField(password, { password = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
-                error?.let { Spacer(Modifier.height(12.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
-                Spacer(Modifier.height(20.dp))
-                Button({ vm.login(login.trim(), password) }, enabled = !loading, modifier = Modifier.fillMaxWidth()) { if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text("Iniciar sesión") }
-                Spacer(Modifier.height(8.dp))
-                TextButton({ vm.clearAccountMessages(); showForgot = true }, modifier = Modifier.fillMaxWidth()) { Text("He olvidado mi contraseña") }
-                OutlinedButton({ vm.clearAccountMessages(); showRegister = true }, modifier = Modifier.fillMaxWidth()) { Text("Crear cuenta") }
-            }
-            if (showRegister) AccountRegisterDialog(login, loading, error, dismissRegister, vm::createAccount)
-            if (showForgot) AccountForgotPasswordDialog(login, forgotPasswordLoading, error, notice, dismissForgot, vm::forgotPassword)
+            if (showRegister) StoreRegisterScreen(owner = registerOwner, initialEmail = login, onDismiss = dismissRegister, onRegistered = { created -> showRegister = false; vm.completeRegistration(created) })
+            if (showForgot) StoreForgotPasswordScreen(owner = forgotPasswordOwner, initialEmail = login, onDismiss = dismissForgot)
         }
     }
 }
@@ -405,66 +473,6 @@ private fun AccountCompactAccess(
             maxLines = 2,
             overflow = androidx.compose.ui.text.style.TextOverflow.Clip
         )
-    }
-}
-
-@Composable
-private fun AccountHomeContentV2(
-    fullName: String?,
-    email: String?,
-    onOrders: () -> Unit,
-    onWallet: () -> Unit,
-    onProfile: () -> Unit,
-    onLogin: () -> Unit,
-    onHelp: () -> Unit,
-    onInfoPage: (AccountInfoPage) -> Unit
-) {
-    val isAuthenticated = !fullName.isNullOrBlank() && !email.isNullOrBlank()
-    val nameParts = fullName.orEmpty().trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-    val initials = buildString { nameParts.firstOrNull()?.firstOrNull()?.let { append(it.uppercaseChar()) }; nameParts.drop(1).firstOrNull()?.firstOrNull()?.let { append(it.uppercaseChar()) } }.ifBlank { "CR" }
-    Column(Modifier.fillMaxWidth()) {
-        Text("Cuenta", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color(0xFF183B35))
-        Spacer(Modifier.height(20.dp))
-        if (isAuthenticated) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Surface(Modifier.size(60.dp), shape = CircleShape, color = Color(0xFFE9E6EA)) { Box(contentAlignment = Alignment.Center) { Text(initials, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = Color(0xFF183B35)) } }
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) { Text(fullName.orEmpty(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium); Spacer(Modifier.height(3.dp)); Text(email.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onLogin).padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier.size(60.dp).background(Color(0xFFE3EFEB), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Outlined.Person, contentDescription = null, tint = Color(0xFF183B35), modifier = Modifier.size(30.dp))
-                }
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Inicia sesión o regístrate", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-                    Spacer(Modifier.height(3.dp))
-                    Text("Accede a tu cuenta", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-        Spacer(Modifier.height(if (isAuthenticated) 24.dp else 12.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            AccountCompactAccess(Modifier.weight(1f), "Pedidos", Icons.Outlined.History, onOrders)
-            AccountCompactAccess(Modifier.weight(1f), "Cupones y promociones", Icons.Outlined.Sell, onWallet)
-        }
-        Spacer(Modifier.height(12.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            AccountCompactAccess(Modifier.weight(1f), "Perfil", Icons.Outlined.Person, onProfile)
-            AccountCompactAccess(Modifier.weight(1f), "Ayuda", Icons.AutoMirrored.Outlined.HelpOutline, onHelp)
-        }
-        Spacer(Modifier.height(28.dp))
-        AccountInformationHomeSection(onInfoPage)
-        Spacer(Modifier.height(20.dp))
-        Text("Versión ${BuildConfig.VERSION_NAME}", Modifier.align(Alignment.CenterHorizontally), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(16.dp))
     }
 }
 
@@ -565,384 +573,7 @@ private fun PromotionDateRow(text: String) {
     }
 }
 
-@Composable
-fun AccountWalletContent(
-    authenticated: Boolean,
-    wallet: es.criosrango.shared.loyalty.LoyaltyWallet?,
-    loading: Boolean,
-    error: String?,
-    promotions: List<Promotion>,
-    promotionsLoading: Boolean,
-    promotionsError: String?,
-    cartCouponCodes: Set<String>,
-    onApplyPromotion: suspend (String) -> Unit,
-    onBack: () -> Unit,
-    onRefresh: () -> Unit,
-    onApplyReward: (LoyaltyReward) -> Unit,
-    onRedeem: (Int) -> Unit
-) {
-    var showRedeemDialog by remember { mutableStateOf(false) }
-    var showWalletInfo by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val options = wallet?.redeemableOptions() ?: emptyList()
 
-    Column(
-        Modifier.fillMaxWidth().offset(y = (-32).dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack, enabled = !loading, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
-            }
-            Text(
-                "Cupones y promociones",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-            )
-        }
-
-        when {
-            authenticated && loading && wallet == null -> CircularProgressIndicator(modifier = Modifier.padding(vertical = 12.dp))
-            authenticated && wallet != null -> {
-Card(
-                    Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF6F0))
-                ) {
-                    Box(Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(7.dp)
-                    ) {
-                        val walletAmount = wallet.walletValue
-                            .replace(',', '.')
-                            .toDoubleOrNull()
-                            ?: 0.0
-                        val minimumAmount = wallet.minimumRedeemValue
-                            .replace(',', '.')
-                            .toDoubleOrNull()
-                            ?: 0.0
-                        val progress =
-                            if (minimumAmount > 0.0)
-                                (walletAmount / minimumAmount).coerceIn(0.0, 1.0)
-                            else
-                                0.0
-                        val remaining =
-                            (minimumAmount - walletAmount).coerceAtLeast(0.0)
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(end = 34.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            WalletVisualIcon()
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                                Text(
-                                    "Monedero",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    color = Color(0xFF183B35)
-                                )
-                                Text(
-                                    loyaltyDisplayMoney(wallet.walletValue) + if (walletAmount >= minimumAmount) " disponibles" else " acumulados",
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    color = Color(0xFF0F5C4D)
-                                )
-                            }
-                            if (walletAmount >= minimumAmount && options.isNotEmpty()) {
-                                Button(
-                                    onClick = { showRedeemDialog = true },
-                                    enabled = !loading,
-                                    modifier = Modifier.width(76.dp).height(36.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                    shape = RoundedCornerShape(18.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFF0F5C4D),
-                                        contentColor = Color.White
-                                    )
-                                ) { Text("Usar", style = MaterialTheme.typography.labelMedium) }
-                            }
-                        }
-                        
-                         if (walletAmount < minimumAmount) {
-                            Text(
-                                "Has acumulado " + loyaltyDisplayMoney(wallet.walletValue) +
-                                    " de " + loyaltyDisplayMoney(wallet.minimumRedeemValue),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF40514D)
-                            )
-                            Box(
-                                modifier = Modifier.fillMaxWidth().height(6.dp)
-                                    .background(Color(0xFFD7E8E1), RoundedCornerShape(3.dp))
-                            ) {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth(progress.toFloat()).height(6.dp)
-                                        .background(Color(0xFF0F5C4D), RoundedCornerShape(3.dp))
-                                )
-                            }
-                            Text(
-                                "Te faltan " + loyaltyDisplayMoney(
-                                    formatWalletRemaining(remaining)
-                                ) + " para desbloquear tu saldo.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF40514D)
-                            )
-                        }
-                    }
-                        IconButton(
-                            onClick = { showWalletInfo = true },
-                            modifier = Modifier.align(Alignment.TopEnd).size(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = InfoLineIcon,
-                                contentDescription = "Cómo funciona el monedero",
-                                tint = Color(0xFF0F5C4D),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
-                    }
-                }
-            }
-        }
-
-        if (authenticated && !wallet?.pendingRewards.isNullOrEmpty()) {
-            Text(
-                "Saldo listo para usar",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
-            )
-            Card(
-                Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF2F0F8))
-            ) {
-                Column(
-                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp)
-                ) {
-                    wallet?.pendingRewards.orEmpty().forEachIndexed { index, reward ->
-                        val applied = cartCouponCodes.any { it.equals(reward.code, ignoreCase = true) }
-                        Row(
-                            Modifier.fillMaxWidth().padding(vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = WalletLineIcon,
-                                contentDescription = "Saldo de monedero",
-                                tint = Color(0xFF0F5C4D),
-                                modifier = Modifier.size(22.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                "Saldo de monedero · " + reward.amount.replace('.', ',') + " €",
-                                modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF183B35),
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
-                            if (applied) {
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = Color(0xFFE8F5EF)
-                                ) {
-                                    Text(
-                                        "Aplicado",
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                        color = Color(0xFF0F5C4D),
-                                        fontWeight = FontWeight.SemiBold,
-                                        style = MaterialTheme.typography.labelSmall
-                                    )
-                                }
-                            } else {
-                                Button(
-                                    onClick = { onApplyReward(reward) },
-                                    enabled = !loading,
-                                    shape = RoundedCornerShape(50),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFF0F5C4D),
-                                        contentColor = Color.White
-                                    ),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                                    modifier = Modifier.height(36.dp)
-                                ) {
-                                    Text("Aplicar", style = MaterialTheme.typography.labelMedium)
-                                }
-                            }
-                        }
-                        if (index < wallet!!.pendingRewards.lastIndex) {
-                            HorizontalDivider(
-                                Modifier.padding(start = 30.dp),
-                                color = Color(0xFFDCD8E8),
-                                thickness = 1.dp
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        error?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = onRefresh, enabled = !loading) { Text("Reintentar") }
-        }
-
-        val visiblePromotions = if (authenticated) promotions else promotions.filter { it.isVisibleToAnonymous() }
-        Text(
-            "Promociones disponibles (${visiblePromotions.size})",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
-        )
-
-        when {
-            promotionsLoading && visiblePromotions.isEmpty() -> CircularProgressIndicator(modifier = Modifier.padding(vertical = 8.dp))
-            promotionsError != null && visiblePromotions.isEmpty() -> Text(promotionsError!!, color = MaterialTheme.colorScheme.error)
-            visiblePromotions.isEmpty() -> Text("No hay promociones disponibles.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            else -> visiblePromotions.sortedByDescending { it.priority }.forEachIndexed { index, promotion ->
-                val code = promotion.code?.takeIf { it.isNotBlank() }
-                val applied = code?.let { couponCode ->
-                    cartCouponCodes.any { it.equals(couponCode, ignoreCase = true) }
-                } == true
-                val isBirthday = promotion.type.equals("birthday_coupon", ignoreCase = true) || listOfNotNull(promotion.title, promotion.description).any { it.contains("cumpleaños", ignoreCase = true) || it.contains("birthday", ignoreCase = true) }
-
-                Card(
-                    Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(15.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = promotionCardColor(promotion, isBirthday)
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Text(accountPromotionIcon(promotion), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 1.dp))
-                        Spacer(Modifier.width(10.dp))
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            Text(
-                                if (isBirthday) "Tu regalo de cumpleaños" else promotion.title,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF183B35)
-                            )
-                            val description = if (isBirthday) {
-                                "15% de descuento por tu cumpleaños."
-                            } else {
-                                promotion.description.trim()
-                            }
-                            if (description.isNotBlank()) {
-                                Text(
-                                    description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFF40514D)
-                                )
-                            }
-                            if (isBirthday) {
-                                Text(
-                                    "Válido durante 15 días.",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF40514D)
-                                )
-                            }
-                            promotion.expiresAt?.takeIf { it.isNotBlank() }?.let {
-                                PromotionDateRow("Válido hasta " + formatPromotionExpiry(it))
-                            }
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        code?.let { couponCode ->
-                            if (applied) {
-                                Surface(
-                                    modifier = Modifier.width(78.dp).height(36.dp),
-                                    shape = RoundedCornerShape(18.dp),
-                                    color = Color(0xFFE8F5EF)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            "Aplicado",
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-                                            color = Color(0xFF0F5C4D),
-                                            fontWeight = FontWeight.SemiBold,
-                                            style = MaterialTheme.typography.labelSmall
-                                        )
-                                    }
-                                }
-                            } else {
-                                Button(
-                                    onClick = { scope.launch { onApplyPromotion(couponCode) } },
-                                    enabled = !loading,
-                                    modifier = Modifier.width(78.dp).height(36.dp),
-                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                                    shape = RoundedCornerShape(18.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFF0F5C4D),
-                                        contentColor = Color.White
-                                    )
-                                ) { Text("Aplicar", style = MaterialTheme.typography.labelMedium) }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (showWalletInfo) {
-        AlertDialog(
-            onDismissRequest = { showWalletInfo = false },
-            title = {
-                Text(
-                    "¿Cómo funciona tu monedero?",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-            },
-            text = {
-                Text(
-                    "1 € gastado = 1 punto.\n\n" +
-                        "Cuando acumules 100 puntos, podrás convertirlos en 5 € de saldo para tus compras.\n\n" +
-                        "La barra te indica cuánto te falta para desbloquear el saldo.\n\n" +
-                        "Cuando tengas saldo disponible, pulsa “Usar” para elegir cuánto quieres aplicar a tu compra."
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = { showWalletInfo = false },
-                    modifier = Modifier.height(36.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF0F5C4D),
-                        contentColor = Color.White
-                    )
-                ) { Text("Entendido", style = MaterialTheme.typography.labelMedium) }
-            }
-        )
-    }
-
-    if (showRedeemDialog && options.isNotEmpty()) {
-        LoyaltyRedeemDialog(
-            options = options,
-            loading = loading,
-            onDismiss = { showRedeemDialog = false },
-            onSelect = { option ->
-                showRedeemDialog = false
-                onRedeem(option.points)
-            }
-        )
-    }
-}
 
 private fun promotionCardColor(promotion: Promotion, isBirthday: Boolean): Color {
     val key = listOfNotNull(promotion.code, promotion.title, promotion.description).joinToString(" ").lowercase()
@@ -965,42 +596,32 @@ private fun formatPromotionExpiry(value: String): String {
 @Composable
 private fun AccountHelpContent(onBack: () -> Unit) {
     val context = LocalContext.current
-    Column(Modifier.fillMaxWidth()) {
-        CatalogScreenHeader(title = "Ayuda", onBack = onBack, bottomPadding = 4.dp)
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-            Spacer(Modifier.height(4.dp))
-            Text("Contacta con nosotros", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = Color(0xFF183B35))
-            Spacer(Modifier.height(16.dp))
-            HelpContactRow("WhatsApp", "633 246 788", Icons.AutoMirrored.Outlined.Chat) {
-                val message = "Hola, necesito ayuda con la app de Críos&Rango."
-                val encodedMessage = java.net.URLEncoder.encode(message, "UTF-8")
-                val whatsappUri = Uri.parse("https://wa.me/34633246788?text=$encodedMessage")
-                val intent = Intent(Intent.ACTION_VIEW, whatsappUri)
-                runCatching { context.startActivity(intent) }.onFailure {
-                    Toast.makeText(context, "No se ha podido abrir WhatsApp.", Toast.LENGTH_SHORT).show()
-                }
+    StoreAccountHelpScreen(
+        onBack = onBack,
+        onWhatsApp = {
+            val message = "Hola, necesito ayuda con la app de Críos&Rango."
+            val encodedMessage = java.net.URLEncoder.encode(message, "UTF-8")
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/34633246788?text=$encodedMessage"))
+            runCatching { context.startActivity(intent) }.onFailure {
+                Toast.makeText(context, "No se ha podido abrir WhatsApp.", Toast.LENGTH_SHORT).show()
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            HelpContactRow("Llamar", "969 091 236", Icons.Outlined.Phone) {
-                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:+34969091236"))
-                runCatching { context.startActivity(intent) }.onFailure {
-                    Toast.makeText(context, "No se ha podido abrir el teléfono.", Toast.LENGTH_SHORT).show()
-                }
+        },
+        onCall = {
+            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:+34969091236"))
+            runCatching { context.startActivity(intent) }.onFailure {
+                Toast.makeText(context, "No se ha podido abrir el teléfono.", Toast.LENGTH_SHORT).show()
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            HelpContactRow("Correo electrónico", "criosrango@criosrango.es", Icons.Outlined.Email) {
-                val intent = Intent(Intent.ACTION_SENDTO).apply {
-                    data = Uri.parse("mailto:criosrango@criosrango.es")
-                    putExtra(Intent.EXTRA_SUBJECT, "Consulta desde la app Críos&Rango")
-                }
-                runCatching { context.startActivity(intent) }.onFailure {
-                    Toast.makeText(context, "No se ha podido abrir el correo.", Toast.LENGTH_SHORT).show()
-                }
+        },
+        onEmail = {
+            val intent = Intent(Intent.ACTION_SENDTO).apply {
+                data = Uri.parse("mailto:criosrango@criosrango.es")
+                putExtra(Intent.EXTRA_SUBJECT, "Consulta desde la app Críos&Rango")
             }
-            Spacer(Modifier.height(28.dp))
-            StoreHoursSection()
+            runCatching { context.startActivity(intent) }.onFailure {
+                Toast.makeText(context, "No se ha podido abrir el correo.", Toast.LENGTH_SHORT).show()
+            }
         }
-    }
+    )
 }
 
 @Composable
@@ -1065,190 +686,24 @@ private fun HelpContactRow(title: String, value: String, icon: ImageVector, onCl
     }
 }
 
-private fun LazyListScope.AccountOrdersContent(
-    orders: List<AccountOrderSummary>,
-    loading: Boolean,
-    accountError: StoreUiError?,
-    onBack: () -> Unit,
-    onOrderClick: (Int) -> Unit,
-    onRefresh: () -> Unit
-) {
-    item {
-        AccountSectionHeader("Pedidos", onBack)
-        Spacer(Modifier.height(16.dp))
-    }
-    if (loading && orders.isEmpty()) {
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                CircularProgressIndicator()
-            }
-        }
-    } else if (accountError != null && accountError.type != StoreErrorType.SESSION_EXPIRED && orders.isEmpty()) {
-        item {
-            StoreErrorState(accountError, PaddingValues(0.dp), onRefresh)
-        }
-    } else if (orders.isEmpty()) {
-        item {
-            Text("Todavía no tienes pedidos.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    } else if (accountError != null && accountError.type != StoreErrorType.SESSION_EXPIRED) {
-        item {
-            Text(accountError.title, color = MaterialTheme.colorScheme.error)
-            Text(accountError.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton(onClick = onRefresh, enabled = !loading) { Text("Reintentar") }
-        }
-    } else {
-        items(orders.size) { index ->
-            val order = orders[index]
-            Card(Modifier.fillMaxWidth().clickable { onOrderClick(order.id) }) {
-                Column(Modifier.padding(16.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Pedido #${order.number.ifBlank { order.id.toString() }}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-                        OrderStatusBadge(order.status, order.statusLabel)
-                    }
-                    order.dateCreated?.takeIf { it.isNotBlank() }?.let { rawDate ->
-                        val p = rawDate.take(10).split("-")
-                        Spacer(Modifier.height(8.dp))
-                        Text("Fecha: ${if (p.size == 3) "${p[2]}-${p[1]}-${p[0]}" else rawDate.take(10)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (order.items.isNotEmpty()) {
-                        Spacer(Modifier.height(10.dp))
-                        order.items.forEach { item ->
-                            Text("${item.quantity} × ${item.name}")
-                            val variationText = item.variations.filter { it.name.isNotBlank() && it.value.isNotBlank() }.joinToString(" · ") {
-                                "${if (it.name.equals("Tallas", true)) "Talla" else it.name}: ${it.value}"
-                            }
-                            if (variationText.isNotBlank()) Text(variationText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.height(5.dp))
-                        }
-                    }
-                    if (order.paymentMethodTitle.isNotBlank()) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(if (order.paymentMethodTitle.contains("bizum", true)) "Pago con Bizum" else "Pago con tarjeta")
-                    }
-                    if (order.total.isNotBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            if (order.currency == "EUR") "Total: ${order.total.replace('.', ',')} €" else "${order.total} ${order.currency}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-        }
-    }
-}
-
-@Composable
-private fun AccountProfileContent(loading: Boolean, onBack: () -> Unit, onPersonalData: () -> Unit, onAddress: () -> Unit, onPassword: () -> Unit, onLogout: () -> Unit) {
-    var showDeleteConfirmation by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-
-    AccountSectionHeader("Perfil", onBack)
-    Spacer(Modifier.height(8.dp))
-    ProfileMenuRow("Datos personales", Icons.Outlined.Person, onPersonalData)
-    Spacer(Modifier.height(8.dp))
-    ProfileMenuRow("Dirección de entrega", Icons.Outlined.LocationOn, onAddress)
-    Spacer(Modifier.height(8.dp))
-    ProfileMenuRow("Cambiar contraseña", Icons.Outlined.Lock, onPassword)
-    Spacer(Modifier.height(8.dp))
-    ProfileMenuRow(
-        AccountDeletion.TITLE,
-        Icons.Outlined.Delete,
-        onClick = { showDeleteConfirmation = true },
-        containerColor = AccountDeletion.background,
-        contentColor = AccountDeletion.accent
-    )
-    Spacer(Modifier.height(12.dp))
-    PushNotificationPreferences()
-    Spacer(Modifier.height(12.dp))
-    Card(Modifier.fillMaxWidth().clickable(onClick = onLogout), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFECEF))) { Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.AutoMirrored.Outlined.Logout, null, tint = Color(0xFFC73B4C)); Spacer(Modifier.width(14.dp)); Text("Cerrar sesión", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = Color(0xFFC73B4C)) } }
-
-    if (showDeleteConfirmation) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirmation = false },
-            title = { Text(AccountDeletion.TITLE) },
-            text = { Text(AccountDeletion.MESSAGE) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDeleteConfirmation = false
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(AccountDeletion.URL))
-                    runCatching { context.startActivity(intent) }
-                        .onFailure {
-                            Toast.makeText(
-                                context,
-                                "No se ha podido abrir la página de eliminación.",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                }) { Text(AccountDeletion.CONTINUE) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirmation = false }) {
-                    Text(AccountDeletion.CANCEL)
-                }
-            }
-        )
-    }
-}
-
-@Composable
-private fun ProfileMenuRow(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit,
-    containerColor: Color = Color(0xFFF0EDF1),
-    contentColor: Color = MaterialTheme.colorScheme.onSurface
-) {
-    Card(
-        Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor)
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(icon, null, tint = contentColor, modifier = Modifier.size(28.dp))
-            Spacer(Modifier.width(14.dp))
-            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = contentColor)
-            Text("›", style = MaterialTheme.typography.titleLarge, color = contentColor)
-        }
-    }
-}
 
 @Composable
 private fun AccountPersonalDataContent(vm: AccountViewModel, user: AccountUser, onBack: () -> Unit) {
     val saving by vm.savingAccountDetails.collectAsStateWithLifecycle(); val saveError by vm.accountDataError.collectAsStateWithLifecycle(); val saveNotice by vm.accountDataNotice.collectAsStateWithLifecycle(); var firstName by remember(user.id) { mutableStateOf(user.firstName) }; var lastName by remember(user.id) { mutableStateOf(user.lastName) }
-    AccountSectionHeader("Datos personales", onBack); Spacer(Modifier.height(20.dp)); OutlinedTextField(firstName, { firstName = it; vm.clearAccountDataMessages() }, label = { Text("Nombre") }, singleLine = true, enabled = !saving, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(14.dp)); OutlinedTextField(lastName, { lastName = it; vm.clearAccountDataMessages() }, label = { Text("Apellidos") }, singleLine = true, enabled = !saving, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(14.dp)); OutlinedTextField(user.email.ifBlank { "—" }, {}, label = { Text("Correo electrónico") }, readOnly = true, singleLine = true, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(14.dp)); OutlinedTextField(formatBirthDateForDisplay(user.birthDate).ifBlank { "No indicada" }, {}, label = { Text("Fecha de nacimiento") }, readOnly = true, singleLine = true, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(20.dp)); Button({ vm.updateAccountDetails(firstName.trim(), lastName.trim()) }, enabled = !saving, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))) { if (saving) Text("Guardando...") else Text("Guardar cambios") }; saveError?.let { Spacer(Modifier.height(10.dp)); Text(it, color = MaterialTheme.colorScheme.error) }; saveNotice?.let { Spacer(Modifier.height(10.dp)); Text(it, color = Color(0xFF183B35)) }
+    StorePageHeader(title = "Datos personales", onBack = onBack); Spacer(Modifier.height(20.dp)); OutlinedTextField(firstName, { firstName = it; vm.clearAccountDataMessages() }, label = { Text("Nombre") }, singleLine = true, enabled = !saving, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(14.dp)); OutlinedTextField(lastName, { lastName = it; vm.clearAccountDataMessages() }, label = { Text("Apellidos") }, singleLine = true, enabled = !saving, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(14.dp)); OutlinedTextField(user.email.ifBlank { "—" }, {}, label = { Text("Correo electrónico") }, readOnly = true, singleLine = true, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(14.dp)); OutlinedTextField(formatBirthDateForDisplay(user.birthDate).ifBlank { "No indicada" }, {}, label = { Text("Fecha de nacimiento") }, readOnly = true, singleLine = true, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(20.dp)); Button({ vm.updateAccountDetails(firstName.trim(), lastName.trim()) }, enabled = !saving, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))) { if (saving) Text("Guardando...") else Text("Guardar cambios") }; saveError?.let { Spacer(Modifier.height(10.dp)); Text(it, color = MaterialTheme.colorScheme.error) }; saveNotice?.let { Spacer(Modifier.height(10.dp)); Text(it, color = Color(0xFF183B35)) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AccountAddressContent(vm: AccountViewModel, address: AccountCustomerAddress?, onBack: () -> Unit) {
     val saving by vm.savingAddress.collectAsStateWithLifecycle(); val saveError by vm.addressSaveError.collectAsStateWithLifecycle(); val saveNotice by vm.addressSaveNotice.collectAsStateWithLifecycle(); var firstName by remember(address) { mutableStateOf(address?.firstName.orEmpty()) }; var lastName by remember(address) { mutableStateOf(address?.lastName.orEmpty()) }; var address1 by remember(address) { mutableStateOf(address?.address1.orEmpty()) }; var address2 by remember(address) { mutableStateOf(address?.address2.orEmpty()) }; var postcode by remember(address) { mutableStateOf(address?.postcode.orEmpty()) }; var city by remember(address) { mutableStateOf(address?.city.orEmpty()) }; var state by remember(address) { mutableStateOf(address?.state.orEmpty()) }; var provinceExpanded by remember { mutableStateOf(false) }; val provinceName = SPANISH_PROVINCES.firstOrNull { it.code.equals(state, true) }?.name.orEmpty()
-    AccountSectionHeader("Dirección de entrega", onBack); Spacer(Modifier.height(20.dp)); AccountAddressField("Nombre", firstName, !saving) { firstName = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Apellidos", lastName, !saving) { lastName = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Dirección", address1, !saving) { address1 = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Dirección adicional / Piso, puerta, etc. (opcional)", address2, !saving) { address2 = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Código postal", postcode, !saving) { postcode = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Localidad", city, !saving) { city = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); ExposedDropdownMenuBox(expanded = provinceExpanded, onExpandedChange = { if (!saving) provinceExpanded = it }) { OutlinedTextField(provinceName.ifBlank { state }, {}, label = { Text("Provincia") }, readOnly = true, enabled = !saving, singleLine = true, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = provinceExpanded) }, modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = !saving).fillMaxWidth()); ExposedDropdownMenu(expanded = provinceExpanded, onDismissRequest = { provinceExpanded = false }) { SPANISH_PROVINCES.distinctBy { it.code }.forEach { province -> DropdownMenuItem(text = { Text(province.name) }, onClick = { state = province.code; provinceExpanded = false; vm.clearAddressSaveMessages() }) } } }; Spacer(Modifier.height(14.dp)); OutlinedTextField("España", {}, label = { Text("País") }, readOnly = true, enabled = !saving, singleLine = true, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(20.dp)); Button({ vm.saveAddress(AccountCustomerAddress(firstName = firstName, lastName = lastName, email = address?.email.orEmpty(), phone = address?.phone.orEmpty(), address1 = address1, address2 = address2, postcode = postcode, city = city, state = state, country = "ES")) }, enabled = !saving, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))) { if (saving) Text("Guardando...") else Text("Guardar dirección") }; saveError?.let { Spacer(Modifier.height(10.dp)); Text(it, color = MaterialTheme.colorScheme.error) }; saveNotice?.let { Spacer(Modifier.height(10.dp)); Text(it) }
+    StorePageHeader(title = "Dirección de entrega", onBack = onBack); Spacer(Modifier.height(20.dp)); AccountAddressField("Nombre", firstName, !saving) { firstName = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Apellidos", lastName, !saving) { lastName = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Dirección", address1, !saving) { address1 = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Dirección adicional / Piso, puerta, etc. (opcional)", address2, !saving) { address2 = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Código postal", postcode, !saving) { postcode = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); AccountAddressField("Localidad", city, !saving) { city = it; vm.clearAddressSaveMessages() }; Spacer(Modifier.height(14.dp)); ExposedDropdownMenuBox(expanded = provinceExpanded, onExpandedChange = { if (!saving) provinceExpanded = it }) { OutlinedTextField(provinceName.ifBlank { state }, {}, label = { Text("Provincia") }, readOnly = true, enabled = !saving, singleLine = true, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = provinceExpanded) }, modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = !saving).fillMaxWidth()); ExposedDropdownMenu(expanded = provinceExpanded, onDismissRequest = { provinceExpanded = false }) { SPANISH_PROVINCES.distinctBy { it.code }.forEach { province -> DropdownMenuItem(text = { Text(province.name) }, onClick = { state = province.code; provinceExpanded = false; vm.clearAddressSaveMessages() }) } } }; Spacer(Modifier.height(14.dp)); OutlinedTextField("España", {}, label = { Text("País") }, readOnly = true, enabled = !saving, singleLine = true, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(20.dp)); Button({ vm.saveAddress(AccountCustomerAddress(firstName = firstName, lastName = lastName, email = address?.email.orEmpty(), phone = address?.phone.orEmpty(), address1 = address1, address2 = address2, postcode = postcode, city = city, state = state, country = "ES")) }, enabled = !saving, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))) { if (saving) Text("Guardando...") else Text("Guardar dirección") }; saveError?.let { Spacer(Modifier.height(10.dp)); Text(it, color = MaterialTheme.colorScheme.error) }; saveNotice?.let { Spacer(Modifier.height(10.dp)); Text(it) }
 }
 
 @Composable
 private fun AccountAddressField(label: String, value: String, enabled: Boolean, onValueChange: (String) -> Unit) { OutlinedTextField(value, onValueChange, label = { Text(label) }, singleLine = true, enabled = enabled, modifier = Modifier.fillMaxWidth()) }
 
-@Composable
-fun AccountSectionHeader(title: String, onBack: () -> Unit) { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver") }; Spacer(Modifier.width(6.dp)); Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color(0xFF183B35)) } }
 
-@Composable
-private fun AccountRegisterDialog(initialEmail: String, loading: Boolean, error: String?, onDismiss: () -> Unit, onCreate: (String, String, String, String, String, String?) -> Unit) {
-    var firstName by remember { mutableStateOf("") }; var lastName by remember { mutableStateOf("") }; var email by remember(initialEmail) { mutableStateOf(initialEmail) }; var phone by remember { mutableStateOf("") }; var password by remember { mutableStateOf("") }; var repeatPassword by remember { mutableStateOf("") }; var birthDate by remember { mutableStateOf<String?>(null) }
-    AlertDialog(onDismissRequest = { if (!loading) onDismiss() }, title = { Text("Crear cuenta") }, text = { Column(Modifier.verticalScroll(rememberScrollState())) { OutlinedTextField(firstName, { firstName = it }, label = { Text("Nombre") }, singleLine = true); Spacer(Modifier.height(8.dp)); OutlinedTextField(lastName, { lastName = it }, label = { Text("Apellidos") }, singleLine = true); Spacer(Modifier.height(8.dp)); OutlinedTextField(email, { email = it }, label = { Text("Correo electrónico") }, singleLine = true); Spacer(Modifier.height(8.dp)); OutlinedTextField(phone, { phone = it }, label = { Text("Teléfono (opcional)") }, singleLine = true); Spacer(Modifier.height(8.dp)); BirthDatePickerField(birthDate, { birthDate = it }, modifier = Modifier.fillMaxWidth(), enabled = !loading); Spacer(Modifier.height(8.dp)); OutlinedTextField(password, { password = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true); Spacer(Modifier.height(8.dp)); OutlinedTextField(repeatPassword, { repeatPassword = it }, label = { Text("Repetir contraseña") }, visualTransformation = PasswordVisualTransformation(), singleLine = true); if (repeatPassword.isNotEmpty() && password != repeatPassword) { Spacer(Modifier.height(8.dp)); Text("Las contraseñas no coinciden.", color = MaterialTheme.colorScheme.error) }; error?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error) } } }, confirmButton = { TextButton({ onCreate(firstName.trim(), lastName.trim(), email.trim(), phone.trim(), password, birthDate) }, enabled = !loading && firstName.isNotBlank() && lastName.isNotBlank() && email.isNotBlank() && password.length >= 8 && password == repeatPassword) { if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Crear cuenta") } }, dismissButton = { TextButton(onDismiss, enabled = !loading) { Text("Cancelar") } })
-}
-
-@Composable
-private fun AccountForgotPasswordDialog(initialLogin: String, loading: Boolean, error: String?, notice: String?, onDismiss: () -> Unit, onSend: (String) -> Unit) {
-    var login by remember(initialLogin) { mutableStateOf(initialLogin) }
-    AlertDialog(onDismissRequest = { if (!loading) onDismiss() }, title = { Text("Recuperar contraseña") }, text = { Column { Text("Introduce tu correo electrónico."); Spacer(Modifier.height(12.dp)); OutlinedTextField(login, { login = it }, label = { Text("Correo electrónico") }, singleLine = true); error?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error) }; notice?.let { Spacer(Modifier.height(8.dp)); Text("Si existe una cuenta asociada a ese correo electrónico, te enviaremos un enlace para restablecer tu contraseña.") } } }, confirmButton = { if (notice == null) TextButton({ onSend(login.trim()) }, enabled = !loading && login.isNotBlank()) { if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Enviar correo") } else TextButton(onDismiss) { Text("Cerrar") } }, dismissButton = { if (notice == null) TextButton(onDismiss, enabled = !loading) { Text("Cancelar") } })
-}
 private fun formatWalletRemaining(value: Double): String {
     val cents = kotlin.math.round(value * 100.0).toLong()
     val whole = cents / 100L
@@ -1260,3 +715,18 @@ private fun formatWalletRemaining(value: Double): String {
 
 internal fun shouldResetAccountUiForAuthState(authState: AccountAuthState): Boolean =
     authState == AccountAuthState.UNAUTHENTICATED
+
+internal fun incomingPushOrderSelection(currentOrderId: Int?, incomingOrderId: Int?): Int? =
+    incomingOrderId?.takeIf { it > 0 } ?: currentOrderId
+
+internal data class AccountOrderSelectionState(
+    val orderId: Int? = null,
+    val sharedOrder: AccountOrderSummary? = null
+) {
+    fun select(order: AccountOrderSummary) = copy(orderId = order.id, sharedOrder = order)
+
+    fun clear() = AccountOrderSelectionState()
+
+    fun resolveFrom(orders: List<AccountOrderSummary>): AccountOrderSummary? =
+        sharedOrder?.takeIf { it.id == orderId } ?: orders.firstOrNull { it.id == orderId }
+}

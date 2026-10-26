@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +59,9 @@ import es.criosrango.shared.account.AccountCustomerAddress
 import es.criosrango.shared.account.AccountOrderSummary
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.account.AccountUser
+import es.criosrango.shared.StoreAccountRootScreen
+import es.criosrango.shared.StoreAccountSessionState
+import es.criosrango.shared.StoreLoginScreen
 import es.criosrango.shared.loyalty.LoyaltyRepository
 import es.criosrango.shared.promotions.Promotion
 import es.criosrango.shared.promotions.PromotionRepository
@@ -65,6 +69,9 @@ import es.criosrango.shared.promotions.isVisibleToAnonymous
 import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.loyalty.LoyaltyWallet
 import es.criosrango.shared.loyalty.redeemableOptions
+import es.criosrango.shared.CouponApplicationResult
+import es.criosrango.shared.StoreWalletOwner
+import es.criosrango.shared.StoreWalletScreen
 import kotlinx.coroutines.launch
 
 private val SPANISH_PROVINCE_CODES = setOf("C","VI","AB","A","AL","O","AV","BA","B","BI","BU","CC","CA","S","CS","CE","CR","CO","CU","GI","GR","GU","SS","H","HU","J","LE","L","LO","LU","M","MA","ML","MU","NA","OR","P","GC","PO","SA","TF","SG","SE","SO","T","TE","TO","V","VA","ZA","Z")
@@ -74,32 +81,74 @@ private enum class IosAccountPage { HOME, LOGIN, REGISTER, FORGOT, PROFILE, DATA
 @Composable
 fun CriosRangoIOSAccountScreen(
     repository: AccountRepository,
+    sessionState: StoreAccountSessionState,
     loyaltyRepository: LoyaltyRepository,
+    appVersion: String = "",
     cartCouponCodes: Set<String> = emptySet(),
-    onApplyWalletCoupon: suspend (String) -> Unit,
+    onApplyWalletCoupon: suspend (String) -> Boolean,
     modifier: Modifier = Modifier,
     onOpenExternalUrl: (String) -> Unit,
     initialOrderId: Int? = null,
+    onInitialOrderConsumed: (Int) -> Unit = {},
     openPromotionsOnStart: Boolean = false,
+    openLoginOnStart: Boolean = false,
+    onBackFromLogin: (() -> Unit)? = null,
+    onBackFromRoot: () -> Unit = {},
+    onAuthenticated: (() -> Unit)? = null,
     onPromotionsOpened: () -> Unit = {},
     onBeforeLogout: suspend () -> Unit = {}
 ) {
     var page by remember {
-        mutableStateOf(if (openPromotionsOnStart) IosAccountPage.WALLET else IosAccountPage.HOME)
+        mutableStateOf(if (openPromotionsOnStart) IosAccountPage.WALLET else if (openLoginOnStart) IosAccountPage.LOGIN else IosAccountPage.HOME)
     }
-    var user by remember { mutableStateOf<AccountUser?>(null) }
-    var startup by remember { mutableStateOf(true) }
+    var user by remember(sessionState) { mutableStateOf(sessionState.snapshot.value.user) }
     var error by remember { mutableStateOf<String?>(null) }
     var selectedOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
+    var returnPickerOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
+    val ordersOwner = remember(repository, sessionState) { StoreOrdersOwner(repository, sessionState) }
     var pendingPushOrderId by remember { mutableStateOf(initialOrderId) }
+    var consumedPushOrderId by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(initialOrderId) {
+        val id = initialOrderId?.takeIf { it > 0 } ?: return@LaunchedEffect
+        pendingPushOrderId = id
+        consumedPushOrderId = null
+        selectedOrder = null
+        page = if (user == null) IosAccountPage.LOGIN else IosAccountPage.ORDERS
+    }
     var selectedInfoPage by remember { mutableStateOf<AccountInfoPage?>(null) }
     var forgotReturnPage by remember { mutableStateOf(IosAccountPage.LOGIN) }
     var addressReturnPage by remember { mutableStateOf(IosAccountPage.HOME) }
+    if (page == IosAccountPage.REGISTER) IosBackHandler(IosBackPriority.OVERLAY) { page = IosAccountPage.LOGIN }
+    if (page == IosAccountPage.FORGOT) IosBackHandler(IosBackPriority.OVERLAY) { page = forgotReturnPage }
+    IosBackHandler(IosBackPriority.ACCOUNT) {
+        when (page) {
+            IosAccountPage.HOME -> onBackFromRoot()
+            IosAccountPage.LOGIN, IosAccountPage.REGISTER -> if (onBackFromLogin != null) onBackFromLogin() else page = IosAccountPage.HOME
+            IosAccountPage.FORGOT -> page = forgotReturnPage
+            IosAccountPage.PROFILE, IosAccountPage.ORDERS, IosAccountPage.WALLET, IosAccountPage.INFO, IosAccountPage.HELP -> page = IosAccountPage.HOME
+            IosAccountPage.DATA -> page = IosAccountPage.PROFILE
+            IosAccountPage.ADDRESS -> page = addressReturnPage
+            IosAccountPage.ORDER_DETAIL -> page = IosAccountPage.ORDERS
+        }
+    }
     val scope = rememberCoroutineScope()
+    val registerOwner = remember(repository) { StoreRegisterOwner(repository) }
+    val forgotPasswordOwner = remember(repository) { StoreForgotPasswordOwner(repository) }
+    val sharedAddressOwner = remember(repository) { StoreAddressOwner(repository) }
+    val authSnapshot by sessionState.snapshot.collectAsState()
+    val ordersState by ordersOwner.state.collectAsState()
+    LaunchedEffect(authSnapshot.user?.id) { ordersOwner.onSessionChanged(authSnapshot.user?.id) }
     val promotionRepository = remember(repository) {
         PromotionRepository(bearerTokenProvider = { repository.currentToken() })
     }
-    fun invalidateExpiredSession() { repository.clearLocalSession(); user = null; selectedOrder = null; error = null; page = IosAccountPage.HOME }
+    val walletOwner = remember(loyaltyRepository, promotionRepository) {
+        StoreWalletOwner(loyaltyRepository, promotionRepository)
+    }
+    LaunchedEffect(user?.id) {
+        walletOwner.onSessionChanged(user?.id?.toString())
+        if (user != null) runCatching { PushDeviceRegistration.registerCurrentDevice() }
+    }
+    fun invalidateExpiredSession() { sessionState.logout(); user = null; selectedOrder = null; error = null; page = IosAccountPage.HOME }
 
     LaunchedEffect(openPromotionsOnStart, user?.id) {
         if (openPromotionsOnStart && user != null) {
@@ -111,113 +160,227 @@ fun CriosRangoIOSAccountScreen(
     LaunchedEffect(user?.id, pendingPushOrderId) {
         val id = pendingPushOrderId ?: return@LaunchedEffect
         if (user == null) return@LaunchedEffect
-        selectedOrder = runCatching { repository.orders().orders }.getOrNull()?.firstOrNull { it.id == id }
-        if (selectedOrder != null) page = IosAccountPage.ORDER_DETAIL
-        pendingPushOrderId = null
+        try {
+            ordersOwner.onSessionChanged(user?.id)
+            when (val resolution = ordersOwner.resolveOrderById(id)) {
+                is StoreOrderSelectionResolution.Resolved -> {
+                    selectedOrder = resolution.order
+                    page = IosAccountPage.ORDER_DETAIL
+                    if (consumedPushOrderId != id) {
+                        consumedPushOrderId = id
+                        onInitialOrderConsumed(id)
+                    }
+                    pendingPushOrderId = null
+                }
+                StoreOrderSelectionResolution.NotFound -> Unit
+                StoreOrderSelectionResolution.Pending -> Unit
+                is StoreOrderSelectionResolution.TransientError -> Unit
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Keep the initial order ID on transient failures so the shared contract can retry.
+        }
+    }
+
+    LaunchedEffect(user?.id, pendingPushOrderId, ordersState.loading, ordersState.refreshing, ordersState.error, ordersState.orders) {
+        val id = pendingPushOrderId ?: return@LaunchedEffect
+        if (user == null) return@LaunchedEffect
+        when (val resolution = ordersOwner.resolveSelection(id)) {
+            is StoreOrderSelectionResolution.Resolved -> {
+                selectedOrder = resolution.order
+                page = IosAccountPage.ORDER_DETAIL
+                if (consumedPushOrderId != id) {
+                    consumedPushOrderId = id
+                    onInitialOrderConsumed(id)
+                }
+                pendingPushOrderId = null
+            }
+            StoreOrderSelectionResolution.NotFound -> Unit
+            StoreOrderSelectionResolution.Pending, is StoreOrderSelectionResolution.TransientError -> Unit
+        }
     }
 
     fun finishAuthentication(authenticatedUser: AccountUser) {
         user = authenticatedUser
         error = null
-        page = if (openPromotionsOnStart) IosAccountPage.WALLET else IosAccountPage.HOME
+        page = when {
+            pendingPushOrderId != null -> IosAccountPage.ORDERS
+            openPromotionsOnStart -> IosAccountPage.WALLET
+            else -> IosAccountPage.HOME
+        }
         scope.launch {
-            runCatching { repository.claimPendingOrder() }
+            runCatching { ordersOwner.claimPendingOrderAndRefresh() }
                 .onFailure { println("KMP_ACCOUNT_CLAIM_FAILED=${it.message}") }
             if (!repository.hasSession) {
                 user = null
                 error = "La sesión ha caducado. Vuelve a iniciar sesión."
                 page = IosAccountPage.HOME
+            } else {
+                onAuthenticated?.invoke()
             }
         }
     }
 
-    LaunchedEffect(Unit) {
-        println("KMP_RUNTIME_ACCOUNT_SCREEN_READY")
-        println("KMP_ACCOUNT_SESSION_PRESENT=" + repository.hasSession)
-        if (repository.hasSession) {
-            runCatching { repository.me() }
-                .onSuccess {
-                    user = it
-                    error = null
-                    runCatching { repository.claimPendingOrder() }
-                        .onFailure { claimError -> println("KMP_ACCOUNT_CLAIM_FAILED=${claimError.message}") }
-                    if (!repository.hasSession) {
-                        user = null
-                        error = "La sesión ha caducado. Vuelve a iniciar sesión."
-                    }
-                }
-                .onFailure {
-                    user = null
-                    error = it.message ?: "No se ha podido recuperar la sesión."
-                }
+    LaunchedEffect(authSnapshot.status, authSnapshot.user, authSnapshot.error) {
+        when (authSnapshot.status) {
+            StoreAccountAuthStatus.AUTHENTICATED -> user = authSnapshot.user
+            StoreAccountAuthStatus.UNAUTHENTICATED -> user = null
+            StoreAccountAuthStatus.CHECKING -> Unit
         }
-        startup = false
+        error = authSnapshot.error
     }
 
-    MaterialTheme {
+    CriosRangoTheme {
         androidx.compose.foundation.layout.Box(modifier.fillMaxSize()) {
-        if (startup) {
+        if (authSnapshot.status == StoreAccountAuthStatus.CHECKING && authSnapshot.loading) {
             FullScreenLoading("Comprobando sesión")
         } else {
             when (page) {
-                IosAccountPage.HOME -> IosAccountHome(
-                    user, error,
-                    onLogin = { error = null; page = IosAccountPage.LOGIN },
-                    onRegister = { error = null; page = IosAccountPage.REGISTER },
-                    onProfile = { error = null; page = IosAccountPage.PROFILE },
-                    onAddress = { error = null; addressReturnPage = IosAccountPage.HOME; page = IosAccountPage.ADDRESS },
-                    onOrders = { error = null; page = IosAccountPage.ORDERS },
-                    onWallet = { error = null; page = IosAccountPage.WALLET },
-                    onInfoPage = { selectedInfoPage = it; error = null; page = IosAccountPage.INFO },
-                    onHelp = { error = null; page = IosAccountPage.HELP },
-                    onLogout = { user = null; error = null; page = IosAccountPage.HOME },
-                    repository = repository,
-                    onBeforeLogout = onBeforeLogout
-                )
+                IosAccountPage.HOME -> Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+                    (error ?: authSnapshot.error)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    StoreAccountRootScreen(
+                        modifier = Modifier.weight(1f),
+                        contentHorizontalPadding = 4.dp,
+                        contentTopSpacing = 20.dp,
+                        headerHorizontalPadding = 0.dp,
+                        onBack = onBackFromRoot,
+                        fullName = user?.let { it.displayName.ifBlank { it.email } },
+                        email = user?.email,
+                        appVersion = appVersion,
+                        onOrders = { if (user == null) page = IosAccountPage.LOGIN else page = IosAccountPage.ORDERS },
+                        onWallet = { if (user == null) page = IosAccountPage.LOGIN else page = IosAccountPage.WALLET },
+                        onProfile = { if (user == null) page = IosAccountPage.LOGIN else page = IosAccountPage.PROFILE },
+                        onLogin = { error = null; page = IosAccountPage.LOGIN },
+                        onHelp = { error = null; page = IosAccountPage.HELP },
+                        onInfoPage = { selectedInfoPage = AccountInfoPage.valueOf(it.name); error = null; page = IosAccountPage.INFO }
+                    )
+                }
                 IosAccountPage.LOGIN -> IosLoginScreen(
                     repository,
+                    sessionState,
                     onAuthenticated = ::finishAuthentication,
                     onRegister = { page = IosAccountPage.REGISTER },
                     onForgot = { forgotReturnPage = IosAccountPage.LOGIN; page = IosAccountPage.FORGOT },
-                    onBack = { page = IosAccountPage.HOME }
+                    onBack = { if (onBackFromLogin != null) onBackFromLogin() else page = IosAccountPage.HOME }
                 )
-                IosAccountPage.REGISTER -> IosRegisterScreen(
-                    repository,
-                    onAuthenticated = ::finishAuthentication,
-                    onLogin = { page = IosAccountPage.LOGIN },
-                    onBack = { page = IosAccountPage.HOME }
-                )
-                IosAccountPage.FORGOT -> IosForgotPasswordScreen(repository) { page = forgotReturnPage }
-                IosAccountPage.PROFILE -> IosProfileMenuScreen(
+                IosAccountPage.REGISTER -> androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+                    IosLoginScreen(repository, sessionState, ::finishAuthentication, onRegister = {}, onForgot = {}, onBack = {
+                        if (onBackFromLogin != null) onBackFromLogin() else page = IosAccountPage.HOME
+                    })
+                    StoreRegisterScreen(owner = registerOwner, onDismiss = { page = IosAccountPage.LOGIN }, onRegistered = ::finishAuthentication)
+                }
+                IosAccountPage.FORGOT -> androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+                    if (forgotReturnPage == IosAccountPage.LOGIN) {
+                        IosLoginScreen(repository, sessionState, ::finishAuthentication, onRegister = { page = IosAccountPage.REGISTER }, onForgot = {}, onBack = {
+                            if (onBackFromLogin != null) onBackFromLogin() else page = IosAccountPage.HOME
+                        })
+                    } else {
+                        StoreProfileMenuScreen(
+                            onPersonalData = { page = IosAccountPage.DATA },
+                            onAddress = { addressReturnPage = IosAccountPage.PROFILE; page = IosAccountPage.ADDRESS },
+                            onPassword = { forgotReturnPage = IosAccountPage.PROFILE; page = IosAccountPage.FORGOT },
+                            onDeleteAccount = { onOpenExternalUrl(AccountDeletion.URL) },
+                            onLogout = {
+                                scope.launch {
+                                    runCatching { PushDeviceRegistration.unregisterCurrentDevice() }
+                                    runCatching { onBeforeLogout() }
+                                    runCatching { repository.logout() }
+                                    sessionState.logout()
+                                    user = null
+                                    error = null
+                                    page = IosAccountPage.HOME
+                                }
+                            },
+                            notificationPreferences = { IosPushPreferences() },
+                            onBack = { page = IosAccountPage.PROFILE }
+                        )
+                    }
+                    StoreForgotPasswordScreen(owner = forgotPasswordOwner, onDismiss = { page = forgotReturnPage })
+                }
+                IosAccountPage.PROFILE -> StoreProfileMenuScreen(
                     onPersonalData = { page = IosAccountPage.DATA },
                     onAddress = { addressReturnPage = IosAccountPage.PROFILE; page = IosAccountPage.ADDRESS },
                     onPassword = { forgotReturnPage = IosAccountPage.PROFILE; page = IosAccountPage.FORGOT },
                     onDeleteAccount = { onOpenExternalUrl(AccountDeletion.URL) },
                     onLogout = {
                         scope.launch {
+                            runCatching { PushDeviceRegistration.unregisterCurrentDevice() }
                             runCatching { onBeforeLogout() }
                             runCatching { repository.logout() }
+                            sessionState.logout()
                             user = null
                             error = null
                             page = IosAccountPage.HOME
                         }
                     },
-                    onBack = { page = IosAccountPage.HOME }
+                    notificationPreferences = { IosPushPreferences() },
+                onBack = { page = IosAccountPage.HOME }
                 )
-                IosAccountPage.DATA -> IosProfileScreen(repository, user, { user = it }, ::invalidateExpiredSession) { page = IosAccountPage.PROFILE }
-                IosAccountPage.ADDRESS -> IosAddressScreen(repository, ::invalidateExpiredSession) { page = addressReturnPage }
-                IosAccountPage.ORDERS -> IosOrdersScreen(repository, { selectedOrder = it; page = IosAccountPage.ORDER_DETAIL }, ::invalidateExpiredSession) { page = IosAccountPage.HOME }
-                IosAccountPage.WALLET -> IosWalletScreen(
+                IosAccountPage.DATA -> StoreProfileScreen(
+                    repository = repository,
+                    sessionState = sessionState,
+                    user = user,
+                    onUserChanged = { updated -> user = updated; sessionState.publishAuthenticatedUser(updated) },
+                    onSessionExpired = ::invalidateExpiredSession,
+                    onBack = { page = IosAccountPage.PROFILE }
+                )
+                IosAccountPage.ADDRESS -> StoreAddressScreen(
+                    repository = repository,
+                    addressOwner = sharedAddressOwner,
+                    onSessionExpired = ::invalidateExpiredSession,
+                    onBack = { page = addressReturnPage }
+                )
+                IosAccountPage.ORDERS -> StoreOrdersScreen(ordersOwner, sessionState, onBack = { page = IosAccountPage.HOME }, onOpenOrder = { selectedOrder = it; page = IosAccountPage.ORDER_DETAIL }, onSessionExpired = ::invalidateExpiredSession)
+                IosAccountPage.WALLET -> StoreWalletScreen(
+                    owner = walletOwner,
                     authenticated = user != null,
-                    repository = loyaltyRepository,
-                    promotionRepository = promotionRepository,
+                    sessionId = user?.id?.toString(),
                     cartCouponCodes = cartCouponCodes,
-                    onApplyCoupon = onApplyWalletCoupon,
+                    onApplyCoupon = { code ->
+                        if (onApplyWalletCoupon(code)) CouponApplicationResult.Success
+                        else CouponApplicationResult.failure("No se ha podido aplicar el cupón al carrito.")
+                    },
                     onBack = { page = IosAccountPage.HOME }
                 )
-                IosAccountPage.INFO -> selectedInfoPage?.let { infoPage -> IosInformationPageScreen(infoPage) { page = IosAccountPage.HOME } }
-                IosAccountPage.HELP -> IosHelpScreen { page = IosAccountPage.HOME }
-                IosAccountPage.ORDER_DETAIL -> selectedOrder?.let { IosOrderDetailScreen(it) { page = IosAccountPage.ORDERS } }
+                IosAccountPage.INFO -> selectedInfoPage?.let { infoPage -> IosInformationPageAdapter(infoPage) { page = IosAccountPage.HOME } }
+                IosAccountPage.HELP -> StoreAccountHelpScreen(
+                    onBack = { page = IosAccountPage.HOME },
+                    onWhatsApp = { onOpenExternalUrl("https://wa.me/34633246788?text=Hola%2C+necesito+ayuda+con+la+app+de+Cr%C3%ADos%26Rango.") },
+                    onCall = { onOpenExternalUrl("tel:+34969091236") },
+                    onEmail = { onOpenExternalUrl("mailto:criosrango@criosrango.es?subject=Consulta%20desde%20la%20app%20Cr%C3%ADos%26Rango") }
+                )
+                IosAccountPage.ORDER_DETAIL -> selectedOrder?.let { order -> StoreOrderDetailScreen(order, onBack = { page = IosAccountPage.ORDERS }, onRequestReturn = { selected ->
+                    val requests = storeReturnRequests(selected)
+                    when (requests.size) {
+                        0 -> Unit
+                        1 -> onOpenExternalUrl("https://wa.me/34633246788?text=" + encodeStoreWhatsAppMessage(requests.single().message))
+                        else -> returnPickerOrder = selected
+                    }
+                }) }
+            }
+            returnPickerOrder?.let { order ->
+                IosBackHandler(IosBackPriority.OVERLAY) { returnPickerOrder = null }
+                val requests = storeReturnRequests(order)
+                AlertDialog(
+                    onDismissRequest = { returnPickerOrder = null },
+                    title = { Text("¿Qué producto quieres devolver?") },
+                    text = { Column {
+                        requests.forEach { request ->
+                            OutlinedButton(onClick = {
+                                returnPickerOrder = null
+                                onOpenExternalUrl("https://wa.me/34633246788?text=" + encodeStoreWhatsAppMessage(request.message))
+                            }, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                                Column(Modifier.fillMaxWidth()) {
+                                    Text(request.productName, fontWeight = FontWeight.Medium)
+                                    Text("Cantidad: ${request.quantity}", style = MaterialTheme.typography.bodySmall)
+                                    request.variations.forEach { (name, value) -> Text("$name: $value", style = MaterialTheme.typography.bodySmall) }
+                                }
+                            }
+                        }
+                    } },
+                    confirmButton = { TextButton(onClick = { returnPickerOrder = null }) { Text("Cancelar") } }
+                )
             }
         }
         }
@@ -400,397 +563,7 @@ private fun PromotionDateRow(text: String) {
     }
 }
 
-@Composable
-private fun IosWalletScreen(
-    authenticated: Boolean,
-    repository: LoyaltyRepository,
-    promotionRepository: PromotionRepository,
-    cartCouponCodes: Set<String>,
-    onApplyCoupon: suspend (String) -> Unit,
-    onBack: () -> Unit
-) {
-    var wallet by remember { mutableStateOf<LoyaltyWallet?>(null) }
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var showRedeemDialog by remember { mutableStateOf(false) }
-    var showWalletInfo by remember { mutableStateOf(false) }
-    var pendingPoints by remember { mutableStateOf<Int?>(null) }
-    var pendingRequestId by remember { mutableStateOf<String?>(null) }
-    var promotions by remember { mutableStateOf(emptyList<Promotion>()) }
-    var promotionsLoading by remember { mutableStateOf(true) }
-    var promotionsError by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
 
-    fun refresh() {
-        scope.launch {
-            loading = true
-            error = null
-            runCatching { repository.getWallet() }
-                .onSuccess { wallet = it }
-                .onFailure { error = it.message ?: "No se ha podido cargar el monedero." }
-            loading = false
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        refresh()
-        promotionsLoading = true
-        promotionsError = null
-        runCatching { promotionRepository.getPromotions() }
-            .onSuccess { promotions = it }
-            .onFailure {
-                promotions = emptyList()
-                promotionsError = it.message ?: "No se han podido cargar las promociones."
-            }
-        promotionsLoading = false
-    }
-
-    fun redeem(points: Int) {
-        val requestId = if (pendingPoints == points && !pendingRequestId.isNullOrBlank()) {
-            pendingRequestId!!
-        } else {
-            pendingPoints = points
-            repository.newRequestId().also { pendingRequestId = it }
-        }
-        scope.launch {
-            loading = true
-            error = null
-            runCatching { repository.redeem(points, requestId) }
-                .onSuccess { response ->
-                    wallet = runCatching { repository.getWallet() }.getOrNull() ?: wallet
-                    val coupon = response.coupon
-                    if (coupon == null) error = "El canje no ha devuelto un cupón utilizable." else onApplyCoupon(coupon.code)
-                    pendingPoints = null
-                    pendingRequestId = null
-                }
-                .onFailure { error = it.message ?: "No se ha podido utilizar el monedero." }
-            loading = false
-        }
-    }
-
-    fun applyReward(reward: LoyaltyReward) {
-        scope.launch {
-            loading = true
-            error = null
-            onApplyCoupon(reward.code)
-            wallet = runCatching { repository.getWallet() }.getOrNull() ?: wallet
-            loading = false
-        }
-    }
-
-    val options = wallet?.redeemableOptions() ?: emptyList()
-
-    Column(
-        Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 0.dp).offset(y = (-14).dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(
-                onClick = onBack,
-                enabled = !loading,
-                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-            ) { Text("←", style = MaterialTheme.typography.titleLarge) }
-            Spacer(Modifier.width(5.dp))
-            Text(
-                "Cupones y promociones",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-            )
-        }
-
-        when {
-            authenticated && loading && wallet == null -> FullScreenLoading("Cargando monedero")
-            authenticated && wallet != null -> {
-Card(
-                    Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF6F0))
-                ) {
-                    Box(Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(7.dp)
-                    ) {
-                        val walletAmount = wallet!!.walletValue
-                            .replace(',', '.')
-                            .toDoubleOrNull()
-                            ?: 0.0
-                        val minimumAmount = wallet!!.minimumRedeemValue
-                            .replace(',', '.')
-                            .toDoubleOrNull()
-                            ?: 0.0
-                        val progress =
-                            if (minimumAmount > 0.0)
-                                (walletAmount / minimumAmount).coerceIn(0.0, 1.0)
-                            else
-                                0.0
-                        val remaining =
-                            (minimumAmount - walletAmount).coerceAtLeast(0.0)
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(end = 34.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            WalletVisualIcon()
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                                Text(
-                                    "Monedero",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    color = Color(0xFF183B35)
-                                )
-                                Text(
-                                    wallet!!.walletValue + if (walletAmount >= minimumAmount) " disponibles" else " acumulados",
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    color = Color(0xFF0F5C4D)
-                                )
-                            }
-                            if (walletAmount >= minimumAmount && options.isNotEmpty()) {
-                                Button(
-                                    onClick = { showRedeemDialog = true },
-                                    enabled = !loading,
-                                    modifier = Modifier.width(76.dp).height(36.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                    shape = RoundedCornerShape(18.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F5C4D), contentColor = Color.White)
-                                ) { Text("Usar", style = MaterialTheme.typography.labelMedium) }
-                            }
-                        }
-                        
-                         if (walletAmount < minimumAmount) {
-                            Text(
-                                "Has acumulado " + wallet!!.walletValue +
-                                    " de " + wallet!!.minimumRedeemValue,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF40514D)
-                            )
-                            Box(
-                                modifier = Modifier.fillMaxWidth().height(6.dp)
-                                    .background(Color(0xFFD7E8E1), RoundedCornerShape(3.dp))
-                            ) {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth(progress.toFloat()).height(6.dp)
-                                        .background(Color(0xFF0F5C4D), RoundedCornerShape(3.dp))
-                                )
-                            }
-                            Text(
-                                "Te faltan " + formatWalletRemaining(remaining) + " para desbloquear tu saldo.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF40514D)
-                            )
-                        }
-                    }
-                    IconButton(
-                            onClick = { showWalletInfo = true },
-                            modifier = Modifier.align(Alignment.TopEnd).size(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = InfoLineIcon,
-                                contentDescription = "Cómo funciona el monedero",
-                                tint = Color(0xFF0F5C4D),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
-                    }
-                    }
-                }
-            }
-
-        if (authenticated && !wallet?.pendingRewards.isNullOrEmpty()) {
-            Text(
-                "Saldo listo para usar",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
-            )
-            Card(
-                Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF2F0F8))
-            ) {
-                Column(
-                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp)
-                ) {
-                    wallet!!.pendingRewards.forEachIndexed { index, reward ->
-                        val applied = cartCouponCodes.any { it.equals(reward.code, ignoreCase = true) }
-                        Row(
-                            Modifier.fillMaxWidth().padding(vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = WalletLineIcon,
-                                contentDescription = "Saldo de monedero",
-                                tint = Color(0xFF0F5C4D),
-                                modifier = Modifier.size(22.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Column(
-                                Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(1.dp)
-                            ) {
-                                Text(
-                                    "Saldo de monedero · " + reward.amount.replace('.', ',') + " €",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF183B35)
-                                )
-                                Text(
-                                    reward.code,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            if (applied) {
-                                Text(
-                                    "Aplicado",
-                                    color = Color(0xFF0F5C4D),
-                                    fontWeight = FontWeight.SemiBold,
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-                            } else {
-                                TextButton(
-                                    onClick = { applyReward(reward) },
-                                    enabled = !loading,
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                                ) { Text("Aplicar") }
-                            }
-                        }
-                        if (index < wallet!!.pendingRewards.lastIndex) {
-                            HorizontalDivider(
-                                Modifier.padding(start = 30.dp),
-                                color = Color(0xFFDCD8E8),
-                                thickness = 1.dp
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        error?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            TextButton(
-                onClick = { if (pendingPoints != null) redeem(pendingPoints!!) else refresh() },
-                enabled = !loading
-            ) { Text(if (pendingPoints != null) "Reintentar" else "Reintentar carga") }
-        }
-
-        val visiblePromotions = if (authenticated) promotions else promotions.filter { it.isVisibleToAnonymous() }
-        Text(
-            "Promociones disponibles (${visiblePromotions.size})",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
-        )
-
-        when {
-            promotionsLoading && visiblePromotions.isEmpty() -> CircularProgressIndicator(modifier = Modifier.padding(vertical = 8.dp))
-            promotionsError != null && visiblePromotions.isEmpty() -> Text(promotionsError!!, color = MaterialTheme.colorScheme.error)
-            visiblePromotions.isEmpty() -> Text("No hay promociones disponibles.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            else -> visiblePromotions.sortedByDescending { it.priority }.forEachIndexed { index, promotion ->
-                val code = promotion.code?.takeIf { it.isNotBlank() }
-                val applied = code?.let { couponCode -> cartCouponCodes.any { it.equals(couponCode, ignoreCase = true) } } == true
-                val isBirthday = promotion.type.equals("birthday_coupon", ignoreCase = true) || listOfNotNull(promotion.title, promotion.description).any { it.contains("cumpleaños", ignoreCase = true) || it.contains("birthday", ignoreCase = true) }
-                Card(
-                    Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(15.dp),
-                    colors = CardDefaults.cardColors(containerColor = promotionCardColor(promotion, isBirthday))
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        PromotionVisualIcon(promotion = promotion, isBirthday = isBirthday)
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                if (isBirthday) "Tu regalo de cumpleaños" else promotion.title,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF183B35)
-                            )
-                            val description = if (isBirthday) "15% de descuento por tu cumpleaños." else promotion.description.trim()
-                            if (description.isNotBlank()) Text(description, style = MaterialTheme.typography.bodySmall, color = Color(0xFF40514D))
-                            if (isBirthday) Text("Válido durante 15 días.", style = MaterialTheme.typography.labelSmall, color = Color(0xFF40514D))
-                            promotion.expiresAt?.takeIf { it.isNotBlank() }?.let {
-                                PromotionDateRow("Válido hasta " + formatPromotionExpiry(it))
-                            }
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        code?.let { couponCode ->
-                            Button(
-                                onClick = { if (!applied) scope.launch { onApplyCoupon(couponCode) } },
-                                enabled = !loading,
-                                modifier = Modifier.width(78.dp).height(36.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                                shape = RoundedCornerShape(18.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F5C4D), contentColor = Color.White)
-                            ) { Text(if (applied) "Aplicado" else "Aplicar", style = MaterialTheme.typography.labelMedium) }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (showWalletInfo) {
-        AlertDialog(
-            onDismissRequest = { showWalletInfo = false },
-            title = {
-                Text(
-                    "¿Cómo funciona tu monedero?",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-            },
-            text = {
-                Text(
-                    "1 € gastado = 1 punto.\n\n" +
-                        "Cuando acumules 100 puntos, podrás convertirlos en 5 € de saldo para tus compras.\n\n" +
-                        "La barra te indica cuánto te falta para desbloquear el saldo.\n\n" +
-                        "Cuando tengas saldo disponible, pulsa “Usar” para elegir cuánto quieres aplicar a tu compra."
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = { showWalletInfo = false },
-                    modifier = Modifier.height(36.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF0F5C4D),
-                        contentColor = Color.White
-                    )
-                ) { Text("Entendido", style = MaterialTheme.typography.labelMedium) }
-            }
-        )
-    }
-
-    if (showRedeemDialog && options.isNotEmpty()) {
-        AlertDialog(
-            onDismissRequest = { if (!loading) showRedeemDialog = false },
-            title = { Text("¿Cuánto quieres utilizar?" ) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    options.forEach { option ->
-                        Button(onClick = { showRedeemDialog = false; redeem(option.points) }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
-                            Text(if (option.isMaximum) "Máximo: " + option.value + " €" else option.value + " €")
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showRedeemDialog = false }, enabled = !loading) { Text("Cancelar") } }
-        )
-    }
-}
 
 private fun promotionCardColor(promotion: Promotion, isBirthday: Boolean): Color = when (promotionVisualKind(promotion, isBirthday)) {
     PromotionVisualKind.BIRTHDAY -> Color(0xFFFDECEF)
@@ -808,140 +581,40 @@ private fun formatPromotionExpiry(value: String): String {
 }
 
 @Composable
-private fun IosInformationPageScreen(page: AccountInfoPage, onBack: () -> Unit) {
+private fun IosInformationPageAdapter(page: AccountInfoPage, onBack: () -> Unit) {
     val client = remember { WordPressPagesClient() }
     var retryKey by remember { mutableStateOf(0) }
     var loading by remember(page, retryKey) { mutableStateOf(true) }
     var result by remember(page, retryKey) { mutableStateOf<WordPressPage?>(null) }
-    var notFound by remember(page, retryKey) { mutableStateOf(false) }
     var error by remember(page, retryKey) { mutableStateOf<String?>(null) }
     LaunchedEffect(page, retryKey) {
-        loading = true; result = null; notFound = false; error = null
+        loading = true
+        result = null
+        error = null
         runCatching { client.getPageBySlug(page.slug) }
-            .onSuccess { loaded -> if (loaded == null) notFound = true else result = loaded; loading = false }
-            .onFailure { error = "No se ha podido cargar esta información."; loading = false }
-    }
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("Atrás") }
-            Spacer(Modifier.width(8.dp))
-            Text(page.title, style = MaterialTheme.typography.titleLarge)
-        }
-        Spacer(Modifier.height(16.dp))
-        when {
-            loading -> FullScreenLoading("Cargando información")
-            notFound -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("No se ha encontrado esta información.")
-                Spacer(Modifier.height(12.dp))
-                OutlinedButton(onClick = { retryKey++ }) { Text("Reintentar") }
+            .onSuccess { loaded ->
+                if (loaded == null) error = "No se ha podido cargar esta información." else result = loaded
+                loading = false
             }
-            error != null -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(error!!, color = MaterialTheme.colorScheme.error)
-                Spacer(Modifier.height(12.dp))
-                OutlinedButton(onClick = { retryKey++ }) { Text("Reintentar") }
+            .onFailure {
+                error = "No se ha podido cargar esta información."
+                loading = false
             }
-            result != null -> {
-                val title = wordpressHtmlToText(result!!.title.rendered).ifBlank { page.title }
-                val content = wordpressHtmlToText(result!!.content.rendered)
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    item { Text(title, style = MaterialTheme.typography.headlineSmall) }
-                    item { if (content.isBlank()) Text("No hay contenido disponible.") else Text(content, style = MaterialTheme.typography.bodyLarge) }
-                }
-            }
-        }
-
     }
-}
-
-@Composable
-private fun IosHelpScreen(onBack: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(24.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("Atrás") }
-            Spacer(Modifier.width(8.dp))
-            Text("Ayuda", style = MaterialTheme.typography.titleLarge)
-        }
-        Spacer(Modifier.height(20.dp))
-        Text("Contacta con nosotros", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(12.dp))
-        Text("WhatsApp: 633 246 788")
-        Text("Teléfono: 969 091 236")
-        Text("Correo electrónico: criosrango@criosrango.es")
-        Spacer(Modifier.height(20.dp))
-        Text("Horario de atención", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(10.dp))
-        Text("Lunes a viernes: 10:00–13:30 · 17:30–21:00")
-        Text("Sábado: 10:00–13:30")
-        Text("Domingo: Cerrado")
-    }
-}
-
-@Composable
-private fun IosAccountHome(
-    user: AccountUser?,
-    error: String?,
-    onLogin: () -> Unit,
-    onRegister: () -> Unit,
-    onProfile: () -> Unit,
-    onWallet: () -> Unit,
-    onAddress: () -> Unit,
-    onOrders: () -> Unit,
-    onInfoPage: (AccountInfoPage) -> Unit,
-    onHelp: () -> Unit,
-    onLogout: () -> Unit,
-    repository: AccountRepository,
-    onBeforeLogout: suspend () -> Unit = {}
-) {
-    val scope = rememberCoroutineScope()
-    var loggingOut by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("Críos&Rango", style = MaterialTheme.typography.headlineMedium)
-        Text("Cuenta", style = MaterialTheme.typography.titleLarge)
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (user == null) {
-            Text("Accede a tu cuenta para consultar tus datos, dirección y pedidos.")
-            Button(onClick = onLogin, modifier = Modifier.fillMaxWidth()) { Text("Iniciar sesión") }
-            OutlinedButton(onClick = onRegister, modifier = Modifier.fillMaxWidth()) { Text("Crear cuenta") }
-            Button(onClick = { onInfoPage(AccountInfoPage.RETURNS) }, modifier = Modifier.fillMaxWidth()) { Text("Cambios y devoluciones") }
-            Button(onClick = { onInfoPage(AccountInfoPage.TERMS) }, modifier = Modifier.fillMaxWidth()) { Text("Condiciones de contratación") }
-            Button(onClick = { onInfoPage(AccountInfoPage.PRIVACY) }, modifier = Modifier.fillMaxWidth()) { Text("Política de privacidad") }
-            Button(onClick = { onInfoPage(AccountInfoPage.LEGAL) }, modifier = Modifier.fillMaxWidth()) { Text("Aviso legal") }
-            Button(onClick = { onInfoPage(AccountInfoPage.COOKIES) }, modifier = Modifier.fillMaxWidth()) { Text("Política de cookies") }
-            Button(onClick = onHelp, modifier = Modifier.fillMaxWidth()) { Text("Ayuda") }
-        } else {
-            Text("Hola, " + user.displayName.ifBlank { user.email })
-            Button(onClick = onProfile, modifier = Modifier.fillMaxWidth()) { Text("Mi perfil") }
-            Button(onClick = onAddress, modifier = Modifier.fillMaxWidth()) { Text("Mi dirección") }
-            Button(onClick = onOrders, modifier = Modifier.fillMaxWidth()) { Text("Mis pedidos") }
-            Button(onClick = onWallet, modifier = Modifier.fillMaxWidth()) {
-                Text("Cupones y promociones", maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Clip, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            }
-            Button(onClick = onHelp, modifier = Modifier.fillMaxWidth()) { Text("Ayuda") }
-            Button(onClick = { onInfoPage(AccountInfoPage.RETURNS) }, modifier = Modifier.fillMaxWidth()) { Text("Cambios y devoluciones") }
-            Button(onClick = { onInfoPage(AccountInfoPage.TERMS) }, modifier = Modifier.fillMaxWidth()) { Text("Condiciones de contratación") }
-            Button(onClick = { onInfoPage(AccountInfoPage.PRIVACY) }, modifier = Modifier.fillMaxWidth()) { Text("Política de privacidad") }
-            Button(onClick = { onInfoPage(AccountInfoPage.LEGAL) }, modifier = Modifier.fillMaxWidth()) { Text("Aviso legal") }
-            Button(onClick = { onInfoPage(AccountInfoPage.COOKIES) }, modifier = Modifier.fillMaxWidth()) { Text("Política de cookies") }
-            OutlinedButton(
-                enabled = !loggingOut,
-                onClick = {
-                    loggingOut = true
-                    scope.launch {
-                        runCatching { onBeforeLogout() }
-                        runCatching { repository.logout() }
-                        loggingOut = false
-                        onLogout()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text(if (loggingOut) "Cerrando sesión…" else "Cerrar sesión") }
-        }
-    }
+    StoreAccountInformationScreen(
+        title = page.title,
+        loading = loading,
+        errorMessage = error,
+        content = result?.let { wordpressHtmlToText(it.content.rendered) }.orEmpty(),
+        onRetry = { retryKey++ },
+        onBack = onBack
+    )
 }
 
 @Composable
 private fun IosLoginScreen(
     repository: AccountRepository,
+    sessionState: StoreAccountSessionState,
     onAuthenticated: (AccountUser) -> Unit,
     onRegister: () -> Unit,
     onForgot: () -> Unit,
@@ -952,176 +625,35 @@ private fun IosLoginScreen(
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    AccountForm("Iniciar sesión", onBack) {
-        OutlinedTextField(login, { login = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(password, { password = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Button(
-            enabled = !busy && login.isNotBlank() && password.isNotBlank(),
-            onClick = {
-                busy = true; error = null
+    StoreLoginScreen(
+        login = login,
+        password = password,
+        loading = busy,
+        error = error,
+        onLoginChanged = { login = it; error = null },
+        onPasswordChanged = { password = it; error = null },
+        onSubmit = { submittedLogin, submittedPassword ->
+            if (submittedLogin.isBlank() || submittedPassword.isBlank()) {
+                error = "Introduce tu correo y contraseña."
+            } else if (!busy) {
+                busy = true
+                error = null
                 scope.launch {
-                    runCatching { repository.login(login, password) }
-                        .onSuccess(onAuthenticated)
-                        .onFailure { error = it.message ?: "No se ha podido iniciar sesión." }
-                    busy = false
+                    try {
+                        val authenticatedUser = sessionState.login(submittedLogin.trim(), submittedPassword)
+                        if (authenticatedUser != null) onAuthenticated(authenticatedUser)
+                        else error = sessionState.snapshot.value.error ?: "No hemos podido iniciar sesión."
+                    } finally {
+                        busy = false
+                    }
                 }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) { Text(if (busy) "Entrando…" else "Iniciar sesión") }
-        TextButton(onClick = onForgot) { Text("He olvidado mi contraseña") }
-        TextButton(onClick = onRegister) { Text("Crear una cuenta") }
-    }
-}
-
-@Composable
-private fun IosRegisterScreen(
-    repository: AccountRepository,
-    onAuthenticated: (AccountUser) -> Unit,
-    onLogin: () -> Unit,
-    onBack: () -> Unit
-) {
-    val scope = rememberCoroutineScope()
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var firstName by remember { mutableStateOf("") }
-    var lastName by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var birthDate by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    AccountForm("Crear cuenta", onBack) {
-        OutlinedTextField(firstName, { firstName = it }, label = { Text("Nombre") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(lastName, { lastName = it }, label = { Text("Apellidos") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(email, { email = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(phone, { phone = it }, label = { Text("Teléfono") }, modifier = Modifier.fillMaxWidth())
-        BirthDatePickerField(birthDate, { birthDate = it }, modifier = Modifier.fillMaxWidth(), enabled = !busy)
-        OutlinedTextField(password, { password = it }, label = { Text("Contraseña") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Button(
-            enabled = !busy && email.isNotBlank() && password.isNotBlank(),
-            onClick = {
-                busy = true; error = null
-                scope.launch {
-                    runCatching { repository.register(email, password, firstName, lastName, phone, birthDate) }
-                        .onSuccess(onAuthenticated)
-                        .onFailure { error = it.message ?: "No se ha podido crear la cuenta." }
-                    busy = false
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) { Text(if (busy) "Creando…" else "Crear cuenta") }
-        TextButton(onClick = onLogin) { Text("Ya tengo una cuenta") }
-    }
-}
-
-@Composable
-private fun IosForgotPasswordScreen(repository: AccountRepository, onBack: () -> Unit) {
-    val scope = rememberCoroutineScope()
-    var login by remember { mutableStateOf("") }
-    var message by remember { mutableStateOf<String?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    AccountForm("Recuperar contraseña", onBack) {
-        OutlinedTextField(login, { login = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
-        message?.let { Text(it) }
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Button(
-            enabled = !busy && login.isNotBlank(),
-            onClick = {
-                busy = true; message = null; error = null
-                scope.launch {
-                    runCatching { repository.forgotPassword(login) }
-                        .onSuccess { message = it.ifBlank { "Revisa tu correo para continuar." } }
-                        .onFailure { error = it.message ?: "No se ha podido solicitar la recuperación." }
-                    busy = false
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) { Text(if (busy) "Enviando…" else "Enviar recuperación") }
-    }
-}
-
-@Composable
-private fun IosProfileMenuScreen(
-    onPersonalData: () -> Unit,
-    onAddress: () -> Unit,
-    onPassword: () -> Unit,
-    onDeleteAccount: () -> Unit,
-    onLogout: () -> Unit,
-    onBack: () -> Unit
-) {
-    var showDeleteConfirmation by remember { mutableStateOf(false) }
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            TextButton(onClick = onBack) { Text("Atrás") }
-            Text("Mi perfil", style = MaterialTheme.typography.headlineSmall)
-            Spacer(Modifier.height(10.dp))
-            IosProfileActionRow("Datos personales", "👤", onPersonalData)
-            IosProfileActionRow("Dirección de entrega", "⌖", onAddress)
-            IosProfileActionRow("Cambiar contraseña", "🔒", onPassword)
-            IosPushPreferences()
-            IosProfileActionRow(
-                AccountDeletion.TITLE,
-                "🗑",
-                { showDeleteConfirmation = true },
-                containerColor = AccountDeletion.background,
-                contentColor = AccountDeletion.accent
-            )
-            IosProfileActionRow(
-                "Cerrar sesión",
-                "↪",
-                onLogout,
-                containerColor = Color(0xFFFFECEF),
-                contentColor = Color(0xFFC73B4C)
-            )
-        }
-    }
-    if (showDeleteConfirmation) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirmation = false },
-            title = { Text(AccountDeletion.TITLE) },
-            text = { Text(AccountDeletion.MESSAGE) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDeleteConfirmation = false
-                    onDeleteAccount()
-                }) { Text(AccountDeletion.CONTINUE) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirmation = false }) { Text(AccountDeletion.CANCEL) }
             }
-        )
-    }
-}
-
-@Composable
-private fun IosProfileActionRow(
-    title: String,
-    icon: String,
-    onClick: () -> Unit,
-    containerColor: Color = Color(0xFFF0EDF1),
-    contentColor: Color = MaterialTheme.colorScheme.onSurface
-) {
-    Card(
-        Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor)
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(icon, modifier = Modifier.width(28.dp), color = contentColor)
-            Spacer(Modifier.width(14.dp))
-            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = contentColor)
-            Text("›", style = MaterialTheme.typography.titleLarge, color = contentColor)
-        }
-    }
+        },
+        onForgotPassword = onForgot,
+        onRegister = onRegister,
+        onBack = onBack,
+        modifier = Modifier.fillMaxSize()
+    )
 }
 
 @Composable
@@ -1272,197 +804,6 @@ private fun AccountAddressFields(address: AccountCustomerAddress, onChange: (Acc
 }
 
 @Composable
-private fun IosOrdersScreen(
-    repository: AccountRepository,
-    onOpenOrder: (AccountOrderSummary) -> Unit,
-    onSessionExpired: () -> Unit,
-    onBack: () -> Unit
-) {
-    var loading by remember { mutableStateOf(true) }
-    var orders by remember { mutableStateOf(emptyList<AccountOrderSummary>()) }
-    var error by remember { mutableStateOf<String?>(null) }
-    fun retry() { loading = true }
-    LaunchedEffect(loading) {
-        if (!loading) return@LaunchedEffect
-        runCatching { repository.orders().orders }
-            .onSuccess { orders = it; error = null; loading = false }
-            .onFailure {
-                if (!repository.hasSession) {
-                    onSessionExpired()
-                    return@onFailure
-                }
-                error = it.message ?: "No se han podido cargar tus pedidos."
-                loading = false
-            }
-    }
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack) { Text("Atrás") }
-                Spacer(Modifier.width(8.dp))
-                Text("Mis pedidos", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            }
-        }
-        when {
-            loading -> item { FullScreenLoading("Cargando pedidos") }
-            error != null -> item {
-                Column(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(error!!, color = MaterialTheme.colorScheme.error)
-                    Spacer(Modifier.height(12.dp))
-                    OutlinedButton(onClick = { error = null; retry() }) { Text("Reintentar") }
-                }
-            }
-            orders.isEmpty() -> item {
-                Column(Modifier.fillMaxWidth().padding(top = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Todavía no tienes pedidos.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            else -> items(orders, key = { it.id }) { order ->
-                Card(Modifier.fillMaxWidth().clickable { onOpenOrder(order) }, shape = RoundedCornerShape(18.dp)) {
-                    Column(Modifier.padding(16.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("Pedido #${order.number.ifBlank { order.id.toString() }}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-                            IosOrderStatusBadge(order.status, order.statusLabel)
-                        }
-                        order.dateCreated?.takeIf { it.isNotBlank() }?.let { rawDate ->
-                            Spacer(Modifier.height(8.dp))
-                            Text("Fecha: ${formatOrderDate(rawDate)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        if (order.items.isNotEmpty()) {
-                            Spacer(Modifier.height(10.dp))
-                            order.items.forEach { item ->
-                                Text("${item.quantity} × ${item.name}")
-                                val variationText = item.variations.filter { it.name.isNotBlank() && it.value.isNotBlank() }
-                                    .joinToString(" · ") { "${if (it.name.equals("Tallas", true)) "Talla" else it.name}: ${it.value}" }
-                                if (variationText.isNotBlank()) Text(variationText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Spacer(Modifier.height(4.dp))
-                            }
-                        }
-                        if (order.paymentMethodTitle.isNotBlank()) {
-                            Spacer(Modifier.height(6.dp))
-                            Text(if (order.paymentMethodTitle.contains("bizum", true)) "Pago con Bizum" else "Pago con tarjeta", style = MaterialTheme.typography.bodySmall)
-                        }
-                        if (order.total.isNotBlank()) {
-                            Spacer(Modifier.height(8.dp))
-                            Text("Total: ${formatAccountAmount(order.total, order.currency)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-                        }
-                    }
-                }
-            }
-        }
-        if (!loading && error == null && orders.isNotEmpty()) {
-            item { OutlinedButton(onClick = { retry() }, modifier = Modifier.fillMaxWidth()) { Text("Actualizar pedidos") } }
-        }
-    }
-}
-
-@Composable
-private fun IosOrderStatusBadge(status: String, label: String) {
-    val visible = label.ifBlank { status }
-    val combined = "$status $label".lowercase()
-    val background = when {
-        "complet" in combined -> Color(0xFFE3F1E8)
-        "proces" in combined || "prepar" in combined -> Color(0xFFF4EAD3)
-        "enviad" in combined || "shipped" in combined -> Color(0xFFE4EFF8)
-        "cancel" in combined || "fallid" in combined || "reembols" in combined -> Color(0xFFF8E3E1)
-        else -> Color(0xFFE9E9E7)
-    }
-    val foreground = when {
-        "complet" in combined -> Color(0xFF285C3B)
-        "proces" in combined || "prepar" in combined -> Color(0xFF76591F)
-        "enviad" in combined || "shipped" in combined -> Color(0xFF245579)
-        "cancel" in combined || "fallid" in combined || "reembols" in combined -> Color(0xFF8A332D)
-        else -> Color(0xFF5C5C58)
-    }
-    Surface(shape = RoundedCornerShape(50), color = background, contentColor = foreground) {
-        Text(visible, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
-    }
-}
-
-private fun formatOrderDate(value: String): String {
-    val date = value.take(10)
-    val parts = date.split("-")
-    return if (parts.size == 3) "${parts[2]}-${parts[1]}-${parts[0]}" else date
-}
-
-private fun formatAccountAmount(value: String, currency: String): String {
-    val amount = value.replace('.', ',')
-    return if (currency.equals("EUR", true)) "$amount €" else "$amount $currency"
-}
-@Composable
-private fun IosOrderDetailScreen(order: AccountOrderSummary, onBack: () -> Unit) {
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack) { Text("Atrás") }
-                Spacer(Modifier.width(8.dp))
-                Text("Pedido #${order.number}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            }
-            Spacer(Modifier.height(4.dp))
-            IosOrderStatusBadge(order.status, order.statusLabel)
-            order.dateCreated?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.height(8.dp))
-                Text("Fecha: ${formatOrderDate(it)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        item {
-            AccountDetailCard("Productos") {
-                order.items.forEachIndexed { index, item ->
-                    Text("${item.quantity} × ${item.name}", fontWeight = FontWeight.Medium)
-                    item.variations.filter { it.name.isNotBlank() && it.value.isNotBlank() }.forEach {
-                        Text("${if (it.name.equals("Tallas", true)) "Talla" else it.name}: ${it.value}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (index != order.items.lastIndex) Spacer(Modifier.height(10.dp))
-                }
-            }
-        }
-        item {
-            AccountDetailCard("Pago") {
-                Text(if (order.paymentMethodTitle.contains("bizum", true)) "Pago con Bizum" else "Pago con tarjeta")
-            }
-        }
-        val a = order.shippingAddress
-        if (a.address1.isNotBlank() || a.city.isNotBlank() || a.postcode.isNotBlank()) {
-            item {
-                AccountDetailCard("Entrega") {
-                    if (a.address1.isNotBlank()) Text(a.address1)
-                    if (a.address2.isNotBlank()) Text(a.address2)
-                    val location = listOf(a.postcode, a.city, a.state).filter { it.isNotBlank() }.joinToString(" · ")
-                    if (location.isNotBlank()) Text(location)
-                    if (a.country.isNotBlank()) Text(if (a.country == "ES") "España" else a.country)
-                    if (order.shippingMethod.isNotBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(order.shippingMethod, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-        item {
-            AccountDetailCard("Resumen") {
-                Text("Subtotal: ${formatAccountAmount(order.subtotal, order.currency)}")
-                Text(if (order.shippingTotal.isBlank() || order.shippingTotal == "0" || order.shippingTotal == "0.00") "Envío: Gratis" else "Envío: ${formatAccountAmount(order.shippingTotal, order.currency)}")
-                Spacer(Modifier.height(8.dp))
-                Text("Total: ${formatAccountAmount(order.total, order.currency)}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-@Composable
-private fun AccountDetailCard(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-            content()
-        }
-    }
-}
-
-@Composable
 private fun AccountForm(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -1534,6 +875,7 @@ fun BirthDatePickerField(
         }
     )
     if (open) {
+        IosBackHandler(IosBackPriority.OVERLAY) { open = false }
         val state = androidx.compose.material3.rememberDatePickerState(
             initialSelectedDateMillis = birthDateToEpochMillis(birthDate)
         )

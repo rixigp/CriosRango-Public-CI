@@ -1,6 +1,7 @@
 package es.criosrango.shared
 
 import es.criosrango.shared.api.StoreApiClient
+import es.criosrango.shared.api.StoreApiException
 import es.criosrango.shared.model.StoreCart
 import es.criosrango.shared.model.StoreCartLine
 import es.criosrango.shared.model.StoreCartRequest
@@ -25,6 +26,7 @@ class StoreCartStore(
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 ) {
     private val mutex = Mutex()
+    private var hasResolvedCart = false
     private val _cart = MutableStateFlow(StoreCart())
     val cart: StateFlow<StoreCart> = _cart.asStateFlow()
     private val _state = MutableStateFlow(StoreCartLoadState.LOADING)
@@ -38,22 +40,99 @@ class StoreCartStore(
     private val scope = scope
 
     fun applyCoupon(code: String) {
-        scope.launch {
-            mutex.withLock {
-                if (_couponLoading.value) return@withLock
-                val normalizedCode = code.trim()
-                if (normalizedCode.isEmpty()) {
-                    _couponError.value = "No se ha podido aplicar este código de descuento."
-                    return@withLock
+        scope.launch { mutex.withLock { applyCouponLocked(code) } }
+    }
+
+    suspend fun applyCouponAwait(code: String): Boolean =
+        mutex.withLock { applyCouponLocked(code) }
+
+    private suspend fun applyCouponLocked(code: String): Boolean {
+        val normalizedCode = code.trim()
+        if (normalizedCode.isEmpty()) {
+            _couponError.value = "No se ha podido aplicar este código de descuento."
+            return false
+        }
+
+        val previousCart = _cart.value
+        _couponLoading.value = true
+        _couponError.value = null
+        try {
+            val responseCart = api.applyCoupon(normalizedCode)
+            if (responseCart.errors.isNotEmpty()) {
+                _couponError.value = couponApplyFailureMessage(
+                    failure = null,
+                    hadPreviousCoupons = previousCart.coupons.isNotEmpty(),
+                    responseErrorCode = responseCart.errors.first().code
+                )
+                return false
+            }
+            if (responseCart.hasCoupon(normalizedCode)) {
+                accept(responseCart)
+                return true
+            }
+
+            // HTTP success alone is insufficient: the authoritative cart must contain the coupon.
+            accept(responseCart)
+            restorePreviousCoupons(previousCart, responseCart)
+            _couponError.value = couponApplyFailureMessage(null, previousCart.coupons.isNotEmpty())
+            return false
+        } catch (failure: Throwable) {
+            if (failure is CancellationException && failure !is TimeoutCancellationException) throw failure
+
+            // Match the Android golden master: a failed request without a server cart
+            // keeps the last confirmed snapshot. Reconcile only when Woo supplies one.
+            val serverCart = (failure as? StoreApiException)?.updatedCart
+            if (serverCart != null) {
+                accept(serverCart)
+                restorePreviousCoupons(previousCart, serverCart)
+            }
+            _couponError.value = couponApplyFailureMessage(failure, previousCart.coupons.isNotEmpty())
+            return false
+        } finally {
+            _couponLoading.value = false
+        }
+    }
+
+    private suspend fun restorePreviousCoupons(previousCart: StoreCart, serverCart: StoreCart) {
+        var currentCart = serverCart
+        previousCart.coupons.forEach { previousCoupon ->
+            if (currentCart.hasCoupon(previousCoupon.code)) return@forEach
+            try {
+                val restoredCart = api.applyCoupon(previousCoupon.code)
+                if (restoredCart.errors.isNotEmpty() || !restoredCart.hasCoupon(previousCoupon.code)) {
+                    return@forEach
                 }
-                _couponLoading.value = true
-                _couponError.value = null
-                runCatching { api.applyCoupon(normalizedCode) }
-                    .onSuccess { accept(it) }
-                    .onFailure { _couponError.value = it.message?.takeIf(String::isNotBlank) ?: "No se ha podido aplicar este código de descuento." }
-                _couponLoading.value = false
+                currentCart = restoredCart
+                accept(restoredCart)
+            } catch (failure: Throwable) {
+                if (failure is CancellationException && failure !is TimeoutCancellationException) throw failure
+                val errorCart = (failure as? StoreApiException)?.updatedCart
+                if (errorCart != null) {
+                    currentCart = errorCart
+                    accept(errorCart)
+                }
             }
         }
+    }
+
+    private fun StoreCart.hasCoupon(code: String): Boolean =
+        coupons.any { it.code.equals(code, ignoreCase = true) }
+
+    private fun couponApplyFailureMessage(
+        failure: Throwable?,
+        hadPreviousCoupons: Boolean,
+        responseErrorCode: String? = null
+    ): String {
+        val code = ((failure as? StoreApiException)?.apiCode ?: responseErrorCode).orEmpty().lowercase()
+        val rejectedCoupon = code.contains("invalid_coupon") || code.contains("coupon_invalid") ||
+            code.contains("coupon_not_applicable") || code.contains("coupon_expired") ||
+            code.contains("coupon_usage_limit")
+        val baseMessage = when {
+            failure == null -> "El servidor no ha confirmado este descuento."
+            rejectedCoupon -> "Este descuento no se puede aplicar a este carrito."
+            else -> "No se ha podido aplicar el descuento. Comprueba las condiciones de la promoción e inténtalo de nuevo."
+        }
+        return if (hadPreviousCoupons) "$baseMessage Se ha intentado conservar o recuperar el descuento anterior." else baseMessage
     }
 
     fun removeCoupon(code: String) {
@@ -67,10 +146,25 @@ class StoreCartStore(
                 }
                 _couponLoading.value = true
                 _couponError.value = null
-                runCatching { api.removeCoupon(normalizedCode) }
-                    .onSuccess { accept(it) }
-                    .onFailure { _couponError.value = it.message?.takeIf(String::isNotBlank) ?: "No se ha podido quitar este código de descuento." }
-                _couponLoading.value = false
+                try {
+                    val responseCart = api.removeCoupon(normalizedCode)
+                    if (responseCart.errors.isNotEmpty()) {
+                        _couponError.value = couponApplyFailureMessage(
+                            failure = null,
+                            hadPreviousCoupons = _cart.value.coupons.isNotEmpty(),
+                            responseErrorCode = responseCart.errors.first().code
+                        )
+                    } else {
+                        accept(responseCart)
+                    }
+                } catch (failure: Throwable) {
+                    if (failure is CancellationException && failure !is TimeoutCancellationException) throw failure
+                    val serverCart = (failure as? StoreApiException)?.updatedCart
+                    if (serverCart != null) accept(serverCart)
+                    _couponError.value = couponApplyFailureMessage(failure, _cart.value.coupons.isNotEmpty())
+                } finally {
+                    _couponLoading.value = false
+                }
             }
         }
     }
@@ -78,14 +172,17 @@ class StoreCartStore(
     fun refresh() {
         scope.launch {
             mutex.withLock {
-                _state.value = StoreCartLoadState.LOADING
+                // Keep a confirmed snapshot visible while refreshing. LOADING is only
+                // meaningful before the first successful cart response.
+                if (!hasResolvedCart) _state.value = StoreCartLoadState.LOADING
                 _error.value = null
-                runCatching { api.cart() }
-                    .onSuccess { accept(it) }
-                    .onFailure {
-                        _state.value = StoreCartLoadState.ERROR
-                        _error.value = it.message ?: "No se ha podido recuperar el carrito."
-                    }
+                try {
+                    accept(api.cart())
+                } catch (failure: Throwable) {
+                    if (failure is CancellationException && failure !is TimeoutCancellationException) throw failure
+                    if (!hasResolvedCart) _state.value = StoreCartLoadState.ERROR
+                    _error.value = failure.message ?: "No se ha podido recuperar el carrito."
+                }
             }
         }
     }
@@ -102,10 +199,13 @@ class StoreCartStore(
     }
 
     fun update(line: StoreCartLine, quantity: Int) {
-        if (quantity <= 0) {
+        val minimum = line.quantityLimits?.minimum ?: 1
+        if (quantity <= 0 || quantity < minimum) {
             remove(line)
             return
         }
+        val maximum = line.quantityLimits?.maximum?.takeUnless { it == 9999 }
+        if ((quantity - line.quantity) % line.quantityStep() != 0 || (maximum != null && quantity > maximum)) return
         scope.launch {
             mutex.withLock {
                 _error.value = null
@@ -144,6 +244,7 @@ class StoreCartStore(
     }
 
     private fun accept(cart: StoreCart) {
+        hasResolvedCart = true
         _cart.value = cart
         _state.value = if (cart.items.isEmpty()) StoreCartLoadState.SUCCESS_EMPTY else StoreCartLoadState.SUCCESS_ITEMS
         _error.value = null
@@ -169,6 +270,7 @@ class StoreCartStore(
         } finally {
             api.clearSession()
             _cart.value = StoreCart()
+            hasResolvedCart = true
             _state.value = StoreCartLoadState.SUCCESS_EMPTY
             _error.value = null
             _couponError.value = null
@@ -200,6 +302,7 @@ class StoreCartStore(
     }
 
     private fun resetLocalCartAfterConfirmedPaymentFailure() {
+        hasResolvedCart = true
         _cart.value = StoreCart()
         _state.value = StoreCartLoadState.SUCCESS_EMPTY
         _error.value = null
@@ -209,16 +312,21 @@ class StoreCartStore(
 
     suspend fun refreshAwait() {
         mutex.withLock {
-            _state.value = StoreCartLoadState.LOADING
+            if (!hasResolvedCart) _state.value = StoreCartLoadState.LOADING
             _error.value = null
-            runCatching { api.cart() }
-                .onSuccess { accept(it) }
-                .onFailure { throw it }
+            try {
+                accept(api.cart())
+            } catch (failure: Throwable) {
+                if (failure is CancellationException && failure !is TimeoutCancellationException) throw failure
+                if (!hasResolvedCart) _state.value = StoreCartLoadState.ERROR
+                _error.value = failure.message ?: "No se ha podido recuperar el carrito."
+                throw failure
+            }
         }
     }
 
     private fun fail(error: Throwable) {
-        _state.value = StoreCartLoadState.ERROR
+        if (!hasResolvedCart) _state.value = StoreCartLoadState.ERROR
         _error.value = error.message ?: "No se ha podido actualizar el carrito."
     }
 

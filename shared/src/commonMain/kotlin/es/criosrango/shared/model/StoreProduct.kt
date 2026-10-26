@@ -63,6 +63,12 @@ data class OutletOriginExtension(
 )
 @Serializable data class VariationAttribute(val name: String = "", val value: String = "")
 @Serializable data class ProductTag(val id: Int = 0, val name: String = "", val slug: String = "")
+@Serializable data class StoreGlobalAttribute(val id: Int = 0, val name: String = "", val taxonomy: String = "")
+@Serializable data class StoreGlobalAttributeTerm(val id: Int = 0, val name: String = "", val slug: String = "", val count: Int = 0)
+@Serializable data class StoreGlobalTag(val id: Int = 0, val name: String = "", val slug: String = "", val count: Int = 0)
+@Serializable data class StoreGlobalBrand(val id: Int = 0, val name: String = "", val slug: String = "", val count: Int = 0, val image: StoreBrandImage? = null) { val imageUrl: String? get() = image?.src?.takeIf { it.isNotBlank() } ?: image?.thumbnail?.takeIf { it.isNotBlank() } }
+@Serializable data class StoreBrandImage(val src: String = "", val thumbnail: String = "")
+data class StoreProductAttributeFilter(val taxonomy: String, val termIds: List<Int>)
 @Serializable data class ProductAttribute(
     val name: String = "", val taxonomy: String? = null, val terms: List<AttributeTerm> = emptyList()
 )

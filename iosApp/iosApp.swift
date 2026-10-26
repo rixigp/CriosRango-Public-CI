@@ -1,6 +1,26 @@
 import UIKit
+import FirebaseCore
 import Shared
 import UserNotifications
+
+private func parsePushOrderId(_ rawValue: Any?) -> Int32 {
+    if let value = rawValue as? String,
+       let orderId = Int32(value.trimmingCharacters(in: .whitespacesAndNewlines)),
+       orderId > 0 {
+        return orderId
+    }
+    if let number = rawValue as? NSNumber {
+        let value = number.doubleValue
+        guard value.isFinite,
+              value > 0,
+              value.rounded(.towardZero) == value,
+              value <= Double(Int32.max) else {
+            return 0
+        }
+        return number.int32Value
+    }
+    return 0
+}
 
 @main
 final class CriosRangoIOSApp: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -8,6 +28,9 @@ final class CriosRangoIOSApp: UIResponder, UIApplicationDelegate, UNUserNotifica
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil
     ) -> Bool {
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
         UNUserNotificationCenter.current().delegate = self
         PushNotificationBridge.shared.configure()
         return true
@@ -16,13 +39,19 @@ final class CriosRangoIOSApp: UIResponder, UIApplicationDelegate, UNUserNotifica
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions { [.banner,.sound,.badge] }
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let info=response.notification.request.content.userInfo
-        let type=info["type"] as? String
-        let orderId=(info["order_id"] as? String).flatMap{Int32($0)} ?? 0
+        let type = info["type"] as? String
+        let orderId = parsePushOrderId(info["order_id"])
         MainViewControllerKt.handleIosPushNotification(type: type, orderId: orderId)
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) { PushNotificationBridge.shared.didRegister(deviceToken: deviceToken) }
-    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) { print("APNS_REGISTRATION_FAILED=\(error.localizedDescription)") }
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        IosPushDiagnostics.shared.recordRegistrationFailure(
+            errorClass: String(describing: type(of: error)),
+            message: error.localizedDescription
+        )
+        print("APNS_REGISTRATION_FAILED=\(String(describing: type(of: error)))")
+    }
     func application(
         _ application: UIApplication,
         configurationForConnecting connectingSceneSession: UISceneSession,
@@ -51,8 +80,8 @@ final class CriosRangoSceneDelegate: UIResponder, UIWindowSceneDelegate {
         for context in connectionOptions.urlContexts { handlePaymentURL(context.url) }
         if let response=connectionOptions.notificationResponse {
             let info=response.notification.request.content.userInfo
-            let type=info["type"] as? String
-            let orderId=(info["order_id"] as? String).flatMap{Int32($0)} ?? 0
+            let type = info["type"] as? String
+            let orderId = parsePushOrderId(info["order_id"])
             MainViewControllerKt.handleIosPushNotification(type: type, orderId: orderId)
         }
     }

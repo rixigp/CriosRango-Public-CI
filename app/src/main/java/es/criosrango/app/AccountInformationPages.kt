@@ -1,5 +1,8 @@
 package es.criosrango.app
 
+import es.criosrango.shared.StoreAccountInformationScreen
+import es.criosrango.shared.StorePageHeader
+
 import android.text.Html
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
@@ -147,36 +150,17 @@ private fun rememberInfoPageState(page: AccountInfoPage): Pair<InfoPageUiState, 
 }
 
 @Composable
-fun AccountInformationPageContent(page: AccountInfoPage, onBack: () -> Unit) {
+fun AccountInformationPageAdapter(page: AccountInfoPage, onBack: () -> Unit) {
     val (state, retry) = rememberInfoPageState(page)
     BackHandler(onBack = onBack)
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        CatalogScreenHeader(title = page.title, onBack = onBack, bottomPadding = 4.dp)
-        Spacer(Modifier.height(4.dp))
-        when (val current = state) {
-            InfoPageUiState.Loading -> Box(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 28.dp),
-                contentAlignment = Alignment.Center
-            ) { CircularProgressIndicator() }
-
-            is InfoPageUiState.Error -> Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(current.message, style = MaterialTheme.typography.bodyLarge)
-                Spacer(Modifier.height(18.dp))
-                OutlinedButton(onClick = retry) { Text("Reintentar") }
-            }
-
-            is InfoPageUiState.Success -> Column(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp).verticalScroll(rememberScrollState())
-            ) {
-                Text(current.content, style = MaterialTheme.typography.bodyLarge)
-                Spacer(Modifier.height(48.dp))
-            }
-        }
-    }
+    StoreAccountInformationScreen(
+        title = page.title,
+        loading = state is InfoPageUiState.Loading,
+        errorMessage = (state as? InfoPageUiState.Error)?.message,
+        content = (state as? InfoPageUiState.Success)?.content.orEmpty(),
+        onRetry = retry,
+        onBack = onBack
+    )
 }
 
 @Composable

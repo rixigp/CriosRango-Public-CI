@@ -23,3 +23,5 @@ build/
 *.zip
 **/google-services.json
 **/*service-account*.json
+iosApp/GoogleService-Info.plist
+**/GoogleService-Info.plist

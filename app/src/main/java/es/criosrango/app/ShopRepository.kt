@@ -246,7 +246,6 @@ class StoreRepository(private val api: StoreApi) {
         return accumulated
             .filter { it.name.isNotBlank() && it.slug.isNotBlank() }
             .distinctBy { it.slug.trim().lowercase(java.util.Locale.ROOT) }
-            .map { it.withPackagedLogoFallback() }
             .sortedBy { it.name.lowercase(java.util.Locale.ROOT) }
     }
 
@@ -306,6 +305,10 @@ class StoreRepository(private val api: StoreApi) {
             perPage = perPage
         )
 
+    /** A nullable category is the genuine unscoped catalog query. */
+    suspend fun productsPage(categoryId: Int?, page: Int, perPage: Int): List<StoreProduct> =
+        api.products(perPage = perPage, page = page, category = categoryId)
+
     suspend fun allProducts(): List<StoreProduct> {
         val result = mutableListOf<StoreProduct>()
         var page = 1
@@ -332,47 +335,6 @@ class StoreRepository(private val api: StoreApi) {
         return result.distinctBy { it.id }
     }
 
-    suspend fun recentProducts(): List<StoreProduct> {
-        val utc = java.util.TimeZone.getTimeZone("UTC")
-
-        val calendar = java.util.Calendar
-            .getInstance(utc)
-            .apply {
-                add(java.util.Calendar.DAY_OF_YEAR, -60)
-            }
-
-        val formatter = java.text.SimpleDateFormat(
-            "yyyy-MM-dd'T'HH:mm:ss'Z'",
-            java.util.Locale.US
-        ).apply {
-            timeZone = utc
-        }
-
-        val cutoff = formatter.format(calendar.time)
-
-        val homeProductCount = 8
-
-        val recent = api.products(
-            perPage = homeProductCount,
-            orderBy = "date",
-            order = "desc",
-            after = cutoff
-        )
-
-        if (recent.size >= homeProductCount) {
-            return recent.take(homeProductCount)
-        }
-
-        val latest = api.products(
-            perPage = homeProductCount,
-            orderBy = "date",
-            order = "desc"
-        )
-
-        return (recent + latest)
-            .distinctBy { it.id }
-            .take(homeProductCount)
-    }
     suspend fun categories() = api.categories()
     suspend fun outletAvailability() = api.outletAvailability()
     suspend fun product(id: Int) = api.product(id)
@@ -435,15 +397,24 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
     private val couponMutationMutex = Mutex()
     private val addGate = CartAddGate()
 
+    suspend fun clearSnapshotAfterSharedEmpty() {
+        cartMutex.withLock {
+            preferences.edit().remove("cart_snapshot").remove("cart_line_parents").apply()
+            confirmedCart = WooCart()
+            _cart.value = confirmedCart
+            _state.value = CartLoadState.SUCCESS_EMPTY
+            _error.value = null
+        }
+    }
+
     suspend fun refresh() {
         cartMutex.withLock {
             _state.value = CartLoadState.LOADING
             try {
                 val remote = withTimeout(18_000) { api.cart() }
-                val snapshot = localSnapshot()
-                val fallbackUsed = remote.items.isEmpty() && snapshot.isNotEmpty()
-                val restored = if (fallbackUsed) rebuildRemote(snapshot) else remote
-                accept(restored)
+                // A successful empty Store API response is authoritative. Local recovery
+                // snapshots must never resurrect lines the server has removed.
+                accept(remote)
             } catch (exception: Exception) {
                 _cart.value = confirmedCart
                 _state.value = CartLoadState.ERROR

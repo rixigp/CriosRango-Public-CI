@@ -5,6 +5,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
+import io.ktor.http.Url
+import io.ktor.http.decodeURLPart
 import org.jetbrains.compose.resources.painterResource
 import es.criosrango.shared.generated.resources.Res
 import es.criosrango.shared.generated.resources.home_logo
@@ -62,6 +64,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -71,7 +74,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.path
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.loyalty.LoyaltyRepository
@@ -82,11 +84,16 @@ import es.criosrango.shared.loyalty.addMoneyAmounts
 import es.criosrango.shared.loyalty.subtractMoneyAmounts
 import es.criosrango.shared.promotions.Promotion
 import es.criosrango.shared.promotions.PromotionRepository
-import es.criosrango.shared.promotions.isVisibleToAnonymous
+import es.criosrango.shared.promotions.cartVisiblePromotions
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.model.StoreCartVariation
 import es.criosrango.shared.model.consumerDiscount
+import es.criosrango.shared.model.consumerUnitPrice
+import es.criosrango.shared.model.consumerLineTotal
+import es.criosrango.shared.model.consumerSubtotal
+import es.criosrango.shared.model.consumerShipping
+import es.criosrango.shared.model.consumerTotal
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
@@ -109,54 +116,171 @@ internal data class IosCatalogRestorationState(
     val firstVisibleItemOffset: Int = 0
 )
 
+internal enum class IosOutletSeason { WINTER, SUMMER }
+
 internal sealed class IosCatalogPage {
     data object Novedades : IosCatalogPage()
     data object Search : IosCatalogPage()
     data object Brands : IosCatalogPage()
-    data object Outlet : IosCatalogPage()
+    data class Outlet(val categoryId: Int? = 445, val season: IosOutletSeason? = null) : IosCatalogPage()
     data object Root : IosCatalogPage()
+    data class RootFilter(val scope: StoreRootFilterScope) : IosCatalogPage()
     data class Category(val category: StoreCategory) : IosCatalogPage()
     data class Product(val product: StoreProduct) : IosCatalogPage()
 }
+
+internal fun iosHomeOutletPage(season: IosOutletSeason?): IosCatalogPage.Outlet =
+    IosCatalogPage.Outlet(categoryId = 445, season = season)
+
+internal fun iosSelectedRootTab(section: IosRootSection, catalogOriginHome: Boolean): StoreMainTab =
+    if (catalogOriginHome) StoreMainTab.HOME else when (section) {
+        IosRootSection.HOME -> StoreMainTab.HOME
+        IosRootSection.CATEGORIES -> StoreMainTab.CATEGORIES
+        IosRootSection.OUTLET -> StoreMainTab.OUTLET
+        IosRootSection.CART -> StoreMainTab.CART
+        IosRootSection.ACCOUNT -> StoreMainTab.ACCOUNT
+    }
+
+internal fun iosRootShellSelectedTab(
+    section: IosRootSection,
+    catalogOriginHome: Boolean,
+    checkoutOpen: Boolean
+): StoreMainTab = if (checkoutOpen) StoreMainTab.CART else iosSelectedRootTab(section, catalogOriginHome)
 
 @Composable
 fun CriosRangoIOSRootScreen(
     storeApi: es.criosrango.shared.api.StoreApiClient,
     accountRepository: AccountRepository,
+    accountTokenStore: es.criosrango.shared.account.AccountTokenStore,
+    accountAppVersion: String = "",
     loyaltyRepository: LoyaltyRepository,
     cartStore: StoreCartStore,
     checkoutStore: StoreCheckoutStore,
     paymentStore: StorePaymentStore,
     onOpenPayment: (String) -> Unit,
     onOpenExternalUrl: (String) -> Unit,
+    onShareProductText: (String) -> Unit,
+    onReserveProductMessage: (String) -> Unit,
     pushNavigation: IosPushNavigation? = null,
     onPushNavigationConsumed: () -> Unit = {}
 ) {
     var section by remember { mutableStateOf(IosRootSection.HOME) }
+    var pendingPushOrderId by remember { mutableStateOf<Int?>(null) }
     var openPromotionsOnStart by remember { mutableStateOf(false) }
+    var accountLoginFromCart by remember { mutableStateOf(false) }
     var checkoutOpen by remember { mutableStateOf(false) }
     var postOrderSuccess by remember { mutableStateOf<PostOrderSuccessSnapshot?>(null) }
     var catalogPage by remember { mutableStateOf<IosCatalogPage>(IosCatalogPage.Root) }
     var catalogOriginHome by remember { mutableStateOf(false) }
     val catalogHistory = remember { mutableStateListOf<IosCatalogPage>() }
     val catalogRestoration = remember { mutableStateMapOf<Long, IosCatalogRestorationState>() }
+    val outletControllerScope = rememberCoroutineScope()
+    val accountSessionState = remember(accountRepository) { StoreAccountSessionState(accountRepository) }
+    LaunchedEffect(accountSessionState) { accountSessionState.restore() }
+    val rootFilterOwner = remember(storeApi) { StoreRootFilterOwner(storeApi, outletControllerScope) }
+    val brandsController = remember(storeApi) { StoreBrandsController(storeApi, outletControllerScope) }
+    val homeController = remember(storeApi, brandsController) { storeHomeController(storeApi, brandsController) }
+    var startupMinimumDurationReached by remember(homeController) { mutableStateOf(false) }
+    var startupHeroPreparationFinished by remember(homeController) { mutableStateOf(false) }
+    LaunchedEffect(homeController) {
+        homeController.start()
+        homeController.prepareInitialHero()
+        startupHeroPreparationFinished = true
+    }
+    LaunchedEffect(homeController) {
+        delay(2_000)
+        startupMinimumDurationReached = true
+    }
+    val showStartupBranding = !startupMinimumDurationReached || !startupHeroPreparationFinished
+    val outletController = remember(storeApi) {
+        StoreOutletController(outletControllerScope, storeOutletDataSource(storeApi))
+    }
+    var categorySnapshot by remember { mutableStateOf<List<StoreCategory>?>(null) }
+    var categorySnapshotLoading by remember { mutableStateOf(true) }
+    var categorySnapshotError by remember { mutableStateOf<String?>(null) }
+    var categorySnapshotRetryGeneration by remember { mutableStateOf(0) }
+    var outletCategorySnapshot by remember { mutableStateOf<List<StoreCategory>?>(null) }
+    var outletCategorySnapshotLoading by remember { mutableStateOf(true) }
+    var outletCategorySnapshotError by remember { mutableStateOf<String?>(null) }
+    var outletCategorySnapshotRetryGeneration by remember { mutableStateOf(0) }
     fun openCatalog(page: IosCatalogPage) { if (catalogPage != page) catalogHistory.add(catalogPage); catalogPage = page }
-    fun resetCatalog() { catalogHistory.clear(); catalogRestoration.clear(); catalogPage = IosCatalogPage.Root; catalogOriginHome = false }
+    fun resetCatalog() { catalogHistory.clear(); catalogPage = IosCatalogPage.Root; catalogOriginHome = false }
+    IosBackHandler(IosBackPriority.ROOT, canGoBack = section != IosRootSection.HOME) { resetCatalog(); section = IosRootSection.HOME }
+    fun retryCategorySnapshot() {
+        categorySnapshot = null
+        categorySnapshotError = null
+        categorySnapshotLoading = true
+        categorySnapshotRetryGeneration++
+    }
+    fun retryOutletCategorySnapshot() {
+        outletCategorySnapshotError = null
+        outletCategorySnapshotLoading = true
+        outletCategorySnapshotRetryGeneration++
+    }
     fun backCatalog() { catalogPage = if (catalogHistory.isNotEmpty()) catalogHistory.removeAt(catalogHistory.lastIndex) else IosCatalogPage.Root }
+
+    LaunchedEffect(section, catalogPage, categorySnapshotRetryGeneration) {
+        val needsCategoryTree = section == IosRootSection.CATEGORIES &&
+            (catalogPage == IosCatalogPage.Root || catalogPage is IosCatalogPage.Category)
+        if (!needsCategoryTree || categorySnapshot != null || categorySnapshotError != null) return@LaunchedEffect
+        categorySnapshotLoading = true
+        try {
+            categorySnapshot = storeApi.categories(perPage = 100)
+            categorySnapshotError = null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            categorySnapshotError = "No se han podido cargar las categorías."
+        } finally {
+            categorySnapshotLoading = false
+        }
+    }
+
+    LaunchedEffect(section, catalogPage, outletCategorySnapshotRetryGeneration) {
+        if (section != IosRootSection.OUTLET || catalogPage !is IosCatalogPage.Outlet ||
+            outletCategorySnapshot != null || outletCategorySnapshotError != null
+        ) return@LaunchedEffect
+        outletCategorySnapshotLoading = true
+        try {
+            outletCategorySnapshot = storeApi.categories(perPage = 100)
+            outletCategorySnapshotError = null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            outletCategorySnapshotError = error.message ?: "No se han podido cargar las categorías."
+        } finally {
+            outletCategorySnapshotLoading = false
+        }
+    }
 
     LaunchedEffect(pushNavigation) {
         val n = pushNavigation ?: return@LaunchedEffect
-        when (n.type) {
-            PushNotificationType.NEW_PRODUCTS -> { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Novedades) }
-            PushNotificationType.ORDER_STATUS -> section = IosRootSection.ACCOUNT
-            PushNotificationType.BIRTHDAY_COUPON -> {
+        when (val destination = n.destination) {
+            is PushDestination.Order -> {
+                pendingPushOrderId = destination.orderId
+                section = IosRootSection.ACCOUNT
+            }
+            PushDestination.Account -> {
+                pendingPushOrderId = null
+                section = IosRootSection.ACCOUNT
+            }
+            PushDestination.NewProducts -> {
+                section = IosRootSection.CATEGORIES
+                resetCatalog()
+                openCatalog(IosCatalogPage.Novedades)
+            }
+            PushDestination.Promotions -> {
                 openPromotionsOnStart = true
                 section = IosRootSection.ACCOUNT
             }
+            PushDestination.Ignore -> Unit
         }
         onPushNavigationConsumed()
     }
-
+    val cartController = remember(cartStore) { StoreCartController(cartStore) }
+    LaunchedEffect(cartController) {
+        runCatching { cartController.refreshAwait() }
+    }
     val observedCart by cartStore.cart.collectAsState()
     val cartQuantity = cartUnitCount(observedCart.items.map { it.quantity })
     val createdOrder by checkoutStore.createdOrder.collectAsState()
@@ -189,68 +313,139 @@ fun CriosRangoIOSRootScreen(
         }
     }
 
-    MaterialTheme {
+    CriosRangoTheme {
         androidx.compose.runtime.LaunchedEffect(Unit) { println("KMP_RUNTIME_ROOT_SCREEN_READY") }
-        Scaffold(
-            bottomBar = {
-                IosMainTabBar(
-                    selected = section,
-                    cartCount = cartQuantity,
-                    onSelected = {
-                        section = it
-                        if (it == IosRootSection.CATEGORIES) resetCatalog()
-                        if (it == IosRootSection.OUTLET) { resetCatalog(); openCatalog(IosCatalogPage.Outlet) }
-                    }
-                )
-            }
-        ) { padding ->
-            Column(Modifier.fillMaxSize()) {
-                IosStoreTopBar(
+        Box(Modifier.fillMaxSize()) {
+        StoreGlobalShell(
+            selectedTab = iosRootShellSelectedTab(section, catalogOriginHome, checkoutOpen),
+            cartQuantity = cartQuantity,
+            onTabSelected = { item ->
+                // The shell stays mounted during Checkout; leaving Checkout must also close its route.
+                checkoutOpen = false
+                val destination = when (item) {
+                    StoreMainTab.HOME -> IosRootSection.HOME
+                    StoreMainTab.CATEGORIES -> IosRootSection.CATEGORIES
+                    StoreMainTab.OUTLET -> IosRootSection.OUTLET
+                    StoreMainTab.CART -> IosRootSection.CART
+                    StoreMainTab.ACCOUNT -> IosRootSection.ACCOUNT
+                }
+                section = destination
+                // Every root-tab selection exits the current child route, including Home.
+                resetCatalog()
+                if (destination == IosRootSection.OUTLET) openCatalog(IosCatalogPage.Outlet())
+            },
+            topBar = {
+                if (!checkoutOpen) StoreGlobalTopBar(
                     cartQuantity = cartQuantity,
                     onSearch = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Search) },
-                    onCart = { section = IosRootSection.CART }
+                    onCart = { resetCatalog(); section = IosRootSection.CART }
                 )
+            },
+        ) { paddingValues ->
+            val padding = paddingValues
+            Column(Modifier.fillMaxSize()) {
             if (checkoutOpen && postOrderSuccess == null) {
-                IosCheckoutScreen(
+                StoreCheckoutScreen(
                     checkoutStore = checkoutStore,
                     paymentStore = paymentStore,
                     accountRepository = accountRepository,
-                    padding = padding,
+                    padding = androidx.compose.foundation.layout.PaddingValues(bottom = padding.calculateBottomPadding()),
                     onBack = { checkoutOpen = false },
                     onOpenPayment = onOpenPayment,
                     loyaltyRepository = loyaltyRepository,
-                    walletEnabled = accountRepository.hasSession
+                    walletEnabled = accountRepository.hasSession,
+                    cartQuantity = cartQuantity,
+                    onSearch = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Search) },
+                    onCart = { resetCatalog(); section = IosRootSection.CART }
                 )
             } else if (!checkoutOpen) when (section) {
-                IosRootSection.HOME -> IosHomeScreen(
-                    storeApi = storeApi,
-                    cartStore = cartStore,
-                    padding = padding,
-                    onCategory = {
-                        section = IosRootSection.CATEGORIES
-                        resetCatalog()
-                        catalogOriginHome = true
-                        openCatalog(IosCatalogPage.Category(it))
-                    },
-                    onProduct = {
-                        section = IosRootSection.CATEGORIES
-                        resetCatalog()
-                        openCatalog(IosCatalogPage.Product(it))
-                    },
-                    onNovedades = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Novedades) },
-                    onSearch = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Search) },
-                    onBrands = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Brands) },
-                    onOutlet = { section = IosRootSection.OUTLET; resetCatalog(); openCatalog(IosCatalogPage.Outlet) }
-                )
+                IosRootSection.HOME -> Box(Modifier.fillMaxSize()) {
+                    StoreHomeScreen(
+                        storeApi = storeApi,
+                        brandsController = brandsController,
+                        homeController = homeController,
+                        cartStore = cartStore,
+                        padding = padding,
+                        onCategory = { category -> if (category.id == 445 || category.slug.equals("outlet", true) || category.name.equals("Outlet", true)) { section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(iosHomeOutletPage(null)) } else { section = IosRootSection.CATEGORIES; resetCatalog(); catalogOriginHome = true; openCatalog(IosCatalogPage.Category(category)) } },
+                        onProduct = {
+                            section = IosRootSection.CATEGORIES
+                            resetCatalog()
+                            catalogOriginHome = true
+                            openCatalog(IosCatalogPage.Product(it))
+                        },
+                        onNovedades = { section = IosRootSection.CATEGORIES; resetCatalog(); catalogOriginHome = true; openCatalog(IosCatalogPage.Novedades) },
+                        onBrand = {
+                            section = IosRootSection.CATEGORIES
+                            resetCatalog()
+                            catalogOriginHome = true
+                            brandsController.selectBrand(it)
+                            openCatalog(IosCatalogPage.Brands)
+                        },
+                        onAllBrands = {
+                            resetCatalog()
+                            catalogOriginHome = true
+                            openCatalog(IosCatalogPage.Brands)
+                        },
+                        onOutletWinter = { _ -> section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(iosHomeOutletPage(IosOutletSeason.WINTER)) },
+                        onOutletSummer = { _ -> section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(iosHomeOutletPage(IosOutletSeason.SUMMER)) },
+                        onOutletAll = { section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(iosHomeOutletPage(null)) }
+                    )
+                    if (catalogOriginHome && catalogPage != IosCatalogPage.Root) {
+                        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                            IosCatalogScreen(
+                                storeApi = storeApi,
+                                rootFilterOwner = rootFilterOwner,
+                                brandsController = brandsController,
+                                padding = padding,
+                                page = catalogPage,
+                                cartStore = cartStore,
+                                outletController = outletController,
+                                onOpenCategory = { category -> if (category.id == 445 || category.slug.equals("outlet", true) || category.name.equals("Outlet", true)) { section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(iosHomeOutletPage(null)) } else openCatalog(IosCatalogPage.Category(category)) },
+                                onOpenRootFilter = { scope -> rootFilterOwner.open(scope) },
+                                onOpenProduct = { openCatalog(IosCatalogPage.Product(it)) },
+                                onBack = {
+                                    if (section == IosRootSection.OUTLET && catalogPage is IosCatalogPage.Outlet) {
+                                        section = IosRootSection.HOME
+                                        resetCatalog()
+                                    } else if (catalogPage == IosCatalogPage.Root) {
+                                        section = IosRootSection.HOME
+                                        resetCatalog()
+                                    } else {
+                                        backCatalog()
+                                        if (shouldReturnHomeAfterCatalogBack(catalogHistory.isEmpty(), catalogPage == IosCatalogPage.Root, catalogOriginHome)) {
+                                            section = IosRootSection.HOME
+                                            resetCatalog()
+                                        }
+                                    }
+                                },
+                                onShareProductText = onShareProductText,
+                                onReserveProductMessage = onReserveProductMessage,
+                                catalogRestoration = catalogRestoration,
+                                categorySnapshot = categorySnapshot,
+                                categorySnapshotLoading = categorySnapshotLoading,
+                                categorySnapshotError = categorySnapshotError,
+                                onRetryCategorySnapshot = ::retryCategorySnapshot,
+                                outletCategorySnapshot = outletCategorySnapshot,
+                                outletCategorySnapshotLoading = outletCategorySnapshotLoading,
+                                outletCategorySnapshotError = outletCategorySnapshotError,
+                                onRetryOutletCategorySnapshot = ::retryOutletCategorySnapshot
+                            )
+                        }
+                    }
+                }
                 IosRootSection.OUTLET, IosRootSection.CATEGORIES -> IosCatalogScreen(
                     storeApi = storeApi,
+                    rootFilterOwner = rootFilterOwner,
+                    brandsController = brandsController,
                     padding = padding,
                     page = catalogPage,
                     cartStore = cartStore,
-                    onOpenCategory = { openCatalog(IosCatalogPage.Category(it)) },
+                    outletController = outletController,
+                    onOpenCategory = { category -> if (category.id == 445 || category.slug.equals("outlet", true) || category.name.equals("Outlet", true)) { section = IosRootSection.OUTLET; resetCatalog(); catalogOriginHome = true; openCatalog(iosHomeOutletPage(null)) } else openCatalog(IosCatalogPage.Category(category)) },
+                    onOpenRootFilter = { scope -> rootFilterOwner.open(scope) },
                     onOpenProduct = { openCatalog(IosCatalogPage.Product(it)) },
                     onBack = {
-                        if (section == IosRootSection.OUTLET && catalogPage == IosCatalogPage.Outlet) {
+                        if (section == IosRootSection.OUTLET && catalogPage is IosCatalogPage.Outlet) {
                             section = IosRootSection.HOME
                             resetCatalog()
                         } else if (catalogPage == IosCatalogPage.Root) {
@@ -258,29 +453,66 @@ fun CriosRangoIOSRootScreen(
                             resetCatalog()
                         } else {
                             backCatalog()
-                            if (catalogHistory.isEmpty() && catalogPage == IosCatalogPage.Root && catalogOriginHome) {
+                            if (shouldReturnHomeAfterCatalogBack(catalogHistory.isEmpty(), catalogPage == IosCatalogPage.Root, catalogOriginHome)) {
                                 section = IosRootSection.HOME
                                 resetCatalog()
                             }
                         }
                     },
-                    catalogRestoration = catalogRestoration
+                    onShareProductText = onShareProductText,
+                    onReserveProductMessage = onReserveProductMessage,
+                    catalogRestoration = catalogRestoration,
+                    categorySnapshot = categorySnapshot,
+                    categorySnapshotLoading = categorySnapshotLoading,
+                    categorySnapshotError = categorySnapshotError,
+                    onRetryCategorySnapshot = ::retryCategorySnapshot,
+                    outletCategorySnapshot = outletCategorySnapshot,
+                                outletCategorySnapshotLoading = outletCategorySnapshotLoading,
+                                outletCategorySnapshotError = outletCategorySnapshotError,
+                                onRetryOutletCategorySnapshot = ::retryOutletCategorySnapshot
                 )
-                IosRootSection.CART -> IosCartScreen(
-                    cartStore = cartStore,
+                IosRootSection.CART -> {
+                    IosBackHandler(IosBackPriority.CART) { resetCatalog(); section = IosRootSection.HOME }
+                    StoreCartScreen(
+                    storeApi = storeApi,
+                    cartController = cartController,
                     loyaltyRepository = loyaltyRepository,
                     walletEnabled = accountRepository.hasSession,
                     padding = padding,
-                    onCheckout = { checkoutOpen = true }
-                ) { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) }
+                    onBack = { resetCatalog(); section = IosRootSection.HOME },
+                    onCheckout = { checkoutOpen = true },
+                    onOpenProduct = { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) },
+                    isAuthenticated = accountRepository.hasSession,
+                    onLogin = { accountLoginFromCart = true; resetCatalog(); section = IosRootSection.ACCOUNT },
+                    promotionBearerTokenProvider = { accountTokenStore.load() },
+                    refreshOnEnter = false
+                    )
+                }
                 IosRootSection.ACCOUNT -> CriosRangoIOSAccountScreen(
                     repository = accountRepository,
+                    sessionState = accountSessionState,
                     loyaltyRepository = loyaltyRepository,
+                    appVersion = accountAppVersion,
                     cartCouponCodes = cartStore.cart.collectAsState().value.coupons.map { it.code }.toSet(),
-                    onApplyWalletCoupon = { code -> cartStore.applyCoupon(code) },
+                    onApplyWalletCoupon = { code -> cartStore.applyCouponAwait(code) },
                     modifier = Modifier.padding(padding),
-                    initialOrderId = pushNavigation?.orderId,
+                    initialOrderId = pendingPushOrderId,
+                    onInitialOrderConsumed = { consumedOrderId ->
+                        if (pendingPushOrderId == consumedOrderId) pendingPushOrderId = null
+                    },
                     openPromotionsOnStart = openPromotionsOnStart,
+                    openLoginOnStart = accountLoginFromCart,
+                    onBackFromLogin = if (accountLoginFromCart) {
+                        { accountLoginFromCart = false; resetCatalog(); section = IosRootSection.CART }
+                    } else null,
+                    onBackFromRoot = { resetCatalog(); section = IosRootSection.HOME },
+                    onAuthenticated = {
+                        if (accountLoginFromCart) {
+                            accountLoginFromCart = false
+                            resetCatalog()
+                            section = IosRootSection.CART
+                        }
+                    },
                     onPromotionsOpened = { openPromotionsOnStart = false },
                     onBeforeLogout = { cartStore.clearForLogoutAwait(); checkoutStore.resetForLogout(); checkoutOpen = false },
                     onOpenExternalUrl = onOpenExternalUrl
@@ -288,7 +520,10 @@ fun CriosRangoIOSRootScreen(
             }
             }
         }
+        if (showStartupBranding) StoreStartupBranding()
+        }
         postOrderSuccess?.let { success ->
+            IosBackHandler(IosBackPriority.OVERLAY, canGoBack = false) {}
             AlertDialog(
                 onDismissRequest = {},
                 title = { Text("Pedido recibido") },
@@ -320,369 +555,6 @@ fun CriosRangoIOSRootScreen(
 }
 
 @Composable
-private fun IosStoreTopBar(
-    cartQuantity: Int,
-    onSearch: () -> Unit,
-    onCart: () -> Unit
-) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp).statusBarsPadding().height(56.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Image(
-            painter = painterResource(Res.drawable.home_logo),
-            contentDescription = "Críos & Rango",
-            modifier = Modifier.size(36.dp),
-            contentScale = ContentScale.Fit
-        )
-        Spacer(Modifier.weight(1f))
-        IconButton(onClick = onSearch) {
-            androidx.compose.material3.Icon(
-                IosSearchLineIcon,
-                contentDescription = "Buscar",
-                tint = Color(0xFF183B35),
-                modifier = Modifier.size(24.dp)
-            )
-        }
-        Box(Modifier.width(48.dp).height(48.dp)) {
-            BadgedBox(
-                modifier = Modifier.size(48.dp).align(Alignment.Center),
-                badge = { if (cartQuantity > 0) Badge { Text(cartBadgeText(cartQuantity), maxLines = 1) } }
-            ) {
-                IconButton(onClick = onCart) {
-                    androidx.compose.material3.Icon(
-                        IosShoppingBagLineIcon,
-                        contentDescription = "Carrito",
-                        tint = Color(0xFF183B35),
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun IosMainTabBar(
-    selected: IosRootSection,
-    cartCount: Int,
-    onSelected: (IosRootSection) -> Unit
-) {
-    Surface(shadowElevation = 3.dp) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(68.dp).navigationBarsPadding(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            listOf(
-                IosRootSection.HOME to "Inicio",
-                IosRootSection.CATEGORIES to "Categorías",
-                IosRootSection.OUTLET to "Outlet",
-                IosRootSection.CART to "Carrito",
-                IosRootSection.ACCOUNT to "Cuenta"
-            ).forEach { (item, label) ->
-                val active = item == selected
-                val tint = if (active) Color(0xFF183B35) else Color(0xFF777277)
-                Column(
-                    modifier = Modifier.weight(1f).fillMaxSize().clickable { onSelected(item) }
-                        .semantics { role = Role.Tab; contentDescription = label },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    BadgedBox(
-                        badge = { if (item == IosRootSection.CART && cartCount > 0) Badge { Text(cartBadgeText(cartCount), maxLines = 1) } }
-                    ) {
-                        androidx.compose.material3.Icon(
-                            imageVector = iosNavigationIcon(item),
-                            contentDescription = null,
-                            tint = tint,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                        color = tint,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-    }
-}
-
-private fun iosNavigationIcon(section: IosRootSection): ImageVector = when (section) {
-    IosRootSection.HOME -> IosHomeLineIcon
-    IosRootSection.CATEGORIES -> IosCategoriesLineIcon
-    IosRootSection.OUTLET -> IosOutletLineIcon
-    IosRootSection.CART -> IosShoppingBagLineIcon
-    IosRootSection.ACCOUNT -> IosAccountLineIcon
-}
-
-private fun iosBuildNavigationIcon(
-    name: String,
-    content: androidx.compose.ui.graphics.vector.PathBuilder.() -> Unit
-): ImageVector = ImageVector.Builder(
-    name = name,
-    defaultWidth = 24.dp,
-    defaultHeight = 24.dp,
-    viewportWidth = 24f,
-    viewportHeight = 24f
-).apply {
-    path(
-        fill = null,
-        stroke = SolidColor(Color.Black),
-        strokeLineWidth = 1.8f,
-        strokeLineCap = StrokeCap.Round,
-        strokeLineJoin = StrokeJoin.Round,
-        pathBuilder = content
-    )
-}.build()
-
-private val IosSearchLineIcon = iosBuildNavigationIcon("IosSearchLineIcon") {
-    moveTo(10.8f, 3.5f); curveTo(14.8f, 3.5f, 18f, 6.7f, 18f, 10.7f)
-    curveTo(18f, 14.7f, 14.8f, 17.9f, 10.8f, 17.9f)
-    curveTo(6.8f, 17.9f, 3.6f, 14.7f, 3.6f, 10.7f)
-    curveTo(3.6f, 6.7f, 6.8f, 3.5f, 10.8f, 3.5f)
-    close(); moveTo(16f, 16f); lineTo(21f, 21f)
-}
-private val IosShoppingBagLineIcon = iosBuildNavigationIcon("IosShoppingBagLineIcon") {
-    moveTo(5f, 8.5f); lineTo(19f, 8.5f); lineTo(20f, 21f); lineTo(4f, 21f); close()
-    moveTo(8.5f, 8.5f); lineTo(8.5f, 6.5f)
-    curveTo(8.5f, 2.5f, 15.5f, 2.5f, 15.5f, 6.5f)
-    lineTo(15.5f, 8.5f)
-}
-private val IosHomeLineIcon = iosBuildNavigationIcon("IosHomeLineIcon") {
-    moveTo(3f, 10.5f); lineTo(12f, 3f); lineTo(21f, 10.5f)
-    moveTo(5.5f, 9f); lineTo(5.5f, 20.5f); lineTo(18.5f, 20.5f); lineTo(18.5f, 9f)
-    moveTo(9.5f, 20.5f); lineTo(9.5f, 14.5f); lineTo(14.5f, 14.5f); lineTo(14.5f, 20.5f)
-}
-private val IosCategoriesLineIcon = iosBuildNavigationIcon("IosCategoriesLineIcon") {
-    moveTo(4f, 4f); lineTo(10f, 4f); lineTo(10f, 10f); lineTo(4f, 10f); close()
-    moveTo(14f, 4f); lineTo(20f, 4f); lineTo(20f, 10f); lineTo(14f, 10f); close()
-    moveTo(4f, 14f); lineTo(10f, 14f); lineTo(10f, 20f); lineTo(4f, 20f); close()
-    moveTo(14f, 14f); lineTo(20f, 14f); lineTo(20f, 20f); lineTo(14f, 20f); close()
-}
-private val IosOutletLineIcon = iosBuildNavigationIcon("IosOutletLineIcon") {
-    moveTo(3f, 11f); lineTo(11f, 3f); lineTo(21f, 13f); lineTo(13f, 21f); close()
-    moveTo(8.5f, 8.5f); lineTo(8.5f, 8.5f)
-    moveTo(12f, 7f); lineTo(10f, 11f); lineTo(14f, 11f); lineTo(12f, 15f)
-}
-private val IosAccountLineIcon = iosBuildNavigationIcon("IosAccountLineIcon") {
-    moveTo(12f, 12f); curveTo(14.2f, 12f, 16f, 10.2f, 16f, 8f)
-    curveTo(16f, 5.8f, 14.2f, 4f, 12f, 4f)
-    curveTo(9.8f, 4f, 8f, 5.8f, 8f, 8f)
-    curveTo(8f, 10.2f, 9.8f, 12f, 12f, 12f)
-    moveTo(4f, 20f); curveTo(4f, 16.7f, 7.6f, 14.5f, 12f, 14.5f)
-    curveTo(16.4f, 14.5f, 20f, 16.7f, 20f, 20f)
-}
-
-@Composable
-private fun IosHomeScreen(
-    storeApi: es.criosrango.shared.api.StoreApiClient,
-    cartStore: StoreCartStore,
-    padding: PaddingValues,
-    onCategory: (StoreCategory) -> Unit,
-    onProduct: (StoreProduct) -> Unit,
-    onNovedades: () -> Unit,
-    onSearch: () -> Unit,
-    onBrands: () -> Unit,
-    onOutlet: () -> Unit
-) {
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var products by remember { mutableStateOf(emptyList<StoreProduct>()) }
-    var categories by remember { mutableStateOf(emptyList<StoreCategory>()) }
-
-    fun retry() {
-        loading = true
-        error = null
-    }
-
-    LaunchedEffect(loading) {
-        if (!loading) return@LaunchedEffect
-        runCatching {
-            val result = kotlinx.coroutines.coroutineScope {
-                val productsDeferred = async {
-                    runCatching { storeApi.products(perPage = 24, page = 1, orderBy = "date", order = "desc") }
-                }
-                val categoriesDeferred = async {
-                    runCatching { storeApi.categories(perPage = 100) }
-                }
-                val productResult = productsDeferred.await()
-                val categoryResult = categoriesDeferred.await()
-                productResult.onSuccess {
-                    println("KMP_RUNTIME_PRODUCTS_RESULT=OK count=${it.size}")
-                }.onFailure {
-                    println("KMP_RUNTIME_PRODUCTS_RESULT=ERROR exception=${it}")
-                    it.printStackTrace()
-                }
-                categoryResult.onSuccess {
-                    println("KMP_RUNTIME_CATEGORIES_RESULT=OK count=${it.size}")
-                }.onFailure {
-                    println("KMP_RUNTIME_CATEGORIES_RESULT=ERROR exception=${it}")
-                    it.printStackTrace()
-                }
-                productResult.getOrThrow() to categoryResult.getOrThrow()
-            }
-            products = result.first
-            categories = result.second
-        }.onSuccess {
-            loading = false
-            println("KMP_RUNTIME_HOME_READY products=${products.size} categories=${categories.size}")
-        }.onFailure {
-            error = it.message ?: "No se ha podido cargar la tienda."
-            loading = false
-            println("KMP_RUNTIME_HOME_LOAD_ERROR exception=${it}")
-            it.printStackTrace()
-        }
-    }
-
-    Column(Modifier.fillMaxSize().padding(padding)) {
-        when {
-            loading -> IosStoreLoading()
-            error != null -> IosStoreError(error!!, ::retry)
-            products.isEmpty() && categories.isEmpty() -> IosStoreEmpty("No hay contenido disponible.")
-            else -> {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(20.dp)
-                ) {
-                    item {
-                        IosHomeHero()
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = onSearch, modifier = Modifier.weight(1f)) { Text("Buscar") }
-                            OutlinedButton(onClick = onBrands, modifier = Modifier.weight(1f)) { Text("Marcas") }
-                        }
-                    }
-                    item {
-                        IosSectionHeader("Categorías")
-                        Spacer(Modifier.height(10.dp))
-                        val rootCategories = categories.filter { it.parent == 0 && !it.name.equals("Outlet", true) }.distinctBy { it.id }.take(9)
-                        Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            rootCategories.chunked(3).forEach { row ->
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    row.forEach { category ->
-                                        IosHomeCategoryTile(category, onCategory, Modifier.weight(1f))
-                                    }
-                                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
-                                }
-                            }
-                        }
-                    }
-                    item {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Novedades", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                            TextButton(onClick = onNovedades) { Text("Ver todo ›") }
-                        }
-                        Spacer(Modifier.height(10.dp))
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            items(products.take(8), key = { it.id }) { product ->
-                                IosProductCard(product, onProduct, cartStore)
-                            }
-                        }
-                    }
-                    item {
-                        IosHomeOutletSection(categories, onOutlet)
-                    }
-                    item {
-                        IosHomeBrandsSection(onBrands)
-                    }
-                }
-            }
-        }
-    }
-}
-
-private val IOS_HOME_HERO_IMAGES = listOf(
-    "https://images.pexels.com/photos/6617704/pexels-photo-6617704.jpeg?auto=compress&cs=tinysrgb&w=1600",
-    "https://images.pexels.com/photos/19915135/pexels-photo-19915135.jpeg?auto=compress&cs=tinysrgb&w=1600",
-    "https://images.pexels.com/photos/30804210/pexels-photo-30804210.jpeg?auto=compress&cs=tinysrgb&w=1600",
-    "https://images.pexels.com/photos/29614374/pexels-photo-29614374.jpeg?auto=compress&cs=tinysrgb&w=1600"
-)
-
-private val IOS_HOME_CATEGORY_IMAGES = mapOf(
-    67 to "https://www.criosrango.es/wp-content/uploads/2026/09/conjunto-peto-estampado-y-jersey-recien-nacida-laurel-XL-4.avif",
-    68 to "https://www.criosrango.es/wp-content/uploads/2026/09/conjunto-sudadera-bolsillos-y-pantalon-nina-botella-XL-1.avif",
-    70 to "https://www.criosrango.es/wp-content/uploads/2026/05/226_104164026f01_016955_1.webp",
-    71 to "https://www.criosrango.es/wp-content/uploads/2026/08/556cado321-46-2.jpg",
-    292 to "https://www.criosrango.es/wp-content/uploads/2026/09/conjunto-pantalon-y-blusa-con-chaleco-bebe-violeta-mezcla-XL-4.avif",
-    294 to "https://www.criosrango.es/wp-content/uploads/2026/08/chaqueton-pelo-bolsillos-bebe-alaska-XL-1.avif",
-    310 to "https://www.criosrango.es/wp-content/uploads/2026/09/polo-combinado-nino-lago-XL-1.avif",
-    420 to "https://www.criosrango.es/wp-content/uploads/2026/01/Captura-de-pantalla-2026-01-21-a-las-17.48.57.png",
-    504 to "https://www.criosrango.es/wp-content/uploads/2026/01/Captura-de-pantalla-2026-01-21-a-las-17.48.57.png"
-)
-
-@Composable
-private fun IosHomeHero() {
-    var index by remember { mutableStateOf(0) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(3500)
-            index = (index + 1) % IOS_HOME_HERO_IMAGES.size
-        }
-    }
-    RemoteStoreImage(IOS_HOME_HERO_IMAGES[index], null, Modifier.fillMaxWidth().aspectRatio(4f / 3f), ContentScale.Crop)
-}
-
-@Composable
-private fun IosHomeCategoryTile(category: StoreCategory, onClick: (StoreCategory) -> Unit, modifier: Modifier) {
-    Column(modifier.clickable { onClick(category) }.semantics { role = Role.Button; contentDescription = "Categoría ${category.name}" }, horizontalAlignment = Alignment.CenterHorizontally) {
-        RemoteStoreImage(IOS_HOME_CATEGORY_IMAGES[category.id], category.name, Modifier.fillMaxWidth().aspectRatio(1f), ContentScale.Fit)
-        Spacer(Modifier.height(6.dp))
-        Text(category.name, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-    }
-}
-
-@Composable
-private fun IosHomeOutletSection(categories: List<StoreCategory>, onSeeAll: () -> Unit) {
-    val outlet = categories.firstOrNull { it.parent == 0 && it.name.contains("outlet", true) } ?: return
-    val seasons = categories.filter { it.parent == outlet.id && (it.name.contains("invierno", true) || it.name.contains("verano", true)) }.distinctBy { it.id }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Outlet", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            TextButton(onClick = onSeeAll) { Text("Ver todo ›") }
-        }
-        Spacer(Modifier.height(10.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            seasons.take(2).forEach { season ->
-                OutlinedButton(onClick = onSeeAll, modifier = Modifier.weight(1f)) { Text(season.name) }
-            }
-            if (seasons.isEmpty()) OutlinedButton(onClick = onSeeAll, modifier = Modifier.fillMaxWidth()) { Text("Ver Outlet") }
-        }
-    }
-}
-
-@Composable
-private fun IosHomeBrandsSection(onSeeAll: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Marcas", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            TextButton(onClick = onSeeAll) { Text("Ver todas ›") }
-        }
-        Spacer(Modifier.height(10.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 2.dp)) {
-            items(storeBrands.take(8), key = { it.slug }) { brand ->
-                OutlinedButton(onClick = onSeeAll) { Text(brand.name) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun IosCategoryChip(category: StoreCategory, onClick: (StoreCategory) -> Unit) {
-    OutlinedButton(onClick = { onClick(category) }) {
-        Text(category.name.ifBlank { "Categoría" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
 internal fun IosProductCard(product: StoreProduct, onClick: (StoreProduct) -> Unit, cartStore: StoreCartStore? = null) {
     Column(Modifier.width(158.dp).clickable { onClick(product) }.semantics { role = Role.Button; contentDescription = "Abrir ${product.name}" }) {
         RemoteStoreImage(
@@ -692,7 +564,7 @@ internal fun IosProductCard(product: StoreProduct, onClick: (StoreProduct) -> Un
             contentScale = ContentScale.Crop
         )
         Spacer(Modifier.height(7.dp))
-        Text(product.name, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+        Text(normalizeWooPlainText(product.name), maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
         if (product.hasDisplayablePrice) {
             Text(
                 formatStorePrice(product.prices.price, product.prices.currencyMinorUnit, product.prices.currencySymbol),
@@ -753,21 +625,33 @@ private val IosCartDiscountLineIcon = iosBuildLineIcon("IosCartDiscountLineIcon"
 private val IosCartTagLineIcon = iosBuildLineIcon("IosCartTagLineIcon") { moveTo(3.5f,11f); lineTo(11f,3.5f); lineTo(20f,12.5f); lineTo(12.5f,20f); close(); moveTo(8f,8f); lineTo(8f,8f) }
 private val IosCartCakeLineIcon = iosBuildLineIcon("IosCartCakeLineIcon") { moveTo(4f,10f); lineTo(20f,10f); lineTo(20f,19f); lineTo(4f,19f); close(); moveTo(4f,14f); lineTo(20f,14f); moveTo(8f,10f); lineTo(8f,7f); moveTo(12f,10f); lineTo(12f,6f); moveTo(16f,10f); lineTo(16f,7f) }
 private val IosCartCloseLineIcon = iosBuildLineIcon("IosCartCloseLineIcon") { moveTo(7f,7f); lineTo(17f,17f); moveTo(17f,7f); lineTo(7f,17f) }
+private val IosCartDeleteLineIcon = iosBuildLineIcon("IosCartDeleteLineIcon") { moveTo(4f,7f); lineTo(20f,7f); moveTo(9f,7f); lineTo(9f,19f); moveTo(15f,7f); lineTo(15f,19f); moveTo(6f,7f); lineTo(7f,21f); lineTo(17f,21f); lineTo(18f,7f); moveTo(9f,4f); lineTo(15f,4f) }
+private val IosCartInfoLineIcon = iosBuildLineIcon("IosCartInfoLineIcon") { moveTo(12f,3f); lineTo(16.5f,4.2f); lineTo(19.8f,7.5f); lineTo(21f,12f); lineTo(19.8f,16.5f); lineTo(16.5f,19.8f); lineTo(12f,21f); lineTo(7.5f,19.8f); lineTo(4.2f,16.5f); lineTo(3f,12f); lineTo(4.2f,7.5f); lineTo(7.5f,4.2f); close(); moveTo(12f,11f); lineTo(12f,16f); moveTo(12f,8f); lineTo(12f,8.1f) }
 @Composable private fun IosCartAppliedCouponIcon(kind:String) { val icon=when(kind){"wallet"->IosCartWalletLineIcon;"credit"->IosCartWalletLineIcon;"discount"->IosCartDiscountLineIcon;"cake"->IosCartCakeLineIcon;else->IosCartTagLineIcon}; androidx.compose.material3.Icon(icon,null,tint=Color(0xFF0F5C4D),modifier=Modifier.size(20.dp)) }
 
 @Composable
-private fun IosCartScreen(
-    cartStore: StoreCartStore,
+fun StoreCartScreen(
+    storeApi: es.criosrango.shared.api.StoreApiClient,
+    cartController: StoreCartController,
     loyaltyRepository: LoyaltyRepository,
     walletEnabled: Boolean,
     padding: PaddingValues,
+    onBack: () -> Unit,
     onCheckout: () -> Unit,
-    onOpenProduct: (StoreProduct) -> Unit
+    onOpenProduct: (StoreProduct) -> Unit,
+    accountUserId: Int? = null,
+    onLogin: (() -> Unit)? = null,
+    isAuthenticated: Boolean = accountUserId != null,
+    promotionBearerTokenProvider: (() -> String?)? = null,
+    refreshOnEnter: Boolean = true
 ) {
     var loyaltyWallet by remember { mutableStateOf<LoyaltyWallet?>(null) }
     var loyaltyLoading by remember { mutableStateOf(false) }
     var loyaltyError by remember { mutableStateOf<String?>(null) }
     var showWalletDialog by remember { mutableStateOf(false) }
+    var showWalletInfoDialog by remember { mutableStateOf(false) }
+    if (showWalletDialog) IosBackHandler(IosBackPriority.OVERLAY) { if (!loyaltyLoading) showWalletDialog = false }
+    if (showWalletInfoDialog) IosBackHandler(IosBackPriority.OVERLAY) { showWalletInfoDialog = false }
     var pendingRedeemPoints by remember { mutableStateOf<Int?>(null) }
     var pendingRequestId by remember { mutableStateOf<String?>(null) }
     val loyaltyScope = rememberCoroutineScope()
@@ -807,7 +691,7 @@ private fun IosCartScreen(
                 if (coupon == null) {
                     loyaltyError = "El canje no ha devuelto un cupón utilizable."
                 } else {
-                    cartStore.applyCoupon(coupon.code)
+                    cartController.applyCoupon(coupon.code)
                 }
                 pendingRedeemPoints = null
                 pendingRequestId = null
@@ -826,7 +710,7 @@ private fun IosCartScreen(
             loyaltyLoading = true
             loyaltyError = null
             try {
-                cartStore.applyCoupon(reward.code)
+                cartController.applyCoupon(reward.code)
                 loyaltyWallet = loyaltyRepository.getWallet()
             } catch (e: CancellationException) {
                 throw e
@@ -837,21 +721,25 @@ private fun IosCartScreen(
             }
         }
     }
-    val cart by cartStore.cart.collectAsState()
-    val state by cartStore.state.collectAsState()
-    val error by cartStore.error.collectAsState()
-    val couponLoading by cartStore.couponLoading.collectAsState()
-    val couponError by cartStore.couponError.collectAsState()
+    val cartUiState by cartController.state.collectAsState()
+    val cart = cartUiState.cart
+    val state = cartUiState.loadState
+    val error = cartUiState.error
+    val couponLoading = cartUiState.couponLoading
+    val couponError = cartUiState.couponError
     var clearCartConfirm by remember { mutableStateOf(false) }
+    if (clearCartConfirm) IosBackHandler(IosBackPriority.OVERLAY) { clearCartConfirm = false }
     var couponExpanded by remember { mutableStateOf(false) }
     var couponCode by remember { mutableStateOf("") }
-    val promotionRepository = remember { PromotionRepository() }
+    val promotionRepository = remember(promotionBearerTokenProvider) { PromotionRepository(bearerTokenProvider = promotionBearerTokenProvider) }
     var promotions by remember { mutableStateOf(emptyList<Promotion>()) }
     var promotionsLoading by remember { mutableStateOf(true) }
     var promotionsError by remember { mutableStateOf<String?>(null) }
+    var openingProductKey by remember { mutableStateOf<String?>(null) }
+    var productOpenError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        cartStore.refresh()
+        if (refreshOnEnter) cartController.refresh()
         promotionsLoading = true
         promotionsError = null
         try {
@@ -867,57 +755,133 @@ private fun IosCartScreen(
 
     LazyColumn(
         Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        contentPadding = PaddingValues(start = 20.dp, top = 0.dp, end = 20.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item { Text("Tu carrito", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+        item {
+            StorePageHeader(
+                title = "Tu carrito",
+                onBack = onBack,
+                horizontalPadding = 0.dp,
+                trailing = {
+                    if (cart.items.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .clickable { clearCartConfirm = true }
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.Icon(
+                                IosCartDeleteLineIcon,
+                                contentDescription = null,
+                                tint = Color(0xFF183B35),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "Vaciar carrito",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = Color(0xFF183B35)
+                            )
+                        }
+                    }
+                }
+            )
+        }
         if (state == StoreCartLoadState.LOADING && cart.items.isEmpty()) item { IosStoreLoading() }
-        if (!error.isNullOrBlank()) item { IosStoreError(error!!, cartStore::refresh) }
-        if (state == StoreCartLoadState.SUCCESS_EMPTY && error == null) item {
+        if (!error.isNullOrBlank()) item { IosStoreError(error!!, cartController::refresh) }
+        if (!productOpenError.isNullOrBlank()) item {
+            IosStoreError(productOpenError!!) { productOpenError = null }
+        }
+        if (state == StoreCartLoadState.SUCCESS_EMPTY) item {
             Column(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Tu carrito está vacío", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         items(cart.items, key = { it.key }) { line ->
             Surface(
-                modifier = Modifier.fillMaxWidth().clickable {
-                    onOpenProduct(StoreProduct(id = line.id, name = line.name, images = line.images, prices = line.prices))
+                modifier = Modifier.fillMaxWidth().clickable(enabled = openingProductKey == null) {
+                    loyaltyScope.launch {
+                        openingProductKey = line.key
+                        productOpenError = null
+                        try {
+                            val path = Url(line.permalink).encodedPath.trimEnd('/')
+                            val slug = path.substringAfterLast('/').decodeURLPart()
+                            require(slug.isNotBlank()) { "La URL del producto no contiene un slug válido." }
+                            val parentProduct = storeApi.productBySlug(slug)
+                            onOpenProduct(parentProduct)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            productOpenError = e.message ?: "No se ha podido abrir el producto desde el carrito."
+                        } finally {
+                            openingProductKey = null
+                        }
+                    }
                 },
                 shape = RoundedCornerShape(12.dp),
-                tonalElevation = 1.dp
+                color = Color(0xFFF3FAF7),
+                tonalElevation = 0.dp,
+                shadowElevation = 1.dp
             ) {
-                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RemoteStoreImage(line.images.firstOrNull()?.src, line.name, Modifier.size(84.dp), ContentScale.Crop)
-                    Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(line.name, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RemoteStoreImage(
+                        line.images.firstOrNull()?.src,
+                        line.name,
+                        modifier = Modifier.size(84.dp).clip(RoundedCornerShape(10.dp)),
+                        contentScale = ContentScale.Crop,
+                        backgroundColor = Color(0xFFF3FAF7)
+                    )
+                    Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                        Text(
+                            normalizeWooPlainText(line.name),
+                            modifier = Modifier.fillMaxWidth(),
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (openingProductKey == line.key) Text("Abriendo producto…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (line.variation.isNotEmpty()) Text(
                             line.variation.joinToString(" · ") { "${it.attribute.removePrefix("pa_")}: ${it.value}" },
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(formatStorePrice(line.prices.price, line.prices.currencyMinorUnit, line.prices.currencySymbol) + " / ud.", fontWeight = FontWeight.Bold)
+                        Text(formatStorePrice(line.consumerUnitPrice(), line.prices.currencyMinorUnit, line.prices.currencySymbol) + " / ud.", fontWeight = FontWeight.Bold)
                         Text(
-                            "Subtotal: " + formatStorePrice(line.totals.lineTotal, line.prices.currencyMinorUnit, line.prices.currencySymbol),
+                            "Subtotal: " + formatStorePrice(line.consumerLineTotal(), line.prices.currencyMinorUnit, line.prices.currencySymbol),
                             style = MaterialTheme.typography.bodySmall
                         )
-                        val increment = line.quantityLimits?.multipleOf?.takeIf { it > 0 } ?: 1
-                        val maximum = line.quantityLimits?.maximum?.takeUnless { it == 9999 }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        val increment = line.quantityStep()
+                        val nextLowerQuantity = line.quantityAfterDecrement()
+                        Box(Modifier.fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = {
+                                        if (nextLowerQuantity == null) cartController.remove(line)
+                                        else cartController.update(line, nextLowerQuantity)
+                                    }
+                                ) { Text("−", style = MaterialTheme.typography.titleLarge) }
+                                Text(line.quantity.toString(), modifier = Modifier.padding(horizontal = 8.dp), fontWeight = FontWeight.SemiBold)
+                                IconButton(
+                                    onClick = { cartController.update(line, line.quantity + increment) },
+                                    enabled = line.canIncreaseQuantity()
+                                ) { Text("+", style = MaterialTheme.typography.titleLarge) }
+                            }
                             IconButton(
-                                onClick = { cartStore.update(line, line.quantity - increment) }
-                            ) { Text("−", style = MaterialTheme.typography.titleLarge) }
-                            Text(line.quantity.toString(), modifier = Modifier.padding(horizontal = 8.dp), fontWeight = FontWeight.SemiBold)
-                            IconButton(
-                                onClick = { cartStore.update(line, line.quantity + increment) },
-                                enabled = maximum == null || line.quantity < maximum
-                            ) { Text("+", style = MaterialTheme.typography.titleLarge) }
+                                onClick = { cartController.remove(line) },
+                                modifier = Modifier.align(Alignment.CenterEnd).size(40.dp)
+                            ) {
+                                androidx.compose.material3.Icon(IosCartDeleteLineIcon, contentDescription = "Eliminar", tint = Color(0xFF5F6368), modifier = Modifier.size(20.dp))
+                            }
                         }
                     }
-                    IconButton(onClick = { cartStore.remove(line) }) { Text("×", style = MaterialTheme.typography.titleLarge) }
                 }
             }
         }
         if (cart.items.isNotEmpty()) item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(horizontal = 20.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Text("Promociones y descuentos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
 
                 if (walletEnabled && loyaltyWallet != null) {
@@ -926,9 +890,19 @@ private fun IosCartScreen(
                         cart.totals.consumerDiscount()
                     )
                     val walletOptions = loyaltyWallet!!.redeemableOptions(eligibleSubtotal)
-                    val walletApplied = cart.coupons.any { coupon -> loyaltyWallet!!.pendingRewards.any { reward -> reward.code.equals(coupon.code, ignoreCase = true) } }
+                    val walletApplied = cart.coupons.any { coupon ->
+                        loyaltyWallet!!.pendingRewards.any { reward -> reward.code.equals(coupon.code, ignoreCase = true) }
+                    }
+                    val hasUnappliedReward = loyaltyWallet!!.pendingRewards.any { reward ->
+                        cart.coupons.none { it.code.equals(reward.code, ignoreCase = true) }
+                    }
+                    val walletVisibility = cartWalletUiVisibility(
+                        walletEnabled = walletEnabled,
+                        walletLoaded = loyaltyWallet != null,
+                        hasUnappliedReward = hasUnappliedReward
+                    )
 
-                    if (!walletApplied) Surface(
+                    if (walletVisibility.showSummary) Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
                         color = Color(0xFFE8F5EF)
@@ -947,13 +921,22 @@ private fun IosCartScreen(
                                     color = Color(0xFF315B52)
                                 )
                             }
-                            if (walletOptions.isNotEmpty()) IosCartApplyButton({ showWalletDialog=true }, enabled=!loyaltyLoading)
+                            if (walletOptions.isNotEmpty() && !walletApplied) IosCartApplyButton({ showWalletDialog=true }, enabled=!loyaltyLoading)
+                            IconButton(
+                                onClick = { showWalletInfoDialog = true },
+                                modifier = Modifier.size(40.dp).semantics { contentDescription = "Información del monedero" }
+                            ) {
+                                androidx.compose.material3.Icon(
+                                    IosCartInfoLineIcon,
+                                    contentDescription = null,
+                                    tint = Color(0xFF0F5C4D),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
 
-                    if (loyaltyWallet!!.pendingRewards.any { reward ->
-                        cart.coupons.none { it.code.equals(reward.code, ignoreCase = true) }
-                    }) {
+                    if (walletVisibility.showApplyCandidates) {
                         Text("Saldo listo para usar", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                         Surface(Modifier.fillMaxWidth(), shape=RoundedCornerShape(14.dp), color=Color(0xFFF4F0F5)) {
                             Column(Modifier.fillMaxWidth().padding(horizontal=12.dp, vertical=8.dp), verticalArrangement=Arrangement.spacedBy(4.dp)) {
@@ -999,7 +982,7 @@ private fun IosCartScreen(
                     }
                 }
 
-                val visiblePromotions = if (walletEnabled) promotions else promotions.filter { it.isVisibleToAnonymous() }
+                val visiblePromotions = cartVisiblePromotions(promotions, authenticated = isAuthenticated)
                 when {
                     promotionsLoading -> CircularProgressIndicator(Modifier.size(20.dp))
                     !promotionsError.isNullOrBlank() -> Text(promotionsError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -1038,7 +1021,7 @@ private fun IosCartScreen(
                                             }
                                         }
                                         if (code.isNotBlank()) {
-                                            IosCartApplyButton({ cartStore.applyCoupon(code) }, enabled=!applied && !couponLoading)
+                                            IosCartApplyButton({ cartController.applyCoupon(code) }, enabled=!applied && !couponLoading)
                                         }
                                     }
                             }
@@ -1047,6 +1030,8 @@ private fun IosCartScreen(
                     }
                     }
                 }
+
+                if (!couponError.isNullOrBlank()) Text(couponError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
 
                 if (!couponExpanded) {
                     Row(Modifier.fillMaxWidth().clickable(enabled=!couponLoading) { couponExpanded=true }.padding(vertical=8.dp), verticalAlignment=Alignment.CenterVertically) { Text("+", fontWeight=FontWeight.Bold, color=Color(0xFF0F5C4D)); Spacer(Modifier.width(8.dp)); Text("Tengo otro código de descuento", Modifier.weight(1f), fontWeight=FontWeight.Medium); Text("⌄", color=Color(0xFF5F6368)) }
@@ -1076,9 +1061,8 @@ private fun IosCartScreen(
                                 }
                             }
                         )
-                        IosCartApplyButton({ cartStore.applyCoupon(couponCode.trim()) }, enabled=couponCode.trim().isNotEmpty() && !couponLoading, loading=couponLoading, modifier=Modifier.height(54.dp))
+                        IosCartApplyButton({ cartController.applyCoupon(couponCode.trim()) }, enabled=couponCode.trim().isNotEmpty() && !couponLoading, loading=couponLoading, modifier=Modifier.height(54.dp))
                     }
-                    if (!couponError.isNullOrBlank()) Text("🔴 Este cupón no es válido.", color=MaterialTheme.colorScheme.error, style=MaterialTheme.typography.bodySmall)
                 }
 
                 if (cart.coupons.isNotEmpty()) {
@@ -1100,7 +1084,7 @@ private fun IosCartScreen(
                                         Spacer(Modifier.width(4.dp))
                                         Text(name, fontWeight=FontWeight.Medium, style=MaterialTheme.typography.labelSmall, modifier=Modifier.weight(1f), maxLines=1, overflow=TextOverflow.Clip)
                                         Text("-" + formatStorePrice(coupon.totals.consumerDiscount(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol), fontWeight=FontWeight.SemiBold, style=MaterialTheme.typography.labelSmall, color=Color(0xFF0F5C4D), modifier=Modifier.padding(start=3.dp))
-                                        IconButton({ cartStore.removeCoupon(coupon.code) }, enabled=!couponLoading, modifier=Modifier.size(28.dp)) { androidx.compose.material3.Icon(IosCartCloseLineIcon, "Quitar", tint=Color(0xFF5F6368), modifier=Modifier.size(18.dp)) }
+                                        IconButton({ cartController.removeCoupon(coupon.code) }, enabled=!couponLoading, modifier=Modifier.size(28.dp)) { androidx.compose.material3.Icon(IosCartCloseLineIcon, "Quitar", tint=Color(0xFF5F6368), modifier=Modifier.size(18.dp)) }
                                     }
                                     if (index < cart.coupons.lastIndex) HorizontalDivider(Modifier.padding(start=28.dp), color=Color(0xFFE8E8E3), thickness=1.dp)
                                 }
@@ -1121,7 +1105,7 @@ private fun IosCartScreen(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Subtotal", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        formatStorePrice(cart.totals.totalItems, cart.totals.currencyMinorUnit, cart.totals.currencySymbol),
+                        formatStorePrice(cart.totals.consumerSubtotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol),
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -1140,17 +1124,17 @@ private fun IosCartScreen(
                 }
 
                 when {
-                    cart.totals.totalShipping == null -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    cart.totals.consumerShipping() == null -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Envío", modifier = Modifier.weight(1f), color = Color.Gray)
                         Text("Se calcula en el checkout", color = Color.Gray)
                     }
-                    cart.totals.totalShipping == "0" || cart.totals.totalShipping == "0.00" -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    cart.totals.consumerShipping() == "0" -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Envío", modifier = Modifier.weight(1f))
                         Text("Gratis")
                     }
                     else -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Envío", modifier = Modifier.weight(1f))
-                        Text(formatStorePrice(cart.totals.totalShipping.orEmpty(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
+                        Text(formatStorePrice(cart.totals.consumerShipping().orEmpty(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
                     }
                 }
 
@@ -1162,7 +1146,7 @@ private fun IosCartScreen(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Total", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(
-                        formatStorePrice(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol),
+                        formatStorePrice(cart.totals.consumerTotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -1177,8 +1161,37 @@ private fun IosCartScreen(
                 ) {
                     Text("Continuar compra")
                 }
+                if (shouldShowCartLoginCta(isAuthenticated, onLogin != null)) {
+                    OutlinedButton(
+                        onClick = { onLogin?.invoke() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Inicia sesión para consultar tu cuenta")
+                    }
+                }
             }
         }
+    }
+    if (clearCartConfirm) {
+        AlertDialog(
+            onDismissRequest = { clearCartConfirm = false },
+            title = { Text("Vaciar carrito") },
+            text = { Text("¿Quieres quitar todos los productos del carrito?") },
+            confirmButton = {
+                TextButton(onClick = { clearCartConfirm = false; cartController.clear() }) { Text("Vaciar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { clearCartConfirm = false }) { Text("Cancelar") }
+            }
+        )
+    }
+    if (showWalletInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showWalletInfoDialog = false },
+            title = { Text("¿Cómo funciona tu monedero?", fontWeight = FontWeight.SemiBold) },
+            text = { Text("1 € gastado = 1 punto.\n\nCuando acumules 100 puntos, podrás convertirlos en 5 € de saldo para tus compras.\n\nLa barra te indica cuánto te falta para desbloquear el saldo.\n\nCuando tengas saldo disponible, pulsa “Usar” para elegir cuánto quieres aplicar a tu compra.") },
+            confirmButton = { Button(onClick = { showWalletInfoDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F5C4D), contentColor = Color.White)) { Text("Entendido") } }
+        )
     }
     if (showWalletDialog && loyaltyWallet != null) {
         val eligibleSubtotal = subtractMoneyAmounts(
@@ -1209,13 +1222,6 @@ private fun IosCartScreen(
             )
         }
     }
-    if (clearCartConfirm) AlertDialog(
-        onDismissRequest = { clearCartConfirm = false },
-        title = { Text("Vaciar carrito") },
-        text = { Text("¿Quieres eliminar todos los productos del carrito?") },
-        confirmButton = { TextButton(onClick = { clearCartConfirm = false; cartStore.clear() }) { Text("Vaciar") } },
-        dismissButton = { TextButton(onClick = { clearCartConfirm = false }) { Text("Cancelar") } }
-    )
 }
 @Composable
 private fun IosSectionHeader(title: String) {
@@ -1290,5 +1296,6 @@ internal fun IosStoreError(message: String, retry: () -> Unit) {
     }
 }
 
-@Composable
-private fun IosCategoryRootPreview(): Unit = Unit
+
+internal fun shouldReturnHomeAfterCatalogBack(historyIsEmpty: Boolean, pageIsRoot: Boolean, catalogOriginHome: Boolean): Boolean =
+    historyIsEmpty && pageIsRoot && catalogOriginHome
