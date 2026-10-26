@@ -24,7 +24,7 @@ internal fun StoreStartupBranding() {
         Image(
             painter = painterResource(Res.drawable.splash_logo),
             contentDescription = null,
-            modifier = Modifier.size(240.dp),
+            modifier = Modifier.size(310.dp),
             contentScale = ContentScale.Fit
         )
     }
