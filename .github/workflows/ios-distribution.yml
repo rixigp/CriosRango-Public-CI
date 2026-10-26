@@ -14,8 +14,8 @@ permissions:
 env:
   EXPECTED_BUNDLE_ID: "es.criosrango.app"
   EXPECTED_TEAM_ID: "3793344J72"
-  EXPECTED_VERSION_NAME: "2.0.1"
-  EXPECTED_VERSION_CODE: "20002"
+  EXPECTED_VERSION_NAME: "1.0.1"
+  EXPECTED_VERSION_CODE: "20003"
   EXPECTED_PROFILE_NAME: "CriosRango AppStore 2.0.1"
   TARGET_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || github.sha }}
 

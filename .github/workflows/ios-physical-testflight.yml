@@ -103,10 +103,10 @@ jobs:
           [[ "$BRANCH_NAME" == "main" || "$BRANCH_NAME" == "compose-multiplatform-convergence" ]] || { echo "::error::Manual dispatch is only authorized on main or the convergence pilot branch"; exit 1; }
           VERSION="$(grep -m1 'MARKETING_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
           BASE_BUILD="$(grep -m1 'CURRENT_PROJECT_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*CURRENT_PROJECT_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
-          [[ "$VERSION" == "2.0.1" ]] || { echo "::error::Expected marketing version 2.0.1, found $VERSION"; exit 1; }
-          [[ "$BASE_BUILD" == "20002" ]] || { echo "::error::Expected frozen project build baseline 20002, found $BASE_BUILD"; exit 1; }
-          BUILD_NUMBER=$((20002 + RUN_NUMBER))
-          [[ "$BUILD_NUMBER" -gt 20002 ]] || exit 1
+          [[ "$VERSION" == "1.0.1" ]] || { echo "::error::Expected marketing version 1.0.1, found $VERSION"; exit 1; }
+          [[ "$BASE_BUILD" == "20003" ]] || { echo "::error::Expected project build baseline 20003, found $BASE_BUILD"; exit 1; }
+          BUILD_NUMBER=20003
+          [[ "$BUILD_NUMBER" == "20003" ]] || exit 1
           START_EPOCH="$(date +%s)"
           echo "start_epoch=$START_EPOCH" >> "$GITHUB_OUTPUT"
           echo "RUN_START_EPOCH=$START_EPOCH" >> "$GITHUB_ENV"
@@ -199,7 +199,7 @@ jobs:
           APP_IDENTIFIER=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/profile.plist")
           PROFILE_APS=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:aps-environment' "$RUNNER_TEMP/profile.plist")
           PROFILE_GET_TASK_ALLOW=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:get-task-allow' "$RUNNER_TEMP/profile.plist" 2>/dev/null || true)
-          [[ "$PROFILE_NAME" == "CriosRango AppStore 2.0.1" && "$TEAM_ID" == "3793344J72" && "$APP_IDENTIFIER" == "$TEAM_ID.es.criosrango.app" && "$PROFILE_APS" == "production" ]] || { echo "::error::Provisioning profile does not match the known 2.0.1 App Store profile"; exit 1; }
+          [[ "$PROFILE_NAME" == "CriosRango AppStore 2.0.1" && "$TEAM_ID" == "3793344J72" && "$APP_IDENTIFIER" == "$TEAM_ID.es.criosrango.app" && "$PROFILE_APS" == "production" ]] || { echo "::error::Provisioning profile does not match the known App Store profile"; exit 1; }
           [[ "$PROFILE_GET_TASK_ALLOW" != "true" && "$PROFILE_GET_TASK_ALLOW" != "YES" ]] || { echo "::error::Distribution profile unexpectedly enables get-task-allow"; exit 1; }
           RELEASE_ENTITLEMENTS="$RUNNER_TEMP/CriosRango-release.entitlements"
           cp iosApp/iosApp.entitlements "$RELEASE_ENTITLEMENTS"
@@ -265,7 +265,7 @@ jobs:
             -derivedDataPath "$DERIVED" \
             CODE_SIGN_ENTITLEMENTS="$RELEASE_ENTITLEMENTS" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-            MARKETING_VERSION=2.0.1 \
+            MARKETING_VERSION=1.0.1 \
             archive 2>&1 | tee release-artifacts/xcodebuild-archive.log
           BUILD_STATUS=${PIPESTATUS[0]}
           set -e
