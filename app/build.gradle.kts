@@ -53,7 +53,7 @@ android {
         applicationId = "es.criosrango.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 20004
+        versionCode = 20005
         versionName = "1.0.1"
     }
     signingConfigs {

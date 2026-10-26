@@ -201,7 +201,7 @@
                 SWIFT_VERSION = 5.0;
                 CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
                 TARGETED_DEVICE_FAMILY = 1;
-                CURRENT_PROJECT_VERSION = 20004;
+                CURRENT_PROJECT_VERSION = 20005;
                 MARKETING_VERSION = 1.0.1;
                 INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone = YES;
                 ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -224,7 +224,7 @@
                 SWIFT_VERSION = 5.0;
                 CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
                 TARGETED_DEVICE_FAMILY = 1;
-                CURRENT_PROJECT_VERSION = 20004;
+                CURRENT_PROJECT_VERSION = 20005;
                 MARKETING_VERSION = 1.0.1;
                 INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone = YES;
                 ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
