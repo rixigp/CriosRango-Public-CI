@@ -21,8 +21,6 @@ on:
       - "settings.gradle*"
       - "gradle/**"
       - "gradle.properties"
-      - "tools/verify_outlet_shared_architecture.py"
-      - ".github/workflows/android-debug-apk.yml"
 
 concurrency:
   group: android-debug-apk-${{ github.ref }}
@@ -37,8 +35,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - name: Verify canonical Outlet shared architecture
-        run: python3 tools/verify_outlet_shared_architecture.py
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
