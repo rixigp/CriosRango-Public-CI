@@ -302,17 +302,11 @@ jobs:
           SETTINGS_FILE="$RUNNER_TEMP/ios-distribution-build-settings.txt"
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
-            -scheme CriosRangoKMPSpike \
+            -target CriosRangoKMPSpike \
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM="$EXPECTED_TEAM_ID" \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="CriosRango AppStore 2.0.1" \
             CODE_SIGN_ENTITLEMENTS="$RELEASE_ENTITLEMENTS" \
-            MARKETING_VERSION="$VERSION_NAME" \
-            CURRENT_PROJECT_VERSION="$VERSION_CODE" \
             -showBuildSettings > "$SETTINGS_FILE"
 
           for KEY in CONFIGURATION PRODUCT_BUNDLE_IDENTIFIER PRODUCT_NAME CODE_SIGN_STYLE DEVELOPMENT_TEAM CODE_SIGN_IDENTITY PROVISIONING_PROFILE_SPECIFIER CODE_SIGN_ENTITLEMENTS MARKETING_VERSION CURRENT_PROJECT_VERSION SWIFT_OPTIMIZATION_LEVEL FRAMEWORK_SEARCH_PATHS; do
@@ -382,10 +376,6 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -archivePath "$ARCHIVE_PATH" \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM="$EXPECTED_TEAM_ID" \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="CriosRango AppStore 2.0.1" \
             CODE_SIGN_ENTITLEMENTS="$RELEASE_ENTITLEMENTS" \
             MARKETING_VERSION="$VERSION_NAME" \
             CURRENT_PROJECT_VERSION="$VERSION_CODE" \
