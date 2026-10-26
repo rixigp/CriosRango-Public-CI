@@ -130,7 +130,16 @@ internal fun IosCategoryRoot(
     error: String?,
     onRetry: () -> Unit
 ) {
-    StoreCategoriesScreen(categories=categories, loading=loading, errorMessage=error, onBack=onBack,
+    // The shared grid appends its canonical Outlet card. Remove any API-provided root
+    // Outlet first so it cannot retain an earlier server position on iOS.
+    val orderedIosRootCategories = categories.filterNot { category ->
+        category.parent == 0 && (
+            category.id == 445 ||
+                category.name.equals("Outlet", ignoreCase = true) ||
+                category.slug.equals("outlet", ignoreCase = true)
+            )
+    }
+    StoreCategoriesScreen(categories=orderedIosRootCategories, loading=loading, errorMessage=error, onBack=onBack,
         onCategory=onOpenCategory, onRootFilter=onOpenRootFilter, onRetry=onRetry, modifier=Modifier.fillMaxSize().padding(padding))
 }
 
