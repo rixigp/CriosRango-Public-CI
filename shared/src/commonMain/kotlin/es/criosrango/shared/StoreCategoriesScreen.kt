@@ -41,7 +41,7 @@ fun StoreCategoriesScreen(categories: List<StoreCategory>, loading: Boolean, err
                     categories = categories,
                     onCategory = onCategory,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 0.dp),
+                    contentPadding = PaddingValues(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 0.dp),
                     columnSpacing = 12.dp,
                     rowSpacing = 12.dp,
                     imagePadding = 1.dp,
