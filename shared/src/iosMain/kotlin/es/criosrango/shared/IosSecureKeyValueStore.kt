@@ -1,13 +1,11 @@
 package es.criosrango.shared
 
-import kotlinx.cinterop.ByteVar
-import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
-import kotlinx.cinterop.readBytes
-import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
 import platform.CoreFoundation.CFDictionaryAddValue
@@ -24,6 +22,7 @@ import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
 import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.Foundation.NSData
 import platform.Foundation.NSUserDefaults
+import platform.Foundation.create
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
@@ -42,6 +41,7 @@ import platform.Security.kSecMatchLimit
 import platform.Security.kSecMatchLimitOne
 import platform.Security.kSecReturnData
 import platform.Security.kSecValueData
+import platform.posix.memcpy
 
 /**
  * Keychain-only storage for iOS secrets.
@@ -171,30 +171,55 @@ internal object IosSecureKeyValueStore {
         return dictionary
     }
 
-    
-private fun String.toNSData(): NSData {
-    val byteArray = encodeToByteArray()
-    if (byteArray.isEmpty()) {
-        return NSData.data()
-    }
-    return byteArray.usePinned { pinned ->
-        NSData.dataWithBytes(
-            pinned.addressOf(0),
-            byteArray.size.toULong()
-        )
-    }
-}
+    @OptIn(
+        ExperimentalForeignApi::class,
+        BetaInteropApi::class
+    )
+    private fun String.toNSData(): NSData {
+        val byteArray = encodeToByteArray()
 
-private fun NSData.toKotlinString(): String? {
-    val size = length.toInt()
-    if (size == 0) {
-        return ""
-    }
-    val pointer = bytes ?: return null
-    return pointer.reinterpret<ByteVar>().readBytes(size).decodeToString()
-}
+        if (byteArray.isEmpty()) {
+            val dummy = byteArrayOf(0)
 
-private fun Any?.asCFTypeRef(): CFTypeRef = when (this) {
+            return dummy.usePinned { pinned ->
+                NSData.create(
+                    bytes = pinned.addressOf(0),
+                    length = 0UL
+                )
+            }
+        }
+
+        return byteArray.usePinned { pinned ->
+            NSData.create(
+                bytes = pinned.addressOf(0),
+                length = byteArray.size.toULong()
+            )
+        }
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    private fun NSData.toKotlinString(): String? {
+        val size = length.toInt()
+
+        if (size == 0) {
+            return ""
+        }
+
+        val source = bytes ?: return null
+        val output = ByteArray(size)
+
+        output.usePinned { pinned ->
+            memcpy(
+                pinned.addressOf(0),
+                source,
+                length
+            )
+        }
+
+        return output.decodeToString()
+    }
+
+    private fun Any?.asCFTypeRef(): CFTypeRef = when (this) {
         is NSData -> this as CFTypeRef
         else -> this as CFTypeRef
     }
