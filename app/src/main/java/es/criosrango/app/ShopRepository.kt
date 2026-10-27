@@ -79,11 +79,9 @@ class StoreSession(
 
     init {
         // Clean-cut migration: discard legacy plaintext without reading its values.
-        secureStore.remove(CART_TOKEN)
-        secureStore.remove(NONCE)
-        secureStore.remove(COOKIE_HEADER)
         preferences.edit().remove(CART_TOKEN).remove(NONCE).remove(COOKIE_HEADER).apply()
     }
+
     private companion object {
         const val CART_TOKEN = "woo_cart_token"
         const val NONCE = "woo_nonce"
@@ -123,6 +121,9 @@ class StoreSession(
     }
 
     fun clear() {
+        secureStore.remove(CART_TOKEN)
+        secureStore.remove(NONCE)
+        secureStore.remove(COOKIE_HEADER)
         preferences.edit().remove(CART_TOKEN).remove(NONCE).remove(COOKIE_HEADER).apply()
     }
 }
