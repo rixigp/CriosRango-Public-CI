@@ -137,7 +137,7 @@ class MainActivity : ComponentActivity() {
         pushOrderIdState.value = PushNotificationContract.parseOrderId(intent?.getStringExtra(PushNotificationContract.ORDER_ID_KEY))
         if (pushTypeState.value == PushNotificationType.ORDER_STATUS) logAndroidPushRoute("PUSH_TAP orderId=${pushOrderIdState.value ?: "invalid"}")
         val preferences = getSharedPreferences("criosrango", MODE_PRIVATE)
-        val session = StoreSession(preferences)
+        val session = StoreSession(preferences, applicationContext)
         val sharedSession = AndroidStoreSessionStore(session)
         val accountTokenStore = AccountSessionStore.shared(applicationContext)
         val sharedCatalogClient = es.criosrango.shared.api.StoreApiClient(
