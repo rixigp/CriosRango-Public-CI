@@ -33,36 +33,49 @@ import platform.Security.kSecReturnData
 import platform.Security.kSecValueData
 
 /**
- * Keychain-backed storage for iOS secrets. Legacy defaults are consulted only for
- * one-way migration; a legacy value is removed only after a successful Keychain write.
+ * Keychain-only storage for iOS secrets.
+ *
+ * Legacy UserDefaults values are deliberately discarded without reading or copying them.
+ * This is an intentional clean cutover: missing Keychain items remain absent.
  */
 @OptIn(ExperimentalForeignApi::class)
 internal object IosSecureKeyValueStore {
     private const val SERVICE = "es.criosrango.app.secure"
 
-    fun read(key: String, defaults: NSUserDefaults = NSUserDefaults.standardUserDefaults): String? {
-        readKeychain(key)?.let {
-            // Defensive cleanup of a duplicate left by an interrupted/older migration.
-            defaults.removeObjectForKey(key)
-            return it
-        }
+    private val LEGACY_SENSITIVE_KEYS = listOf(
+        "woo_cart_token",
+        "woo_nonce",
+        "woo_cookie_header",
+        "criosrango_account_token",
+        "criosrango_ios_pending_payment_order_key",
+        "criosrango_ios_pending_payment_url",
+        "criosrango_pending_claim_order_key",
+        "criosrango_push_pending_unregister_account"
+    )
 
-        val legacy = defaults.stringForKey(key) ?: return null
-        if (writeKeychain(key, legacy)) defaults.removeObjectForKey(key)
-        return legacy
+    fun read(key: String, defaults: NSUserDefaults = NSUserDefaults.standardUserDefaults): String? {
+        clearLegacySensitiveValues(defaults)
+        return readKeychain(key)
     }
 
-    /** New values are written only to Keychain. Returns false on any Security failure. */
+    /** New values are written only to Keychain; legacy values are never a fallback. */
     fun write(key: String, value: String, defaults: NSUserDefaults = NSUserDefaults.standardUserDefaults): Boolean {
-        if (!writeKeychain(key, value)) return false
-        defaults.removeObjectForKey(key)
-        return true
+        clearLegacySensitiveValues(defaults)
+        return writeKeychain(key, value)
     }
 
     fun delete(key: String, defaults: NSUserDefaults = NSUserDefaults.standardUserDefaults) {
+        clearLegacySensitiveValues(defaults)
         val status = SecItemDelete(baseQuery(key) as CFDictionaryRef)
         if (status != errSecSuccess && status != errSecItemNotFound) logStatus("delete", key, status)
-        defaults.removeObjectForKey(key)
+    }
+
+    /**
+     * Idempotently discard all known legacy sensitive keys without retrieving their values.
+     * This runs on every access so logout and ordinary store use also clean old installations.
+     */
+    private fun clearLegacySensitiveValues(defaults: NSUserDefaults) {
+        LEGACY_SENSITIVE_KEYS.forEach(defaults::removeObjectForKey)
     }
 
     private fun readKeychain(key: String): String? = memScoped {
