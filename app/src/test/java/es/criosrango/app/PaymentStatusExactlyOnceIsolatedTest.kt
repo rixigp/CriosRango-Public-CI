@@ -93,7 +93,7 @@ class PaymentStatusExactlyOnceIsolatedTest {
         )
         val session = StoreSession(preferences, context)
         val cartStore = CartStore(api, session, preferences)
-        val deliveryAddressStore = DeliveryAddressStore(preferences)
+        val deliveryAddressStore = DeliveryAddressStore(preferences, context)
         return ShopViewModel(StoreRepository(api), cartStore, deliveryAddressStore, pending)
     }
 
