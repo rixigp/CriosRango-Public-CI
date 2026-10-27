@@ -1,12 +1,14 @@
 package es.criosrango.shared
 
 import kotlinx.cinterop.ByteVar
+import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.readBytes
 import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
 import platform.CoreFoundation.CFDictionaryAddValue
 import platform.CoreFoundation.CFDictionaryCreateMutable
@@ -21,9 +23,7 @@ import platform.CoreFoundation.kCFBooleanTrue
 import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
 import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.Foundation.NSData
-import platform.Foundation.NSString
 import platform.Foundation.NSUserDefaults
-import platform.Foundation.NSUTF8StringEncoding
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
@@ -110,14 +110,14 @@ internal object IosSecureKeyValueStore {
                 return@memScoped null
             }
             val data = result.value as? NSData ?: return@memScoped null
-            data.bytes?.reinterpret<ByteVar>()?.readBytes(data.length.toInt())?.decodeToString()
+            data.toKotlinString()
         } finally {
             CFRelease(query)
         }
     }
 
     private fun writeKeychain(key: String, value: String): Boolean {
-        val data = (value as NSString).dataUsingEncoding(NSUTF8StringEncoding) ?: return false
+        val data = value.toNSData()
         val query = createDictionary(
             baseQueryMap(key) + mapOf(
                 kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
@@ -152,8 +152,8 @@ internal object IosSecureKeyValueStore {
 
     private fun baseQueryMap(key: String): Map<Any?, Any?> = mapOf(
         kSecClass to kSecClassGenericPassword,
-        kSecAttrService to (SERVICE as NSString),
-        kSecAttrAccount to (key as NSString),
+        kSecAttrService to SERVICE,
+        kSecAttrAccount to key,
         // Explicitly disable synchronizable/iCloud Keychain items.
         kSecAttrSynchronizable to kCFBooleanFalse!!
     )
@@ -171,8 +171,30 @@ internal object IosSecureKeyValueStore {
         return dictionary
     }
 
-    private fun Any?.asCFTypeRef(): CFTypeRef = when (this) {
-        is NSString -> this as CFTypeRef
+    
+private fun String.toNSData(): NSData {
+    val byteArray = encodeToByteArray()
+    if (byteArray.isEmpty()) {
+        return NSData.data()
+    }
+    return byteArray.usePinned { pinned ->
+        NSData.dataWithBytes(
+            pinned.addressOf(0),
+            byteArray.size.toULong()
+        )
+    }
+}
+
+private fun NSData.toKotlinString(): String? {
+    val size = length.toInt()
+    if (size == 0) {
+        return ""
+    }
+    val pointer = bytes ?: return null
+    return pointer.reinterpret<ByteVar>().readBytes(size).decodeToString()
+}
+
+private fun Any?.asCFTypeRef(): CFTypeRef = when (this) {
         is NSData -> this as CFTypeRef
         else -> this as CFTypeRef
     }
