@@ -52,7 +52,12 @@ class AndroidSecureKeyValueStore(context: Context) {
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), javax.crypto.spec.GCMParameterSpec(GCM_TAG_BITS, iv))
             cipher.doFinal(ciphertext).toString(Charsets.UTF_8)
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            if (error is android.security.keystore.KeyPermanentlyInvalidatedException) {
+                runCatching {
+                    KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }.deleteEntry(KEY_ALIAS)
+                }
+            }
             runCatching { AtomicFile(file.baseFile).delete() }
             null
         }
