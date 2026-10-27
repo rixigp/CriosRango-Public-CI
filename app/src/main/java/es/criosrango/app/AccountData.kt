@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import es.criosrango.shared.AndroidClaimOrderStore
+import es.criosrango.shared.AndroidSecureKeyValueStore
 import es.criosrango.shared.StoreAccountAuthStatus
 import es.criosrango.shared.StoreAccountSessionState
 import es.criosrango.shared.account.AccountClaimOrderResponse
@@ -42,6 +43,7 @@ class AccountSessionStore(context: Context) : AccountTokenStore {
     companion object {
         private const val TOKEN = "account_token"
         private const val PREFS = "criosrango_account_session_v2"
+        private const val LEGACY_PREFS = "criosrango_account_session"
 
         @Volatile private var instance: AccountSessionStore? = null
 
@@ -51,43 +53,22 @@ class AccountSessionStore(context: Context) : AccountTokenStore {
             }
     }
 
-    private val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val preferences = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val secureStore = AndroidSecureKeyValueStore(appContext)
 
     init {
-        migrateLegacyToken(context)
-    }
-
-    @Suppress("DEPRECATION")
-    private fun migrateLegacyToken(context: Context) {
-        if (preferences.contains(TOKEN)) return
-
-        val legacyToken = runCatching {
-            val masterKey = androidx.security.crypto.MasterKey.Builder(context)
-                .setKeyScheme(androidx.security.crypto.MasterKey.KeyScheme.AES256_GCM)
-                .build()
-
-            val legacyPreferences = androidx.security.crypto.EncryptedSharedPreferences.create(
-                context,
-                "criosrango_account_session",
-                masterKey,
-                androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-
-            legacyPreferences.getString(TOKEN, null)
-        }.getOrNull()
-
-        if (!legacyToken.isNullOrBlank()) {
-            preferences.edit().putString(TOKEN, legacyToken).apply()
-        }
+        // Clean cutover: discard legacy tokens without reading or copying them.
+        preferences.edit().remove(TOKEN).apply()
+        appContext.deleteSharedPreferences(LEGACY_PREFS)
     }
 
     private var token: String?
-        get() = preferences.getString(TOKEN, null)
+        get() = secureStore.get(TOKEN)
         private set(value) {
-            preferences.edit().apply {
-                if (value.isNullOrBlank()) remove(TOKEN) else putString(TOKEN, value)
-            }.apply()
+            if (value.isNullOrBlank()) secureStore.remove(TOKEN) else secureStore.put(TOKEN, value)
+            // Defensively remove the old plaintext key; never use it as a read fallback.
+            preferences.edit().remove(TOKEN).apply()
         }
 
     override fun load(): String? = token
@@ -99,7 +80,9 @@ class AccountSessionStore(context: Context) : AccountTokenStore {
     }
 
     override fun clear() {
-        token = null
+        secureStore.remove(TOKEN)
+        preferences.edit().remove(TOKEN).apply()
+        appContext.deleteSharedPreferences(LEGACY_PREFS)
     }
 }
 
