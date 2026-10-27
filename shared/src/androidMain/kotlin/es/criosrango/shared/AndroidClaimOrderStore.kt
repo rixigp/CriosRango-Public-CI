@@ -11,21 +11,30 @@ class AndroidClaimOrderStore(context: Context) : ClaimOrderStore {
         const val ORDER_KEY = "order_key"
     }
 
-    private val preferences = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val preferences = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val secureStore = AndroidSecureKeyValueStore(appContext)
+
+    init {
+        // Remove only the legacy plaintext secret; keep the non-secret order_id.
+        preferences.edit().remove(ORDER_KEY).apply()
+    }
 
     override fun load(): PendingClaimOrder? {
         val id = preferences.getInt(ORDER_ID, 0)
-        val key = preferences.getString(ORDER_KEY, null).orEmpty()
+        val key = secureStore.get(ORDER_KEY).orEmpty()
         return if (id > 0 && key.isNotBlank()) PendingClaimOrder(id, key) else null
     }
 
     override fun save(order: PendingClaimOrder): Boolean {
         if (order.orderId <= 0 || order.orderKey.isBlank()) return false
-        preferences.edit().putInt(ORDER_ID, order.orderId).putString(ORDER_KEY, order.orderKey).apply()
+        preferences.edit().putInt(ORDER_ID, order.orderId).remove(ORDER_KEY).apply()
+        secureStore.put(ORDER_KEY, order.orderKey)
         return load() == order
     }
 
     override fun clear() {
+        secureStore.remove(ORDER_KEY)
         preferences.edit().remove(ORDER_ID).remove(ORDER_KEY).apply()
     }
 }
