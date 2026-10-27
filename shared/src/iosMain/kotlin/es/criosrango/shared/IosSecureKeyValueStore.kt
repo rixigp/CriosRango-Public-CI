@@ -1,15 +1,26 @@
 package es.criosrango.shared
 
+import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
+import kotlinx.cinterop.readBytes
+import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.value
+import platform.CoreFoundation.CFDictionaryAddValue
+import platform.CoreFoundation.CFDictionaryCreateMutable
 import platform.CoreFoundation.CFDictionaryRef
+import platform.CoreFoundation.CFMutableDictionaryRef
+import platform.CoreFoundation.CFRelease
+import platform.CoreFoundation.CFTypeRef
 import platform.CoreFoundation.CFTypeRefVar
+import platform.CoreFoundation.kCFAllocatorDefault
 import platform.CoreFoundation.kCFBooleanFalse
 import platform.CoreFoundation.kCFBooleanTrue
+import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
+import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.Foundation.NSData
-import platform.Foundation.NSDictionary
 import platform.Foundation.NSString
 import platform.Foundation.NSUserDefaults
 import platform.Foundation.NSUTF8StringEncoding
@@ -66,8 +77,13 @@ internal object IosSecureKeyValueStore {
 
     fun delete(key: String, defaults: NSUserDefaults = NSUserDefaults.standardUserDefaults) {
         clearLegacySensitiveValues(defaults)
-        val status = SecItemDelete(baseQuery(key) as CFDictionaryRef)
-        if (status != errSecSuccess && status != errSecItemNotFound) logStatus("delete", key, status)
+        val query = createDictionary(baseQueryMap(key))
+        try {
+            val status = SecItemDelete(query as CFDictionaryRef)
+            if (status != errSecSuccess && status != errSecItemNotFound) logStatus("delete", key, status)
+        } finally {
+            CFRelease(query)
+        }
     }
 
     /**
@@ -79,53 +95,87 @@ internal object IosSecureKeyValueStore {
     }
 
     private fun readKeychain(key: String): String? = memScoped {
-        val query = NSDictionary.dictionaryWithDictionary(
+        val query = createDictionary(
             baseQueryMap(key) + mapOf(
                 kSecReturnData to kCFBooleanTrue!!,
                 kSecMatchLimit to kSecMatchLimitOne
             )
         )
-        val result = alloc<CFTypeRefVar>()
-        val status = SecItemCopyMatching(query as CFDictionaryRef, result.ptr)
-        if (status == errSecItemNotFound) return@memScoped null
-        if (status != errSecSuccess) {
-            logStatus("read", key, status)
-            return@memScoped null
+        try {
+            val result = alloc<CFTypeRefVar>()
+            val status = SecItemCopyMatching(query as CFDictionaryRef, result.ptr)
+            if (status == errSecItemNotFound) return@memScoped null
+            if (status != errSecSuccess) {
+                logStatus("read", key, status)
+                return@memScoped null
+            }
+            val data = result.value as? NSData ?: return@memScoped null
+            data.bytes?.reinterpret<ByteVar>()?.readBytes(data.length.toInt())?.decodeToString()
+        } finally {
+            CFRelease(query)
         }
-        val data = result.value as? NSData ?: return@memScoped null
-        NSString.create(data = data, encoding = NSUTF8StringEncoding)?.toString()
     }
 
     private fun writeKeychain(key: String, value: String): Boolean {
-        val data = NSString.create(string = value).dataUsingEncoding(NSUTF8StringEncoding) ?: return false
-        val query = NSDictionary.dictionaryWithDictionary(
+        val data = (value as NSString).dataUsingEncoding(NSUTF8StringEncoding) ?: return false
+        val query = createDictionary(
             baseQueryMap(key) + mapOf(
                 kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
                 kSecValueData to data
             )
         )
-        val status = SecItemAdd(query as CFDictionaryRef, null)
-        if (status == errSecSuccess) return true
-        if (status != errSecDuplicateItem) {
-            logStatus("write", key, status)
-            return false
+        try {
+            val status = SecItemAdd(query as CFDictionaryRef, null)
+            if (status == errSecSuccess) return true
+            if (status != errSecDuplicateItem) {
+                logStatus("write", key, status)
+                return false
+            }
+        } finally {
+            CFRelease(query)
         }
 
-        val update = NSDictionary.dictionaryWithDictionary(mapOf(kSecValueData to data))
-        val updateStatus = SecItemUpdate(baseQuery(key) as CFDictionaryRef, update as CFDictionaryRef)
-        if (updateStatus != errSecSuccess) logStatus("update", key, updateStatus)
-        return updateStatus == errSecSuccess
+        val update = createDictionary(mapOf(kSecValueData to data))
+        val updateQuery = createDictionary(baseQueryMap(key))
+        try {
+            val updateStatus = SecItemUpdate(
+                updateQuery as CFDictionaryRef,
+                update as CFDictionaryRef
+            )
+            if (updateStatus != errSecSuccess) logStatus("update", key, updateStatus)
+            return updateStatus == errSecSuccess
+        } finally {
+            CFRelease(updateQuery)
+            CFRelease(update)
+        }
     }
-
-    private fun baseQuery(key: String): NSDictionary = NSDictionary.dictionaryWithDictionary(baseQueryMap(key))
 
     private fun baseQueryMap(key: String): Map<Any?, Any?> = mapOf(
         kSecClass to kSecClassGenericPassword,
-        kSecAttrService to SERVICE,
-        kSecAttrAccount to key,
+        kSecAttrService to (SERVICE as NSString),
+        kSecAttrAccount to (key as NSString),
         // Explicitly disable synchronizable/iCloud Keychain items.
         kSecAttrSynchronizable to kCFBooleanFalse!!
     )
+
+    private fun createDictionary(values: Map<Any?, Any?>): CFMutableDictionaryRef {
+        val dictionary = CFDictionaryCreateMutable(
+            kCFAllocatorDefault,
+            values.size.toLong(),
+            kCFTypeDictionaryKeyCallBacks.ptr,
+            kCFTypeDictionaryValueCallBacks.ptr
+        ) ?: error("CFDictionaryCreateMutable returned null")
+        values.forEach { (key, value) ->
+            CFDictionaryAddValue(dictionary, key.asCFTypeRef(), value.asCFTypeRef())
+        }
+        return dictionary
+    }
+
+    private fun Any?.asCFTypeRef(): CFTypeRef = when (this) {
+        is NSString -> this as CFTypeRef
+        is NSData -> this as CFTypeRef
+        else -> this as CFTypeRef
+    }
 
     private fun logStatus(operation: String, key: String, status: Int) {
         println("IosSecureKeyValueStore operation=$operation key=$key OSStatus=$status")
