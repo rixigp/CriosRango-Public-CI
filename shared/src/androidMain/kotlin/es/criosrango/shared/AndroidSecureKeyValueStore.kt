@@ -9,7 +9,6 @@ import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -51,10 +50,6 @@ class AndroidSecureKeyValueStore(context: Context) {
             val ciphertext = ByteArray(ciphertextLength)
             input.readFully(ciphertext)
             val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey())
-            if (!cipher.iv.contentEquals(iv)) {
-                // GCMParameterSpec IV is authoritative; this guards malformed encodings only.
-            }
             cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), javax.crypto.spec.GCMParameterSpec(GCM_TAG_BITS, iv))
             cipher.doFinal(ciphertext).toString(Charsets.UTF_8)
         } catch (_: Exception) {
