@@ -129,29 +129,58 @@ class StoreSession(
 }
 
 /** Persistent delivery data only; payment credentials are never stored. */
-class DeliveryAddressStore(private val preferences: android.content.SharedPreferences) {
+class DeliveryAddressStore(
+    private val preferences: android.content.SharedPreferences,
+    context: Context
+) {
+    private val secureStore = AndroidSecureKeyValueStore(context.applicationContext)
     private val accountOwnerKey = "delivery_account_owner_id"
+
+    private companion object {
+        val LEGACY_DELIVERY_KEYS = listOf(
+            "delivery_first_name",
+            "delivery_last_name",
+            "delivery_email",
+            "delivery_phone",
+            "delivery_address",
+            "delivery_postcode",
+            "delivery_city",
+            "delivery_state",
+            "delivery_country"
+        )
+    }
+
+    init {
+        // Clean cutover: remove legacy plaintext keys without reading or copying their values.
+        preferences.edit().also { editor ->
+            LEGACY_DELIVERY_KEYS.forEach(editor::remove)
+        }.apply()
+    }
 
     fun load(accountId: Int? = null): CustomerAddress? {
         val ownerId = preferences.getString(accountOwnerKey, null)?.toIntOrNull()
         if (!AccountCartCheckoutPolicy.isAddressVisibleToAccount(ownerId, accountId)) return null
         return CustomerAddress(
-            preferences.getString("delivery_first_name", "").orEmpty(), preferences.getString("delivery_last_name", "").orEmpty(),
-            preferences.getString("delivery_email", "").orEmpty(), preferences.getString("delivery_phone", "").orEmpty(),
-            preferences.getString("delivery_address", "").orEmpty(), preferences.getString("delivery_postcode", "").orEmpty(),
-            preferences.getString("delivery_city", "").orEmpty(), preferences.getString("delivery_state", "").orEmpty(),
-            preferences.getString("delivery_country", "ES").orEmpty()
+            secureStore.get("delivery_first_name").orEmpty(), secureStore.get("delivery_last_name").orEmpty(),
+            secureStore.get("delivery_email").orEmpty(), secureStore.get("delivery_phone").orEmpty(),
+            secureStore.get("delivery_address").orEmpty(), secureStore.get("delivery_postcode").orEmpty(),
+            secureStore.get("delivery_city").orEmpty(), secureStore.get("delivery_state").orEmpty(),
+            secureStore.get("delivery_country") ?: "ES"
         ).takeIf { it.firstName.isNotBlank() || it.lastName.isNotBlank() || it.address1.isNotBlank() }
     }
 
-    fun save(address: CustomerAddress, accountId: Int? = null) = preferences.edit()
-        .putString("delivery_first_name", address.firstName).putString("delivery_last_name", address.lastName)
-        .putString("delivery_email", address.email).putString("delivery_phone", address.phone)
-        .putString("delivery_address", address.address1).putString("delivery_postcode", address.postcode)
-        .putString("delivery_city", address.city).putString("delivery_state", address.state)
-        .putString("delivery_country", address.country)
-        .putString(accountOwnerKey, accountId?.toString())
-        .apply()
+    fun save(address: CustomerAddress, accountId: Int? = null) {
+        secureStore.put("delivery_first_name", address.firstName)
+        secureStore.put("delivery_last_name", address.lastName)
+        secureStore.put("delivery_email", address.email)
+        secureStore.put("delivery_phone", address.phone)
+        secureStore.put("delivery_address", address.address1)
+        secureStore.put("delivery_postcode", address.postcode)
+        secureStore.put("delivery_city", address.city)
+        secureStore.put("delivery_state", address.state)
+        secureStore.put("delivery_country", address.country)
+        preferences.edit().putString(accountOwnerKey, accountId?.toString()).apply()
+    }
 }
 
 data class DiagnosticNormalClient(
