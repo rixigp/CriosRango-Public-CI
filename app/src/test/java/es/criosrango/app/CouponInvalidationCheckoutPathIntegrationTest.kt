@@ -82,7 +82,7 @@ class CouponInvalidationCheckoutPathIntegrationTest {
             InMemoryStoreSessionStore()
         )
         val preferences = context.getSharedPreferences("coupon-invalidation-integration-test", Context.MODE_PRIVATE)
-        val session = StoreSession(preferences)
+        val session = StoreSession(preferences, context)
         val adapter = SharedCatalogStoreApiAdapter(apiClient, session)
         val categoryApi = CategoryCacheStoreApi(adapter, CategoryCatalogCache(database, startInitialSync = false))
         val repository = StoreRepository(categoryApi)

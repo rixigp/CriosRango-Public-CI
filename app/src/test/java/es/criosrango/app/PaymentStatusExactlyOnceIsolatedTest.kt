@@ -91,7 +91,7 @@ class PaymentStatusExactlyOnceIsolatedTest {
             "j5-simplified-" + System.identityHashCode(api),
             Context.MODE_PRIVATE
         )
-        val session = StoreSession(preferences)
+        val session = StoreSession(preferences, context)
         val cartStore = CartStore(api, session, preferences)
         val deliveryAddressStore = DeliveryAddressStore(preferences)
         return ShopViewModel(StoreRepository(api), cartStore, deliveryAddressStore, pending)
