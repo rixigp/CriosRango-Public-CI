@@ -35,22 +35,22 @@ actual object PushDeviceRegistration {
 
     actual fun loadPendingUnregisterSnapshot(): PushUnregisterSnapshot? {
         val token = defaults.stringForKey(PENDING_TOKEN_KEY)?.takeIf { it.isNotBlank() } ?: return null
-        val account = defaults.stringForKey(PENDING_ACCOUNT_KEY)?.takeIf { it.isNotBlank() }
+        val account = IosSecureKeyValueStore.read(PENDING_ACCOUNT_KEY, defaults)?.takeIf { it.isNotBlank() }
         val generation = if (defaults.objectForKey(PENDING_GENERATION_KEY) == null) 0L else defaults.integerForKey(PENDING_GENERATION_KEY)
         return PushUnregisterSnapshot(token, account, generation)
     }
 
     actual fun persistPendingUnregisterSnapshot(snapshot: PushUnregisterSnapshot) {
         defaults.setObject(snapshot.deviceToken, forKey = PENDING_TOKEN_KEY)
-        if (snapshot.accountToken == null) defaults.removeObjectForKey(PENDING_ACCOUNT_KEY)
-        else defaults.setObject(snapshot.accountToken, forKey = PENDING_ACCOUNT_KEY)
+        if (snapshot.accountToken == null) IosSecureKeyValueStore.delete(PENDING_ACCOUNT_KEY, defaults)
+        else IosSecureKeyValueStore.write(PENDING_ACCOUNT_KEY, snapshot.accountToken, defaults)
         defaults.setObject(snapshot.registrationGeneration, forKey = PENDING_GENERATION_KEY)
     }
 
     actual fun clearPendingUnregisterSnapshot(snapshot: PushUnregisterSnapshot) {
         if (loadPendingUnregisterSnapshot() != snapshot) return
         defaults.removeObjectForKey(PENDING_TOKEN_KEY)
-        defaults.removeObjectForKey(PENDING_ACCOUNT_KEY)
+        IosSecureKeyValueStore.delete(PENDING_ACCOUNT_KEY, defaults)
         defaults.removeObjectForKey(PENDING_GENERATION_KEY)
     }
 

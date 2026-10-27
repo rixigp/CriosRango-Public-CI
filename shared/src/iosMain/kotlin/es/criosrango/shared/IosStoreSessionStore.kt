@@ -7,23 +7,23 @@ class IosStoreSessionStore : StoreSessionStore {
     private val defaults = NSUserDefaults.standardUserDefaults
 
     override var cartToken: String?
-        get() = defaults.stringForKey("woo_cart_token")
+        get() = IosSecureKeyValueStore.read("woo_cart_token", defaults)
         set(value) {
-            if (value == null) defaults.removeObjectForKey("woo_cart_token")
-            else defaults.setObject(value, forKey = "woo_cart_token")
+            if (value == null) IosSecureKeyValueStore.delete("woo_cart_token", defaults)
+            else IosSecureKeyValueStore.write("woo_cart_token", value, defaults)
         }
 
     override var nonce: String?
-        get() = defaults.stringForKey("woo_nonce")
+        get() = IosSecureKeyValueStore.read("woo_nonce", defaults)
         set(value) {
-            if (value == null) defaults.removeObjectForKey("woo_nonce")
-            else defaults.setObject(value, forKey = "woo_nonce")
+            if (value == null) IosSecureKeyValueStore.delete("woo_nonce", defaults)
+            else IosSecureKeyValueStore.write("woo_nonce", value, defaults)
         }
 
     override var cookieHeader: String?
-        get() = defaults.stringForKey("woo_cookie_header")
+        get() = IosSecureKeyValueStore.read("woo_cookie_header", defaults)
         set(value) {
-            if (value == null) defaults.removeObjectForKey("woo_cookie_header")
-            else defaults.setObject(value, forKey = "woo_cookie_header")
+            if (value == null) IosSecureKeyValueStore.delete("woo_cookie_header", defaults)
+            else IosSecureKeyValueStore.write("woo_cookie_header", value, defaults)
         }
 }

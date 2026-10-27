@@ -14,19 +14,18 @@ class IosClaimOrderStore : ClaimOrderStore {
 
     override fun load(): PendingClaimOrder? {
         val id = defaults.integerForKey(ORDER_ID).toInt()
-        val key = defaults.stringForKey(ORDER_KEY).orEmpty()
+        val key = IosSecureKeyValueStore.read(ORDER_KEY, defaults).orEmpty()
         return if (id > 0 && key.isNotBlank()) PendingClaimOrder(id, key) else null
     }
 
     override fun save(order: PendingClaimOrder): Boolean {
         if (order.orderId <= 0 || order.orderKey.isBlank()) return false
         defaults.setInteger(order.orderId.toLong(), forKey = ORDER_ID)
-        defaults.setObject(order.orderKey, forKey = ORDER_KEY)
-        return load() == order
+        return IosSecureKeyValueStore.write(ORDER_KEY, order.orderKey, defaults) && load() == order
     }
 
     override fun clear() {
         defaults.removeObjectForKey(ORDER_ID)
-        defaults.removeObjectForKey(ORDER_KEY)
+        IosSecureKeyValueStore.delete(ORDER_KEY, defaults)
     }
 }
