@@ -20,14 +20,14 @@ kotlin {
             implementation(compose.material3)
             implementation(compose.materialIconsExtended)
             implementation(compose.ui)
-            api("io.ktor:ktor-client-core:3.6.0")
-            implementation("io.ktor:ktor-client-content-negotiation:3.6.0")
-            implementation("io.ktor:ktor-serialization-kotlinx-json:3.6.0")
+            api("io.ktor:ktor-client-core:3.5.2")
+            implementation("io.ktor:ktor-client-content-negotiation:3.5.2")
+            implementation("io.ktor:ktor-serialization-kotlinx-json:3.5.2")
             implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
         }
-        commonTest.dependencies { implementation(kotlin("test")); implementation("io.ktor:ktor-client-mock:3.6.0"); implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1") }
-        androidMain.dependencies { implementation("io.ktor:ktor-client-okhttp:3.6.0") }
-        iosMain.dependencies { implementation("io.ktor:ktor-client-darwin:3.6.0") }
+        commonTest.dependencies { implementation(kotlin("test")); implementation("io.ktor:ktor-client-mock:3.5.2"); implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1") }
+        androidMain.dependencies { implementation("io.ktor:ktor-client-okhttp:3.5.2") }
+        iosMain.dependencies { implementation("io.ktor:ktor-client-darwin:3.5.2") }
     }
 }
 compose.resources {
