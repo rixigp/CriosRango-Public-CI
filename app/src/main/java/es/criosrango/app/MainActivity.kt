@@ -158,7 +158,7 @@ class MainActivity : ComponentActivity() {
             ShopViewModel.Factory(
                 repository,
                 cartStore,
-                DeliveryAddressStore(preferences),
+                DeliveryAddressStore(preferences, this),
                 pendingCardPaymentStore,
                 es.criosrango.shared.storeOutletDataSource(sharedCatalogClient)
             )
