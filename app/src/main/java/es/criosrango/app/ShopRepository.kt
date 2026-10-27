@@ -1,5 +1,8 @@
 package es.criosrango.app
 
+import android.content.Context
+import es.criosrango.shared.AndroidSecureKeyValueStore
+
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -68,7 +71,19 @@ interface StoreApi {
     suspend fun updateCustomer(request: UpdateCustomerRequest): WooCart
 }
 
-class StoreSession(private val preferences: android.content.SharedPreferences) {
+class StoreSession(
+    private val preferences: android.content.SharedPreferences,
+    context: Context
+) {
+    private val secureStore = AndroidSecureKeyValueStore(context.applicationContext)
+
+    init {
+        // Clean-cut migration: discard legacy plaintext without reading its values.
+        secureStore.remove(CART_TOKEN)
+        secureStore.remove(NONCE)
+        secureStore.remove(COOKIE_HEADER)
+        preferences.edit().remove(CART_TOKEN).remove(NONCE).remove(COOKIE_HEADER).apply()
+    }
     private companion object {
         const val CART_TOKEN = "woo_cart_token"
         const val NONCE = "woo_nonce"
@@ -76,16 +91,16 @@ class StoreSession(private val preferences: android.content.SharedPreferences) {
     }
 
     var cartToken: String?
-        get() = preferences.getString(CART_TOKEN, null)
-        set(value) { preferences.edit().putString(CART_TOKEN, value).apply() }
+        get() = secureStore.get(CART_TOKEN)
+        set(value) { secureStore.put(CART_TOKEN, value) }
 
     var nonce: String?
-        get() = preferences.getString(NONCE, null)
-        set(value) { preferences.edit().putString(NONCE, value).apply() }
+        get() = secureStore.get(NONCE)
+        set(value) { secureStore.put(NONCE, value) }
 
     var cookieHeader: String?
-        get() = preferences.getString(COOKIE_HEADER, null)
-        set(value) { preferences.edit().putString(COOKIE_HEADER, value).apply() }
+        get() = secureStore.get(COOKIE_HEADER)
+        set(value) { secureStore.put(COOKIE_HEADER, value) }
 
     @Synchronized
     fun update(headers: okhttp3.Headers) {
