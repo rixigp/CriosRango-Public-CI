@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import es.criosrango.shared.AndroidSecureKeyValueStore
 import es.criosrango.shared.PushNotificationContract
 import es.criosrango.shared.PushNotificationType
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +34,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 
 class PushPreferencesStore(context: Context) {
@@ -133,6 +135,42 @@ object PushNotificationController {
     private const val DIAG_SUCCESS = "criosrango_push_diag_register_success"
     private const val DIAG_PENDING = "criosrango_push_diag_sync_pending"
     private const val DIAG_ORDER_UPDATES = "criosrango_push_diag_order_updates_sent"
+
+    private data class SecurePushState(
+        val preferences: android.content.SharedPreferences,
+        val store: AndroidSecureKeyValueStore
+    )
+
+    private fun securePushState(context: Context): SecurePushState {
+        val app = context.applicationContext
+        val prefs = app.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
+        // Clean cutover: remove legacy plaintext keys without reading or migrating their values.
+        prefs.edit().remove(IDENTIFIER_KEY).remove(PENDING_UNREGISTER_KEY).apply()
+        return SecurePushState(prefs, AndroidSecureKeyValueStore(app))
+    }
+
+    private fun readPendingUnregisterTokens(store: AndroidSecureKeyValueStore): Set<String> {
+        val serialized = store.get(PENDING_UNREGISTER_KEY) ?: return emptySet()
+        return try {
+            val array = JSONArray(serialized)
+            buildSet {
+                for (index in 0 until array.length()) {
+                    add(array.get(index) as? String
+                        ?: throw IllegalArgumentException("Invalid pending unregister entry"))
+                }
+            }
+        } catch (_: Exception) {
+            // Corrupt/unreadable queue is safely discarded; never fall back to plaintext.
+            store.remove(PENDING_UNREGISTER_KEY)
+            emptySet()
+        }
+    }
+
+    private fun writePendingUnregisterTokens(store: AndroidSecureKeyValueStore, tokens: Set<String>) {
+        val array = JSONArray()
+        tokens.sorted().forEach { array.put(it) }
+        store.put(PENDING_UNREGISTER_KEY, array.toString())
+    }
 
     private val _diagnostics = MutableStateFlow(PushRegistrationDiagnostics())
     val diagnostics: StateFlow<PushRegistrationDiagnostics> = _diagnostics.asStateFlow()
@@ -235,22 +273,23 @@ object PushNotificationController {
     /** Bounded best-effort deassociation; retain token and pending marker on failure. */
     suspend fun unregisterAwait(context: Context): Boolean {
         val app = context.applicationContext
-        val prefs = app.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
+        val state = securePushState(app)
+        val prefs = state.preferences
         val identifierType = prefs.getString(IDENTIFIER_TYPE_KEY, null)
-        val token = prefs.getString(IDENTIFIER_KEY, null)?.takeIf { it.isNotBlank() } ?: return true
+        val token = state.store.get(IDENTIFIER_KEY)?.takeIf { it.isNotBlank() } ?: return true
         if (identifierType != "fid") return true
         // Persist recovery intent before waiting for the registration mutex, so lock timeout cannot lose it.
         val pending = pendingUnregisterTokensAfterAttempt(
-            prefs.getStringSet(PENDING_UNREGISTER_KEY, emptySet()).orEmpty(), token, unregisterSucceeded = false
+            readPendingUnregisterTokens(state.store), token, unregisterSucceeded = false
         )
-        prefs.edit().putStringSet(PENDING_UNREGISTER_KEY, pending).apply()
+        writePendingUnregisterTokens(state.store, pending)
         return withTimeoutOrNull(4_500L) {
             syncMutex.withLock {
                 val removed = withContext(Dispatchers.IO) { deactivateToken(token, prefs.getString("account_token", null)) }
                 val updatedPending = pendingUnregisterTokensAfterAttempt(
-                    prefs.getStringSet(PENDING_UNREGISTER_KEY, emptySet()).orEmpty(), token, unregisterSucceeded = removed
+                    readPendingUnregisterTokens(state.store), token, unregisterSucceeded = removed
                 )
-                prefs.edit().putStringSet(PENDING_UNREGISTER_KEY, updatedPending).apply()
+                writePendingUnregisterTokens(state.store, updatedPending)
                 removed
             }
         } ?: false
@@ -260,11 +299,12 @@ object PushNotificationController {
         .put("platform", "android").put("identifier_type", "fid").put("identifier", identifier)
 
     private fun syncRegisteredFid(context: Context, fid: String) {
-        val prefs = context.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
+        val state = securePushState(context)
+        val prefs = state.preferences
         val previousIdentifierType = prefs.getString(IDENTIFIER_TYPE_KEY, null)
-        val previousToken = prefs.getString(IDENTIFIER_KEY, null)?.takeIf { previousIdentifierType == "fid" }
+        val previousToken = state.store.get(IDENTIFIER_KEY)?.takeIf { previousIdentifierType == "fid" }
         val accountToken = prefs.getString("account_token", null)
-        val pending = prefs.getStringSet(PENDING_UNREGISTER_KEY, emptySet()).orEmpty().toMutableSet()
+        val pending = readPendingUnregisterTokens(state.store).toMutableSet()
         val pushPrefs = PushPreferencesStore(context)
         val payload = pushRegistrationPayload(fid, pushPrefs.newProducts, pushPrefs.orderUpdates)
         val authenticated = !accountToken.isNullOrBlank()
@@ -293,8 +333,9 @@ object PushNotificationController {
             if (!removed) pending.add(previousToken)
             android.util.Log.i(TAG, "Previous token unregister ${if (removed) "executed" else "retained for retry"}")
         }
-        prefs.edit().putString(IDENTIFIER_TYPE_KEY, "fid").putString(IDENTIFIER_KEY, fid)
-            .putStringSet(PENDING_UNREGISTER_KEY, pending).remove(PREFERENCES_SYNC_PENDING_KEY)
+        state.store.put(IDENTIFIER_KEY, fid)
+        writePendingUnregisterTokens(state.store, pending)
+        prefs.edit().putString(IDENTIFIER_TYPE_KEY, "fid").remove(PREFERENCES_SYNC_PENDING_KEY)
             .remove(DIAG_TOKEN_ERROR_CLASS).remove(DIAG_TOKEN_ERROR_MESSAGE).apply()
         persistDiagnostics(context, _diagnostics.value.copy(
             registerSuccess = true,
