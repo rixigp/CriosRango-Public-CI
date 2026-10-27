@@ -141,11 +141,16 @@ object PushNotificationController {
         val store: AndroidSecureKeyValueStore
     )
 
+    private fun cleanLegacyPushState(context: Context) {
+        context.applicationContext.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
+            .edit().remove(IDENTIFIER_KEY).remove(PENDING_UNREGISTER_KEY).apply()
+    }
+
     private fun securePushState(context: Context): SecurePushState {
         val app = context.applicationContext
         val prefs = app.getSharedPreferences(SESSION, Context.MODE_PRIVATE)
         // Clean cutover: remove legacy plaintext keys without reading or migrating their values.
-        prefs.edit().remove(IDENTIFIER_KEY).remove(PENDING_UNREGISTER_KEY).apply()
+        cleanLegacyPushState(app)
         return SecurePushState(prefs, AndroidSecureKeyValueStore(app))
     }
 
@@ -241,6 +246,7 @@ object PushNotificationController {
 
     fun syncRegistration(context: Context) {
         val app = context.applicationContext
+        cleanLegacyPushState(app)
         persistDiagnostics(app, _diagnostics.value.copy(
             fidAvailable = null, registerAttempted = true, registerReceived = false,
             httpResult = "Esperando REGISTER / onRegistered", tokenErrorClass = null,
