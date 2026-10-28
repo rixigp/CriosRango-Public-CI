@@ -77,12 +77,24 @@ final class CriosRangoSceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.makeKeyAndVisible()
 
         for context in connectionOptions.urlContexts { handlePaymentURL(context.url) }
+        for activity in connectionOptions.userActivities { handleUserActivity(activity) }
         if let response=connectionOptions.notificationResponse {
             let info=response.notification.request.content.userInfo
             let type = info["type"] as? String
             let orderId = parsePushOrderId(info["order_id"])
             MainViewControllerKt.handleIosPushNotification(type: type, orderId: orderId)
         }
+    }
+
+    func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        handleUserActivity(userActivity)
+    }
+
+    private func handleUserActivity(_ userActivity: NSUserActivity) {
+        guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
+              let url = userActivity.webpageURL else { return }
+        handlePaymentURL(url)
+        MainViewControllerKt.handleIosProductAppLink(url: url.absoluteString)
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {

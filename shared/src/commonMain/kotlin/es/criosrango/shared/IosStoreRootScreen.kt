@@ -204,6 +204,23 @@ fun CriosRangoIOSRootScreen(
     var outletCategorySnapshotError by remember { mutableStateOf<String?>(null) }
     var outletCategorySnapshotRetryGeneration by remember { mutableStateOf(0) }
     fun openCatalog(page: IosCatalogPage) { if (catalogPage != page) catalogHistory.add(catalogPage); catalogPage = page }
+    LaunchedEffect(iosPendingProductAppLink.value) {
+        val slug = iosPendingProductAppLink.value ?: return@LaunchedEffect
+        try {
+            val product = storeApi.productBySlug(slug)
+            if (product.id > 0) {
+                section = IosRootSection.CATEGORIES
+                catalogOriginHome = false
+                openCatalog(IosCatalogPage.Product(product))
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Keep the current screen stable if the direct slug endpoint fails.
+        } finally {
+            if (iosPendingProductAppLink.value == slug) iosPendingProductAppLink.value = null
+        }
+    }
     fun resetCatalog() { catalogHistory.clear(); catalogPage = IosCatalogPage.Root; catalogOriginHome = false }
     IosBackHandler(IosBackPriority.ROOT, canGoBack = section != IosRootSection.HOME) { resetCatalog(); section = IosRootSection.HOME }
     fun retryCategorySnapshot() {

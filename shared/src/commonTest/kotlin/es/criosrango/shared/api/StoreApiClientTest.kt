@@ -18,6 +18,19 @@ import kotlin.test.assertTrue
 class StoreApiClientTest {
 
     @Test
+    fun productBySlugRequestsDirectWooCommerceSlugEndpoint() = kotlinx.coroutines.test.runTest {
+        var requestedUrl = ""
+        val client = mockClient(HttpStatusCode.OK, """{"id":57392,"name":"Conjunto 0200 Yoedu","permalink":"https://www.criosrango.es/producto/conjunto-0200-yoedu/"}""") {
+            requestedUrl = it.url.toString()
+        }
+        val product = StoreApiClient(client = client).productBySlug("conjunto-0200-yoedu")
+        assertEquals("https://criosrango.es/wp-json/wc/store/v1/products/conjunto-0200-yoedu", requestedUrl)
+        assertEquals(57392, product.id)
+        assertEquals("https://www.criosrango.es/producto/conjunto-0200-yoedu/", product.permalink)
+    }
+
+
+    @Test
     fun homeMediaConfigUsesSharedWordPressEndpointAndDecodesOptionalFields() = kotlinx.coroutines.test.runTest {
         var requestedUrl = ""
         val client = mockClient(HttpStatusCode.OK, """{"hero_images":[],"outlet_winter_image":"https://cdn.example/winter.png","outlet_summer_image":"https://cdn.example/summer.png","updated_at":"2026-10-17"}""") {

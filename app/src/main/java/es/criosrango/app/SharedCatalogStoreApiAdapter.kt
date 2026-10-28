@@ -151,6 +151,12 @@ class SharedCatalogStoreApiAdapter(
         sharedClient.updateCustomer(request.toShared()).toAndroid()
     } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
 
+    override suspend fun productBySlug(slug: String): StoreProduct {
+        logCatalogDebug("CriosRangoSharedCatalog", "PRODUCT_DETAIL source=shared slug=$slug")
+        return try { sharedClient.productBySlug(slug).toAndroid() }
+        catch (exception: Exception) { throw exception.toAndroidCatalogException() }
+    }
+
     override suspend fun product(id: Int): StoreProduct {
         logCatalogDebug("CriosRangoSharedCatalog", "PRODUCT_DETAIL source=shared id=$id")
         return try {

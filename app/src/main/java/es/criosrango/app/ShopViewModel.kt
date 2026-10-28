@@ -372,15 +372,21 @@ class ShopViewModel(
     }
 
     fun openProductBySlug(rawSlug: String) {
-        val slug = rawSlug.trim().trim('/').lowercase(); if (slug.isBlank()) return
         viewModelScope.launch {
-            fun matches(product: StoreProduct): Boolean {
-                val urlSlug = runCatching { val segments = android.net.Uri.parse(product.permalink).pathSegments; val productIndex = segments.indexOfFirst { it.equals("producto", ignoreCase = true) }; if (productIndex >= 0) segments.getOrNull(productIndex + 1) else segments.lastOrNull() }.getOrNull()
-                return urlSlug?.equals(slug, ignoreCase = true) == true
-            }
-            val cached = (_products.value + _homeProducts.value).distinctBy { it.id }.firstOrNull(::matches)
-            val product = cached ?: try { repository.products(search = slug.replace('-', ' ')).firstOrNull(::matches) ?: repository.products(search = slug).firstOrNull(::matches) } catch (_: Exception) { null }
-            if (product != null) openProduct(product) else _error.value = StoreUiError(StoreErrorType.UNEXPECTED)
+            resolveProductAppLink(
+                rawSlug = rawSlug,
+                cachedProducts = (_products.value + _homeProducts.value).distinctBy { it.id },
+                productSlug = { product ->
+                    runCatching {
+                        val segments = android.net.Uri.parse(product.permalink).pathSegments
+                        val productIndex = segments.indexOfFirst { it.equals("producto", ignoreCase = true) }
+                        if (productIndex >= 0) segments.getOrNull(productIndex + 1) else segments.lastOrNull()
+                    }.getOrNull()
+                },
+                fetchBySlug = { slug -> repository.productBySlug(slug) },
+                open = ::openProduct,
+                onError = { _error.value = StoreUiError(StoreErrorType.UNEXPECTED) }
+            )
         }
     }
 
@@ -748,4 +754,37 @@ class ShopViewModel(
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
             ShopViewModel(repository, cartStore, deliveryAddressStore, pendingCardPaymentStore, outletDataSource) as T
     }
+}
+
+internal fun normalizeProductAppLinkSlug(rawSlug: String): String? =
+    rawSlug.trim().trim('/').lowercase(java.util.Locale.ROOT).takeIf { it.isNotBlank() }
+
+internal fun productSlugFromPath(path: String?): String? {
+    val segments = path.orEmpty().split('/').filter { it.isNotBlank() }
+    val productIndex = segments.indexOfFirst { it.equals("producto", ignoreCase = true) }
+    if (productIndex < 0) return null
+    return segments.getOrNull(productIndex + 1)?.let(::normalizeProductAppLinkSlug)
+}
+
+internal suspend fun <T> resolveProductAppLink(
+    rawSlug: String,
+    cachedProducts: List<T>,
+    productSlug: (T) -> String?,
+    fetchBySlug: suspend (String) -> T?,
+    open: (T) -> Unit,
+    onError: () -> Unit
+) {
+    val slug = normalizeProductAppLinkSlug(rawSlug)
+    if (slug == null) { onError(); return }
+    val cached = cachedProducts.firstOrNull { normalizeProductAppLinkSlug(productSlug(it).orEmpty()) == slug }
+    if (cached != null) { open(cached); return }
+    val fetched = try {
+        fetchBySlug(slug)
+    } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+        null
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        throw cancelled
+    } catch (_: Exception) { null }
+    if (fetched != null && normalizeProductAppLinkSlug(productSlug(fetched).orEmpty()) == slug) open(fetched)
+    else onError()
 }

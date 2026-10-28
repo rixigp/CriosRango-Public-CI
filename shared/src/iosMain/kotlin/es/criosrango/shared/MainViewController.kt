@@ -26,6 +26,9 @@ import platform.objc.OBJC_ASSOCIATION_RETAIN_NONATOMIC
 import platform.objc.objc_setAssociatedObject
 
 private var iosPaymentStore: StorePaymentStore? = null
+fun handleIosProductAppLink(url: String) {
+    iosPendingProductAppLink.value = parseProductAppLinkUrl(url)
+}
 private var iosRootViewController: UIViewController? = null
 
 // The key is process-lifetime metadata only; the associated target itself is retained by each controller.
