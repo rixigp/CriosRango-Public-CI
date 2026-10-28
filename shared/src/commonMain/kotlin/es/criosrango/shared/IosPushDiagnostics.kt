@@ -118,6 +118,8 @@ object IosPushDiagnostics {
         )
     }
 
+    // HTTP response bodies can contain PII or credentials; keep the parameter for callers but never persist it.
+    @Suppress("UNUSED_PARAMETER")
     fun recordPostResult(
         result: String,
         accepted: String,

@@ -658,7 +658,7 @@ class CartStore(private val api: StoreApi, private val session: StoreSession, pr
             _error.value = null
             val response = withTimeout(18_000) { operation() }
             if (response.errors.isNotEmpty()) {
-                response.errors.forEach { error -> if (BuildConfig.DEBUG) Log.d("CriosRangoStore", "WooCommerce error code=${error.code}") }
+                response.errors.forEach { error -> if (BuildConfig.DEBUG) Log.d("CriosRangoStore", "WooCommerce error code=${error.code} operation=${endpoint.substringAfter(' ')}") }
                 throw CartException(response.errors.joinToString("\n") { it.message })
             }
             accept(response)
