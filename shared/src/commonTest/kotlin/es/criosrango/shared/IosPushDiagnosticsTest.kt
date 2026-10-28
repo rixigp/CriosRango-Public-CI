@@ -45,6 +45,18 @@ class IosPushDiagnosticsTest {
     }
 
     @Test
+    fun diagnosticTextRedactsSensitiveHeadersAndPersonalJsonFields() {
+        val message = """Registration failed status=401 Authorization: Bearer account-secret; Cookie: session=secret; {"email":"person@example.com","phone":"+34 600 123 456","address":"Calle de Prueba 12","order_key":"wc_order_secret","paymentUrl":"https://pgw.ceca.es/pay?token=abc"}"""
+            .safeDiagnosticText(500)
+        listOf(
+            "account-secret", "session=secret", "person@example.com", "+34 600 123 456",
+            "Calle de Prueba 12", "wc_order_secret", "https://pgw.ceca.es", "token=abc"
+        ).forEach { assertFalse(message.contains(it)) }
+        assertTrue(message.contains("status=401"))
+        assertTrue(message.contains("[redactado]"))
+    }
+
+    @Test
     fun backendRejectionLeavesSyncPendingAndRecordsHttpStatus() {
         IosPushDiagnostics.recordPostResult("HTTP 401", "NO", true, "HttpError", "Registro no autorizado")
         val snapshot = IosPushDiagnostics.snapshot

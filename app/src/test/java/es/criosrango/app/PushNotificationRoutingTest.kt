@@ -107,6 +107,19 @@ class PushNotificationRoutingTest {
     }
 
     @Test
+    fun tokenErrorMessageRedactsSensitiveHeadersAndPersonalJsonFields() {
+        val message = safePushTokenErrorMessage(
+            """Registration failed status=401 Authorization: Bearer account-secret; Cookie: session=secret; {"email":"person@example.com","phone":"+34 600 123 456","address":"Calle de Prueba 12","order_key":"wc_order_secret","paymentUrl":"https://pgw.ceca.es/pay?token=abc"}"""
+        )
+        listOf(
+            "account-secret", "session=secret", "person@example.com", "+34 600 123 456",
+            "Calle de Prueba 12", "wc_order_secret", "https://pgw.ceca.es", "token=abc"
+        ).forEach { assertFalse(message.contains(it)) }
+        assertTrue(message.contains("status=401"))
+        assertTrue(message.contains("[REDACTED]"))
+    }
+
+    @Test
     fun authenticatedRegistrationUsesPersistedBearerTokenOnly() {
         assertEquals("Bearer ACCOUNT_TOKEN", pushAuthorizationHeader("ACCOUNT_TOKEN"))
         assertEquals(null, pushAuthorizationHeader(null))
