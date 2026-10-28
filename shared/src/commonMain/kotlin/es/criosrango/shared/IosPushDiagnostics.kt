@@ -145,8 +145,8 @@ object IosPushDiagnostics {
 internal fun String.safeDiagnosticText(maxLength: Int): String =
     replace(Regex("(?i)bearer\\s+[^\\s,;]+"), "Bearer [redactado]")
         .replace(Regex("""(?i)\b(cookie|set-cookie)\b\s*[:=]\s*[^\r\n]+""")) { match -> "${match.groupValues[1]}=[redactado]" }
-        .replace(Regex("""(?i)(authorization|account[_-]?token|cart-token|nonce|order[_-]?key|payment[_-]?url|paymenturl|fid|installation[_-]?id|token|api[_-]?key|secret|password|email|e-mail|phone|telephone|address(?:[_-]?[12])?|first[_-]?name|last[_-]?name|postcode|zip(?:code)?|billing|shipping|card(?:[_-]?(?:number|token))?|cvv|cvc|bizum|request[_-]?body|response[_-]?body|payload)\b\s*["']?\s*[:=]\s*["']?[^\s&;,"'}]+""")) { match ->
-            "${match.groupValues[1]}=[redactado]"
+        .replace(Regex("""(?i)(["']?(?:authorization|account[_-]?token|cart-token|nonce|order[_-]?key|payment[_-]?url|paymenturl|fid|installation[_-]?id|token|api[_-]?key|secret|password|email|e-mail|phone|telephone|address(?:[_-]?[12])?|first[_-]?name|last[_-]?name|postcode|zip(?:code)?|billing|shipping|card(?:[_-]?(?:number|token))?|cvv|cvc|bizum|request[_-]?body|response[_-]?body|payload)["']?\\s*[:=]\\s*)(?:"[^"]*"|'[^']*'|[^,\\s&;]+)""")) { match ->
+            "${match.groupValues[1]}[redactado]"
         }
 
         .replace(Regex("""(?i)https?://[^\s"'<>]+"""), "[URL redactada]")
