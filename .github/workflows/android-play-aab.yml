@@ -66,8 +66,8 @@ jobs:
           set -euo pipefail
           VERSION_NAME="$(grep -E 'versionName[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')"
           VERSION_CODE="$(grep -E 'versionCode[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/')"
-          test "$VERSION_NAME" = "1.0.1" || { echo "::error::VERSION_NAME must be 1.0.1"; exit 1; }
-          test "$VERSION_CODE" = "20005" || { echo "::error::VERSION_CODE must be 20005"; exit 1; }
+          test "$VERSION_NAME" = "1.0.2" || { echo "::error::VERSION_NAME must be 1.0.2"; exit 1; }
+          test "$VERSION_CODE" = "20007" || { echo "::error::VERSION_CODE must be 20007"; exit 1; }
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
