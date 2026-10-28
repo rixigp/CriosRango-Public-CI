@@ -1,0 +1,440 @@
+name: iOS Signed Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Exact commit SHA to build from develop/1.0.3"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_BUNDLE_ID: "es.criosrango.app"
+  EXPECTED_TEAM_ID: "3793344J72"
+  EXPECTED_BRANCH: "develop/1.0.3"
+  EXPECTED_SHA: ${{ inputs.target_sha }}
+
+jobs:
+  signed-validation:
+    name: Build, sign and inspect IPA (artifact only)
+    if: github.ref == 'refs/heads/develop/1.0.3'
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Guard branch and exact target SHA
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/$EXPECTED_BRANCH" ]] || { echo "::error::Workflow must be dispatched from develop/1.0.3"; exit 1; }
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::target_sha must be an exact lowercase 40-character SHA"; exit 1; }
+          CURRENT_BRANCH_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$EXPECTED_BRANCH" --jq '.object.sha')"
+          [[ "$CURRENT_BRANCH_SHA" == "$TARGET_SHA" ]] || { echo "::error::target_sha must equal the current develop/1.0.3 HEAD"; exit 1; }
+          echo "Requested target SHA: $TARGET_SHA"
+          echo "Branch HEAD matches requested target SHA."
+
+      - name: Checkout exact target SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.target_sha }}
+
+      - name: Verify checkout and select Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" ]] || { echo "::error::Checkout SHA mismatch"; exit 1; }
+          DEVELOPER_DIR="/Applications/Xcode_26.6.app/Contents/Developer"
+          test -d "$DEVELOPER_DIR"
+          sudo xcode-select -s "$DEVELOPER_DIR"
+          xcodebuild -version
+          test "$(xcode-select -p)" = "$DEVELOPER_DIR"
+          mkdir -p release-artifacts
+          echo "HEAD_SHA=$ACTUAL_SHA" | tee release-artifacts/validation-summary.txt
+          echo "BRANCH=$EXPECTED_BRANCH" >> release-artifacts/validation-summary.txt
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Read current iOS version and build from Release settings
+        id: app-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          SETTINGS="$RUNNER_TEMP/ios-validation-build-settings.txt"
+          xcodebuild -project iosApp/iosApp.xcodeproj -target CriosRangoKMPSpike -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -showBuildSettings > "$SETTINGS"
+          VERSION_NAME="$(awk -F ' = ' '/^[[:space:]]*MARKETING_VERSION = / {print $2; exit}' "$SETTINGS")"
+          VERSION_CODE="$(awk -F ' = ' '/^[[:space:]]*CURRENT_PROJECT_VERSION = / {print $2; exit}' "$SETTINGS")"
+          [[ -n "$VERSION_NAME" && -n "$VERSION_CODE" ]]
+          [[ "$VERSION_CODE" =~ ^[0-9]+$ ]]
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "VERSION=$VERSION_NAME" >> release-artifacts/validation-summary.txt
+          echo "BUILD=$VERSION_CODE" >> release-artifacts/validation-summary.txt
+          echo "Version/build read from target SHA; no version values are changed."
+
+      - name: Check required build and signing secrets
+        shell: bash
+        env:
+          IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          FIREBASE_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$IOS_DISTRIBUTION_P12_BASE64"
+          test -n "$IOS_DISTRIBUTION_P12_PASSWORD"
+          test -n "$IOS_PROVISIONING_PROFILE_BASE64"
+          test -n "$FIREBASE_PLIST_BASE64"
+          echo "Required build and signing secrets are present; values are not logged."
+
+      - name: Reconstruct and validate provisioning profile
+        id: profile
+        shell: bash
+        env:
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          PROFILE_PATH="$RUNNER_TEMP/CriosRango.mobileprovision"
+          PROFILE_PLIST="$RUNNER_TEMP/CriosRango-profile.plist"
+          printf '%s' "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+          chmod 600 "$PROFILE_PATH"
+          test -s "$PROFILE_PATH"
+          security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
+          plutil -lint "$PROFILE_PLIST"
+          PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$PROFILE_PLIST")"
+          PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$PROFILE_PLIST")"
+          PROFILE_EXPIRATION="$(/usr/libexec/PlistBuddy -c 'Print :ExpirationDate' "$PROFILE_PLIST")"
+          PROFILE_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$PROFILE_PLIST")"
+          PROFILE_APP_ID="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$PROFILE_PLIST")"
+          [[ "$PROFILE_TEAM" == "$EXPECTED_TEAM_ID" ]]
+          [[ "$PROFILE_APP_ID" == "$EXPECTED_TEAM_ID.$EXPECTED_BUNDLE_ID" ]]
+          PROFILE_DOMAINS_CHECK="$(python3 - "$PROFILE_PLIST" <<'PY'
+          import plistlib, sys
+          with open(sys.argv[1], "rb") as f:
+              p = plistlib.load(f)
+          got = p.get("Entitlements", {}).get("com.apple.developer.associated-domains")
+          expected = ["applinks:criosrango.es", "applinks:www.criosrango.es"]
+          print("yes" if isinstance(got, list) and all(x in got for x in expected) else "no")
+          if isinstance(got, list):
+              print("\n".join(got))
+          PY
+          )"
+          [[ "$PROFILE_DOMAINS_CHECK" == yes* ]] || { echo "::error::Provisioning profile does not authorize both expected associated domains"; exit 1; }
+          PROFILE_DOMAINS="$(python3 - "$PROFILE_PLIST" <<'PY'
+          import plistlib, sys
+          with open(sys.argv[1], "rb") as f:
+              p = plistlib.load(f)
+          values = p.get("Entitlements", {}).get("com.apple.developer.associated-domains", [])
+          print("\n".join(values) if isinstance(values, list) else "")
+          PY
+          )"
+          echo "profile_name=$PROFILE_NAME" >> "$GITHUB_OUTPUT"
+          echo "profile_uuid=$PROFILE_UUID" >> "$GITHUB_OUTPUT"
+          echo "profile_path=$PROFILE_PATH" >> "$GITHUB_OUTPUT"
+          echo "profile_plist=$PROFILE_PLIST" >> "$GITHUB_OUTPUT"
+          {
+            echo "PROFILE_NAME=$PROFILE_NAME"
+            echo "PROFILE_UUID=$PROFILE_UUID"
+            echo "PROFILE_EXPIRATION=$PROFILE_EXPIRATION"
+            echo "APPLICATION_IDENTIFIER=$PROFILE_APP_ID"
+            echo "PROFILE_ASSOCIATED_DOMAINS_PRESENT=YES"
+            echo "PROFILE_ASSOCIATED_DOMAINS_VALUE<<DOMAINS"
+            printf '%s\n' "$PROFILE_DOMAINS"
+            echo "DOMAINS"
+          } >> release-artifacts/validation-summary.txt
+          python3 - "$PROFILE_PLIST" release-artifacts/provisioning-profile-sanitized.plist <<'PY'
+          import plistlib, sys
+          with open(sys.argv[1], "rb") as f:
+              p = plistlib.load(f)
+          e = p.get("Entitlements", {})
+          safe = {
+              "Name": p.get("Name", ""),
+              "UUID": p.get("UUID", ""),
+              "ExpirationDate": p.get("ExpirationDate"),
+              "TeamIdentifier": p.get("TeamIdentifier", []),
+              "ApplicationIdentifier": e.get("application-identifier", ""),
+              "AssociatedDomains": e.get("com.apple.developer.associated-domains", []),
+          }
+          with open(sys.argv[2], "wb") as f:
+              plistlib.dump(safe, f, fmt=plistlib.FMT_XML)
+          PY
+
+      - name: Install distribution certificate and profile
+        id: signing
+        shell: bash
+        env:
+          IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+          PROFILE_PATH: ${{ steps.profile.outputs.profile_path }}
+          PROFILE_UUID: ${{ steps.profile.outputs.profile_uuid }}
+          PROFILE_PLIST: ${{ steps.profile.outputs.profile_plist }}
+        run: |
+          set -euo pipefail
+          P12_PATH="$RUNNER_TEMP/apple-distribution.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/criosrango-validation.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)$(uuidgen)"
+          printf '%s' "$IOS_DISTRIBUTION_P12_BASE64" | base64 --decode > "$P12_PATH"
+          chmod 600 "$P12_PATH"
+          test -s "$P12_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$P12_PATH" -P "$IOS_DISTRIBUTION_P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          SIGNING_SHA1="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk '/Apple Distribution:/ {print $2; exit}')"
+          [[ "$SIGNING_SHA1" =~ ^[0-9A-Fa-f]{40}$ ]] || { echo "::error::Apple Distribution identity not found"; exit 1; }
+          CERT_MATCH="$(python3 - "$PROFILE_PLIST" "$SIGNING_SHA1" <<'PY'
+          import hashlib, plistlib, sys
+          with open(sys.argv[1], "rb") as f:
+              p = plistlib.load(f)
+          wanted = sys.argv[2].replace(":", "").upper()
+          actual = [hashlib.sha1(bytes(c)).hexdigest().upper() for c in p.get("DeveloperCertificates", [])]
+          print("yes" if wanted in actual else "no")
+          PY
+          )"
+          [[ "$CERT_MATCH" == yes ]] || { echo "::error::Profile does not contain the imported signing certificate"; exit 1; }
+          MODERN_DIR="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          LEGACY_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$MODERN_DIR" "$LEGACY_DIR"
+          cp "$PROFILE_PATH" "$MODERN_DIR/$PROFILE_UUID.mobileprovision"
+          cp "$PROFILE_PATH" "$LEGACY_DIR/$PROFILE_UUID.mobileprovision"
+          echo "Certificate identity and profile certificate match: PASS"
+          echo "keychain_path=$KEYCHAIN_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare production signing entitlements and Firebase configuration
+        id: prepare
+        shell: bash
+        env:
+          FIREBASE_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          set -euo pipefail
+          SOURCE_ENTITLEMENTS="iosApp/iosApp.entitlements"
+          RELEASE_ENTITLEMENTS="$RUNNER_TEMP/CriosRango-validation.entitlements"
+          cp "$SOURCE_ENTITLEMENTS" "$RELEASE_ENTITLEMENTS"
+          /usr/libexec/PlistBuddy -c 'Set :aps-environment production' "$RELEASE_ENTITLEMENTS"
+          plutil -lint "$RELEASE_ENTITLEMENTS"
+          for DOMAIN in "applinks:criosrango.es" "applinks:www.criosrango.es"; do
+            /usr/libexec/PlistBuddy -c 'Print :com.apple.developer.associated-domains' "$RELEASE_ENTITLEMENTS" | grep -Fq "$DOMAIN"
+          done
+          printf '%s' "$FIREBASE_PLIST_BASE64" | base64 --decode > iosApp/GoogleService-Info.plist
+          plutil -lint iosApp/GoogleService-Info.plist >/dev/null
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :BUNDLE_ID' iosApp/GoogleService-Info.plist)" == "$EXPECTED_BUNDLE_ID" ]]
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :PROJECT_ID' iosApp/GoogleService-Info.plist)" == "criosrango-1a2c1" ]]
+          echo "release_entitlements=$RELEASE_ENTITLEMENTS" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare ephemeral App bundle metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          INFO_PLIST="iosApp/Info.plist"
+          test -f "$INFO_PLIST"
+          if /usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$INFO_PLIST" >/dev/null 2>&1; then
+            /usr/libexec/PlistBuddy -c 'Set :CFBundlePackageType APPL' "$INFO_PLIST"
+          else
+            /usr/libexec/PlistBuddy -c 'Add :CFBundlePackageType string APPL' "$INFO_PLIST"
+          fi
+          plutil -lint "$INFO_PLIST"
+
+      - name: Preflight effective Release signing settings
+        id: settings
+        shell: bash
+        env:
+          RELEASE_ENTITLEMENTS: ${{ steps.prepare.outputs.release_entitlements }}
+          PROFILE_NAME: ${{ steps.profile.outputs.profile_name }}
+        run: |
+          set -euo pipefail
+          SETTINGS="$RUNNER_TEMP/ios-validation-effective-settings.txt"
+          xcodebuild -project iosApp/iosApp.xcodeproj -target CriosRangoKMPSpike -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' CODE_SIGN_ENTITLEMENTS="$RELEASE_ENTITLEMENTS" PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" -showBuildSettings > "$SETTINGS"
+          get_setting() { awk -F ' = ' -v k="$1" '$0 ~ "^[[:space:]]*" k " = " {print $2; exit}' "$SETTINGS"; }
+          [[ "$(get_setting CONFIGURATION)" == Release ]]
+          [[ "$(get_setting PRODUCT_BUNDLE_IDENTIFIER)" == "$EXPECTED_BUNDLE_ID" ]]
+          [[ "$(get_setting CODE_SIGN_STYLE)" == Manual ]]
+          [[ "$(get_setting DEVELOPMENT_TEAM)" == "$EXPECTED_TEAM_ID" ]]
+          [[ "$(get_setting CODE_SIGN_IDENTITY)" == "Apple Distribution" ]]
+          [[ "$(get_setting PROVISIONING_PROFILE_SPECIFIER)" == "$PROFILE_NAME" ]]
+          [[ "$(get_setting MARKETING_VERSION)" == "${{ steps.app-version.outputs.version_name }}" ]]
+          [[ "$(get_setting CURRENT_PROJECT_VERSION)" == "${{ steps.app-version.outputs.version_code }}" ]]
+          echo "Effective Release settings match bundle ID, team, profile and unchanged version/build."
+
+      - name: Archive signed iOS Release
+        id: archive
+        shell: bash
+        env:
+          VERSION_NAME: ${{ steps.app-version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.app-version.outputs.version_code }}
+          PROFILE_NAME: ${{ steps.profile.outputs.profile_name }}
+          RELEASE_ENTITLEMENTS: ${{ steps.prepare.outputs.release_entitlements }}
+        run: |
+          set -euo pipefail
+          ARCHIVE_PATH="$RUNNER_TEMP/CriosRango-validation.xcarchive"
+          ARCHIVE_LOG="release-artifacts/archive.log"
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme CriosRangoKMPSpike \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            CODE_SIGN_ENTITLEMENTS="$RELEASE_ENTITLEMENTS" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            MARKETING_VERSION="$VERSION_NAME" \
+            CURRENT_PROJECT_VERSION="$VERSION_CODE" \
+            archive 2>&1 | tee "$ARCHIVE_LOG"
+          APP_PATH="$ARCHIVE_PATH/Products/Applications/CriosRango.app"
+          test -d "$APP_PATH"
+          test -f "$APP_PATH/embedded.mobileprovision"
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")" == "$EXPECTED_BUNDLE_ID" ]]
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")" == "$VERSION_NAME" ]]
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")" == "$VERSION_CODE" ]]
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          echo "archive_path=$ARCHIVE_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Export signed IPA locally (no external publication)
+        id: ipa
+        shell: bash
+        env:
+          ARCHIVE_PATH: ${{ steps.archive.outputs.archive_path }}
+          PROFILE_NAME: ${{ steps.profile.outputs.profile_name }}
+          VERSION_NAME: ${{ steps.app-version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.app-version.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          EXPORT_OPTIONS="$RUNNER_TEMP/ExportOptions.plist"
+          EXPORT_PATH="$RUNNER_TEMP/CriosRango-export"
+          mkdir -p "$EXPORT_PATH"
+          cat > "$EXPORT_OPTIONS" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store</string>
+            <key>destination</key><string>export</string>
+            <key>teamID</key><string>$EXPECTED_TEAM_ID</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>provisioningProfiles</key><dict>
+              <key>$EXPECTED_BUNDLE_ID</key><string>$PROFILE_NAME</string>
+            </dict>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>stripSwiftSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
+          plutil -lint "$EXPORT_OPTIONS"
+          xcodebuild -exportArchive -archivePath "$ARCHIVE_PATH" -exportPath "$EXPORT_PATH" -exportOptionsPlist "$EXPORT_OPTIONS" 2>&1 | tee release-artifacts/export.log
+          IPA_COUNT="$(find "$EXPORT_PATH" -maxdepth 1 -type f -name '*.ipa' | wc -l | tr -d ' ')"
+          [[ "$IPA_COUNT" == 1 ]]
+          IPA_SOURCE="$(find "$EXPORT_PATH" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
+          IPA_PATH="$GITHUB_WORKSPACE/release-artifacts/CriosRango-validation.ipa"
+          cp "$IPA_SOURCE" "$IPA_PATH"
+          unzip -t "$IPA_PATH" >/dev/null
+          echo "ipa_path=$IPA_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Verify embedded profile and signed entitlements
+        id: verify
+        shell: bash
+        env:
+          IPA_PATH: ${{ steps.ipa.outputs.ipa_path }}
+          EXPECTED_PROFILE_UUID: ${{ steps.profile.outputs.profile_uuid }}
+          VERSION_NAME: ${{ steps.app-version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.app-version.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          VERIFY_DIR="$RUNNER_TEMP/ipa-verify"
+          mkdir -p "$VERIFY_DIR"
+          unzip -q "$IPA_PATH" -d "$VERIFY_DIR"
+          APP_PATH="$(find "$VERIFY_DIR/Payload" -mindepth 1 -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -d "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          EMBEDDED_PROFILE="$APP_PATH/embedded.mobileprovision"
+          EMBEDDED_PLIST="$RUNNER_TEMP/embedded-profile.plist"
+          security cms -D -i "$EMBEDDED_PROFILE" > "$EMBEDDED_PLIST"
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$EMBEDDED_PLIST")" == "$EXPECTED_PROFILE_UUID" ]]
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$EMBEDDED_PLIST")" == "$EXPECTED_TEAM_ID.$EXPECTED_BUNDLE_ID" ]]
+          cp "$EMBEDDED_PLIST" "$RUNNER_TEMP/embedded-profile-verified.plist"
+          python3 - "$EMBEDDED_PLIST" release-artifacts/provisioning-profile-sanitized.plist <<'PY'
+          import plistlib, sys
+          with open(sys.argv[1], "rb") as f:
+              p = plistlib.load(f)
+          e = p.get("Entitlements", {})
+          safe = {
+              "Name": p.get("Name", ""),
+              "UUID": p.get("UUID", ""),
+              "ExpirationDate": p.get("ExpirationDate"),
+              "TeamIdentifier": p.get("TeamIdentifier", []),
+              "ApplicationIdentifier": e.get("application-identifier", ""),
+              "AssociatedDomains": e.get("com.apple.developer.associated-domains", []),
+          }
+          with open(sys.argv[2], "wb") as f:
+              plistlib.dump(safe, f, fmt=plistlib.FMT_XML)
+          PY
+          codesign -d --entitlements :- "$APP_PATH" > release-artifacts/signed-entitlements.plist 2>/dev/null
+          plutil -lint release-artifacts/signed-entitlements.plist
+          SIGNED_APP_ID="$(/usr/libexec/PlistBuddy -c 'Print :application-identifier' release-artifacts/signed-entitlements.plist)"
+          [[ "$SIGNED_APP_ID" == "$EXPECTED_TEAM_ID.$EXPECTED_BUNDLE_ID" ]]
+          SIGNED_DOMAINS="$(python3 - release-artifacts/signed-entitlements.plist <<'PY'
+          import plistlib, sys
+          with open(sys.argv[1], "rb") as f:
+              p = plistlib.load(f)
+          v = p.get("com.apple.developer.associated-domains", [])
+          print("\n".join(v) if isinstance(v, list) else "")
+          PY
+          )"
+          for DOMAIN in "applinks:criosrango.es" "applinks:www.criosrango.es"; do
+            grep -Fxq "$DOMAIN" <<< "$SIGNED_DOMAINS" || { echo "::error::Signed entitlements missing $DOMAIN"; exit 1; }
+          done
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")" == "$VERSION_NAME" ]]
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")" == "$VERSION_CODE" ]]
+          PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$EMBEDDED_PLIST")"
+          PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$EMBEDDED_PLIST")"
+          PROFILE_EXPIRATION="$(/usr/libexec/PlistBuddy -c 'Print :ExpirationDate' "$EMBEDDED_PLIST")"
+          PROFILE_DOMAINS="$(python3 - "$EMBEDDED_PLIST" <<'PY'
+          import plistlib, sys
+          with open(sys.argv[1], "rb") as f:
+              p = plistlib.load(f)
+          v = p.get("Entitlements", {}).get("com.apple.developer.associated-domains", [])
+          print("\n".join(v) if isinstance(v, list) else "")
+          PY
+          )"
+          {
+            echo "PROFILE_NAME=$PROFILE_NAME"
+            echo "PROFILE_UUID=$PROFILE_UUID"
+            echo "PROFILE_EXPIRATION=$PROFILE_EXPIRATION"
+            echo "APPLICATION_IDENTIFIER=$EXPECTED_TEAM_ID.$EXPECTED_BUNDLE_ID"
+            echo "PROFILE_ASSOCIATED_DOMAINS_PRESENT=YES"
+            echo "PROFILE_ASSOCIATED_DOMAINS_VALUE<<DOMAINS"
+            printf '%s\n' "$PROFILE_DOMAINS"
+            echo "DOMAINS"
+            echo "SIGNED_APPLICATION_IDENTIFIER=$SIGNED_APP_ID"
+            echo "SIGNED_ASSOCIATED_DOMAINS_PRESENT=YES"
+            echo "SIGNED_ASSOCIATED_DOMAINS_VALUES<<DOMAINS"
+            printf '%s\n' "$SIGNED_DOMAINS"
+            echo "DOMAINS"
+            echo "EXTERNAL_PUBLICATION=NOT_PERFORMED"
+            echo "SIGNATURE_VERIFICATION=PASS"
+            echo "ASSOCIATED_DOMAINS_VALIDATION=PASS"
+          } >> release-artifacts/validation-summary.txt
+          echo "Signed IPA and both associated domains validated."
+
+      - name: Upload validation artifacts to GitHub Actions only
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-signed-validation-${{ github.run_id }}
+          path: |
+            release-artifacts/CriosRango-validation.ipa
+            release-artifacts/signed-entitlements.plist
+            release-artifacts/provisioning-profile-sanitized.plist
+            release-artifacts/validation-summary.txt
+            release-artifacts/archive.log
+            release-artifacts/export.log
+          if-no-files-found: error
+          retention-days: 14
