@@ -174,6 +174,7 @@ fun StoreHomeScreen(
             item {
                 Column {
                     StoreHomeSectionHeader("Categorías")
+                    Spacer(Modifier.height(24.dp))
                     Column(
                         Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
