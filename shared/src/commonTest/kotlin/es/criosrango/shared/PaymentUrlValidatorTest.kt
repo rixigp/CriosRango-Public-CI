@@ -9,6 +9,8 @@ class PaymentUrlValidatorTest {
     fun acceptsOnlyExactAllowlistedHttpsHostsWithDynamicPathsAndQueries() {
         val validUrls = listOf(
             "https://criosrango.es/...",
+            "https://criosrango.es/pay/123",
+            "https://criosrango.es:443/pay/123",
             "https://www.criosrango.es/checkout/order-pay/123/?key=wc_order_123",
             "https://pgw.ceca.es/tpvweb/tpv/compra.action?order=123&token=dynamic",
             "https://tpv.ceca.es/tpvweb/tpv/compra.action?order=123",
@@ -54,7 +56,9 @@ class PaymentUrlValidatorTest {
             "https://user:password@pgw.ceca.es/pay",
             "https:///path",
             "https://",
-            "https://pgw.ceca.es:8443/pay",
+            "https://criosrango.es:8443/pay",
+            "https://pgw.ceca.es:444/pay",
+            "https://pgw.ceca.es:8080/pay",
             "https://pgw.ceca.es:80/pay",
             "https://[::1",
             "https://pgw.ceca.es/contains space"

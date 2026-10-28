@@ -1,5 +1,7 @@
 package es.criosrango.shared
 
+import io.ktor.http.DEFAULT_PORT
+import io.ktor.http.URLProtocol
 import io.ktor.http.Url
 
 /**
@@ -30,6 +32,6 @@ object PaymentUrlValidator {
             host in allowedHosts &&
             url.user == null &&
             url.password == null &&
-            (url.specifiedPort == null || url.specifiedPort == 443)
+            (url.specifiedPort == DEFAULT_PORT || url.specifiedPort == URLProtocol.HTTPS.defaultPort)
     }
 }
