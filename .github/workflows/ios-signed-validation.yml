@@ -1,6 +1,11 @@
 name: iOS Signed Validation
 
 on:
+  push:
+    branches:
+      - develop/1.0.3
+    paths:
+      - .github/workflows/ios-signed-validation.yml
   workflow_dispatch:
     inputs:
       target_sha:
@@ -15,7 +20,7 @@ env:
   EXPECTED_BUNDLE_ID: "es.criosrango.app"
   EXPECTED_TEAM_ID: "3793344J72"
   EXPECTED_BRANCH: "develop/1.0.3"
-  EXPECTED_SHA: ${{ inputs.target_sha }}
+  EXPECTED_SHA: ${{ github.event_name == 'push' && github.sha || inputs.target_sha }}
 
 jobs:
   signed-validation:
@@ -28,20 +33,23 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_SHA: ${{ inputs.target_sha }}
+          TARGET_SHA: ${{ github.event_name == 'push' && github.sha || inputs.target_sha }}
         run: |
           set -euo pipefail
-          [[ "$GITHUB_REF" == "refs/heads/$EXPECTED_BRANCH" ]] || { echo "::error::Workflow must be dispatched from develop/1.0.3"; exit 1; }
-          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::target_sha must be an exact lowercase 40-character SHA"; exit 1; }
-          CURRENT_BRANCH_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$EXPECTED_BRANCH" --jq '.object.sha')"
-          [[ "$CURRENT_BRANCH_SHA" == "$TARGET_SHA" ]] || { echo "::error::target_sha must equal the current develop/1.0.3 HEAD"; exit 1; }
-          echo "Requested target SHA: $TARGET_SHA"
-          echo "Branch HEAD matches requested target SHA."
+          [[ "$GITHUB_REF" == "refs/heads/$EXPECTED_BRANCH" ]] || { echo "::error::Workflow must run from develop/1.0.3"; exit 1; }
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Target SHA must be an exact lowercase 40-character SHA"; exit 1; }
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            [[ "$TARGET_SHA" == "$GITHUB_SHA" ]] || { echo "::error::Push target must equal github.sha"; exit 1; }
+          else
+            CURRENT_BRANCH_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$EXPECTED_BRANCH" --jq '.object.sha')"
+            [[ "$CURRENT_BRANCH_SHA" == "$TARGET_SHA" ]] || { echo "::error::target_sha must equal the current develop/1.0.3 HEAD"; exit 1; }
+          fi
+          echo "Validation target SHA: $TARGET_SHA"
 
       - name: Checkout exact target SHA
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.target_sha }}
+          ref: ${{ github.event_name == 'push' && github.sha || inputs.target_sha }}
 
       - name: Verify checkout and select Xcode
         shell: bash
@@ -122,7 +130,8 @@ jobs:
               p = plistlib.load(f)
           got = p.get("Entitlements", {}).get("com.apple.developer.associated-domains")
           expected = ["applinks:criosrango.es", "applinks:www.criosrango.es"]
-          print("yes" if isinstance(got, list) and all(x in got for x in expected) else "no")
+          authorized = isinstance(got, list) and (got == ["*"] or all(x in got for x in expected))
+          print("yes" if authorized else "no")
           if isinstance(got, list):
               print("\n".join(got))
           PY
@@ -360,6 +369,17 @@ jobs:
           security cms -D -i "$EMBEDDED_PROFILE" > "$EMBEDDED_PLIST"
           [[ "$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$EMBEDDED_PLIST")" == "$EXPECTED_PROFILE_UUID" ]]
           [[ "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$EMBEDDED_PLIST")" == "$EXPECTED_TEAM_ID.$EXPECTED_BUNDLE_ID" ]]
+          EMBEDDED_PROFILE_DOMAINS_OK="$(python3 - "$EMBEDDED_PLIST" <<'PY'
+          import plistlib, sys
+          with open(sys.argv[1], "rb") as f:
+              p = plistlib.load(f)
+          got = p.get("Entitlements", {}).get("com.apple.developer.associated-domains")
+          expected = ["applinks:criosrango.es", "applinks:www.criosrango.es"]
+          ok = isinstance(got, list) and (got == ["*"] or all(x in got for x in expected))
+          print("yes" if ok else "no")
+          PY
+          )"
+          [[ "$EMBEDDED_PROFILE_DOMAINS_OK" == "yes" ]] || { echo "::error::Embedded provisioning profile does not authorize Associated Domains"; exit 1; }
           cp "$EMBEDDED_PLIST" "$RUNNER_TEMP/embedded-profile-verified.plist"
           python3 - "$EMBEDDED_PLIST" release-artifacts/provisioning-profile-sanitized.plist <<'PY'
           import plistlib, sys
