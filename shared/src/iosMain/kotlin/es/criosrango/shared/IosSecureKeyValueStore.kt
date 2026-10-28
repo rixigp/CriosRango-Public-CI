@@ -225,6 +225,7 @@ internal object IosSecureKeyValueStore {
         else -> this as CFTypeRef
     }
 
+    @OptIn(kotlin.experimental.ExperimentalNativeApi::class)
     private fun logStatus(operation: String, key: String, status: Int) {
         if (Platform.isDebugBinary) println("IosSecureKeyValueStore operation=$operation key=$key OSStatus=$status")
     }
