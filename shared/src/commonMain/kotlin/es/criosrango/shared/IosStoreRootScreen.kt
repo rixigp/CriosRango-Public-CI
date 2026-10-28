@@ -293,7 +293,7 @@ fun CriosRangoIOSRootScreen(
         accountRepository.prepareClaimOrder(orderId, orderKey)
         if (accountRepository.hasSession) {
             runCatching { accountRepository.claimPendingOrder() }
-                .onFailure { println("KMP_ACCOUNT_CLAIM_FAILED=${it.message}") }
+                .onFailure { println("KMP_ACCOUNT_CLAIM_FAILED=${it.stackTraceToString().safeDiagnosticText(1_800)}") }
         }
     }
 
@@ -314,7 +314,6 @@ fun CriosRangoIOSRootScreen(
     }
 
     CriosRangoTheme {
-        androidx.compose.runtime.LaunchedEffect(Unit) { println("KMP_RUNTIME_ROOT_SCREEN_READY") }
         Box(Modifier.fillMaxSize()) {
         StoreGlobalShell(
             selectedTab = iosRootShellSelectedTab(section, catalogOriginHome, checkoutOpen),

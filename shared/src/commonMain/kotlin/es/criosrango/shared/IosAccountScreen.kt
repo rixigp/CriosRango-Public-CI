@@ -211,7 +211,7 @@ fun CriosRangoIOSAccountScreen(
         }
         scope.launch {
             runCatching { ordersOwner.claimPendingOrderAndRefresh() }
-                .onFailure { println("KMP_ACCOUNT_CLAIM_FAILED=${it.message}") }
+                .onFailure { println("KMP_ACCOUNT_CLAIM_FAILED=${it.stackTraceToString().safeDiagnosticText(1_800)}") }
             if (!repository.hasSession) {
                 user = null
                 error = "La sesión ha caducado. Vuelve a iniciar sesión."

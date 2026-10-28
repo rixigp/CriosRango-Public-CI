@@ -542,7 +542,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
             } catch (exception: Exception) {
                 if (generation != accountGeneration) return@launch
                 if (!handleAuthenticatedHttpError(exception, "No se ha podido actualizar el pedido.")) {
-                    android.util.Log.e("CriosRangoAccount", "Pending order claim failed", exception)
+                    android.util.Log.e("CriosRangoAccount", "Pending order claim failed; exception=${exception.javaClass.simpleName}\n${safePushTokenErrorMessage(android.util.Log.getStackTraceString(exception), maxLength = 4_000)}")
                 }
             }
         }
@@ -567,7 +567,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
             } catch (exception: Exception) {
                 if (generation != accountGeneration) return@launch
                 if (!handleAuthenticatedHttpError(exception, "No se ha podido actualizar el pedido.")) {
-                    android.util.Log.e("CriosRangoAccount", "Order link failed", exception)
+                    android.util.Log.e("CriosRangoAccount", "Order link failed; exception=${exception.javaClass.simpleName}\n${safePushTokenErrorMessage(android.util.Log.getStackTraceString(exception), maxLength = 4_000)}")
                 }
             }
         }

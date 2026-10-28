@@ -51,7 +51,7 @@ class SharedCatalogStoreApiAdapter(
     private val session: StoreSession
 ) : StoreApi {
     override suspend fun cart(): WooCart {
-        Log.d("CriosRangoSharedCart", "CART source=shared operation=GET")
+        logCatalogDebug("CriosRangoSharedCart", "CART source=shared operation=GET")
         return try {
             sharedClient.cart().toAndroid()
         } catch (exception: Exception) {
@@ -60,7 +60,7 @@ class SharedCatalogStoreApiAdapter(
     }
 
     override suspend fun addCartItem(request: AddCartRequest): WooCart {
-        Log.d("CriosRangoSharedCart", "CART source=shared operation=ADD")
+        logCatalogDebug("CriosRangoSharedCart", "CART source=shared operation=ADD")
         return try {
             sharedClient.addCartItem(request.toShared()).toAndroid()
         } catch (exception: Exception) {
@@ -69,7 +69,7 @@ class SharedCatalogStoreApiAdapter(
     }
 
     override suspend fun updateCartItem(key: String, quantity: Int): WooCart {
-        Log.d("CriosRangoSharedCart", "CART source=shared operation=UPDATE key=$key quantity=$quantity")
+        logCatalogDebug("CriosRangoSharedCart", "CART source=shared operation=UPDATE quantity=$quantity")
         return try {
             sharedClient.updateCartItem(key, quantity).toAndroid()
         } catch (exception: Exception) {
@@ -78,7 +78,7 @@ class SharedCatalogStoreApiAdapter(
     }
 
     override suspend fun removeCartItem(key: String): WooCart {
-        Log.d("CriosRangoSharedCart", "CART source=shared operation=REMOVE key=$key")
+        logCatalogDebug("CriosRangoSharedCart", "CART source=shared operation=REMOVE")
         return try {
             sharedClient.removeCartItem(key).toAndroid()
         } catch (exception: Exception) {
@@ -87,28 +87,28 @@ class SharedCatalogStoreApiAdapter(
     }
 
     override suspend fun applyCoupon(code: String): WooCart = try {
-        Log.d("CriosRangoSharedCart", "CART source=shared operation=APPLY_COUPON")
+        logCatalogDebug("CriosRangoSharedCart", "CART source=shared operation=APPLY_COUPON")
         sharedClient.applyCoupon(code).toAndroid()
     } catch (exception: Exception) {
         throw exception.toAndroidCatalogException()
     }
 
     override suspend fun removeCoupon(code: String): WooCart = try {
-        Log.d("CriosRangoSharedCart", "CART source=shared operation=REMOVE_COUPON")
+        logCatalogDebug("CriosRangoSharedCart", "CART source=shared operation=REMOVE_COUPON")
         sharedClient.removeCoupon(code).toAndroid()
     } catch (exception: Exception) {
         throw exception.toAndroidCatalogException()
     }
 
     override suspend fun checkout(): CheckoutResponse = try {
-        Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=GET")
+        logCatalogDebug("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=GET")
         sharedClient.checkout().toAndroid()
     } catch (exception: Exception) {
         throw exception.toAndroidCatalogException()
     }
 
     override suspend fun createCheckout(request: CreateOrderRequest): CheckoutResponse = try {
-        Log.d("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=POST")
+        logCatalogDebug("CriosRangoSharedCheckout", "CHECKOUT source=shared operation=POST")
         sharedClient.createCheckout(request.toShared()).toAndroid()
     } catch (exception: CouponInvalidatedCheckoutException) {
         throw exception
@@ -137,22 +137,22 @@ class SharedCatalogStoreApiAdapter(
     }
 
     override suspend fun getOrderStatus(orderId: Int, orderKey: String): OrderStatusResponse {
-        Log.d("CriosRangoSharedPayment", "PAYMENT_STATUS source=shared operation=GET orderId=$orderId")
+        logCatalogDebug("CriosRangoSharedPayment", "PAYMENT_STATUS source=shared operation=GET orderId=$orderId")
         return sharedClient.paymentStatus(orderId, orderKey).toAndroid()
     }
 
     override suspend fun selectShippingRate(request: SelectShippingRateRequest): WooCart = try {
-        Log.d("CriosRangoSharedShipping", "SHIPPING source=shared operation=POST")
+        logCatalogDebug("CriosRangoSharedShipping", "SHIPPING source=shared operation=POST")
         sharedClient.selectShippingRate(request.toShared()).toAndroid()
     } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
 
     override suspend fun updateCustomer(request: UpdateCustomerRequest): WooCart = try {
-        Log.d("CriosRangoSharedCheckout", "CUSTOMER source=shared operation=POST")
+        logCatalogDebug("CriosRangoSharedCheckout", "CUSTOMER source=shared operation=POST")
         sharedClient.updateCustomer(request.toShared()).toAndroid()
     } catch (exception: Exception) { throw exception.toAndroidCatalogException() }
 
     override suspend fun product(id: Int): StoreProduct {
-        Log.d("CriosRangoSharedCatalog", "PRODUCT_DETAIL source=shared id=$id")
+        logCatalogDebug("CriosRangoSharedCatalog", "PRODUCT_DETAIL source=shared id=$id")
         return try {
             sharedClient.product(id).toAndroid()
         } catch (exception: Exception) {
@@ -161,7 +161,7 @@ class SharedCatalogStoreApiAdapter(
     }
 
     override suspend fun productWithVariationAvailability(id: Int): StoreProduct {
-        Log.d("CriosRangoSharedCatalog", "PRODUCT_DETAIL_VARIATIONS source=shared id=$id")
+        logCatalogDebug("CriosRangoSharedCatalog", "PRODUCT_DETAIL_VARIATIONS source=shared id=$id")
         return try {
             sharedClient.productWithVariationAvailability(id).toAndroid()
         } catch (exception: Exception) {
@@ -170,7 +170,7 @@ class SharedCatalogStoreApiAdapter(
     }
 
     override suspend fun outletAvailability(): SharedOutletAvailability {
-        Log.d("CriosRangoSharedCatalog", "OUTLET_AVAILABILITY source=shared operation=GET")
+        logCatalogDebug("CriosRangoSharedCatalog", "OUTLET_AVAILABILITY source=shared operation=GET")
         return try {
             sharedClient.outletAvailability()
         } catch (exception: Exception) {
@@ -188,7 +188,7 @@ class SharedCatalogStoreApiAdapter(
         after: String?,
         featured: Boolean?
     ): List<StoreProduct> {
-        Log.d(
+        logCatalogDebug(
             "CriosRangoSharedCatalog",
             "PRODUCTS source=shared StoreApiClient perPage=$perPage page=$page search=${search != null} category=$category orderby=$orderBy order=$order after=${after != null} featured=$featured"
         )
@@ -203,7 +203,7 @@ class SharedCatalogStoreApiAdapter(
                 after = after,
                 featured = featured
             ).also {
-                Log.d(
+                logCatalogDebug(
                     "CriosRangoSharedCatalog",
                     "PRODUCTS source=shared params=search=${search != null} category=$category orderby=$orderBy order=$order after=${after != null} featured=$featured"
                 )
@@ -214,7 +214,7 @@ class SharedCatalogStoreApiAdapter(
     }
 
     override suspend fun brands(perPage: Int, page: Int): List<BrandTerm> {
-        Log.d("CriosRangoBrands", "BRANDS source=shared StoreApiClient perPage=$perPage page=$page")
+        logCatalogDebug("CriosRangoBrands", "BRANDS source=shared StoreApiClient perPage=$perPage page=$page")
         return try {
             sharedClient.productBrands(perPage = perPage, page = page, hideEmpty = true)
                 .filter { it.name.isNotBlank() && it.slug.isNotBlank() }
@@ -237,7 +237,7 @@ class SharedCatalogStoreApiAdapter(
         page: Int,
         brand: String
     ): List<StoreProduct> {
-        Log.d("CriosRangoBrands", "PRODUCTS source=shared StoreApiClient brand=$brand perPage=$perPage page=$page")
+        logCatalogDebug("CriosRangoBrands", "PRODUCTS source=shared StoreApiClient brand=$brand perPage=$perPage page=$page")
         return try {
             sharedClient.products(perPage = perPage, page = page, brand = brand)
                 .map(SharedStoreProduct::toAndroid)
@@ -251,7 +251,7 @@ class SharedCatalogStoreApiAdapter(
         page: Int,
         tag: String
     ): List<StoreProduct> {
-        Log.d("CriosRangoSharedCatalog", "PRODUCTS source=shared params=tag=true perPage=$perPage page=$page")
+        logCatalogDebug("CriosRangoSharedCatalog", "PRODUCTS source=shared params=tag=true perPage=$perPage page=$page")
         return try {
             sharedClient.products(perPage = perPage, page = page, tag = tag)
                 .map(SharedStoreProduct::toAndroid)
@@ -261,7 +261,7 @@ class SharedCatalogStoreApiAdapter(
     }
 
     override suspend fun categories(perPage: Int): List<ProductCategory> {
-        Log.d("CriosRangoSharedCatalog", "CATEGORIES source=shared StoreApiClient perPage=$perPage")
+        logCatalogDebug("CriosRangoSharedCatalog", "CATEGORIES source=shared StoreApiClient perPage=$perPage")
         return try {
             sharedClient.categories(perPage = perPage).map(SharedStoreCategory::toAndroid)
         } catch (exception: Exception) {
@@ -596,3 +596,8 @@ private fun SharedPaymentStatusResponse.toAndroid(): OrderStatusResponse = Order
     needsPayment = needsPayment,
     terminal = terminal
 )
+
+
+private fun logCatalogDebug(tag: String, message: String) {
+    if (BuildConfig.DEBUG) Log.d(tag, message)
+}

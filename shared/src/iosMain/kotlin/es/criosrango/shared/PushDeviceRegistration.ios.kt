@@ -97,7 +97,6 @@ actual object PushDeviceRegistration {
             if (bodyResult.isFailure) {
                 IosPushDiagnostics.recordRequestStage("BODY_READ_FAILED", exceptionStage = "READ_BODY")
             }
-            val body = bodyResult.getOrElse { "[body read failed: ${it::class.simpleName}: ${it.message}]" }
             val accepted = status in 200..299
             IosPushDiagnostics.recordPostResult(
                 result = "HTTP $status",
@@ -106,7 +105,7 @@ actual object PushDeviceRegistration {
                 errorClass = if (accepted) "" else "HTTPError",
                 errorMessage = if (accepted) "" else "El backend rechazó el registro",
                 httpStatus = status,
-                responseBody = body,
+                responseBody = "",
                 bodyReadOk = bodyResult.isSuccess
             )
         } catch (error: Throwable) {

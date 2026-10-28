@@ -58,7 +58,7 @@ internal object CategoryLoadTelemetry {
  fun snapshot(id:Int)=synchronized(lock){snapshots[id]}
  private fun elapsed(id:Int):Long?{val s=synchronized(lock){starts[id]}?:return null;return android.os.SystemClock.elapsedRealtime()-s}
  private fun update(id:Int,f:(CategoryTelemetrySnapshot)->CategoryTelemetrySnapshot){synchronized(lock){snapshots[id]=f(snapshots[id]?:CategoryTelemetrySnapshot(id))}}
- private fun log(id:Int,e:String){android.util.Log.d("CategoryTiming",e+" id="+id+" t="+(elapsed(id)?:-1)+"ms")}
+ private fun log(id:Int,e:String){if (BuildConfig.DEBUG) android.util.Log.d("CategoryTiming",e+" id="+id+" t="+(elapsed(id)?:-1)+"ms")}
 }
 internal class CategoryNetworkEventListener:okhttp3.EventListener(){
  private var id:Int?=null;private var call=0L;private var dnsS:Long?=null;private var dnsE:Long?=null;private var conS:Long?=null;private var conE:Long?=null;private var tlsS:Long?=null;private var tlsE:Long?=null;private var rhS:Long?=null;private var rhE:Long?=null;private var rbS:Long?=null;private var rbE:Long?=null;private var shS:Long?=null;private var shE:Long?=null;private var bodyS:Long?=null;private var reused=true;private var proto:okhttp3.Protocol?=null

@@ -72,17 +72,21 @@ internal fun pushRegistrationPayload(
     orderUpdates: Boolean
 ): PushRegistrationPayload = PushRegistrationPayload(identifier, newProducts, orderUpdates)
 
-internal fun safePushTokenErrorMessage(message: String?): String {
+internal fun safePushTokenErrorMessage(message: String?, maxLength: Int = 240): String {
     val normalized = message.orEmpty().replace(Regex("[\\r\\n\\t]+"), " ").trim()
     if (normalized.isBlank()) return "(sin mensaje)"
     return normalized
         .replace(Regex("(?i)Bearer\\s+[^\\s,;]+"), "Bearer [REDACTED]")
-        .replace(Regex("(?i)(token|api[_-]?key|secret|password)=([^\\s&]+)")) { match ->
+        .replace(Regex("(?i)(authorization|account[_-]?token|cart-token|nonce|set-cookie|cookie|order[_-]?key|paymenturl|fid|installation[_-]?id|token|api[_-]?key|secret|password)=([^\\s&;,]+)")) { match ->
             "${match.groupValues[1]}=[REDACTED]"
         }
+        .replace(Regex("(?i)https?://[^\\s\\"'<>]+"), "[URL REDACTED]")
+        .replace(Regex("(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b"), "[EMAIL REDACTED]")
+        .replace(Regex("(?<!\\w)(?:\\+?\\d[\\d .()\\-]{7,}\\d)(?!\\w)"), "[PHONE REDACTED]")
         .replace(Regex("AIza[0-9A-Za-z_-]{30,}"), "[REDACTED]")
+        .replace(Regex("\\b[0-9a-fA-F]{32,}\\b"), "[TOKEN REDACTED]")
         .replace(Regex("[A-Za-z0-9_\\-]{80,}"), "[REDACTED]")
-        .take(240)
+        .take(maxLength)
 }
 
 data class PushRegistrationDiagnostics(

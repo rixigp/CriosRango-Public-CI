@@ -50,7 +50,6 @@ final class CriosRangoIOSApp: UIResponder, UIApplicationDelegate, UNUserNotifica
             errorClass: String(describing: type(of: error)),
             message: error.localizedDescription
         )
-        print("APNS_REGISTRATION_FAILED=\(String(describing: type(of: error)))")
     }
     func application(
         _ application: UIApplication,

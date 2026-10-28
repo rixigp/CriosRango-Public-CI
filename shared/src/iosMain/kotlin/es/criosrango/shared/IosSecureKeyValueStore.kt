@@ -21,6 +21,7 @@ import platform.CoreFoundation.kCFBooleanTrue
 import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
 import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.Foundation.NSData
+import kotlin.native.Platform
 import platform.Foundation.NSUserDefaults
 import platform.Foundation.create
 import platform.Security.SecItemAdd
@@ -225,6 +226,6 @@ internal object IosSecureKeyValueStore {
     }
 
     private fun logStatus(operation: String, key: String, status: Int) {
-        println("IosSecureKeyValueStore operation=$operation key=$key OSStatus=$status")
+        if (Platform.isDebugBinary) println("IosSecureKeyValueStore operation=$operation key=$key OSStatus=$status")
     }
 }
