@@ -39,7 +39,7 @@ class ProductAppLinkResolverTest {
     @Test fun timeoutReportsControlledError() = runTest {
         var errors = 0
         resolveProductAppLink("conjunto-0200-yoedu", emptyList<String>(), { it },
-            { kotlinx.coroutines.withTimeout(1) { kotlinx.coroutines.awaitCancellation<String>() } }, {}, { errors++ })
+            { kotlinx.coroutines.withTimeout(1) { kotlinx.coroutines.awaitCancellation() } }, {}, { errors++ })
         assertEquals(1, errors)
     }
     @Test fun invalidSlugDoesNotRequestAndReportsError() = runTest {
