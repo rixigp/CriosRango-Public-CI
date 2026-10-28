@@ -100,6 +100,10 @@ fun handleIosPaymentForeground() {
 }
 
 private fun openIosPaymentUrl(url: String) {
+    if (!PaymentUrlValidator.isAllowed(url)) {
+        iosPaymentStore?.handleInvalidPaymentUrl()
+        return
+    }
     val nsUrl = NSURL(string = url) ?: run {
         iosPaymentStore?.handlePaymentOpenFailure()
         return

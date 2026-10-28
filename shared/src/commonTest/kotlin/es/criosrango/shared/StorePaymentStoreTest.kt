@@ -15,8 +15,8 @@ import kotlin.test.assertNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 
-private class FakePendingCardPaymentStore : PendingCardPaymentStore {
-    private var payment: StorePendingCardPayment? = null
+private class FakePendingCardPaymentStore(initialPayment: StorePendingCardPayment? = null) : PendingCardPaymentStore {
+    private var payment: StorePendingCardPayment? = initialPayment
 
     override fun save(payment: StorePendingCardPayment): Boolean {
         this.payment = payment
@@ -32,6 +32,53 @@ private class FakePendingCardPaymentStore : PendingCardPaymentStore {
 }
 
 class StorePaymentStoreTest {
+    @Test
+    fun invalidPaymentUrlIsNotPersistedOrPublished() = runTest {
+        val api = StoreApiClient(client = HttpClient(MockEngine {
+            respond(
+                content = """{"items":[],"totals":{"total_price":"0","currency_symbol":"€","currency_minor_unit":2}}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            )
+        }))
+        val pendingStore = FakePendingCardPaymentStore()
+        val paymentStore = StorePaymentStore(api, StoreCartStore(api, this), pendingStore, this)
+
+        assertNull(
+            paymentStore.startCardPayment(
+                CheckoutResponse(
+                    orderId = 123,
+                    orderKey = "wc_order_123",
+                    paymentMethod = "cecabank_gateway",
+                    redirectUrl = "https://pgw.ceca.es.evil.example/pay"
+                )
+            )
+        )
+        assertNull(pendingStore.load())
+        assertNull(paymentStore.redirectUrl.value)
+        assertEquals(StoreCardPaymentState.ERROR, paymentStore.state.value)
+    }
+
+    @Test
+    fun invalidRestoredPaymentUrlIsClearedAndNeverPublished() = runTest {
+        val api = StoreApiClient(client = HttpClient(MockEngine {
+            respond(
+                content = """{"items":[],"totals":{"total_price":"0","currency_symbol":"€","currency_minor_unit":2}}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            )
+        }))
+        val pendingStore = FakePendingCardPaymentStore(
+            StorePendingCardPayment(123, "wc_order_123", "https://evil.example/pay")
+        )
+
+        val paymentStore = StorePaymentStore(api, StoreCartStore(api, this), pendingStore, this)
+
+        assertNull(pendingStore.load())
+        assertNull(paymentStore.redirectUrl.value)
+        assertEquals(StoreCardPaymentState.ERROR, paymentStore.state.value)
+    }
+
     @Test
     fun paidStatusIsConfirmedOnce() = runTest {
         var calls = 0
@@ -100,11 +147,11 @@ class StorePaymentStoreTest {
                 orderId = 123,
                 orderKey = "wc_order_123",
                 paymentMethod = "cecabank_gateway",
-                redirectUrl = "https://payment.example/123"
+                redirectUrl = "https://pgw.ceca.es/123"
             )
         )
 
-        assertEquals("https://payment.example/123", redirectUrl)
+        assertEquals("https://pgw.ceca.es/123", redirectUrl)
         paymentStore.markPaymentOpened()
 
         paymentStore.handlePaymentReturn("ok", 123)
@@ -156,13 +203,13 @@ class StorePaymentStoreTest {
         val paymentStore = StorePaymentStore(api, cartStore, pendingStore, this)
 
         assertEquals(
-            "https://payment.example/123",
+            "https://pgw.ceca.es/123",
             paymentStore.startCardPayment(
                 CheckoutResponse(
                     orderId = 123,
                     orderKey = "wc_order_123",
                     paymentMethod = "cecabank_gateway",
-                    redirectUrl = "https://payment.example/123"
+                    redirectUrl = "https://pgw.ceca.es/123"
                 )
             ),
             "Expected startCardPayment to return the payment redirect URL"
@@ -238,15 +285,15 @@ class StorePaymentStoreTest {
         val api = StoreApiClient(client = HttpClient(engine))
         val pendingStore = FakePendingCardPaymentStore()
         val oldPaymentStore = StorePaymentStore(api, StoreCartStore(api, this), pendingStore, this)
-        assertEquals("https://payment.example/123", oldPaymentStore.startCardPayment(
-            CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/123")
+        assertEquals("https://pgw.ceca.es/123", oldPaymentStore.startCardPayment(
+            CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://pgw.ceca.es/123")
         ))
         oldPaymentStore.markPaymentOpened()
 
         val recreatedPaymentStore = StorePaymentStore(api, StoreCartStore(api, this), pendingStore, this)
         assertEquals(StoreCardPaymentState.WAITING_RETURN, recreatedPaymentStore.state.value)
         assertEquals(123, recreatedPaymentStore.orderId.value)
-        assertEquals("https://payment.example/123", recreatedPaymentStore.redirectUrl.value)
+        assertEquals("https://pgw.ceca.es/123", recreatedPaymentStore.redirectUrl.value)
         assertEquals(123, pendingStore.load()?.orderId)
 
         recreatedPaymentStore.onForeground()
@@ -277,7 +324,7 @@ class StorePaymentStoreTest {
         val pendingStore = FakePendingCardPaymentStore()
         val oldPaymentStore = StorePaymentStore(api, StoreCartStore(api, this), pendingStore, this)
         oldPaymentStore.startCardPayment(
-            CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/123")
+            CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://pgw.ceca.es/123")
         )
 
         val recreatedPaymentStore = StorePaymentStore(api, StoreCartStore(api, this), pendingStore, this)
@@ -318,7 +365,7 @@ class StorePaymentStoreTest {
         val pendingStore = FakePendingCardPaymentStore()
         val paymentStore = StorePaymentStore(api, StoreCartStore(api, this), pendingStore, this)
         paymentStore.startCardPayment(
-            CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/123")
+            CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://pgw.ceca.es/123")
         )
         paymentStore.markPaymentOpened()
 
@@ -344,7 +391,7 @@ class StorePaymentStoreTest {
         val pendingStore = FakePendingCardPaymentStore()
         val paymentStore = StorePaymentStore(api, StoreCartStore(api, this), pendingStore, this)
         paymentStore.startCardPayment(
-            CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/123")
+            CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://pgw.ceca.es/123")
         )
 
         paymentStore.cancel(123)
@@ -381,7 +428,7 @@ class StorePaymentStoreTest {
         }))
         val pending = FakePendingCardPaymentStore()
         val store = StorePaymentStore(api, StoreCartStore(api, this), pending, this)
-        store.startCardPayment(CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/123"))
+        store.startCardPayment(CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://pgw.ceca.es/123"))
         store.markPaymentOpened()
 
         store.handlePaymentReturn("ok", 123)
@@ -413,7 +460,7 @@ class StorePaymentStoreTest {
         }))
         val pending = FakePendingCardPaymentStore()
         val store = StorePaymentStore(api, StoreCartStore(api, this), pending, this)
-        store.startCardPayment(CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/123"))
+        store.startCardPayment(CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://pgw.ceca.es/123"))
         store.markPaymentOpened()
 
         store.onForeground()
@@ -433,10 +480,10 @@ class StorePaymentStoreTest {
         ) }))
         val pending = FakePendingCardPaymentStore()
         val store = StorePaymentStore(api, StoreCartStore(api, this), pending, this)
-        store.startCardPayment(CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/123"))
+        store.startCardPayment(CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://pgw.ceca.es/123"))
         store.markPaymentOpened()
 
-        val second = store.startCardPayment(CheckoutResponse(456, "wc_order_456", paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/456"))
+        val second = store.startCardPayment(CheckoutResponse(456, "wc_order_456", paymentMethod = "cecabank_gateway", redirectUrl = "https://pgw.ceca.es/456"))
 
         assertNull(second)
         assertEquals(123, pending.load()?.orderId)
@@ -463,7 +510,7 @@ class StorePaymentStoreTest {
         }))
         val pending = FakePendingCardPaymentStore()
         val store = StorePaymentStore(api, StoreCartStore(api, this), pending, this)
-        store.startCardPayment(CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/123"))
+        store.startCardPayment(CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://pgw.ceca.es/123"))
         store.markPaymentOpened()
 
         store.onForeground()
@@ -520,7 +567,7 @@ class StorePaymentStoreTest {
         }
         val store = StorePaymentStore(api, cartStore, pending, this)
         store.startCardPayment(
-            CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/123")
+            CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://pgw.ceca.es/123")
         )
         store.markPaymentOpened()
         store.handlePaymentReturn("ok", 123)
@@ -540,11 +587,11 @@ class StorePaymentStoreTest {
         val pending = FakePendingCardPaymentStore()
         val store = StorePaymentStore(api, StoreCartStore(api, this), pending, this)
         store.startCardPayment(
-            CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/123")
+            CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://pgw.ceca.es/123")
         )
 
         val second = store.startCardPayment(
-            CheckoutResponse(456, null, paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/456")
+            CheckoutResponse(456, null, paymentMethod = "cecabank_gateway", redirectUrl = "https://pgw.ceca.es/456")
         )
 
         assertNull(second)
@@ -573,17 +620,17 @@ class StorePaymentStoreTest {
         val pending = FakePendingCardPaymentStore()
         val store = StorePaymentStore(api, StoreCartStore(api, this), pending, this)
         store.startCardPayment(
-            CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/123")
+            CheckoutResponse(123, "wc_order_123", paymentMethod = "cecabank_gateway", redirectUrl = "https://pgw.ceca.es/123")
         )
         store.markPaymentOpened()
         store.handlePaymentReturn("ok", 123)
         store.state.first { it == StoreCardPaymentState.PAID }
 
         val next = store.startCardPayment(
-            CheckoutResponse(456, "wc_order_456", paymentMethod = "cecabank_gateway", redirectUrl = "https://payment.example/456")
+            CheckoutResponse(456, "wc_order_456", paymentMethod = "cecabank_gateway", redirectUrl = "https://pgw.ceca.es/456")
         )
 
-        assertEquals("https://payment.example/456", next)
+        assertEquals("https://pgw.ceca.es/456", next)
         assertEquals(456, pending.load()?.orderId)
         assertEquals(1, paymentStatusCalls)
     }

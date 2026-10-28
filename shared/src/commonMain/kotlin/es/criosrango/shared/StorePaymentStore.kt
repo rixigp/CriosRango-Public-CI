@@ -48,6 +48,9 @@ class StorePaymentStore(
         if (!checkout.paymentMethod.equals("cecabank_gateway", ignoreCase = true)) return null
         val existingPending = pendingStore.load()
         if (existingPending != null) {
+            if (!PaymentUrlValidator.isAllowed(existingPending.paymentUrl)) {
+                return fail("La URL de pago pendiente no está permitida.")
+            }
             attemptActive = true
             _orderId.value = existingPending.orderId
             _redirectUrl.value = existingPending.paymentUrl
@@ -61,6 +64,7 @@ class StorePaymentStore(
             ?: checkout.paymentResult?.redirectUrl
             ?: checkout.paymentResult?.paymentUrl
             ?: return fail("La tienda no ha devuelto la URL de pago.")
+        if (!PaymentUrlValidator.isAllowed(paymentUrl)) return fail("La URL de pago no está permitida.")
         val pending = StorePendingCardPayment(orderId, orderKey, paymentUrl)
         if (!pendingStore.save(pending)) return fail("No se ha podido guardar el intento de pago.")
         attemptActive = true
@@ -79,6 +83,14 @@ class StorePaymentStore(
         if (!attemptActive) return
         _redirectUrl.value = null
         _error.value = "No se ha podido abrir la pasarela de pago."
+        _state.value = StoreCardPaymentState.ERROR
+    }
+
+    fun handleInvalidPaymentUrl() {
+        pendingStore.clear()
+        attemptActive = false
+        _redirectUrl.value = null
+        _error.value = "La URL de pago no está permitida."
         _state.value = StoreCardPaymentState.ERROR
     }
 
@@ -185,6 +197,15 @@ class StorePaymentStore(
 
     private fun restorePendingPayment() {
         val pending = pendingStore.load() ?: return
+        if (!PaymentUrlValidator.isAllowed(pending.paymentUrl)) {
+            pendingStore.clear()
+            attemptActive = false
+            _redirectUrl.value = null
+            _orderId.value = pending.orderId
+            _error.value = "La URL de pago pendiente no está permitida."
+            _state.value = StoreCardPaymentState.ERROR
+            return
+        }
         attemptActive = true
         _orderId.value = pending.orderId
         _redirectUrl.value = pending.paymentUrl

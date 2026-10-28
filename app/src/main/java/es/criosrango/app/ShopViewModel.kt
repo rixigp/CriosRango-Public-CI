@@ -497,7 +497,7 @@ class ShopViewModel(
         }
     }
 
-    private var lastCheckout: LastCheckout? = pendingCardPaymentStore.load()
+    private var lastCheckout: LastCheckout? = null
     private val checkoutSubmissionGate = CheckoutSubmissionGate()
     private val _cardPaymentResult = MutableStateFlow<CardPaymentResult?>(null)
     val cardPaymentResult: StateFlow<CardPaymentResult?> = _cardPaymentResult.asStateFlow()
@@ -507,8 +507,8 @@ class ShopViewModel(
     private enum class ReconcileOutcome { PAID, CLEARED, PENDING, NO_MARKER }
     private val reconciliationMutex = kotlinx.coroutines.sync.Mutex()
     init {
-        // Load the durable marker before startup work; a restart must not discard it.
-        lastCheckout = pendingCardPaymentStore.load()
+        // Restore only a payment marker whose browser URL passes the shared allowlist.
+        lastCheckout = loadValidatedPendingCheckout()
         refreshHome()
         viewModelScope.launch {
             cartStore.refresh()
@@ -516,7 +516,7 @@ class ShopViewModel(
     }
 
     private suspend fun reconcileLastCheckout(publishPaidResult: Boolean = true, preserveMarkerOnExhaustion: Boolean = false): ReconcileOutcome = reconciliationMutex.withLock {
-        val checkout = lastCheckout ?: pendingCardPaymentStore.load()?.also { lastCheckout = it } ?: return@withLock ReconcileOutcome.NO_MARKER
+        val checkout = lastCheckout ?: loadValidatedPendingCheckout()?.also { lastCheckout = it } ?: return@withLock ReconcileOutcome.NO_MARKER
         when (val result = reconcilePaymentStatus(
             maxRetries = PAYMENT_RECONCILIATION_MAX_RETRIES,
             delayMs = PAYMENT_RECONCILIATION_DELAY_MS
@@ -611,6 +611,9 @@ class ShopViewModel(
                 if (isNativeBizum) { cartStore.consumeConfirmedOrder(); _bizumOrderId.value = response.orderId } else {
                     val orderKey = response.orderKey?.takeIf { it.isNotBlank() } ?: throw CartException("La tienda no ha devuelto la clave del pedido.")
                     val paymentUrl = response.paymentRedirectUrl() ?: throw CartException("La tienda no ha devuelto la URL de pago.")
+                    if (!es.criosrango.shared.PaymentUrlValidator.isAllowed(paymentUrl)) {
+                        throw CartException("La URL de pago no está permitida.")
+                    }
                     val pending = LastCheckout(response.orderId, orderKey, paymentUrl)
                     if (!pendingCardPaymentStore.save(pending)) {
                         throw CartException("No se ha podido guardar el último checkout. No se abrirá la pasarela.")
@@ -675,6 +678,27 @@ class ShopViewModel(
                     _checkoutError.value = exception.message
                 }
         }
+    }
+
+    fun handleInvalidPaymentUrl() {
+        pendingCardPaymentStore.clear()
+        lastCheckout = null
+        _paymentRedirect.value = null
+        _checkoutError.value = "La URL de pago no está permitida."
+        _checkoutPhase.value = CheckoutPhase.FAILED
+    }
+
+    private fun loadValidatedPendingCheckout(): LastCheckout? {
+        val pending = pendingCardPaymentStore.load() ?: return null
+        if (!es.criosrango.shared.PaymentUrlValidator.isAllowed(pending.paymentUrl)) {
+            pendingCardPaymentStore.clear()
+            lastCheckout = null
+            _paymentRedirect.value = null
+            _checkoutError.value = "La URL de pago pendiente no está permitida."
+            _checkoutPhase.value = CheckoutPhase.FAILED
+            return null
+        }
+        return pending
     }
 
     fun verifyCardPaymentReturn() {

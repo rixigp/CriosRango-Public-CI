@@ -521,8 +521,12 @@ private fun CriosRangoApp(
                         sharedCartController.refresh()
                     },
                     onOpenPayment = { url ->
-                        val opened = runCatching { androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(false).setUrlBarHidingEnabled(true).build().launchUrl(context, Uri.parse(url)) }.isSuccess
-                        if (opened) sharedPaymentStore.markPaymentOpened() else sharedPaymentStore.handlePaymentOpenFailure()
+                        if (!es.criosrango.shared.PaymentUrlValidator.isAllowed(url)) {
+                            sharedPaymentStore.handleInvalidPaymentUrl()
+                        } else {
+                            val opened = runCatching { androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(false).setUrlBarHidingEnabled(true).build().launchUrl(context, Uri.parse(url)) }.isSuccess
+                            if (opened) sharedPaymentStore.markPaymentOpened() else sharedPaymentStore.handlePaymentOpenFailure()
+                        }
                     },
                     loyaltyRepository = sharedLoyaltyRepository, walletEnabled = sharedAccountRepository.hasSession,
                     cartQuantity = cartQuantity,
@@ -714,9 +718,13 @@ private fun CriosRangoApp(
     LaunchedEffect(paymentRedirect) {
         val redirect = paymentRedirect
         if (redirect == null) paymentBrowserOpened = false else if (!paymentBrowserOpened) {
-            val opened = runCatching { androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(false).setUrlBarHidingEnabled(true).build().launchUrl(context, Uri.parse(redirect.url)) }.isSuccess
-            paymentBrowserOpened = opened
-            if (!opened) viewModel.verifyCardPaymentReturn()
+            if (!es.criosrango.shared.PaymentUrlValidator.isAllowed(redirect.url)) {
+                viewModel.handleInvalidPaymentUrl()
+            } else {
+                val opened = runCatching { androidx.browser.customtabs.CustomTabsIntent.Builder().setShowTitle(false).setUrlBarHidingEnabled(true).build().launchUrl(context, Uri.parse(redirect.url)) }.isSuccess
+                paymentBrowserOpened = opened
+                if (!opened) viewModel.verifyCardPaymentReturn()
+            }
         }
     }
     val paymentLifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
