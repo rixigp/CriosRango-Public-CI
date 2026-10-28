@@ -49,6 +49,8 @@ interface StoreApi {
     }
 
     suspend fun product(id: Int): StoreProduct
+    suspend fun productBySlug(slug: String): StoreProduct =
+        throw UnsupportedOperationException("Product lookup by slug is not supported by this StoreApi implementation")
 
     suspend fun productWithVariationAvailability(id: Int): StoreProduct
 
@@ -383,6 +385,7 @@ class StoreRepository(private val api: StoreApi) {
     suspend fun categories() = api.categories()
     suspend fun outletAvailability() = api.outletAvailability()
     suspend fun product(id: Int) = api.product(id)
+    suspend fun productBySlug(slug: String) = api.productBySlug(slug)
     suspend fun checkout() = api.checkout()
     suspend fun createCheckout(request: CreateOrderRequest) = api.createCheckout(request)
     suspend fun selectShippingRate(request: SelectShippingRateRequest) = api.selectShippingRate(request)
