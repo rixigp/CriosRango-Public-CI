@@ -77,7 +77,10 @@ internal fun safePushTokenErrorMessage(message: String?, maxLength: Int = 240): 
     if (normalized.isBlank()) return "(sin mensaje)"
     return normalized
         .replace(Regex("(?i)Bearer\\s+[^\\s,;]+"), "Bearer [REDACTED]")
-        .replace(Regex("(?i)(authorization|account[_-]?token|cart-token|nonce|set-cookie|cookie|order[_-]?key|paymenturl|fid|installation[_-]?id|token|api[_-]?key|secret|password)=([^\\s&;,]+)")) { match ->
+        .replace(Regex("""(?i)\b(cookie|set-cookie)\b\s*[:=]\s*[^\r\n]+""")) { match -> "${match.groupValues[1]}=[REDACTED]" }
+        .replace(Regex("""(?i)(authorization|account[_-]?token|cart-token|nonce|order[_-]?key|paymenturl|fid|installation[_-]?id|token|api[_-]?key|secret|password)\b\s*["']?\s*[:=]\s*["']?[^\s&;,"'}]+""")) { match ->
+            "${match.groupValues[1]}=[REDACTED]"
+        }
             "${match.groupValues[1]}=[REDACTED]"
         }
         .replace(Regex("""(?i)https?://[^\s"'<>]+"""), "[URL REDACTED]")

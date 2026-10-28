@@ -144,7 +144,10 @@ object IosPushDiagnostics {
 
 internal fun String.safeDiagnosticText(maxLength: Int): String =
     replace(Regex("(?i)bearer\\s+[^\\s,;]+"), "Bearer [redactado]")
-        .replace(Regex("(?i)(authorization|account[_-]?token|cart-token|nonce|set-cookie|cookie|order[_-]?key|paymenturl|fid|installation[_-]?id|token|api[_-]?key|secret|password)\\s*[:=]\\s*[^\\s&;,]+")) { match ->
+        .replace(Regex("""(?i)\b(cookie|set-cookie)\b\s*[:=]\s*[^\r\n]+""")) { match -> "${match.groupValues[1]}=[redactado]" }
+        .replace(Regex("""(?i)(authorization|account[_-]?token|cart-token|nonce|order[_-]?key|paymenturl|fid|installation[_-]?id|token|api[_-]?key|secret|password)\b\s*["']?\s*[:=]\s*["']?[^\s&;,"'}]+""")) { match ->
+            "${match.groupValues[1]}=[redactado]"
+        }
             "${match.groupValues[1]}=[redactado]"
         }
         .replace(Regex("""(?i)https?://[^\s"'<>]+"""), "[URL redactada]")
