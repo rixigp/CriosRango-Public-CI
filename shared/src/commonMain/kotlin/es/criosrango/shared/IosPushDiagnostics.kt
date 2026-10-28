@@ -147,12 +147,12 @@ internal fun String.safeDiagnosticText(maxLength: Int): String =
         .replace(Regex("(?i)(authorization|account[_-]?token|cart-token|nonce|set-cookie|cookie|order[_-]?key|paymenturl|fid|installation[_-]?id|token|api[_-]?key|secret|password)\\s*[:=]\\s*[^\\s&;,]+")) { match ->
             "${match.groupValues[1]}=[redactado]"
         }
-        .replace(Regex("(?i)https?://[^\\s\\\"'<>]+"), "[URL redactada]")
+        .replace(Regex("""(?i)https?://[^\s"'<>]+"""), "[URL redactada]")
         .replace(Regex("(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b"), "[email redactado]")
         .replace(Regex("(?<!\\w)(?:\\+?\\d[\\d .()\\-]{7,}\\d)(?!\\w)"), "[teléfono redactado]")
         .replace(Regex("(?i)\\b[0-9a-f]{32,}\\b"), "[token redactado]")
         .replace(Regex("eyJ[^\\s]+"), "[JWT redactado]")
-        .replace(Regex("[\\r\\n\\t]"), " ")
+        .replace(Regex(if (maxLength > 240) "[\\r\\t]" else "[\\r\\n\\t]"), " ")
         .take(maxLength)
 
 private fun String.safeShortHash(): String {
