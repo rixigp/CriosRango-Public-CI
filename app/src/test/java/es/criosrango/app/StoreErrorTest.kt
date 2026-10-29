@@ -12,7 +12,7 @@ class StoreErrorTest {
     fun timeoutMapsToFriendlyMessage() {
         val message = SocketTimeoutException("Request timeout has expired").toStoreCatalogErrorMessage()
         assertTrue(message.contains("La conexión está tardando demasiado"))
-        assertTrue(message.contains("Inténtalo de nuevo"))
+        assertTrue(message.contains("vuelve a intentarlo"))
         assertFalse(message.contains("Request timeout has expired"))
     }
 
