@@ -106,9 +106,9 @@ jobs:
           VERSION="$(grep -m1 'MARKETING_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
           BASE_BUILD="$(grep -m1 'CURRENT_PROJECT_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*CURRENT_PROJECT_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
           [[ "$VERSION" == "1.0.3" ]] || { echo "::error::Expected marketing version 1.0.3, found $VERSION"; exit 1; }
-          [[ "$BASE_BUILD" == "20009" ]] || { echo "::error::Expected project build baseline 20009, found $BASE_BUILD"; exit 1; }
-          BUILD_NUMBER=20009
-          [[ "$BUILD_NUMBER" == "20009" ]] || exit 1
+          [[ "$BASE_BUILD" == "20010" ]] || { echo "::error::Expected project build baseline 20010, found $BASE_BUILD"; exit 1; }
+          BUILD_NUMBER=20010
+          [[ "$BUILD_NUMBER" == "20010" ]] || exit 1
           START_EPOCH="$(date +%s)"
           echo "start_epoch=$START_EPOCH" >> "$GITHUB_OUTPUT"
           echo "RUN_START_EPOCH=$START_EPOCH" >> "$GITHUB_ENV"
@@ -499,7 +499,7 @@ jobs:
             2>&1 | tee release-artifacts/app-store-validation.log
           echo "validation=GREEN" >> "$GITHUB_OUTPUT"
 
-      - name: Stop if build 20009 already exists in App Store Connect
+      - name: Stop if build 20010 already exists in App Store Connect
         if: steps.validate.outputs.validation == 'GREEN' && steps.freshness.outputs.current == 'true'
         id: duplicate
         shell: bash
@@ -531,14 +531,14 @@ jobs:
           app_response = request_asc(token, "/v1/apps?filter%5BbundleId%5D=es.criosrango.app&limit=200")
           app = (app_response['data'] || []).find { |item| item.dig('attributes', 'bundleId') == 'es.criosrango.app' }
           raise 'App Store Connect app es.criosrango.app was not found' unless app
-          builds_response = request_asc(token, "/v1/builds?filter%5Bapp%5D=#{URI.encode_www_form_component(app.fetch('id'))}&filter%5Bversion%5D=20009&limit=200")
+          builds_response = request_asc(token, "/v1/builds?filter%5Bapp%5D=#{URI.encode_www_form_component(app.fetch('id'))}&filter%5Bversion%5D=20010&limit=200")
           builds = builds_response['data'] || []
-          if builds.any? { |item| item.dig('attributes', 'version').to_s == '20009' }
-            puts 'BUILD_20009_ALREADY_EXISTS'
+          if builds.any? { |item| item.dig('attributes', 'version').to_s == '20010' }
+            puts 'BUILD_20010_ALREADY_EXISTS'
             File.open(ENV.fetch('GITHUB_OUTPUT'), 'a') { |f| f.puts 'exists=true' }
             exit 17
           end
-          puts 'BUILD_20009_NOT_FOUND; upload may proceed'
+          puts 'BUILD_20010_NOT_FOUND; upload may proceed'
           File.open(ENV.fetch('GITHUB_OUTPUT'), 'a') { |f| f.puts 'exists=false' }
           RUBY
       - name: Upload signed IPA to App Store Connect
