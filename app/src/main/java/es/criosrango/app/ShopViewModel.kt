@@ -399,7 +399,8 @@ class ShopViewModel(
                 onError = {
                     android.util.Log.d("PRODUCT_LINK_TRACE", "resolver onError")
                     _error.value = StoreUiError(StoreErrorType.UNEXPECTED)
-                }
+                },
+                trace = { message -> android.util.Log.d("PRODUCT_LINK_TRACE", message) }
             )
         }
     }
@@ -806,44 +807,45 @@ internal suspend fun <T> resolveProductAppLink(
     productSlug: (T) -> String?,
     fetchBySlug: suspend (String) -> T?,
     open: (T) -> Unit,
-    onError: () -> Unit
+    onError: () -> Unit,
+    trace: (String) -> Unit = {}
 ) {
     val slug = normalizeProductAppLinkSlug(rawSlug)
-    android.util.Log.d("PRODUCT_LINK_TRACE", "resolveProductAppLink entry rawSlug=$rawSlug normalizedSlug=${slug ?: "null"}")
+    trace("resolveProductAppLink entry rawSlug=$rawSlug normalizedSlug=${slug ?: "null"}")
     if (slug == null) {
-        android.util.Log.d("PRODUCT_LINK_TRACE", "ERROR invalid_slug")
+        trace("ERROR invalid_slug")
         onError()
         return
     }
     val cached = cachedProducts.firstOrNull { normalizeProductAppLinkSlug(productSlug(it).orEmpty()) == slug }
     if (cached != null) {
-        android.util.Log.d("PRODUCT_LINK_TRACE", "CACHE_HIT slug=$slug")
-        android.util.Log.d("PRODUCT_LINK_TRACE", "open callback source=cache")
+        trace("CACHE_HIT slug=$slug")
+        trace("open callback source=cache")
         open(cached)
         return
     }
-    android.util.Log.d("PRODUCT_LINK_TRACE", "CACHE_MISS slug=$slug")
+    trace("CACHE_MISS slug=$slug")
     val fetched = try {
-        android.util.Log.d("PRODUCT_LINK_TRACE", "fetchBySlug start slug=$slug")
+        trace("fetchBySlug start slug=$slug")
         fetchBySlug(slug).also { product ->
-            if (product == null) android.util.Log.d("PRODUCT_LINK_TRACE", "ERROR fetchBySlug returned null")
-            else android.util.Log.d("PRODUCT_LINK_TRACE", "FOUND fetchBySlug returned product")
+            if (product == null) trace("ERROR fetchBySlug returned null")
+            else trace("FOUND fetchBySlug returned product")
         }
     } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
-        android.util.Log.d("PRODUCT_LINK_TRACE", "ERROR fetchBySlug timeout")
+        trace("ERROR fetchBySlug timeout")
         null
     } catch (cancelled: kotlinx.coroutines.CancellationException) {
-        android.util.Log.d("PRODUCT_LINK_TRACE", "fetchBySlug cancelled")
+        trace("fetchBySlug cancelled")
         throw cancelled
     } catch (exception: Exception) {
-        android.util.Log.d("PRODUCT_LINK_TRACE", "ERROR fetchBySlug exception_type=${exception::class.java.simpleName}")
+        trace("ERROR fetchBySlug exception_type=${exception::class.java.simpleName}")
         null
     }
     if (fetched != null) {
         val resolvedSlug = normalizeProductAppLinkSlug(productSlug(fetched).orEmpty())
-        android.util.Log.d("PRODUCT_LINK_TRACE", "permalink_slug=${resolvedSlug ?: "null"} requested_slug=$slug match=${resolvedSlug == slug}")
+        trace("permalink_slug=${resolvedSlug ?: "null"} requested_slug=$slug match=${resolvedSlug == slug}")
         if (resolvedSlug == slug) {
-            android.util.Log.d("PRODUCT_LINK_TRACE", "open callback source=fetch")
+            trace("open callback source=fetch")
             open(fetched)
             return
         }
