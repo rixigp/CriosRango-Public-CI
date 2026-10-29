@@ -98,9 +98,9 @@ internal object IosSecureKeyValueStore {
 
     private fun readKeychain(key: String): String? = memScoped {
         val query = createDictionary(
-            baseQueryMap(key) + mapOf(
-                kSecReturnData to kCFBooleanTrue!!,
-                kSecMatchLimit to kSecMatchLimitOne
+            baseQueryMap(key) + mapOf<CFTypeRef, CFTypeRef>(
+                kSecReturnData as CFTypeRef to (kCFBooleanTrue!! as CFTypeRef),
+                kSecMatchLimit as CFTypeRef to (kSecMatchLimitOne as CFTypeRef)
             )
         )
         try {
@@ -121,9 +121,9 @@ internal object IosSecureKeyValueStore {
     private fun writeKeychain(key: String, value: String): Boolean {
         val data = value.toNSData()
         val query = createDictionary(
-            baseQueryMap(key) + mapOf(
-                kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-                kSecValueData to data
+            baseQueryMap(key) + mapOf<CFTypeRef, CFTypeRef>(
+                kSecAttrAccessible as CFTypeRef to (kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as CFTypeRef),
+                kSecValueData as CFTypeRef to (data as CFTypeRef)
             )
         )
         try {
@@ -137,7 +137,7 @@ internal object IosSecureKeyValueStore {
             CFRelease(query)
         }
 
-        val update = createDictionary(mapOf(kSecValueData to data))
+        val update = createDictionary(mapOf<CFTypeRef, CFTypeRef>(kSecValueData as CFTypeRef to (data as CFTypeRef)))
         val updateQuery = createDictionary(baseQueryMap(key))
         try {
             val updateStatus = SecItemUpdate(
@@ -152,15 +152,15 @@ internal object IosSecureKeyValueStore {
         }
     }
 
-    private fun baseQueryMap(key: String): Map<Any?, Any?> = mapOf(
-        kSecClass to kSecClassGenericPassword,
-        kSecAttrService to (SERVICE as NSString),
-        kSecAttrAccount to (key as NSString),
+    private fun baseQueryMap(key: String): Map<CFTypeRef, CFTypeRef> = mapOf(
+        kSecClass as CFTypeRef to (kSecClassGenericPassword as CFTypeRef),
+        kSecAttrService as CFTypeRef to ((SERVICE as NSString) as CFTypeRef),
+        kSecAttrAccount as CFTypeRef to ((key as NSString) as CFTypeRef),
         // Explicitly disable synchronizable/iCloud Keychain items.
-        kSecAttrSynchronizable to kCFBooleanFalse!!
+        kSecAttrSynchronizable as CFTypeRef to (kCFBooleanFalse!! as CFTypeRef)
     )
 
-    private fun createDictionary(values: Map<Any?, Any?>): CFMutableDictionaryRef {
+    private fun createDictionary(values: Map<CFTypeRef, CFTypeRef>): CFMutableDictionaryRef {
         val dictionary = CFDictionaryCreateMutable(
             kCFAllocatorDefault,
             values.size.toLong(),
@@ -168,7 +168,7 @@ internal object IosSecureKeyValueStore {
             kCFTypeDictionaryValueCallBacks.ptr
         ) ?: error("CFDictionaryCreateMutable returned null")
         values.forEach { (key, value) ->
-            CFDictionaryAddValue(dictionary, key.asCFTypeRef(), value.asCFTypeRef())
+            CFDictionaryAddValue(dictionary, key, value)
         }
         return dictionary
     }
@@ -219,14 +219,6 @@ internal object IosSecureKeyValueStore {
         }
 
         return output.decodeToString()
-    }
-
-    private fun Any?.asCFTypeRef(): CFTypeRef = when (this) {
-        is String -> (this as NSString) as CFTypeRef
-        is NSString -> this as CFTypeRef
-        is NSData -> this as CFTypeRef
-        null -> error("Null is not a valid Keychain dictionary value")
-        else -> this as CFTypeRef // CoreFoundation constants supplied by Security/CoreFoundation.
     }
 
     @OptIn(kotlin.experimental.ExperimentalNativeApi::class)
