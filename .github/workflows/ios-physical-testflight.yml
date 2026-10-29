@@ -201,7 +201,26 @@ jobs:
           APP_IDENTIFIER=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$RUNNER_TEMP/profile.plist")
           PROFILE_APS=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:aps-environment' "$RUNNER_TEMP/profile.plist")
           PROFILE_GET_TASK_ALLOW=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:get-task-allow' "$RUNNER_TEMP/profile.plist" 2>/dev/null || true)
-          [[ "$PROFILE_NAME" == "CriosRango AppStore 2.0.1" && "$TEAM_ID" == "3793344J72" && "$APP_IDENTIFIER" == "$TEAM_ID.es.criosrango.app" && "$PROFILE_APS" == "production" ]] || { echo "::error::Provisioning profile does not match the known App Store profile"; exit 1; }
+          echo "PROFILE_NAME=$PROFILE_NAME"
+          echo "APPLICATION_IDENTIFIER=$APP_IDENTIFIER"
+          echo "TEAM_IDENTIFIER=$TEAM_ID"
+          echo "APS_ENVIRONMENT=$PROFILE_APS"
+          python3 - "$RUNNER_TEMP/profile.plist" <<'PY'
+          import plistlib, sys
+          with open(sys.argv[1], "rb") as f:
+              profile = plistlib.load(f)
+          entitlements = profile.get("Entitlements", {})
+          raw = entitlements.get("com.apple.developer.associated-domains", [])
+          domains = [raw] if isinstance(raw, str) else raw if isinstance(raw, list) else []
+          authorized = "*" in domains or (
+              "applinks:criosrango.es" in domains and
+              "applinks:www.criosrango.es" in domains
+          )
+          print("ASSOCIATED_DOMAINS_AUTHORIZATION=" + (",".join(str(x) for x in domains) if domains else "MISSING"))
+          if not authorized:
+              raise SystemExit("::error::Provisioning profile does not authorize required Associated Domains")
+          PY
+          [[ "$TEAM_ID" == "3793344J72" && "$APP_IDENTIFIER" == "3793344J72.es.criosrango.app" && "$PROFILE_APS" == "production" ]] || { echo "::error::Provisioning profile identifiers or production push entitlement are invalid"; exit 1; }
           [[ "$PROFILE_GET_TASK_ALLOW" != "true" && "$PROFILE_GET_TASK_ALLOW" != "YES" ]] || { echo "::error::Distribution profile unexpectedly enables get-task-allow"; exit 1; }
           RELEASE_ENTITLEMENTS="$RUNNER_TEMP/CriosRango-release.entitlements"
           cp iosApp/iosApp.entitlements "$RELEASE_ENTITLEMENTS"
