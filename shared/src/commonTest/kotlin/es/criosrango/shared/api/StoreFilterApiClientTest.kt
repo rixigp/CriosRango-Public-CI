@@ -103,4 +103,31 @@ class StoreFilterApiClientTest {
         assertEquals(13, response.total)
         client.close()
     }
+
+    @Test fun query_records_network_deserialization_and_safe_metadata() = runTest {
+        val records=mutableListOf<StoreRequestTiming>()
+        val http=HttpClient(MockEngine{respond("""{"schema_version":1,"page":1,"per_page":12,"total":0,"has_more":false,"product_ids":[],"facets":{}}""",HttpStatusCode.OK,headersOf("Content-Type","application/json"))}){install(ContentNegotiation){json(Json{ignoreUnknownKeys=true})}}
+        val client=StoreFilterApiClient("https://example.test/wp-json/criosrango-filter/v1/query",http,StoreRequestTimingRecorder{records+=it})
+        client.query(scope="outlet",outletCategoryId=446,page=1,perPage=12);val r=records.single()
+        assertEquals("outlet_query",r.requestType);assertEquals("/wp-json/criosrango-filter/v1/query",r.path);assertEquals(200,r.httpStatus)
+        assertTrue(r.success);assertFalse(r.timeout);assertTrue(r.totalOperationMs>=r.networkMs);assertTrue(r.networkMs>=0);assertTrue(r.deserializationMs>=0)
+        assertEquals(1,r.page);assertEquals(12,r.perPage);assertEquals("outlet",r.scope)
+        assertFalse(r.path.contains("Authorization",true));assertFalse(r.path.contains("token",true));assertFalse(r.path.contains("@"));client.close()
+    }
+    @Test fun query_records_http_error_status() = runTest {
+        val records=mutableListOf<StoreRequestTiming>()
+        val http=HttpClient(MockEngine{respond("""{"schema_version":1,"page":1,"per_page":12,"total":0,"has_more":false,"product_ids":[],"facets":{}}""",HttpStatusCode.InternalServerError,headersOf("Content-Type","application/json"))}){install(ContentNegotiation){json(Json{ignoreUnknownKeys=true})}}
+        val client=StoreFilterApiClient("https://example.test/wp-json/criosrango-filter/v1/query",http,StoreRequestTimingRecorder{records+=it})
+        client.query(scope="outlet");assertEquals(500,records.single().httpStatus);assertFalse(records.single().success);assertEquals("HTTP_ERROR",records.single().errorType);client.close()
+    }
+    @Test fun query_marks_timeout_without_recording_exception_text_or_url() = runTest {
+        class SimulatedTimeoutException:Exception("timeout for user@example.com token=secret")
+        val records=mutableListOf<StoreRequestTiming>()
+        val http=HttpClient(MockEngine{throw SimulatedTimeoutException()}){install(ContentNegotiation){json(Json{ignoreUnknownKeys=true})}}
+        val client=StoreFilterApiClient("https://example.test/wp-json/criosrango-filter/v1/query",http,StoreRequestTimingRecorder{records+=it})
+        val error=runCatching{client.query(scope="outlet")}.exceptionOrNull();assertNotNull(error);val r=records.single()
+        assertTrue(r.timeout);assertFalse(r.success);assertEquals("TIMEOUT",r.errorType);assertEquals("/wp-json/criosrango-filter/v1/query",r.path)
+        assertFalse(r.path.contains("example.com"));assertFalse(r.path.contains("secret"));client.close()
+    }
+
 }

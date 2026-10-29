@@ -2,14 +2,18 @@ package es.criosrango.shared
 
 import es.criosrango.shared.api.StoreApiClient
 import es.criosrango.shared.api.StoreFilterApiClient
+import es.criosrango.shared.api.StoreRequestTimingRecorder
+import es.criosrango.shared.api.NoOpStoreRequestTimingRecorder
+import es.criosrango.shared.api.recordStoreOperationTiming
 import es.criosrango.shared.model.StoreGlobalAttributeTerm
 
 /** Stateless transport adapter. StoreOutletController owns every Outlet query decision. */
 fun storeOutletDataSource(
     storeApi: StoreApiClient,
-    filterApi: StoreFilterApiClient = StoreFilterApiClient()
+    filterApi: StoreFilterApiClient = StoreFilterApiClient(),
+    timingRecorder: StoreRequestTimingRecorder = NoOpStoreRequestTimingRecorder
 ): StoreOutletDataSource = object : StoreOutletDataSource {
-    override suspend fun loadFilterOptions(): StoreFilterOptions {
+    override suspend fun loadFilterOptions(): StoreFilterOptions = recordStoreOperationTiming(timingRecorder,"outlet_filter_options_operation","/wp-json/wc/store/v1/products/attributes",scope="outlet"){
         val attrs = storeApi.globalAttributes()
         fun canonical(value: String) = value.lowercase().trim()
             .replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
@@ -35,10 +39,11 @@ fun storeOutletDataSource(
                 count = it.count
             )
         }
-        return StoreFilterOptions(sizes, colors, brands)
+        StoreFilterOptions(sizes, colors, brands)
     }
 
-    override suspend fun loadPage(query: StoreOutletQuery, page: Int, perPage: Int): CatalogPage<es.criosrango.shared.model.StoreProduct> {
+    override suspend fun loadPage(query:StoreOutletQuery,page:Int,perPage:Int):CatalogPage<es.criosrango.shared.model.StoreProduct> =
+        recordStoreOperationTiming(timingRecorder,"outlet_datasource_page","/wp-json/criosrango-filter/v1/query",page,perPage,"outlet"){
         require(page >= 1 && perPage == CatalogPaginator.PAGE_SIZE) { "Outlet pages must use the canonical page size." }
         val q = query.canonical()
         val response = filterApi.query(
@@ -53,10 +58,11 @@ fun storeOutletDataSource(
             sort = q.sort.toBackendSort()
         )
         val products = if (response.productIds.isEmpty()) emptyList() else storeApi.productsByIds(response.productIds)
-        return CatalogPage(products, response.hasMore, response.total)
+        CatalogPage(products, response.hasMore, response.total)
     }
 
-    override suspend fun loadFacet(query: StoreOutletQuery, dimension: StoreOutletFacetDimension): Map<Int, Int> {
+    override suspend fun loadFacet(query:StoreOutletQuery,dimension:StoreOutletFacetDimension):Map<Int,Int> =
+        recordStoreOperationTiming(timingRecorder,"outlet_facet_operation","/wp-json/criosrango-filter/v1/query",1,CatalogPaginator.PAGE_SIZE,"outlet"){
         val q = query.canonical()
         val response = filterApi.query(
             scope = "outlet",
@@ -70,7 +76,7 @@ fun storeOutletDataSource(
             sort = "newest",
             facet = dimension.apiValue
         )
-        return response.facets[dimension.apiValue].orEmpty().associate { it.termId to it.count }
+        response.facets[dimension.apiValue].orEmpty().associate { it.termId to it.count }
     }
 }
 

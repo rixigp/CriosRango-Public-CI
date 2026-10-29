@@ -22,6 +22,7 @@ import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.model.StoreProductAttributeFilter
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -103,7 +104,8 @@ class StoreApiClient(
     private val baseUrl: String = "https://criosrango.es/wp-json/wc/store/v1/",
     private val client: HttpClient = createStoreHttpClient(),
     private val session: StoreSessionStore = InMemoryStoreSessionStore(),
-    private val accountTokenStore: AccountTokenStore? = null
+    private val accountTokenStore: AccountTokenStore? = null,
+    private val timingRecorder: StoreRequestTimingRecorder = NoOpStoreRequestTimingRecorder
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private suspend inline fun <reified T> executeCart(
@@ -140,6 +142,12 @@ class StoreApiClient(
             )
         }
         return json.decodeFromString<T>(raw)
+    }
+
+    private suspend inline fun <reified T> timedGet(requestType:String,path:String,page:Int?=null,perPage:Int?=null,scope:String?="catalog",request:suspend()->HttpResponse):T{
+        val timing=StoreRequestTimingSession(timingRecorder,requestType,path,page,perPage,scope)
+        return try{val response=request();timing.networkComplete(response.status.value);val value:T=response.body();timing.deserializationComplete();timing.finish(response.status.isSuccess());value}
+        catch(error:Throwable){timing.finish(false,error);throw error}
     }
 
     /** Drops local Store API credentials after best-effort remote cleanup. */
@@ -263,11 +271,11 @@ class StoreApiClient(
         }
 
     suspend fun product(id: Int): StoreProduct =
-        client.get(baseUrl + "products/" + id).body()
+        timedGet("product_detail","/products/$id"){client.get(baseUrl+"products/"+id)}
 
     suspend fun productBySlug(slug: String): StoreProduct {
         require(slug.isNotBlank()) { "La URL del producto no contiene un slug válido." }
-        return client.get(baseUrl + "products/" + slug.encodeURLPathPart()).body()
+        return timedGet("product_detail","/products/{slug}"){client.get(baseUrl+"products/"+slug.encodeURLPathPart())}
     }
 
     suspend fun productWithVariationAvailability(id: Int): StoreProduct {
@@ -312,51 +320,37 @@ class StoreApiClient(
         tagIds: List<Int> = emptyList(),
         brand: String? = null
     ): List<StoreProduct> =
-        client.get("${baseUrl}products") {
-            parameter("per_page", perPage)
-            parameter("page", page)
-            search?.let { parameter("search", it) }
-            category?.let { parameter("category", it) }
-            orderBy?.let { parameter("orderby", it) }
-            order?.let { parameter("order", it) }
-            after?.let { parameter("after", it) }
-            featured?.let { parameter("featured", it) }
-            brand?.let { parameter("brand", it) }
-            tag?.let { parameter("tag", it) }
-            tagIds.takeIf { it.isNotEmpty() }?.let { parameter("tag", it.joinToString(",")) }
-            attributeFilters.forEachIndexed { index, filter ->
-                parameter("attributes[$index][attribute]", filter.taxonomy)
-                parameter("attributes[$index][term_id]", filter.termIds.joinToString(","))
+        timedGet(if(search!=null)"search" else "catalog_query","/products",page,perPage,"catalog"){
+            client.get("${baseUrl}products"){
+                parameter("per_page",perPage);parameter("page",page);search?.let{parameter("search",it)}
+                category?.let{parameter("category",it)};orderBy?.let{parameter("orderby",it)};order?.let{parameter("order",it)}
+                after?.let{parameter("after",it)};featured?.let{parameter("featured",it)};brand?.let{parameter("brand",it)}
+                tag?.let{parameter("tag",it)};tagIds.takeIf{it.isNotEmpty()}?.let{parameter("tag",it.joinToString(","))}
+                attributeFilters.forEachIndexed{index,filter->parameter("attributes[$index][attribute]",filter.taxonomy);parameter("attributes[$index][term_id]",filter.termIds.joinToString(","))}
             }
-        }.body()
+        }
 
     suspend fun productsByIds(ids: List<Int>): List<StoreProduct> {
         if (ids.isEmpty()) return emptyList()
         val requested = ids.distinct()
-        val returned: List<StoreProduct> = client.get("${baseUrl}products") {
-            parameter("include", requested.joinToString(",")); parameter("orderby", "include"); parameter("per_page", requested.size)
-        }.body()
+        val returned: List<StoreProduct> = timedGet("catalog_hydration","/products",perPage=requested.size,scope="outlet"){client.get("${baseUrl}products"){parameter("include",requested.joinToString(","));parameter("orderby","include");parameter("per_page",requested.size)}}
         val byId = returned.associateBy { it.id }
         val missing = requested.filterNot { byId.containsKey(it) }
         if (missing.isNotEmpty()) throw StoreProductBatchConsistencyException("Store API batch omitted backend-selected product IDs: ${missing.joinToString(",")}")
         return requested.map { byId.getValue(it) }
     }
 
-    suspend fun globalAttributes(perPage: Int = 100): List<StoreGlobalAttribute> =
-        client.get("${baseUrl}products/attributes") { parameter("per_page", perPage) }.body()
+    suspend fun globalAttributes(perPage:Int=100):List<StoreGlobalAttribute> = timedGet("outlet_filter_options","/products/attributes",perPage=perPage,scope="outlet"){client.get("${baseUrl}products/attributes"){parameter("per_page",perPage)}}
 
-    suspend fun globalAttributeTerms(attributeId: Int, perPage: Int = 100): List<StoreGlobalAttributeTerm> =
-        client.get("${baseUrl}products/attributes/$attributeId/terms") { parameter("per_page", perPage) }.body()
+    suspend fun globalAttributeTerms(attributeId:Int,perPage:Int=100):List<StoreGlobalAttributeTerm> = timedGet("outlet_filter_options","/products/attributes/{id}/terms",perPage=perPage,scope="outlet"){client.get("${baseUrl}products/attributes/$attributeId/terms"){parameter("per_page",perPage)}}
 
-    suspend fun productTags(perPage: Int = 100): List<StoreGlobalTag> =
-        client.get("${baseUrl}products/tags") { parameter("per_page", perPage) }.body()
+    suspend fun productTags(perPage:Int=100):List<StoreGlobalTag> = timedGet("outlet_filter_options","/products/tags",perPage=perPage,scope="outlet"){client.get("${baseUrl}products/tags"){parameter("per_page",perPage)}}
 
     /** Real WooCommerce product_brand terms, not product tags. */
     suspend fun productBrands(perPage: Int = 100, page: Int = 1, hideEmpty: Boolean = true): List<StoreGlobalBrand> =
         client.get("${baseUrl}products/brands") { parameter("per_page", perPage); parameter("page", page); parameter("hide_empty", hideEmpty) }.body()
 
-    suspend fun categories(perPage: Int = 100, page: Int = 1): List<StoreCategory> =
-        client.get("${baseUrl}products/categories") { parameter("per_page", perPage); parameter("page", page) }.body()
+    suspend fun categories(perPage:Int=100,page:Int=1):List<StoreCategory> = timedGet("categories","/products/categories",page,perPage,"catalog"){client.get("${baseUrl}products/categories"){parameter("per_page",perPage);parameter("page",page)}}
 
     suspend fun productsPage(perPage: Int, page: Int, categoryIds: List<Int> = emptyList(), orderBy: String = "date", order: String = "desc"): StoreApiProductPage {
         val response = client.get("${baseUrl}products") {
