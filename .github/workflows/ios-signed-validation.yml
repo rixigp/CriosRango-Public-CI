@@ -130,19 +130,26 @@ jobs:
               p = plistlib.load(f)
           got = p.get("Entitlements", {}).get("com.apple.developer.associated-domains")
           expected = ["applinks:criosrango.es", "applinks:www.criosrango.es"]
-          authorized = isinstance(got, list) and (got == ["*"] or all(x in got for x in expected))
+          authorized = (
+              got == "*"
+              or got == ["*"]
+              or (isinstance(got, list) and all(x in got for x in expected))
+          )
+          kind = "string" if isinstance(got, str) else "array" if isinstance(got, list) else type(got).__name__
+          raw = repr(got)
           print("yes" if authorized else "no")
-          if isinstance(got, list):
-              print("\n".join(got))
+          print(f"PROFILE_ASSOCIATED_DOMAINS_TYPE={kind}")
+          print(f"PROFILE_ASSOCIATED_DOMAINS_RAW={raw}")
           PY
           )"
-          [[ "$PROFILE_DOMAINS_CHECK" == yes* ]] || { echo "::error::Provisioning profile does not authorize both expected associated domains"; exit 1; }
+          [[ "$PROFILE_DOMAINS_CHECK" == yes* ]] || { printf '%s\n' "$PROFILE_DOMAINS_CHECK"; echo "::error::Provisioning profile does not authorize Associated Domains"; exit 1; }
+          printf '%s\n' "$PROFILE_DOMAINS_CHECK" | tail -n +2
           PROFILE_DOMAINS="$(python3 - "$PROFILE_PLIST" <<'PY'
           import plistlib, sys
           with open(sys.argv[1], "rb") as f:
               p = plistlib.load(f)
           values = p.get("Entitlements", {}).get("com.apple.developer.associated-domains", [])
-          print("\n".join(values) if isinstance(values, list) else "")
+          print(values if isinstance(values, str) else "\n".join(values) if isinstance(values, list) else "")
           PY
           )"
           echo "profile_name=$PROFILE_NAME" >> "$GITHUB_OUTPUT"
@@ -375,7 +382,11 @@ jobs:
               p = plistlib.load(f)
           got = p.get("Entitlements", {}).get("com.apple.developer.associated-domains")
           expected = ["applinks:criosrango.es", "applinks:www.criosrango.es"]
-          ok = isinstance(got, list) and (got == ["*"] or all(x in got for x in expected))
+          ok = (
+              got == "*"
+              or got == ["*"]
+              or (isinstance(got, list) and all(x in got for x in expected))
+          )
           print("yes" if ok else "no")
           PY
           )"
@@ -422,7 +433,7 @@ jobs:
           with open(sys.argv[1], "rb") as f:
               p = plistlib.load(f)
           v = p.get("Entitlements", {}).get("com.apple.developer.associated-domains", [])
-          print("\n".join(v) if isinstance(v, list) else "")
+          print(v if isinstance(v, str) else "\n".join(v) if isinstance(v, list) else "")
           PY
           )"
           {
