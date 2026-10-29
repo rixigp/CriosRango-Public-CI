@@ -21,6 +21,7 @@ import platform.CoreFoundation.kCFBooleanTrue
 import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
 import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.Foundation.NSData
+import platform.Foundation.NSString
 import kotlin.native.Platform
 import platform.Foundation.NSUserDefaults
 import platform.Foundation.create
@@ -153,8 +154,8 @@ internal object IosSecureKeyValueStore {
 
     private fun baseQueryMap(key: String): Map<Any?, Any?> = mapOf(
         kSecClass to kSecClassGenericPassword,
-        kSecAttrService to SERVICE,
-        kSecAttrAccount to key,
+        kSecAttrService to (SERVICE as NSString),
+        kSecAttrAccount to (key as NSString),
         // Explicitly disable synchronizable/iCloud Keychain items.
         kSecAttrSynchronizable to kCFBooleanFalse!!
     )
@@ -221,8 +222,11 @@ internal object IosSecureKeyValueStore {
     }
 
     private fun Any?.asCFTypeRef(): CFTypeRef = when (this) {
+        is String -> (this as NSString) as CFTypeRef
+        is NSString -> this as CFTypeRef
         is NSData -> this as CFTypeRef
-        else -> this as CFTypeRef
+        null -> error("Null is not a valid Keychain dictionary value")
+        else -> this as CFTypeRef // CoreFoundation constants supplied by Security/CoreFoundation.
     }
 
     @OptIn(kotlin.experimental.ExperimentalNativeApi::class)
