@@ -212,6 +212,84 @@ class StoreOutletControllerTest {
         assertEquals(1, controller.state.value.facetCounts["sizes"]?.get(342))
     }
 
+    @Test fun repeated_open_filters_reuses_same_in_flight_facet_request() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val source = RecordingSource(options(), facetResponse = { _, _ ->
+            gate.await()
+            mapOf(342 to 2)
+        })
+        val controller = StoreOutletController(controllerScope(), source)
+        controller.selectCategory(446)
+        advanceUntilIdle()
+
+        controller.openFilters()
+        runCurrent()
+        assertEquals(1, source.facetCalls.size)
+
+        controller.openFilters()
+        controller.openFilters()
+        runCurrent()
+        assertEquals(1, source.facetCalls.size)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(2, controller.state.value.facetCounts["sizes"]?.get(342))
+    }
+
+    @Test fun facet_cache_hit_does_not_start_another_request() = runTest {
+        val source = RecordingSource(options(), facetResponse = { _, _ -> mapOf(342 to 3) })
+        val controller = StoreOutletController(controllerScope(), source)
+        controller.selectCategory(446)
+        advanceUntilIdle()
+
+        controller.openFilters()
+        advanceUntilIdle()
+        assertEquals(1, source.facetCalls.size)
+
+        controller.openFilters()
+        advanceUntilIdle()
+        assertEquals(1, source.facetCalls.size)
+        assertEquals(3, controller.state.value.facetCounts["sizes"]?.get(342))
+    }
+
+    @Test fun failed_facet_request_releases_guard_for_retry() = runTest {
+        var attempts = 0
+        val source = RecordingSource(options(), facetResponse = { _, _ ->
+            attempts++
+            if (attempts == 1) error("temporary facet failure")
+            mapOf(342 to 4)
+        })
+        val controller = StoreOutletController(controllerScope(), source)
+        controller.selectCategory(446)
+        advanceUntilIdle()
+
+        controller.openFilters()
+        runCurrent()
+        assertEquals(1, source.facetCalls.size)
+
+        controller.openFilters()
+        advanceUntilIdle()
+        assertEquals(2, source.facetCalls.size)
+        assertEquals(4, controller.state.value.facetCounts["sizes"]?.get(342))
+    }
+
+    @Test fun successful_facet_response_is_cached_and_reused() = runTest {
+        val source = RecordingSource(options(), facetResponse = { _, _ -> mapOf(342 to 5) })
+        val controller = StoreOutletController(controllerScope(), source)
+        controller.selectCategory(446)
+        advanceUntilIdle()
+
+        controller.openFilters()
+        advanceUntilIdle()
+        val callsAfterSuccess = source.facetCalls.size
+        assertEquals(1, callsAfterSuccess)
+        assertEquals(5, controller.state.value.facetCounts["sizes"]?.get(342))
+
+        controller.openFilters()
+        advanceUntilIdle()
+        assertEquals(callsAfterSuccess, source.facetCalls.size)
+    }
+
     @Test fun controller_retains_paginator_per_full_query_identity() = runTest {
         val source = RecordingSource(options())
         val controller = StoreOutletController(controllerScope(), source)

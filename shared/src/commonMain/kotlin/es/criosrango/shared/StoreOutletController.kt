@@ -4,6 +4,7 @@ import es.criosrango.shared.model.OutletAvailability
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
 import es.criosrango.shared.model.countFor
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -148,6 +149,7 @@ class StoreOutletController(
     private var activeFacetDimension = StoreOutletFacetDimension.SIZES
     private val facetGenerations = mutableMapOf<StoreOutletFacetDimension, Int>()
     private val facetCache = mutableMapOf<String, Map<Int, Int>>()
+    private val inFlightFacetKeys = mutableSetOf<String>()
 
     private val _state = MutableStateFlow(StoreOutletState())
     val state: StateFlow<StoreOutletState> = _state.asStateFlow()
@@ -502,6 +504,7 @@ class StoreOutletController(
             publish(_state.value.paging)
             return
         }
+        if (!inFlightFacetKeys.add(key)) return
         val generation = (facetGenerations[dimension] ?: 0) + 1
         facetGenerations[dimension] = generation
         scope.launch {
@@ -517,8 +520,12 @@ class StoreOutletController(
                     )
                     publish(_state.value.paging)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Keep the dimension retryable; never derive counts from the currently loaded page.
+            } finally {
+                inFlightFacetKeys.remove(key)
             }
         }
     }
