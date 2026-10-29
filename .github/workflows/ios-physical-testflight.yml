@@ -499,13 +499,15 @@ jobs:
             2>&1 | tee release-artifacts/app-store-validation.log
           echo "validation=GREEN" >> "$GITHUB_OUTPUT"
 
-      - name: Stop if build 20011 already exists in App Store Connect
+      - name: Resolve exact existing App Store Connect build
         if: steps.validate.outputs.validation == 'GREEN' && steps.freshness.outputs.current == 'true'
         id: duplicate
         shell: bash
         env:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          VERSION: ${{ needs.build-release-ipa.outputs.version }}
+          BUILD_NUMBER: ${{ needs.build-release-ipa.outputs.build_number }}
         run: |
           set -euo pipefail
           ruby - <<'RUBY' 2>&1 | tee release-artifacts/build-duplicate-precheck.log
@@ -514,12 +516,16 @@ jobs:
           require 'openssl'
           require 'uri'
           require 'jwt'
+
           key_id = ENV.fetch('ASC_KEY_ID')
           issuer_id = ENV.fetch('ASC_ISSUER_ID')
+          requested_version = ENV.fetch('VERSION')
+          build_number = ENV.fetch('BUILD_NUMBER')
           key_path = File.join(Dir.home, ".appstoreconnect/private_keys/AuthKey_#{key_id}.p8")
           private_key = OpenSSL::PKey.read(File.read(key_path))
           now = Time.now.to_i
           token = JWT.encode({ iss: issuer_id, iat: now, exp: now + 900, aud: 'appstoreconnect-v1' }, private_key, 'ES256', { kid: key_id, typ: 'JWT' })
+
           def request_asc(token, path)
             uri = URI("https://api.appstoreconnect.apple.com#{path}")
             request = Net::HTTP::Get.new(uri)
@@ -528,21 +534,93 @@ jobs:
             raise "App Store Connect API returned HTTP #{response.code}: #{response.body}" unless response.is_a?(Net::HTTPSuccess)
             JSON.parse(response.body)
           end
-          app_response = request_asc(token, "/v1/apps?filter%5BbundleId%5D=es.criosrango.app&limit=200")
+
+          def query(path, pairs)
+            "#{path}?#{URI.encode_www_form(pairs)}"
+          end
+
+          app_response = request_asc(token, query('/v1/apps', [['filter[bundleId]', 'es.criosrango.app'], ['limit', '200']]))
           app = (app_response['data'] || []).find { |item| item.dig('attributes', 'bundleId') == 'es.criosrango.app' }
           raise 'App Store Connect app es.criosrango.app was not found' unless app
-          builds_response = request_asc(token, "/v1/builds?filter%5Bapp%5D=#{URI.encode_www_form_component(app.fetch('id'))}&filter%5Bversion%5D=20011&limit=200")
-          builds = builds_response['data'] || []
-          if builds.any? { |item| item.dig('attributes', 'version').to_s == '20011' }
-            puts 'BUILD_20011_ALREADY_EXISTS'
-            File.open(ENV.fetch('GITHUB_OUTPUT'), 'a') { |f| f.puts 'exists=true' }
-            exit 17
+          app_id = app.fetch('id')
+
+          response = request_asc(token, query('/v1/builds', [
+            ['filter[app]', app_id],
+            ['filter[version]', build_number],
+            ['include', 'preReleaseVersion'],
+            ['fields[builds]', 'version,processingState,uploadedDate,expired,preReleaseVersion'],
+            ['fields[preReleaseVersions]', 'version,platform'],
+            ['limit', '200']
+          ]))
+          builds = response['data'] || []
+          included = (response['included'] || []).select { |item| item['type'] == 'preReleaseVersions' }
+          pre_release_by_id = included.to_h { |item| [item['id'], item['attributes'] || {}] }
+
+          if builds.empty?
+            puts "BUILD_ID="
+            puts "BUILD_VERSION="
+            puts "PROCESSING_STATE="
+            puts "UPLOADED_DATE="
+            puts "PRE_RELEASE_VERSION="
+            puts "PLATFORM="
+            puts "BUILD_ALREADY_EXISTS=NO"
+            puts "REUSE_EXISTING_BUILD=NO"
+            puts "UPLOAD_REQUIRED=YES"
+            puts "UPLOAD_EXECUTED=NO"
+            File.open(ENV.fetch('GITHUB_OUTPUT'), 'a') do |f|
+              f.puts 'exists=false'
+              f.puts 'reuse=false'
+              f.puts 'upload_required=true'
+              f.puts 'build_id='
+            end
+          else
+            exact = builds.select do |item|
+              attrs = item['attributes'] || {}
+              relationship_id = item.dig('relationships', 'preReleaseVersion', 'data', 'id')
+              pre = pre_release_by_id[relationship_id] || {}
+              attrs['version'].to_s == build_number.to_s &&
+                pre['version'].to_s == requested_version.to_s &&
+                pre['platform'].to_s.upcase == 'IOS'
+            end
+
+            if exact.length != 1
+              details = builds.map do |item|
+                attrs = item['attributes'] || {}
+                rel_id = item.dig('relationships', 'preReleaseVersion', 'data', 'id')
+                pre = pre_release_by_id[rel_id] || {}
+                "id=#{item['id']} build=#{attrs['version']} prerelease=#{pre['version'] || 'UNRESOLVED'} platform=#{pre['platform'] || 'UNRESOLVED'}"
+              end
+              raise "BUILD_MATCH_NOT_EXACT_OR_AMBIGUOUS: requested build=#{build_number}, prerelease=#{requested_version}, platform=IOS; results: #{details.join('; ')}"
+            end
+
+            build = exact.first
+            attrs = build.fetch('attributes')
+            pre = pre_release_by_id.fetch(build.dig('relationships', 'preReleaseVersion', 'data', 'id'))
+            raise "BUILD_EXPIRED: exact App Store Connect build #{build.fetch('id')} is expired" if attrs['expired'] == true
+            puts "EXPIRED=#{attrs['expired']}"
+            puts "BUILD_ID=#{build.fetch('id')}"
+            puts "BUILD_VERSION=#{attrs['version']}"
+            puts "PROCESSING_STATE=#{attrs['processingState']}"
+            puts "UPLOADED_DATE=#{attrs['uploadedDate']}"
+            puts "PRE_RELEASE_VERSION=#{pre['version']}"
+            puts "PLATFORM=#{pre['platform']}"
+            puts "BUILD_ALREADY_EXISTS=YES"
+            puts "REUSE_EXISTING_BUILD=YES"
+            puts "UPLOAD_REQUIRED=NO"
+            puts "UPLOAD_EXECUTED=NO"
+            File.open(ENV.fetch('GITHUB_OUTPUT'), 'a') do |f|
+              f.puts 'exists=true'
+              f.puts 'reuse=true'
+              f.puts 'upload_required=false'
+              f.puts "build_id=#{build.fetch('id')}"
+              f.puts "processing_state=#{attrs['processingState']}"
+              f.puts "uploaded_date=#{attrs['uploadedDate']}"
+            end
           end
-          puts 'BUILD_20011_NOT_FOUND; upload may proceed'
-          File.open(ENV.fetch('GITHUB_OUTPUT'), 'a') { |f| f.puts 'exists=false' }
           RUBY
+
       - name: Upload signed IPA to App Store Connect
-        if: steps.validate.outputs.validation == 'GREEN' && steps.freshness.outputs.current == 'true' && steps.duplicate.outputs.exists == 'false' && steps.duplicate.outcome == 'success'
+        if: steps.validate.outputs.validation == 'GREEN' && steps.freshness.outputs.current == 'true' && steps.duplicate.outputs.upload_required == 'true' && steps.duplicate.outcome == 'success'
         id: upload
         shell: bash
         env:
@@ -560,10 +638,11 @@ jobs:
             --apiIssuer "$ASC_ISSUER_ID" \
             --output-format json \
             2>&1 | tee release-artifacts/app-store-upload.log
+          echo "UPLOAD_EXECUTED=YES"
           echo "upload=GREEN" >> "$GITHUB_OUTPUT"
 
       - name: Wait for Apple processing and associate internal group Familia
-        if: steps.upload.outputs.upload == 'GREEN'
+        if: steps.validate.outputs.validation == 'GREEN' && steps.freshness.outputs.current == 'true' && steps.duplicate.outcome == 'success' && (steps.duplicate.outputs.reuse == 'true' || steps.upload.outputs.upload == 'GREEN')
         id: familia
         timeout-minutes: 120
         shell: bash
@@ -572,6 +651,8 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           VERSION: ${{ needs.build-release-ipa.outputs.version }}
           BUILD_NUMBER: ${{ needs.build-release-ipa.outputs.build_number }}
+          EXISTING_BUILD_ID: ${{ steps.duplicate.outputs.build_id }}
+          REUSE_EXISTING_BUILD: ${{ steps.duplicate.outputs.reuse }}
         run: |
           set -euo pipefail
           ruby - <<'RUBY' 2>&1 | tee release-artifacts/testflight-familia.log
@@ -585,15 +666,12 @@ jobs:
           issuer_id = ENV.fetch('ASC_ISSUER_ID')
           version = ENV.fetch('VERSION')
           build_number = ENV.fetch('BUILD_NUMBER')
+          reuse = ENV.fetch('REUSE_EXISTING_BUILD') == 'true'
+          existing_build_id = ENV.fetch('EXISTING_BUILD_ID', '')
           key_path = File.join(Dir.home, ".appstoreconnect/private_keys/AuthKey_#{key_id}.p8")
           private_key = OpenSSL::PKey.read(File.read(key_path))
           now = Time.now.to_i
-          token = JWT.encode(
-            { iss: issuer_id, iat: now, exp: now + 900, aud: 'appstoreconnect-v1' },
-            private_key,
-            'ES256',
-            { kid: key_id, typ: 'JWT' }
-          )
+          token = JWT.encode({ iss: issuer_id, iat: now, exp: now + 900, aud: 'appstoreconnect-v1' }, private_key, 'ES256', { kid: key_id, typ: 'JWT' })
 
           def request_asc(token, method, path, body = nil)
             uri = URI("https://api.appstoreconnect.apple.com#{path}")
@@ -616,69 +694,100 @@ jobs:
             "#{path}?#{URI.encode_www_form(pairs)}"
           end
 
-          app_response = request_asc(
-            token, :get,
-            asc_query('/v1/apps', [['filter[bundleId]', 'es.criosrango.app'], ['limit', '200']])
-          )
+          def exact_builds(token, app_id, build_number, version)
+            response = request_asc(token, :get, asc_query('/v1/builds', [
+              ['filter[app]', app_id], ['filter[version]', build_number],
+              ['include', 'preReleaseVersion'],
+              ['fields[builds]', 'version,processingState,uploadedDate,expired,preReleaseVersion'],
+              ['fields[preReleaseVersions]', 'version,platform'], ['limit', '200']
+            ]))
+            included = (response['included'] || []).select { |item| item['type'] == 'preReleaseVersions' }
+            pre_by_id = included.to_h { |item| [item['id'], item['attributes'] || {}] }
+            builds = response['data'] || []
+            candidates = builds.select do |item|
+              pre = pre_by_id[item.dig('relationships', 'preReleaseVersion', 'data', 'id')] || {}
+              item.dig('attributes', 'version').to_s == build_number.to_s &&
+                pre['version'].to_s == version.to_s && pre['platform'].to_s.upcase == 'IOS'
+            end
+            if !builds.empty? && candidates.empty?
+              raise "BUILD_MATCH_NOT_EXACT: App Store Connect returned build-number results, but none matched build=#{build_number}, prerelease=#{version}, platform=IOS"
+            end
+            raise "BUILD_MATCH_AMBIGUOUS: #{candidates.length} exact matches for build #{build_number}" if candidates.length > 1
+            [candidates.first, pre_by_id]
+          end
+
+          app_response = request_asc(token, :get, asc_query('/v1/apps', [['filter[bundleId]', 'es.criosrango.app'], ['limit', '200']]))
           app = (app_response['data'] || []).find { |item| item.dig('attributes', 'bundleId') == 'es.criosrango.app' }
           raise 'App Store Connect app es.criosrango.app was not found for this API key' unless app
           app_id = app.fetch('id')
-          puts "App Store Connect app resolved: es.criosrango.app"
 
-          group_response = request_asc(
-            token, :get,
-            asc_query('/v1/betaGroups', [['filter[app]', app_id], ['filter[name]', 'Familia'], ['fields[betaGroups]', 'name,isInternalGroup,hasAccessToAllBuilds'], ['limit', '200']])
-          )
-          groups = group_response['data'] || []
-          group = groups.find { |item| item.dig('attributes', 'name') == 'Familia' && item.dig('attributes', 'isInternalGroup') == true }
+          group_response = request_asc(token, :get, asc_query('/v1/betaGroups', [
+            ['filter[app]', app_id], ['filter[name]', 'Familia'],
+            ['fields[betaGroups]', 'name,isInternalGroup,hasAccessToAllBuilds'], ['limit', '200']
+          ]))
+          group = (group_response['data'] || []).find do |item|
+            item.dig('attributes', 'name') == 'Familia' && item.dig('attributes', 'isInternalGroup') == true
+          end
           raise 'Internal TestFlight group Familia was not found for es.criosrango.app' unless group
           group_id = group.fetch('id')
-          has_access_to_all_builds = group.dig('attributes', 'hasAccessToAllBuilds') == true
-          puts "Internal TestFlight group Familia resolved."
-          puts "Internal group automatic distribution: #{has_access_to_all_builds}"
+          automatic = group.dig('attributes', 'hasAccessToAllBuilds') == true
 
           deadline = Time.now + 7200
           build = nil
           loop do
-            builds_response = request_asc(
-              token, :get,
-              asc_query('/v1/builds', [['filter[app]', app_id], ['filter[version]', build_number], ['limit', '200']])
-            )
-            builds = builds_response['data'] || []
-            build = builds.find { |item| item.dig('attributes', 'version').to_s == build_number.to_s }
+            if reuse && !existing_build_id.empty?
+              build, pre_by_id = exact_builds(token, app_id, build_number, version)
+              raise "Previously resolved BUILD_ID=#{existing_build_id} no longer resolves to the exact requested build" if build && build.fetch('id') != existing_build_id
+            else
+              build, pre_by_id = exact_builds(token, app_id, build_number, version)
+            end
+
             if build
-              state = build.dig('attributes', 'processingState')
-              puts "Apple processing state for version #{version}, build #{build_number}: #{state}"
+              attrs = build.fetch('attributes')
+              pre = pre_by_id.fetch(build.dig('relationships', 'preReleaseVersion', 'data', 'id'))
+              state = attrs['processingState'].to_s
+              puts "BUILD_ID=#{build.fetch('id')}"
+              puts "BUILD_VERSION=#{attrs['version']}"
+              puts "PROCESSING_STATE=#{state}"
+              puts "UPLOADED_DATE=#{attrs['uploadedDate']}"
+              puts "PRE_RELEASE_VERSION=#{pre['version']}"
+              puts "PLATFORM=#{pre['platform']}"
               case state
               when 'VALID'
                 break
-              when 'INVALID'
-                raise "Apple marked build #{build_number} INVALID during processing"
+              when 'PROCESSING'
+                puts "Apple is processing exact build #{build_number}; polling continues."
+              when 'FAILED', 'INVALID'
+                raise "Apple processing terminal failure for build #{build_number}: PROCESSING_STATE=#{state}"
+              else
+                raise "Unexpected Apple processing state for build #{build_number}: #{state.inspect}"
               end
             else
-              puts "Build #{build_number} is not visible in App Store Connect yet; waiting."
+              puts "Exact build #{build_number} not visible yet after upload; waiting."
             end
-            raise "Timed out waiting for Apple to process build #{build_number}" if Time.now >= deadline
+            raise "Timed out waiting for Apple to process exact build #{build_number}" if Time.now >= deadline
             sleep 30
           end
 
           build_id = build.fetch('id')
-          if has_access_to_all_builds
-            puts "Internal group Familia has automatic distribution enabled; build #{build_number} is available without explicit association."
+          if automatic
+            puts "Familia automatic distribution is enabled; build is available to the group."
+            puts "FAMILIA_GROUP_ALREADY_ASSOCIATED=YES"
+            puts "FAMILIA_GROUP_ASSOCIATED=YES"
           else
-            existing = request_asc(
-              token, :get,
-              asc_query("/v1/betaGroups/#{group_id}/relationships/builds", [['limit', '200']])
-            )
-            already_associated = (existing['data'] || []).any? { |item| item['id'] == build_id }
+            relationships = request_asc(token, :get, asc_query("/v1/betaGroups/#{group_id}/relationships/builds", [['limit', '200']]))
+            already_associated = (relationships['data'] || []).any? { |item| item['id'] == build_id }
+            puts "FAMILIA_GROUP_ALREADY_ASSOCIATED=#{already_associated ? 'YES' : 'NO'}"
             unless already_associated
-              request_asc(
-                token, :post,
-                "/v1/betaGroups/#{group_id}/relationships/builds",
-                { data: [{ type: 'builds', id: build_id }] }
-              )
+              begin
+                request_asc(token, :post, "/v1/betaGroups/#{group_id}/relationships/builds", { data: [{ type: 'builds', id: build_id }] })
+              rescue => e
+                # A concurrent/duplicate association is accepted only after confirming the relationship exists.
+                refreshed = request_asc(token, :get, asc_query("/v1/betaGroups/#{group_id}/relationships/builds", [['limit', '200']]))
+                raise e unless (refreshed['data'] || []).any? { |item| item['id'] == build_id }
+              end
             end
-            puts "Build #{build_number} is processed and explicitly associated with internal group Familia."
+            puts "FAMILIA_GROUP_ASSOCIATED=YES"
           end
           puts "External distribution: NOT_REQUESTED; App Review: NOT_SUBMITTED."
           RUBY
@@ -691,6 +800,7 @@ jobs:
           VALIDATION: ${{ steps.validate.outputs.validation }}
           UPLOAD: ${{ steps.upload.outputs.upload }}
           FAMILIA: ${{ steps.familia.outputs.familia }}
+          REUSE_EXISTING_BUILD: ${{ steps.duplicate.outputs.reuse }}
           RUN_START_EPOCH: ${{ needs.build-release-ipa.outputs.start_epoch }}
           VERSION: ${{ needs.build-release-ipa.outputs.version }}
           BUILD_NUMBER: ${{ needs.build-release-ipa.outputs.build_number }}
@@ -699,8 +809,14 @@ jobs:
           REPORT=release-artifacts/ios-physical-testflight-report.txt
           [[ -f "$REPORT" ]] || printf 'IOS PHYSICAL TESTFLIGHT REPORT\n' > "$REPORT"
           [[ "$VALIDATION" == GREEN ]] && VALIDATION_STATUS=GREEN || VALIDATION_STATUS=RED
-          [[ "$UPLOAD" == GREEN ]] && UPLOAD_STATUS=GREEN || UPLOAD_STATUS=RED
-          [[ "$UPLOAD" == GREEN ]] && TF_STATUS=SUCCESS || TF_STATUS=FAILURE
+          if [[ "$REUSE_EXISTING_BUILD" == true ]]; then
+            UPLOAD_STATUS=SKIPPED_REUSED
+          elif [[ "$UPLOAD" == GREEN ]]; then
+            UPLOAD_STATUS=GREEN
+          else
+            UPLOAD_STATUS=RED
+          fi
+          [[ "$FAMILIA" == GREEN ]] && TF_STATUS=SUCCESS || TF_STATUS=FAILURE
           [[ "$FAMILIA" == GREEN ]] && GROUP_STATUS=AVAILABLE || GROUP_STATUS=PENDING_OR_FAILED
           sed -i '' "s/^APP_STORE_VALIDATION=.*/APP_STORE_VALIDATION=$VALIDATION_STATUS/" "$REPORT"
           sed -i '' "s/^UPLOAD=.*/UPLOAD=$UPLOAD_STATUS/" "$REPORT"
