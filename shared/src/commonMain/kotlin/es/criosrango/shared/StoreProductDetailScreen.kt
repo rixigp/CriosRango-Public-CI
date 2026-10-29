@@ -82,35 +82,7 @@ fun StoreProductDetailScreen(
                 StoreCatalogHeader(title = state.title, showBack = true, onBack = onBack)
             }
         },
-        bottomBar = {
-            Surface(color = MaterialTheme.colorScheme.background, shadowElevation = 6.dp) {
-                Button(
-                    onClick = onAddToCart,
-                    enabled = state.primaryActionEnabled,
-                    modifier = Modifier.fillMaxWidth().navigationBarsPadding()
-                        .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 10.dp)
-                        .height(54.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = when {
-                            state.primaryActionLabel == "Añadido al carrito" -> Color(0xFF183B35)
-                            state.primaryActionEnabled -> Color(0xFF183B35)
-                            else -> Color(0xFFE4EFEA)
-                        },
-                        contentColor = if (state.primaryActionEnabled || state.primaryActionLabel == "Añadido al carrito") Color.White else Color(0xFF183B35),
-                        disabledContainerColor = Color(0xFFE4EFEA),
-                        disabledContentColor = Color(0xFF183B35)
-                    )
-                ) {
-                    Icon(
-                        imageVector = if (state.primaryActionLabel == "Añadido al carrito") Icons.Default.Check else Icons.Outlined.ShoppingBag,
-                        contentDescription = null
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(state.primaryActionLabel)
-                }
-            }
-        }
+
     ) { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
@@ -266,6 +238,32 @@ fun StoreProductDetailScreen(
                     Text(state.quantity.toString(), fontWeight = FontWeight.Bold)
                     IconButton(onClick = onQuantityPlus, enabled = state.quantityPlusEnabled) { Icon(Icons.Default.Add, contentDescription = "Aumentar") }
                 }
+            }
+            Button(
+                onClick = onAddToCart,
+                enabled = state.primaryActionEnabled,
+                modifier = Modifier.fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 4.dp, bottom = 24.dp)
+                    .height(54.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = when {
+                        state.primaryActionLabel == "Añadido al carrito" -> Color(0xFF183B35)
+                        state.primaryActionEnabled -> Color(0xFF183B35)
+                        else -> Color(0xFFE4EFEA)
+                    },
+                    contentColor = if (state.primaryActionEnabled || state.primaryActionLabel == "Añadido al carrito") Color.White else Color(0xFF183B35),
+                    disabledContainerColor = Color(0xFFE4EFEA),
+                    disabledContentColor = Color(0xFF183B35)
+                )
+            ) {
+                Icon(
+                    imageVector = if (state.primaryActionLabel == "Añadido al carrito") Icons.Default.Check else Icons.Outlined.ShoppingBag,
+                    contentDescription = null
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(state.primaryActionLabel)
             }
         }
     }
