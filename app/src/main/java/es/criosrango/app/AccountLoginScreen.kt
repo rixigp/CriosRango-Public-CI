@@ -386,7 +386,7 @@ fun AccountLoginScreen(
                     .then(if (accountSection in setOf(AccountSection.HOME, AccountSection.HELP, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) Modifier else Modifier.verticalScroll(rememberScrollState()))
                 .then(if (accountSection == AccountSection.HELP) Modifier else Modifier.padding(horizontal = 24.dp))
         ) {
-            if (accountSection != AccountSection.HELP) Spacer(Modifier.height(if (accountSection in setOf(AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) 8.dp else 20.dp))
+            if (accountSection != AccountSection.HELP) Spacer(Modifier.height(when (accountSection) { AccountSection.HOME -> 0.dp; AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES -> 8.dp; else -> 20.dp }))
             when (accountSection) {
                 AccountSection.HELP -> AccountHelpContent { accountSection = AccountSection.HOME }
                 else -> StoreAccountRootScreen(

@@ -223,39 +223,39 @@ fun StoreAccountRootScreen(
         StorePageHeader(title = "Cuenta", onBack = onBack, horizontalPadding = headerHorizontalPadding)
         Column(Modifier.fillMaxWidth().padding(horizontal = contentHorizontalPadding).verticalScroll(rememberScrollState())) {
         Spacer(Modifier.height(contentTopSpacing))
-        if (authenticated) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(Modifier.size(60.dp), shape = CircleShape, color = androidx.compose.ui.graphics.Color(0xFFE9E6EA)) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(initials, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-                    }
-                }
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(fullName.orEmpty(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-                    Spacer(Modifier.height(3.dp))
-                    Text(email.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        } else {
-            Row(
-                Modifier.fillMaxWidth().clickable(onClick = onLogin).padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
+        Row(
+            Modifier.fillMaxWidth()
+                .heightIn(min = 60.dp)
+                .then(if (authenticated) Modifier else Modifier.clickable(onClick = onLogin)),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                Modifier.size(60.dp),
+                shape = CircleShape,
+                color = if (authenticated) androidx.compose.ui.graphics.Color(0xFFE9E6EA) else androidx.compose.ui.graphics.Color(0xFFE3EFEB)
             ) {
-                Surface(Modifier.size(60.dp), shape = CircleShape, color = androidx.compose.ui.graphics.Color(0xFFE3EFEB)) {
-                    Box(contentAlignment = Alignment.Center) {
+                Box(contentAlignment = Alignment.Center) {
+                    if (authenticated) {
+                        Text(initials, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                    } else {
                         Icon(Icons.Outlined.Person, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFF183B35), modifier = Modifier.size(30.dp))
                     }
                 }
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f)) {
+            }
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                if (authenticated) {
+                    Text(fullName.orEmpty(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(3.dp))
+                    Text(email.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
                     Text("Inicia sesión o regístrate", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(3.dp))
                     Text("Accede a tu cuenta", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
-        Spacer(Modifier.height(if (authenticated) 16.dp else 10.dp))
+        Spacer(Modifier.height(16.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             AccountRootAccess("Pedidos", Icons.Outlined.History, Modifier.weight(1f), onOrders)
             AccountRootAccess("Cupones y promociones", Icons.Outlined.Sell, Modifier.weight(1f), onWallet)
