@@ -70,6 +70,7 @@ fun StoreProductDetailScreen(
     }
     Scaffold(
         modifier = modifier,
+        contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
         topBar = {
             Column {
                 if (showStoreTopBar) {
