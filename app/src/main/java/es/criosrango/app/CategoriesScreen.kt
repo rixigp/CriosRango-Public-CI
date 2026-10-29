@@ -275,7 +275,7 @@ private fun OutletControlledProductGrid(
         isEmpty = state.sortedProducts.isEmpty() && !state.isProbingSelectedBubble &&
             !paging.isInitialLoading && !paging.hasMore && paging.initialError == null,
         emptyMessage = "No encontramos productos",
-        initialErrorMessage = paging.initialError?.let { it.message?.takeIf(String::isNotBlank) ?: "No se han podido cargar los productos." },
+        initialErrorMessage = paging.initialError?.toStoreCatalogErrorMessage(),
         appendErrorMessage = if (paging.appendError != null) "" else null,
         appendRetryLabel = "Reintentar",
         canLoadMore = paging.hasMore,
@@ -1024,7 +1024,7 @@ internal fun CatalogFilteredProductGrid(
                 !(pagingState?.isInitialLoading == true || categoryStatus.state == CategoryLoadState.LOADING),
             emptyMessage = "No encontramos productos",
             initialErrorMessage = if (onRetryInitial != null) {
-                pagingState?.initialError?.let { error -> error.message?.takeIf { it.isNotBlank() } ?: "No se han podido cargar los productos." }
+                pagingState?.initialError?.toStoreCatalogErrorMessage()
             } else null,
             appendErrorMessage = if (pagingState?.appendError != null) "" else null,
             appendRetryLabel = "Reintentar",
@@ -1321,9 +1321,7 @@ internal fun CategoryParentWithFilters(
                 isLoadingMore = sortedProducts.isNotEmpty() && pagingState.isAppending,
                 isEmpty = sortedProducts.isEmpty() && !pagingState.isInitialLoading,
                 emptyMessage = "No hay productos con estos filtros",
-                initialErrorMessage = pagingState.initialError?.let { error ->
-                    error.message?.takeIf { it.isNotBlank() } ?: "No se han podido cargar los productos."
-                },
+                initialErrorMessage = pagingState.initialError?.toStoreCatalogErrorMessage(),
                 appendErrorMessage = if (pagingState.appendError != null) "" else null,
                 appendRetryLabel = "Reintentar",
                 canLoadMore = pagingState.hasMore

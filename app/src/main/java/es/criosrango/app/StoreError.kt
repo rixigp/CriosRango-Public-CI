@@ -9,6 +9,7 @@ import java.net.UnknownHostException
 import es.criosrango.shared.api.StoreApiException
 import es.criosrango.shared.account.isAccountSessionExpiredStatus
 import io.ktor.client.plugins.ResponseException
+import io.ktor.client.plugins.HttpRequestTimeoutException
 import kotlinx.coroutines.TimeoutCancellationException
 import retrofit2.HttpException
 import androidx.compose.foundation.layout.*
@@ -79,7 +80,7 @@ fun Exception.toStoreUiError(authenticated: Boolean = false): StoreUiError {
         status != null && status in 500..599 ->
             StoreUiError(StoreErrorType.SERVER_UNAVAILABLE)
 
-        chain.any { it is SocketTimeoutException || it is TimeoutCancellationException } ->
+        chain.any { it is SocketTimeoutException || it is TimeoutCancellationException || it is HttpRequestTimeoutException } ->
             StoreUiError(StoreErrorType.TIMEOUT)
 
         chain.any {
@@ -95,6 +96,13 @@ fun Exception.toStoreUiError(authenticated: Boolean = false): StoreUiError {
 }
 
 fun Exception.toStoreUiErrorForCatalog(): StoreUiError = toStoreUiError(authenticated = false)
+
+/** Safe user-facing catalog message; never exposes a raw backend or transport exception. */
+fun Throwable.toStoreCatalogErrorMessage(): String {
+    val uiError = (this as? Exception)?.toStoreUiErrorForCatalog()
+        ?: StoreUiError(StoreErrorType.UNEXPECTED)
+    return "${uiError.title}. ${uiError.message}"
+}
 
 @Composable
 fun StoreErrorState(error: StoreUiError, padding: PaddingValues, onRetry: (() -> Unit)? = null, onLogin: (() -> Unit)? = null) {
