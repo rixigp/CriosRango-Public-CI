@@ -12,6 +12,8 @@ import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class StoreFilterApiClientTest {
     @Test fun query_preserves_scope_context_canonical_ids_pagination_sort_and_facet() = runTest {
