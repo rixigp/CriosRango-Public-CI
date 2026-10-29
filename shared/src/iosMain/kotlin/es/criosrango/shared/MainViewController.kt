@@ -6,6 +6,10 @@ import androidx.compose.ui.window.ComposeUIViewController
 import androidx.compose.runtime.CompositionLocalProvider
 import es.criosrango.shared.account.AccountRepository
 import es.criosrango.shared.api.StoreApiClient
+import es.criosrango.shared.api.StoreFilterApiClient
+import es.criosrango.shared.api.StoreRequestTiming
+import es.criosrango.shared.api.StoreRequestTimingRecorder
+import platform.Foundation.NSLog
 import es.criosrango.shared.loyalty.LoyaltyRepository
 import platform.Foundation.NSURL
 import platform.Foundation.NSBundle
@@ -43,13 +47,28 @@ private class IosEdgeBackTarget(private val coordinator: IosBackCoordinator) : N
 }
 private val iosPushNavigation = androidx.compose.runtime.mutableStateOf<IosPushNavigation?>(null)
 
+private class IosStoreRequestTimingRecorder : StoreRequestTimingRecorder {
+    override fun record(timing: StoreRequestTiming) {
+        val line = buildString {
+            append("STORE_TIMING type=${timing.requestType} path=${timing.path} network_ms=${timing.networkMs} deserialize_ms=${timing.deserializationMs} total_ms=${timing.totalOperationMs} status=${timing.httpStatus ?: timing.errorType ?: "UNKNOWN"} timeout=${timing.timeout}")
+            timing.page?.let { append(" page=$it") }
+            timing.perPage?.let { append(" per_page=$it") }
+            timing.scope?.let { append(" scope=$it") }
+        }
+        NSLog("%@", line)
+    }
+}
+
 fun MainViewController() : UIViewController {
     val storeSession = IosStoreSessionStore()
     val accountTokenStore = IosAccountTokenStore()
+    val timingRecorder = IosStoreRequestTimingRecorder()
     val storeApi = StoreApiClient(
         session = storeSession,
-        accountTokenStore = accountTokenStore
+        accountTokenStore = accountTokenStore,
+        timingRecorder = timingRecorder
     )
+    val filterApi = StoreFilterApiClient(timingRecorder = timingRecorder)
     val cartStore = StoreCartStore(storeApi)
     val accountRepository = AccountRepository(
         tokenStore = accountTokenStore,
@@ -67,6 +86,8 @@ fun MainViewController() : UIViewController {
         CompositionLocalProvider(LocalIosBackCoordinator provides backCoordinator) {
         CriosRangoIOSRootScreen(
         storeApi = storeApi,
+        filterApi = filterApi,
+        timingRecorder = timingRecorder,
         accountRepository = accountRepository,
          accountTokenStore = accountTokenStore,
          accountAppVersion = NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String ?: "",

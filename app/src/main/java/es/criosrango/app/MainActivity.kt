@@ -32,6 +32,9 @@ import android.content.Intent
 import android.os.Build
 import android.net.Uri
 import android.util.Log
+import es.criosrango.shared.api.StoreFilterApiClient
+import es.criosrango.shared.api.StoreRequestTiming
+import es.criosrango.shared.api.StoreRequestTimingRecorder
 import es.criosrango.shared.PushNotificationContract
 import es.criosrango.shared.PushNotificationType
 import es.criosrango.shared.cartUnitCount
@@ -120,6 +123,19 @@ private const val NOTIFICATION_PERMISSION_REQUESTED_KEY = "notification_permissi
 internal fun shouldRequestNotificationPermission(apiLevel: Int, alreadyRequested: Boolean, granted: Boolean): Boolean =
     apiLevel >= Build.VERSION_CODES.TIRAMISU && !alreadyRequested && !granted
 
+private class AndroidStoreRequestTimingRecorder : StoreRequestTimingRecorder {
+    override fun record(timing: StoreRequestTiming) {
+        if (!BuildConfig.DEBUG) return
+        val line = buildString {
+            append("STORE_TIMING type=${timing.requestType} path=${timing.path} network_ms=${timing.networkMs} deserialize_ms=${timing.deserializationMs} total_ms=${timing.totalOperationMs} status=${timing.httpStatus ?: timing.errorType ?: "UNKNOWN"} timeout=${timing.timeout}")
+            timing.page?.let { append(" page=$it") }
+            timing.perPage?.let { append(" per_page=$it") }
+            timing.scope?.let { append(" scope=$it") }
+        }
+        Log.d("StoreTiming", line)
+    }
+}
+
 class MainActivity : ComponentActivity() {
     companion object {
         private var startupBrandingShownInProcess = false
@@ -140,10 +156,13 @@ class MainActivity : ComponentActivity() {
         val session = StoreSession(preferences, applicationContext)
         val sharedSession = AndroidStoreSessionStore(session)
         val accountTokenStore = AccountSessionStore.shared(applicationContext)
+        val timingRecorder = AndroidStoreRequestTimingRecorder()
         val sharedCatalogClient = es.criosrango.shared.api.StoreApiClient(
             session = sharedSession,
-            accountTokenStore = accountTokenStore
+            accountTokenStore = accountTokenStore,
+            timingRecorder = timingRecorder
         )
+        val filterApi = StoreFilterApiClient(timingRecorder = timingRecorder)
         val catalogApi = SharedCatalogStoreApiAdapter(sharedCatalogClient, session)
         val cartStore = CartStore(catalogApi, session, preferences)
         val pendingCardPaymentStore = PendingCardPaymentStore.create(applicationContext)
@@ -160,7 +179,7 @@ class MainActivity : ComponentActivity() {
                 cartStore,
                 DeliveryAddressStore(preferences, this),
                 pendingCardPaymentStore,
-                es.criosrango.shared.storeOutletDataSource(sharedCatalogClient)
+                es.criosrango.shared.storeOutletDataSource(sharedCatalogClient, filterApi, timingRecorder)
             )
         )[ShopViewModel::class.java]
         val coldStartBranding = !startupBrandingShownInProcess

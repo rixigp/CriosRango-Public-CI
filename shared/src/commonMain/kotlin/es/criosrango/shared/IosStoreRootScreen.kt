@@ -76,6 +76,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.foundation.layout.statusBarsPadding
 import es.criosrango.shared.account.AccountRepository
+import es.criosrango.shared.api.StoreFilterApiClient
+import es.criosrango.shared.api.StoreRequestTimingRecorder
 import es.criosrango.shared.loyalty.LoyaltyRepository
 import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.loyalty.LoyaltyWallet
@@ -150,6 +152,8 @@ internal fun iosRootShellSelectedTab(
 @Composable
 fun CriosRangoIOSRootScreen(
     storeApi: es.criosrango.shared.api.StoreApiClient,
+    filterApi: StoreFilterApiClient,
+    timingRecorder: StoreRequestTimingRecorder,
     accountRepository: AccountRepository,
     accountTokenStore: es.criosrango.shared.account.AccountTokenStore,
     accountAppVersion: String = "",
@@ -193,7 +197,7 @@ fun CriosRangoIOSRootScreen(
     }
     val showStartupBranding = !startupMinimumDurationReached || !startupHeroPreparationFinished
     val outletController = remember(storeApi) {
-        StoreOutletController(outletControllerScope, storeOutletDataSource(storeApi))
+        StoreOutletController(outletControllerScope, storeOutletDataSource(storeApi, filterApi, timingRecorder))
     }
     var categorySnapshot by remember { mutableStateOf<List<StoreCategory>?>(null) }
     var categorySnapshotLoading by remember { mutableStateOf(true) }
