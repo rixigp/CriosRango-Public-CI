@@ -106,9 +106,9 @@ jobs:
           VERSION="$(grep -m1 'MARKETING_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
           BASE_BUILD="$(grep -m1 'CURRENT_PROJECT_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*CURRENT_PROJECT_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
           [[ "$VERSION" == "1.0.3" ]] || { echo "::error::Expected marketing version 1.0.3, found $VERSION"; exit 1; }
-          [[ "$BASE_BUILD" == "20011" ]] || { echo "::error::Expected project build baseline 20011, found $BASE_BUILD"; exit 1; }
-          BUILD_NUMBER=20011
-          [[ "$BUILD_NUMBER" == "20011" ]] || exit 1
+          [[ "$BASE_BUILD" == "20012" ]] || { echo "::error::Expected project build baseline 20012, found $BASE_BUILD"; exit 1; }
+          BUILD_NUMBER=20012
+          [[ "$BUILD_NUMBER" == "20012" ]] || exit 1
           START_EPOCH="$(date +%s)"
           echo "start_epoch=$START_EPOCH" >> "$GITHUB_OUTPUT"
           echo "RUN_START_EPOCH=$START_EPOCH" >> "$GITHUB_ENV"
