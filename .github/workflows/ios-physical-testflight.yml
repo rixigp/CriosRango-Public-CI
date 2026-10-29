@@ -34,9 +34,10 @@ jobs:
           BRANCH_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          [[ "$BRANCH_NAME" == "main" ]] || { echo "::error::Physical TestFlight must be dispatched from main"; exit 1; }
+          [[ "$BRANCH_NAME" == "develop/1.0.3" ]] || { echo "::error::Physical TestFlight must be dispatched from develop/1.0.3"; exit 1; }
           REQUESTED_TARGET_SHA="$DISPATCH_TARGET_SHA"
           [[ "$REQUESTED_TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::target_sha must be an exact lowercase 40-character commit SHA"; exit 1; }
+          [[ "$REQUESTED_TARGET_SHA" == "$WORKFLOW_RUN_SHA" ]] || { echo "::error::target_sha must equal the workflow-dispatch branch HEAD SHA"; exit 1; }
           RESOLVED_TARGET_SHA="$REQUESTED_TARGET_SHA"
           TARGET_APPLICATION_SHA="$RESOLVED_TARGET_SHA"
           echo "TARGET_APPLICATION_SHA=$TARGET_APPLICATION_SHA"
@@ -101,13 +102,13 @@ jobs:
           echo "WORKFLOW_RUN_SHA=$WORKFLOW_RUN_SHA"
           [[ "$REQUESTED_TARGET_SHA" == "$RESOLVED_TARGET_SHA" ]] || { echo "::error::Requested/resolved SHA mismatch"; exit 1; }
           [[ "$ACTUAL_SHA" == "$EXPECTED_SHA" && "$ACTUAL_SHA" == "$RESOLVED_TARGET_SHA" ]] || { echo "::error::Checkout SHA mismatch"; exit 1; }
-          [[ "$BRANCH_NAME" == "main" ]] || { echo "::error::Manual dispatch is only authorized on main"; exit 1; }
+          [[ "$BRANCH_NAME" == "develop/1.0.3" ]] || { echo "::error::Manual dispatch is only authorized on develop/1.0.3"; exit 1; }
           VERSION="$(grep -m1 'MARKETING_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
           BASE_BUILD="$(grep -m1 'CURRENT_PROJECT_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*CURRENT_PROJECT_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
-          [[ "$VERSION" == "1.0.1" ]] || { echo "::error::Expected marketing version 1.0.1, found $VERSION"; exit 1; }
-          [[ "$BASE_BUILD" == "20005" ]] || { echo "::error::Expected project build baseline 20005, found $BASE_BUILD"; exit 1; }
-          BUILD_NUMBER=20005
-          [[ "$BUILD_NUMBER" == "20005" ]] || exit 1
+          [[ "$VERSION" == "1.0.3" ]] || { echo "::error::Expected marketing version 1.0.3, found $VERSION"; exit 1; }
+          [[ "$BASE_BUILD" == "20008" ]] || { echo "::error::Expected project build baseline 20008, found $BASE_BUILD"; exit 1; }
+          BUILD_NUMBER=20008
+          [[ "$BUILD_NUMBER" == "20008" ]] || exit 1
           START_EPOCH="$(date +%s)"
           echo "start_epoch=$START_EPOCH" >> "$GITHUB_OUTPUT"
           echo "RUN_START_EPOCH=$START_EPOCH" >> "$GITHUB_ENV"
@@ -266,7 +267,7 @@ jobs:
             -derivedDataPath "$DERIVED" \
             CODE_SIGN_ENTITLEMENTS="$RELEASE_ENTITLEMENTS" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-            MARKETING_VERSION=1.0.1 \
+            MARKETING_VERSION=1.0.3 \
             archive 2>&1 | tee release-artifacts/xcodebuild-archive.log
           BUILD_STATUS=${PIPESTATUS[0]}
           set -e
@@ -332,7 +333,19 @@ jobs:
           IPA_APP_ID=$(/usr/libexec/PlistBuddy -c 'Print :application-identifier' "$IPA_ENTITLEMENTS")
           IPA_TEAM=$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.team-identifier' "$IPA_ENTITLEMENTS")
           IPA_GET_TASK_ALLOW=$(/usr/libexec/PlistBuddy -c 'Print :get-task-allow' "$IPA_ENTITLEMENTS" 2>/dev/null || true)
-          [[ "$IPA_APS" == production && "$IPA_APP_ID" == "$TEAM_ID.es.criosrango.app" && "$IPA_TEAM" == "$TEAM_ID" && "$IPA_GET_TASK_ALLOW" != true && "$IPA_GET_TASK_ALLOW" != YES ]] || { echo "::error::IPA distribution entitlements are invalid"; exit 1; }
+          [[ "$TEAM_ID" == "3793344J72" && "$IPA_APS" == production && "$IPA_APP_ID" == "3793344J72.es.criosrango.app" && "$IPA_TEAM" == "3793344J72" && "$IPA_GET_TASK_ALLOW" != true && "$IPA_GET_TASK_ALLOW" != YES ]] || { echo "::error::IPA distribution entitlements are invalid"; exit 1; }
+          python3 - "$IPA_ENTITLEMENTS" <<'PY'
+          import plistlib, sys
+          with open(sys.argv[1], "rb") as f:
+              entitlements = plistlib.load(f)
+          domains = entitlements.get("com.apple.developer.associated-domains", [])
+          required = {"applinks:criosrango.es", "applinks:www.criosrango.es"}
+          missing = required.difference(domains if isinstance(domains, list) else [])
+          print("SIGNED_APPLICATION_IDENTIFIER=" + str(entitlements.get("application-identifier", "")))
+          print("SIGNED_ASSOCIATED_DOMAINS=" + ",".join(domains if isinstance(domains, list) else []))
+          if missing:
+              raise SystemExit("::error::Signed IPA is missing Associated Domains: " + ", ".join(sorted(missing)))
+          PY
           security cms -D -i "$APP/embedded.mobileprovision" > "$RUNNER_TEMP/embedded-profile.plist"
           EMBEDDED_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/embedded-profile.plist")
           [[ "$EMBEDDED_UUID" == "$PROFILE_UUID" ]] || { echo "::error::Exported IPA embedded a different provisioning profile"; exit 1; }
@@ -464,8 +477,50 @@ jobs:
             2>&1 | tee release-artifacts/app-store-validation.log
           echo "validation=GREEN" >> "$GITHUB_OUTPUT"
 
-      - name: Upload signed IPA to App Store Connect
+      - name: Stop if build 20008 already exists in App Store Connect
         if: steps.validate.outputs.validation == 'GREEN' && steps.freshness.outputs.current == 'true'
+        id: duplicate
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          ruby - <<'RUBY' 2>&1 | tee release-artifacts/build-duplicate-precheck.log
+          require 'json'
+          require 'net/http'
+          require 'openssl'
+          require 'uri'
+          require 'jwt'
+          key_id = ENV.fetch('ASC_KEY_ID')
+          issuer_id = ENV.fetch('ASC_ISSUER_ID')
+          key_path = File.join(Dir.home, ".appstoreconnect/private_keys/AuthKey_#{key_id}.p8")
+          private_key = OpenSSL::PKey.read(File.read(key_path))
+          now = Time.now.to_i
+          token = JWT.encode({ iss: issuer_id, iat: now, exp: now + 900, aud: 'appstoreconnect-v1' }, private_key, 'ES256', { kid: key_id, typ: 'JWT' })
+          def request_asc(token, path)
+            uri = URI("https://api.appstoreconnect.apple.com#{path}")
+            request = Net::HTTP::Get.new(uri)
+            request['Authorization'] = "Bearer #{token}"
+            response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(request) }
+            raise "App Store Connect API returned HTTP #{response.code}: #{response.body}" unless response.is_a?(Net::HTTPSuccess)
+            JSON.parse(response.body)
+          end
+          app_response = request_asc(token, "/v1/apps?filter%5BbundleId%5D=es.criosrango.app&limit=200")
+          app = (app_response['data'] || []).find { |item| item.dig('attributes', 'bundleId') == 'es.criosrango.app' }
+          raise 'App Store Connect app es.criosrango.app was not found' unless app
+          builds_response = request_asc(token, "/v1/builds?filter%5Bapp%5D=#{URI.encode_www_form_component(app.fetch('id'))}&filter%5Bversion%5D=20008&limit=200")
+          builds = builds_response['data'] || []
+          if builds.any? { |item| item.dig('attributes', 'version').to_s == '20008' }
+            puts 'BUILD_20008_ALREADY_EXISTS'
+            File.open(ENV.fetch('GITHUB_OUTPUT'), 'a') { |f| f.puts 'exists=true' }
+            exit 17
+          end
+          puts 'BUILD_20008_NOT_FOUND; upload may proceed'
+          File.open(ENV.fetch('GITHUB_OUTPUT'), 'a') { |f| f.puts 'exists=false' }
+          RUBY
+      - name: Upload signed IPA to App Store Connect
+        if: steps.validate.outputs.validation == 'GREEN' && steps.freshness.outputs.current == 'true' && steps.duplicate.outputs.exists == 'false' && steps.duplicate.outcome == 'success'
         id: upload
         shell: bash
         env:
