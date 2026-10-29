@@ -372,6 +372,7 @@ class ShopViewModel(
     }
 
     fun openProductBySlug(rawSlug: String) {
+        android.util.Log.d("PRODUCT_LINK_TRACE", "openProductBySlug rawSlug=$rawSlug")
         viewModelScope.launch {
             resolveProductAppLink(
                 rawSlug = rawSlug,
@@ -380,17 +381,50 @@ class ShopViewModel(
                     runCatching {
                         val segments = android.net.Uri.parse(product.permalink).pathSegments
                         val productIndex = segments.indexOfFirst { it.equals("producto", ignoreCase = true) }
-                        if (productIndex >= 0) segments.getOrNull(productIndex + 1) else segments.lastOrNull()
+                        val permalinkSlug = if (productIndex >= 0) segments.getOrNull(productIndex + 1) else segments.lastOrNull()
+                        android.util.Log.d("PRODUCT_LINK_TRACE", "product_id=${product.id} permalink=${product.permalink} permalink_slug=${permalinkSlug ?: "null"}")
+                        permalinkSlug
                     }.getOrNull()
                 },
-                fetchBySlug = { slug -> repository.productBySlug(slug) },
-                open = ::openProduct,
-                onError = { _error.value = StoreUiError(StoreErrorType.UNEXPECTED) }
+                fetchBySlug = { slug ->
+                    android.util.Log.d("PRODUCT_LINK_TRACE", "fetchBySlug request slug=$slug")
+                    repository.productBySlug(slug).also { product ->
+                        android.util.Log.d("PRODUCT_LINK_TRACE", "FOUND product_id=${product.id} permalink=${product.permalink}")
+                    }
+                },
+                open = { product ->
+                    android.util.Log.d("PRODUCT_LINK_TRACE", "open callback product_id=${product.id}")
+                    openProduct(product)
+                },
+                onError = {
+                    android.util.Log.d("PRODUCT_LINK_TRACE", "resolver onError")
+                    _error.value = StoreUiError(StoreErrorType.UNEXPECTED)
+                }
             )
         }
     }
 
-    fun openProduct(product: StoreProduct) { viewModelScope.launch { _isLoading.value = true; _error.value = null; _selectedVariation.value = null; try { _selectedProduct.value = repository.productWithVariationAvailability(product.id) } catch (_: Exception) { _selectedProduct.value = product } finally { _isLoading.value = false } } }
+    fun openProduct(product: StoreProduct) {
+        android.util.Log.d("PRODUCT_LINK_TRACE", "openProduct entry product_id=${product.id}")
+        viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+            _selectedVariation.value = null
+            try {
+                val detailedProduct = repository.productWithVariationAvailability(product.id)
+                android.util.Log.d("PRODUCT_LINK_TRACE", "productWithVariationAvailability FOUND product_id=${detailedProduct.id}")
+                _selectedProduct.value = detailedProduct
+                android.util.Log.d("PRODUCT_LINK_TRACE", "selectedProduct updated product_id=${_selectedProduct.value?.id ?: "null"}")
+            } catch (exception: Exception) {
+                android.util.Log.d("PRODUCT_LINK_TRACE", "productWithVariationAvailability ERROR exception_type=${exception::class.java.simpleName}; using resolved product_id=${product.id}")
+                _selectedProduct.value = product
+                android.util.Log.d("PRODUCT_LINK_TRACE", "selectedProduct updated product_id=${_selectedProduct.value?.id ?: "null"}")
+            } finally {
+                _isLoading.value = false
+                android.util.Log.d("PRODUCT_LINK_TRACE", "selectedProduct final product_id=${_selectedProduct.value?.id ?: "null"}")
+            }
+        }
+    }
     fun closeProduct() { _selectedProduct.value = null; _selectedVariation.value = null }
 
     fun updateCartQuantity(item: CartLine, quantity: Int) {
@@ -775,16 +809,44 @@ internal suspend fun <T> resolveProductAppLink(
     onError: () -> Unit
 ) {
     val slug = normalizeProductAppLinkSlug(rawSlug)
-    if (slug == null) { onError(); return }
+    android.util.Log.d("PRODUCT_LINK_TRACE", "resolveProductAppLink entry rawSlug=$rawSlug normalizedSlug=${slug ?: "null"}")
+    if (slug == null) {
+        android.util.Log.d("PRODUCT_LINK_TRACE", "ERROR invalid_slug")
+        onError()
+        return
+    }
     val cached = cachedProducts.firstOrNull { normalizeProductAppLinkSlug(productSlug(it).orEmpty()) == slug }
-    if (cached != null) { open(cached); return }
+    if (cached != null) {
+        android.util.Log.d("PRODUCT_LINK_TRACE", "CACHE_HIT slug=$slug")
+        android.util.Log.d("PRODUCT_LINK_TRACE", "open callback source=cache")
+        open(cached)
+        return
+    }
+    android.util.Log.d("PRODUCT_LINK_TRACE", "CACHE_MISS slug=$slug")
     val fetched = try {
-        fetchBySlug(slug)
+        android.util.Log.d("PRODUCT_LINK_TRACE", "fetchBySlug start slug=$slug")
+        fetchBySlug(slug).also { product ->
+            if (product == null) android.util.Log.d("PRODUCT_LINK_TRACE", "ERROR fetchBySlug returned null")
+            else android.util.Log.d("PRODUCT_LINK_TRACE", "FOUND fetchBySlug returned product")
+        }
     } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+        android.util.Log.d("PRODUCT_LINK_TRACE", "ERROR fetchBySlug timeout")
         null
     } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        android.util.Log.d("PRODUCT_LINK_TRACE", "fetchBySlug cancelled")
         throw cancelled
-    } catch (_: Exception) { null }
-    if (fetched != null && normalizeProductAppLinkSlug(productSlug(fetched).orEmpty()) == slug) open(fetched)
-    else onError()
+    } catch (exception: Exception) {
+        android.util.Log.d("PRODUCT_LINK_TRACE", "ERROR fetchBySlug exception_type=${exception::class.java.simpleName}")
+        null
+    }
+    if (fetched != null) {
+        val resolvedSlug = normalizeProductAppLinkSlug(productSlug(fetched).orEmpty())
+        android.util.Log.d("PRODUCT_LINK_TRACE", "permalink_slug=${resolvedSlug ?: "null"} requested_slug=$slug match=${resolvedSlug == slug}")
+        if (resolvedSlug == slug) {
+            android.util.Log.d("PRODUCT_LINK_TRACE", "open callback source=fetch")
+            open(fetched)
+            return
+        }
+    }
+    onError()
 }
