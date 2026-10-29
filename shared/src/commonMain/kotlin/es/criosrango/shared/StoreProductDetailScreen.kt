@@ -244,7 +244,7 @@ fun StoreProductDetailScreen(
                 enabled = state.primaryActionEnabled,
                 modifier = Modifier.fillMaxWidth()
                     .padding(horizontal = 20.dp)
-                    .padding(top = 4.dp, bottom = 24.dp)
+                    .padding(top = 4.dp, bottom = 0.dp)
                     .height(54.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
