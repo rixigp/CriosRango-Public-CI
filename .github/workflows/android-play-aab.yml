@@ -24,19 +24,19 @@ jobs:
     name: Build and verify signed Play AAB
     runs-on: ubuntu-24.04
     steps:
-      - name: Guard main provenance before checkout or build
+      - name: Guard develop/1.0.3 provenance before checkout or build
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_SHA: ${{ inputs.target_sha }}
         run: |
           set -euo pipefail
-          [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::Android Play AAB must be dispatched from main"; exit 1; }
+          [[ "$GITHUB_REF" == "refs/heads/develop/1.0.3" ]] || { echo "::error::Android Play AAB must be dispatched from develop/1.0.3"; exit 1; }
           [[ "$TARGET_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || { echo "::error::target_sha must be exactly 40 hexadecimal characters"; exit 1; }
-          CURRENT_MAIN_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
-          [[ "$CURRENT_MAIN_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Could not resolve current main SHA"; exit 1; }
-          [[ "$TARGET_SHA" == "$CURRENT_MAIN_SHA" ]] || { echo "::error::target_sha is not current main"; exit 1; }
-          echo "CURRENT_MAIN_SHA=$CURRENT_MAIN_SHA"
+          CURRENT_BRANCH_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/develop/1.0.3" --jq '.object.sha')"
+          [[ "$CURRENT_BRANCH_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Could not resolve current develop/1.0.3 SHA"; exit 1; }
+          [[ "$TARGET_SHA" == "$CURRENT_BRANCH_SHA" ]] || { echo "::error::target_sha is not current develop/1.0.3"; exit 1; }
+          echo "CURRENT_BRANCH_SHA=$CURRENT_BRANCH_SHA"
 
       - name: Checkout exact target SHA
         uses: actions/checkout@v7
@@ -66,8 +66,8 @@ jobs:
           set -euo pipefail
           VERSION_NAME="$(grep -E 'versionName[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')"
           VERSION_CODE="$(grep -E 'versionCode[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/')"
-          test "$VERSION_NAME" = "1.0.2" || { echo "::error::VERSION_NAME must be 1.0.2"; exit 1; }
-          test "$VERSION_CODE" = "20007" || { echo "::error::VERSION_CODE must be 20007"; exit 1; }
+          test "$VERSION_NAME" = "1.0.3" || { echo "::error::VERSION_NAME must be 1.0.3"; exit 1; }
+          test "$VERSION_CODE" = "20008" || { echo "::error::VERSION_CODE must be 20008"; exit 1; }
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
