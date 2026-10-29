@@ -190,6 +190,8 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         paymentReturnUriState.value = intent.data
+        val productLinkUri = intent.data
+        Log.d("PRODUCT_LINK_TRACE", "onNewIntent uri=${productLinkUri?.let { "${it.scheme}://${it.host}${it.encodedPath.orEmpty()}" } ?: "null"}")
         pushTypeState.value = intent.getStringExtra(PushNotificationContract.TYPE_KEY)
         pushOrderIdState.value = PushNotificationContract.parseOrderId(intent.getStringExtra(PushNotificationContract.ORDER_ID_KEY))
         if (pushTypeState.value == PushNotificationType.ORDER_STATUS) {
@@ -711,6 +713,7 @@ private fun CriosRangoApp(
     }
     LaunchedEffect(paymentReturnUri) {
         val uri = paymentReturnUri ?: return@LaunchedEffect
+        Log.d("PRODUCT_LINK_TRACE", "LaunchedEffect uri=${uri.scheme}://${uri.host}${uri.encodedPath.orEmpty()}")
         val host = uri.host.orEmpty().lowercase()
         val httpsReturn = uri.scheme == "https" && (host == "criosrango.es" || host == "www.criosrango.es") && uri.path.orEmpty().startsWith("/app-payment-return")
         val customReturn = uri.scheme == "criosrango" && host == "payment-return"
@@ -731,7 +734,9 @@ private fun CriosRangoApp(
             }
         }
         val isProductLink = (uri.scheme == "https" || uri.scheme == "http") && (host == "criosrango.es" || host == "www.criosrango.es") && uri.pathSegments.firstOrNull()?.equals("producto", ignoreCase = true) == true
-        if (isProductLink) uri.pathSegments.getOrNull(1)?.takeIf { it.isNotBlank() }?.let(viewModel::openProductBySlug)
+        val productSlug = uri.pathSegments.getOrNull(1)?.takeIf { it.isNotBlank() }
+        Log.d("PRODUCT_LINK_TRACE", "slug_extracted=${productSlug ?: "null"} isProductLink=$isProductLink")
+        if (isProductLink) productSlug?.let(viewModel::openProductBySlug)
         paymentReturnUriState.value = null
     }
     LaunchedEffect(paymentRedirect) {
