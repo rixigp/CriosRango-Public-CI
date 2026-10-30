@@ -7,6 +7,14 @@ on:
         description: "Exact commit SHA to build"
         required: true
         type: string
+      play_track:
+        description: "Google Play destination track"
+        required: true
+        type: choice
+        options:
+          - internal
+          - production
+        default: internal
 
 permissions:
   contents: read
@@ -15,6 +23,7 @@ env:
   BUNDLETOOL_VERSION: "1.18.3"
   BUNDLETOOL_SHA256: "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29"
   EXPECTED_PACKAGE: "es.criosrango.app"
+  DEFAULT_TRACK: "internal"
   EXPECTED_MIN_SDK: "24"
   EXPECTED_TARGET_SDK: "36"
   EXPECTED_UPLOAD_ALIAS: "criosrango-upload"
@@ -334,6 +343,204 @@ jobs:
           retention-days: 7
           path: criosrango-release-aab-report.txt
           if-no-files-found: error
+
+      - name: Validate manual Play publishing selection
+        id: play-selection
+        shell: bash
+        env:
+          PLAY_TRACK: ${{ inputs.play_track || env.DEFAULT_TRACK }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]] || { echo "::error::Google Play publishing is manual-dispatch only"; exit 1; }
+          case "$PLAY_TRACK" in
+            internal|production) ;;
+            *) echo "::error::Invalid play_track; only internal or production is accepted"; exit 1 ;;
+          esac
+          echo "play_track=$PLAY_TRACK" >> "$GITHUB_OUTPUT"
+          echo "PLAY_TRACK=$PLAY_TRACK" >> "$GITHUB_ENV"
+
+      - name: Publish validated AAB to Google Play
+        id: play-publish
+        shell: bash
+        env:
+          GOOGLE_PLAY_AUTH: ${{ secrets.GOOGLE_PLAY_AUTH }}
+          PACKAGE_NAME: ${{ env.EXPECTED_PACKAGE }}
+          PLAY_TRACK: ${{ steps.play-selection.outputs.play_track }}
+          AAB_PATH: ${{ steps.aab.outputs.aab_path }}
+          EXPECTED_VERSION_CODE: ${{ env.VERSION_CODE }}
+        run: |
+          set -euo pipefail
+          test -n "$GOOGLE_PLAY_AUTH" || { echo "::error::GOOGLE_PLAY_AUTH secret is missing"; exit 1; }
+          test -s "$AAB_PATH"
+          python3 -m pip install --disable-pip-version-check --quiet google-api-python-client google-auth google-auth-httplib2
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+          from googleapiclient.errors import HttpError
+
+          package = os.environ["PACKAGE_NAME"]
+          track = os.environ["PLAY_TRACK"]
+          expected_code = int(os.environ["EXPECTED_VERSION_CODE"])
+          aab_path = Path(os.environ["AAB_PATH"])
+          output_path = os.environ["GITHUB_OUTPUT"]
+
+          def output(key, value):
+              with open(output_path, "a", encoding="utf-8") as stream:
+                  stream.write(f"{key}={value}\n")
+
+          output("auth", "FAILURE")
+          output("edit_id", "")
+          output("bundle_version_code", "")
+          output("release_status", "NOT_PUBLISHED")
+          output("committed", "false")
+          output("upload_status", "FAILURE")
+
+          edit_id = None
+          verification_edit_id = None
+          committed = False
+          try:
+              info = json.loads(os.environ["GOOGLE_PLAY_AUTH"])
+              credentials = service_account.Credentials.from_service_account_info(
+                  info,
+                  scopes=["https://www.googleapis.com/auth/androidpublisher"],
+              )
+              publisher = build("androidpublisher", "v3", credentials=credentials, cache_discovery=False)
+              edit = publisher.edits().insert(packageName=package, body={}).execute()
+              edit_id = edit["id"]
+              output("auth", "SUCCESS")
+              print("PLAY_AUTH=SUCCESS")
+              output("edit_id", edit_id)
+              print(f"PLAY_EDIT_ID={edit_id}")
+
+              existing = []
+              token = None
+              while True:
+                  request = publisher.edits().bundles().list(
+                      packageName=package, editId=edit_id, pageToken=token
+                  )
+                  response = request.execute()
+                  existing.extend(int(item["versionCode"]) for item in response.get("bundles", []))
+                  token = response.get("nextPageToken")
+                  if not token:
+                      break
+              if expected_code in existing:
+                  print(f"::error::PLAY_VERSION_CODE_ALREADY_EXISTS versionCode={expected_code}")
+                  output("upload_status", "PLAY_VERSION_CODE_ALREADY_EXISTS")
+                  sys.exit(23)
+
+              upload = publisher.edits().bundles().upload(
+                  packageName=package,
+                  editId=edit_id,
+                  media_body=MediaFileUpload(str(aab_path), mimetype="application/octet-stream", resumable=True),
+              ).execute()
+              bundle_code = int(upload["versionCode"])
+              output("bundle_version_code", bundle_code)
+              print(f"PLAY_BUNDLE_VERSION_CODE={bundle_code}")
+              if bundle_code != expected_code:
+                  raise RuntimeError(f"Uploaded versionCode {bundle_code} does not match expected {expected_code}")
+
+              release_status = "completed"
+              publisher.edits().tracks().update(
+                  packageName=package,
+                  editId=edit_id,
+                  track=track,
+                  body={"releases": [{"versionCodes": [str(bundle_code)], "status": release_status}]},
+              ).execute()
+              output("release_status", release_status)
+              print(f"PLAY_RELEASE_STATUS={release_status}")
+
+              # Verify the staged track contents before committing the edit.
+              staged = publisher.edits().tracks().get(
+                  packageName=package, editId=edit_id, track=track
+              ).execute()
+              staged_codes = {
+                  str(code)
+                  for release in staged.get("releases", [])
+                  for code in release.get("versionCodes", [])
+              }
+              if str(bundle_code) not in staged_codes:
+                  raise RuntimeError("Track verification did not return the uploaded versionCode")
+
+              publisher.edits().commit(packageName=package, editId=edit_id).execute()
+              committed = True
+              output("committed", "true")
+              output("upload_status", "SUCCESS")
+              print("PLAY_EDIT_COMMITTED=true")
+
+              # Read back the committed track in a fresh edit, then discard that read-only edit.
+              verification_edit = publisher.edits().insert(packageName=package, body={}).execute()
+              verification_edit_id = verification_edit["id"]
+              verified = publisher.edits().tracks().get(
+                  packageName=package, editId=verification_edit_id, track=track
+              ).execute()
+              verified_releases = [
+                  release for release in verified.get("releases", [])
+                  if str(bundle_code) in {str(code) for code in release.get("versionCodes", [])}
+              ]
+              if not verified_releases or any(r.get("status") != release_status for r in verified_releases):
+                  raise RuntimeError("Committed Google Play track read-back verification failed")
+              publisher.edits().delete(packageName=package, editId=verification_edit_id).execute()
+              verification_edit_id = None
+              print("PLAY_TRACK_READBACK=PASS")
+          except SystemExit:
+              raise
+          except Exception as exc:
+              # Deliberately avoid printing exception bodies, request headers, credentials, or tokens.
+              print(f"::error::Google Play publishing failed ({type(exc).__name__})")
+              output("upload_status", "FAILURE_AFTER_COMMIT" if committed else "FAILURE")
+              raise
+          finally:
+              if verification_edit_id:
+                  try:
+                      publisher.edits().delete(packageName=package, editId=verification_edit_id).execute()
+                  except Exception:
+                      print("::warning::Could not discard read-back verification edit")
+              if edit_id and not committed:
+                  try:
+                      publisher.edits().delete(packageName=package, editId=edit_id).execute()
+                  except Exception:
+                      print("::warning::Could not discard uncommitted Google Play edit")
+          PY
+
+      - name: Final Google Play publishing report
+        if: always()
+        shell: bash
+        env:
+          VERSION_NAME: ${{ env.VERSION_NAME }}
+          VERSION_CODE: ${{ env.VERSION_CODE }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+          PLAY_TRACK: ${{ inputs.play_track }}
+          AAB_PATH: ${{ steps.aab.outputs.aab_path }}
+          AAB_SIGNED: ${{ steps.signature-validation.outcome }}
+          BUNDLETOOL_VALIDATION: ${{ steps.bundletool-validation.outcome }}
+          PLAY_AUTH: ${{ steps.play-publish.outputs.auth }}
+          PLAY_EDIT_ID: ${{ steps.play-publish.outputs.edit_id }}
+          PLAY_BUNDLE_VERSION_CODE: ${{ steps.play-publish.outputs.bundle_version_code }}
+          PLAY_RELEASE_STATUS: ${{ steps.play-publish.outputs.release_status }}
+          PLAY_EDIT_COMMITTED: ${{ steps.play-publish.outputs.committed }}
+          PLAY_UPLOAD_STATUS: ${{ steps.play-publish.outputs.upload_status }}
+        run: |
+          {
+            echo "PACKAGE_NAME=$EXPECTED_PACKAGE"
+            echo "VERSION_NAME=${VERSION_NAME:-NOT_BUILT}"
+            echo "VERSION_CODE=${VERSION_CODE:-NOT_BUILT}"
+            echo "TARGET_SHA=$TARGET_SHA"
+            echo "PLAY_TRACK=${PLAY_TRACK:-NOT_SELECTED}"
+            echo "AAB_PATH=${AAB_PATH:-NOT_BUILT}"
+            echo "AAB_SIGNED=${AAB_SIGNED:-NOT_REACHED}"
+            echo "BUNDLETOOL_VALIDATION=${BUNDLETOOL_VALIDATION:-NOT_REACHED}"
+            echo "PLAY_AUTH=${PLAY_AUTH:-NOT_ATTEMPTED}"
+            echo "PLAY_EDIT_ID=${PLAY_EDIT_ID:-NOT_CREATED}"
+            echo "PLAY_BUNDLE_VERSION_CODE=${PLAY_BUNDLE_VERSION_CODE:-NOT_UPLOADED}"
+            echo "PLAY_RELEASE_STATUS=${PLAY_RELEASE_STATUS:-NOT_PUBLISHED}"
+            echo "PLAY_EDIT_COMMITTED=${PLAY_EDIT_COMMITTED:-false}"
+            echo "PLAY_UPLOAD_STATUS=${PLAY_UPLOAD_STATUS:-NOT_ATTEMPTED}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Cleanup all temporary signing/config material
         if: always()
