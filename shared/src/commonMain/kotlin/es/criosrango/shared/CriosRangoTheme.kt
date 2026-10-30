@@ -5,6 +5,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
+import kotlin.math.min
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 
@@ -53,7 +54,7 @@ fun CriosRangoTheme(content: @Composable () -> Unit) {
     CompositionLocalProvider(
         LocalDensity provides Density(
             density = currentDensity.density,
-            fontScale = 1f
+            fontScale = min(currentDensity.fontScale, 1f)
         )
     ) {
         MaterialTheme(
