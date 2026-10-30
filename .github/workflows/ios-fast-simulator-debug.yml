@@ -117,25 +117,32 @@ jobs:
               continue
             fi
             find "$PLATFORM_DIR" -maxdepth 1 \( -iname '*CoreFoundation*' -o -iname '*Security*' \) -print | tee "$TARGET_OUT/klib-files.txt"
-            COREFOUNDATION_KLIB="$(find "$PLATFORM_DIR" -maxdepth 1 -iname '*CoreFoundation*' -print -quit)"
+            COREFOUNDATION_KLIB="$(find "$PLATFORM_DIR" -maxdepth 1 -iname '*CoreFoundation.klib' -print -quit)"
+            COREFOUNDATIONBASE_KLIB="$(find "$PLATFORM_DIR" -maxdepth 1 -iname '*CoreFoundationBase*' -print -quit)"
             SECURITY_KLIB="$(find "$PLATFORM_DIR" -maxdepth 1 -iname '*Security*' -print -quit)"
-            if [[ -z "$COREFOUNDATION_KLIB" || -z "$SECURITY_KLIB" ]]; then
+            if [[ -z "$COREFOUNDATION_KLIB" || -z "$COREFOUNDATIONBASE_KLIB" || -z "$SECURITY_KLIB" ]]; then
               echo "COREFOUNDATION_KLIB=${COREFOUNDATION_KLIB:-NOT_FOUND}" | tee "$TARGET_OUT/status.txt"
+              echo "COREFOUNDATIONBASE_KLIB=${COREFOUNDATIONBASE_KLIB:-NOT_FOUND}" | tee -a "$TARGET_OUT/status.txt"
               echo "SECURITY_KLIB=${SECURITY_KLIB:-NOT_FOUND}" | tee -a "$TARGET_OUT/status.txt"
               continue
             fi
             echo "COREFOUNDATION_KLIB=$COREFOUNDATION_KLIB" | tee "$TARGET_OUT/paths.txt"
+            echo "COREFOUNDATIONBASE_KLIB=$COREFOUNDATIONBASE_KLIB" | tee -a "$TARGET_OUT/paths.txt"
             echo "SECURITY_KLIB=$SECURITY_KLIB" | tee -a "$TARGET_OUT/paths.txt"
             "$KONAN_HOME/bin/klib" dump-metadata "$COREFOUNDATION_KLIB" > "$TARGET_OUT/corefoundation.txt"
+            "$KONAN_HOME/bin/klib" dump-metadata "$COREFOUNDATIONBASE_KLIB" > "$TARGET_OUT/corefoundationbase.txt"
             "$KONAN_HOME/bin/klib" dump-metadata "$SECURITY_KLIB" > "$TARGET_OUT/security.txt"
-            grep -n -E -C 2 'CFDictionaryCreateMutable|CFDictionarySetValue|CFDictionaryAddValue|CFStringCreateWithCString|CFDataCreate|CFGetTypeID|CFDataGetTypeID|CFRelease|kCFBooleanTrue|kCFBooleanFalse' "$TARGET_OUT/corefoundation.txt" > "$TARGET_OUT/corefoundation-selected.txt" || true
+            grep -n -E -C 3 'CFDictionaryCreateMutable|CFDictionarySetValue|CFDictionaryAddValue|CFStringCreateWithCString|CFDataCreate|CFGetTypeID|CFDataGetTypeID|CFRelease|kCFBooleanTrue|kCFBooleanFalse' "$TARGET_OUT/corefoundation.txt" > "$TARGET_OUT/corefoundation-selected.txt" || true
+            grep -n -E -C 4 'CFGetTypeID|CFRelease|CFTypeRef|CFTypeRefVar|CFTypeID' "$TARGET_OUT/corefoundationbase.txt" > "$TARGET_OUT/corefoundationbase-selected.txt" || true
             grep -n -E -C 2 'SecItemCopyMatching|SecItemAdd|SecItemUpdate|SecItemDelete|kSecClassGenericPassword|kSecClass|kSecAttrService|kSecAttrAccount|kSecAttrAccessibleAfterFirstUnlock|kSecAttrAccessible|kSecReturnData|kSecValueData' "$TARGET_OUT/security.txt" > "$TARGET_OUT/security-selected.txt" || true
           done
 
           SIM_DIR="$OUT/ios_simulator_arm64"
-          [[ -s "$SIM_DIR/corefoundation.txt" && -s "$SIM_DIR/security.txt" ]] || { echo "::error::Required simulator CoreFoundation/Security KLIB metadata not found"; exit 1; }
-          cat "$OUT/konan-home.txt" "$OUT/konanc-version.txt" "$SIM_DIR/paths.txt" "$SIM_DIR/corefoundation-selected.txt" "$SIM_DIR/security-selected.txt" > "$OUT/diagnostic-summary.txt"
+          [[ -s "$SIM_DIR/corefoundation.txt" && -s "$SIM_DIR/corefoundationbase.txt" && -s "$SIM_DIR/security.txt" ]] || { echo "::error::Required simulator CoreFoundation/CoreFoundationBase/Security KLIB metadata not found"; exit 1; }
+          cat "$OUT/konan-home.txt" "$OUT/konanc-version.txt" "$SIM_DIR/paths.txt" "$SIM_DIR/corefoundation-selected.txt" "$SIM_DIR/corefoundationbase-selected.txt" "$SIM_DIR/security-selected.txt" > "$OUT/diagnostic-summary.txt"
           cat "$OUT/diagnostic-summary.txt" >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::COREFOUNDATIONBASE_DIAGNOSTIC_ONLY: stop before app build/runtime; inspect uploaded metadata artifact."
+          exit 1
 
       - name: Select and boot iPhone Simulator
         id: simulator
