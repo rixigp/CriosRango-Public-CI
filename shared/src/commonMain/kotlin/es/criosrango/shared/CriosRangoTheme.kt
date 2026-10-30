@@ -3,7 +3,10 @@ package es.criosrango.shared
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 
 /**
  * Brand color scheme shared by Android and iOS.
@@ -46,8 +49,16 @@ val CriosRangoLightColorScheme = lightColorScheme(
 
 @Composable
 fun CriosRangoTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = CriosRangoLightColorScheme,
-        content = content
-    )
+    val currentDensity = LocalDensity.current
+    CompositionLocalProvider(
+        LocalDensity provides Density(
+            density = currentDensity.density,
+            fontScale = 1f
+        )
+    ) {
+        MaterialTheme(
+            colorScheme = CriosRangoLightColorScheme,
+            content = content
+        )
+    }
 }
