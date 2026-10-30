@@ -363,7 +363,7 @@ jobs:
         id: play-publish
         shell: bash
         env:
-          GOOGLE_PLAY_AUTH: ${{ secrets.GOOGLE_PLAY_AUTH }}
+          GOOGLE_PLAY_AUTH: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
           PACKAGE_NAME: ${{ env.EXPECTED_PACKAGE }}
           PLAY_TRACK: ${{ steps.play-selection.outputs.play_track }}
           AAB_PATH: ${{ steps.aab.outputs.aab_path }}
