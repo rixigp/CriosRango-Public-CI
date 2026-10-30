@@ -452,7 +452,7 @@ private fun CheckoutField(
         value = value,
         onValueChange = onValueChange,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        modifier = modifier.fillMaxWidth().height(58.dp),
+        modifier = modifier.fillMaxWidth().heightIn(min = 58.dp),
         label = { Text(label, fontSize = 13.sp) },
         textStyle = androidx.compose.ui.text.TextStyle(fontSize = 16.sp),
         singleLine = true,
@@ -469,7 +469,7 @@ private fun CheckoutProvinceSelector(selectedCode: String, modifier: Modifier = 
         ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }, modifier = Modifier.fillMaxWidth()) {
             OutlinedTextField(
                 label = { Text("Provincia", fontSize = 13.sp) }, value = selectedName, onValueChange = {}, readOnly = true,
-                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth().height(58.dp),
+                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth().heightIn(min = 58.dp),
                 textStyle = MaterialTheme.typography.bodyLarge, singleLine = true,
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 colors = checkoutFieldColors(), shape = RoundedCornerShape(3.dp)
@@ -498,7 +498,7 @@ private fun CheckoutCountry(
             OutlinedTextField(
                 label = { Text("País", fontSize = 13.sp) }, value = if (value == "ES") "España" else value,
                 onValueChange = {}, readOnly = true,
-                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth().height(58.dp),
+                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth().heightIn(min = 58.dp),
                 textStyle = MaterialTheme.typography.bodyLarge, singleLine = true, isError = error != null,
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 colors = checkoutFieldColors(), shape = RoundedCornerShape(3.dp)
