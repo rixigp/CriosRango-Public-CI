@@ -23,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.KeyboardOptions
@@ -177,7 +178,9 @@ fun StoreCheckoutScreen(
         createdOrder == null &&
         !paymentInProgress
 
-    Column(modifier = Modifier.fillMaxSize().padding(padding).imePadding()) {
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val effectivePadding = if (imeVisible) PaddingValues(0.dp) else padding
+    Column(modifier = Modifier.fillMaxSize().padding(effectivePadding).imePadding()) {
         StoreGlobalTopBar(cartQuantity = cartQuantity, onSearch = onSearch, onCart = onCart)
         StoreCatalogHeader(title = "Finalizar compra", showBack = true, onBack = onBack)
         LazyColumn(
