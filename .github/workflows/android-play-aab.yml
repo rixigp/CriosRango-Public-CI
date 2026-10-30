@@ -417,17 +417,12 @@ jobs:
               output("edit_id", edit_id)
               print(f"PLAY_EDIT_ID={edit_id}")
 
-              existing = []
-              token = None
-              while True:
-                  request = publisher.edits().bundles().list(
-                      packageName=package, editId=edit_id, pageToken=token
-                  )
-                  response = request.execute()
-                  existing.extend(int(item["versionCode"]) for item in response.get("bundles", []))
-                  token = response.get("nextPageToken")
-                  if not token:
-                      break
+              response = publisher.edits().bundles().list(
+                  packageName=package,
+                  editId=edit_id,
+              ).execute()
+              bundles = response.get("bundles", [])
+              existing = [int(item["versionCode"]) for item in bundles]
               if expected_code in existing:
                   print(f"::error::PLAY_VERSION_CODE_ALREADY_EXISTS versionCode={expected_code}")
                   output("upload_status", "PLAY_VERSION_CODE_ALREADY_EXISTS")
