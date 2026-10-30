@@ -10,6 +10,7 @@ import es.criosrango.shared.api.StoreFilterApiClient
 import es.criosrango.shared.api.StoreRequestTiming
 import es.criosrango.shared.api.StoreRequestTimingRecorder
 import platform.Foundation.NSLog
+import platform.Foundation.NSString
 import es.criosrango.shared.loyalty.LoyaltyRepository
 import platform.Foundation.NSURL
 import platform.Foundation.NSBundle
@@ -55,7 +56,7 @@ private class IosStoreRequestTimingRecorder : StoreRequestTimingRecorder {
             timing.perPage?.let { append(" per_page=$it") }
             timing.scope?.let { append(" scope=$it") }
         }
-        NSLog("%@", line)
+        NSLog("%@", line as NSString)
     }
 }
 
