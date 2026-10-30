@@ -354,6 +354,7 @@ fun CriosRangoIOSRootScreen(
                 resetCatalog()
                 if (destination == IosRootSection.OUTLET) openCatalog(IosCatalogPage.Outlet())
             },
+            hideBottomBarWhenImeVisible = checkoutOpen,
             topBar = {
                 if (!checkoutOpen) StoreGlobalTopBar(
                     cartQuantity = cartQuantity,

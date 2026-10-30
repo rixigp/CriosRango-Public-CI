@@ -515,7 +515,8 @@ private fun CriosRangoApp(
                     cartQuantity = cartQuantity,
                     onTabSelected = { selectRootTab(it) },
                     topBar = {},
-                    bottomNavigationModifier = Modifier.fillMaxWidth()
+                    bottomNavigationModifier = Modifier.fillMaxWidth(),
+                    hideBottomBarWhenImeVisible = true
                 ) { shellPadding ->
                 es.criosrango.shared.StoreCheckoutScreen(
                     checkoutStore = sharedCheckoutStore, paymentStore = sharedPaymentStore,
