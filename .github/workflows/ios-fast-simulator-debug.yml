@@ -94,6 +94,49 @@ jobs:
           restore-keys: |
             macos-konan-debug-v1-
 
+      - name: Dump Kotlin Native CoreFoundation and Security bindings
+        id: native_bindings
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$GITHUB_WORKSPACE/ios-fast-debug-artifacts/native-bindings"
+          mkdir -p "$OUT"
+          KONAN_ROOT="$HOME/.konan"
+          find "$KONAN_ROOT" -maxdepth 2 -type d -name 'kotlin-native-prebuilt-*' -print | tee "$OUT/konan-installations.txt"
+          KONAN_HOME="$(find "$KONAN_ROOT" -maxdepth 2 -type d -name 'kotlin-native-prebuilt-*' -print -quit)"
+          [[ -n "$KONAN_HOME" ]] || { echo "::error::No kotlin-native-prebuilt installation found in $KONAN_ROOT"; exit 1; }
+          echo "KONAN_HOME=$KONAN_HOME" | tee "$OUT/konan-home.txt"
+          "$KONAN_HOME/bin/konanc" -version 2>&1 | tee "$OUT/konanc-version.txt"
+
+          for TARGET in ios_simulator_arm64 ios_arm64; do
+            PLATFORM_DIR="$KONAN_HOME/klib/platform/$TARGET"
+            TARGET_OUT="$OUT/$TARGET"
+            mkdir -p "$TARGET_OUT"
+            if [[ ! -d "$PLATFORM_DIR" ]]; then
+              echo "TARGET_UNAVAILABLE=$TARGET" | tee "$TARGET_OUT/status.txt"
+              continue
+            fi
+            find "$PLATFORM_DIR" -maxdepth 1 \( -iname '*CoreFoundation*' -o -iname '*Security*' \) -print | tee "$TARGET_OUT/klib-files.txt"
+            COREFOUNDATION_KLIB="$(find "$PLATFORM_DIR" -maxdepth 1 -iname '*CoreFoundation*' -print -quit)"
+            SECURITY_KLIB="$(find "$PLATFORM_DIR" -maxdepth 1 -iname '*Security*' -print -quit)"
+            if [[ -z "$COREFOUNDATION_KLIB" || -z "$SECURITY_KLIB" ]]; then
+              echo "COREFOUNDATION_KLIB=${COREFOUNDATION_KLIB:-NOT_FOUND}" | tee "$TARGET_OUT/status.txt"
+              echo "SECURITY_KLIB=${SECURITY_KLIB:-NOT_FOUND}" | tee -a "$TARGET_OUT/status.txt"
+              continue
+            fi
+            echo "COREFOUNDATION_KLIB=$COREFOUNDATION_KLIB" | tee "$TARGET_OUT/paths.txt"
+            echo "SECURITY_KLIB=$SECURITY_KLIB" | tee -a "$TARGET_OUT/paths.txt"
+            "$KONAN_HOME/bin/klib" dump-metadata "$COREFOUNDATION_KLIB" > "$TARGET_OUT/corefoundation.txt"
+            "$KONAN_HOME/bin/klib" dump-metadata "$SECURITY_KLIB" > "$TARGET_OUT/security.txt"
+            grep -n -E -C 2 'CFDictionaryCreateMutable|CFDictionarySetValue|CFDictionaryAddValue|CFStringCreateWithCString|CFDataCreate|CFGetTypeID|CFDataGetTypeID|CFRelease|kCFBooleanTrue|kCFBooleanFalse' "$TARGET_OUT/corefoundation.txt" > "$TARGET_OUT/corefoundation-selected.txt" || true
+            grep -n -E -C 2 'SecItemCopyMatching|SecItemAdd|SecItemUpdate|SecItemDelete|kSecClassGenericPassword|kSecClass|kSecAttrService|kSecAttrAccount|kSecAttrAccessibleAfterFirstUnlock|kSecAttrAccessible|kSecReturnData|kSecValueData' "$TARGET_OUT/security.txt" > "$TARGET_OUT/security-selected.txt" || true
+          done
+
+          SIM_DIR="$OUT/ios_simulator_arm64"
+          [[ -s "$SIM_DIR/corefoundation.txt" && -s "$SIM_DIR/security.txt" ]] || { echo "::error::Required simulator CoreFoundation/Security KLIB metadata not found"; exit 1; }
+          cat "$OUT/konan-home.txt" "$OUT/konanc-version.txt" "$SIM_DIR/paths.txt" "$SIM_DIR/corefoundation-selected.txt" "$SIM_DIR/security-selected.txt" > "$OUT/diagnostic-summary.txt"
+          cat "$OUT/diagnostic-summary.txt" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Select and boot iPhone Simulator
         id: simulator
         shell: bash
