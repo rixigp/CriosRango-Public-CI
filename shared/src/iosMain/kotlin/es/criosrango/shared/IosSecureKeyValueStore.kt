@@ -1,11 +1,11 @@
 package es.criosrango.shared
 
 import kotlinx.cinterop.BetaInteropApi
+import kotlinx.cinterop.CPointer
+import kotlinx.cinterop.CValuesRef
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
-import kotlinx.cinterop.cstr
-import kotlinx.cinterop.getPointer
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
@@ -21,7 +21,6 @@ import platform.CoreFoundation.CFDictionarySetValue
 import platform.CoreFoundation.CFMutableDictionaryRef
 import platform.CoreFoundation.CFRelease
 import platform.CoreFoundation.CFStringCreateWithCString
-import platform.CoreFoundation.CFTypeRef
 import platform.CoreFoundation.CFTypeRefVar
 import platform.CoreFoundation.kCFAllocatorDefault
 import platform.CoreFoundation.kCFBooleanFalse
@@ -87,7 +86,7 @@ internal object IosSecureKeyValueStore {
         clearLegacySensitiveValues(defaults)
         val query = createBaseQuery(key)
         try {
-            val status = SecItemDelete(query.reinterpret())
+            val status = SecItemDelete(query)
             if (status != errSecSuccess && status != errSecItemNotFound) logStatus("delete", key, status)
         } finally {
             CFRelease(query)
@@ -105,11 +104,11 @@ internal object IosSecureKeyValueStore {
     private fun readKeychain(key: String): String? = memScoped {
         val query = createBaseQuery(key)
         try {
-            setDictionaryValue(query, kSecReturnData.reinterpret(), kCFBooleanTrue!!.reinterpret())
-            setDictionaryValue(query, kSecMatchLimit.reinterpret(), kSecMatchLimitOne.reinterpret())
+            setDictionaryValue(query, kSecReturnData, kCFBooleanTrue)
+            setDictionaryValue(query, kSecMatchLimit, kSecMatchLimitOne)
 
             val result = alloc<CFTypeRefVar>()
-            val status = SecItemCopyMatching(query.reinterpret(), result.ptr)
+            val status = SecItemCopyMatching(query, result.ptr)
             if (status == errSecItemNotFound) return@memScoped null
             if (status != errSecSuccess) {
                 logStatus("read", key, status)
@@ -119,7 +118,7 @@ internal object IosSecureKeyValueStore {
             val resultValue = result.value ?: return@memScoped null
             try {
                 if (CFGetTypeID(resultValue) != CFDataGetTypeID()) return@memScoped null
-                resultValue.reinterpret<platform.CoreFoundation.__CFData>().toKotlinString()
+                resultValue.reinterpret().toKotlinString()
             } finally {
                 CFRelease(resultValue)
             }
@@ -135,11 +134,11 @@ internal object IosSecureKeyValueStore {
             val addStatus = try {
                 setDictionaryValue(
                     query,
-                    kSecAttrAccessible.reinterpret(),
-                    kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly.reinterpret()
+                    kSecAttrAccessible,
+                    kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
                 )
-                setDictionaryValue(query, kSecValueData.reinterpret(), data.reinterpret())
-                SecItemAdd(query.reinterpret(), null)
+                setDictionaryValue(query, kSecValueData, data)
+                SecItemAdd(query, null)
             } finally {
                 CFRelease(query)
             }
@@ -153,8 +152,8 @@ internal object IosSecureKeyValueStore {
             val update = createMutableDictionary()
             val updateQuery = createBaseQuery(key)
             try {
-                setDictionaryValue(update, kSecValueData.reinterpret(), data.reinterpret())
-                val updateStatus = SecItemUpdate(updateQuery.reinterpret(), update.reinterpret())
+                setDictionaryValue(update, kSecValueData, data)
+                val updateStatus = SecItemUpdate(updateQuery, update)
                 if (updateStatus != errSecSuccess) logStatus("update", key, updateStatus)
                 return updateStatus == errSecSuccess
             } finally {
@@ -167,25 +166,24 @@ internal object IosSecureKeyValueStore {
     }
 
     /**
-     * Construct the query directly in a native CFMutableDictionary. No CoreFoundation or
-     * Security pointer is boxed into a Kotlin Map or converted with a runtime Kotlin cast.
+     * Construct the query directly in a native CFMutableDictionary. The type callbacks retain
+     * inserted values, allowing the Create-owned service/account strings to be released below.
      */
     private fun createBaseQuery(key: String): CFMutableDictionaryRef {
         val dictionary = createMutableDictionary()
         val service = createCFString(SERVICE)
         val account = createCFString(key)
         try {
-            setDictionaryValue(dictionary, kSecClass.reinterpret(), kSecClassGenericPassword.reinterpret())
-            setDictionaryValue(dictionary, kSecAttrService.reinterpret(), service.reinterpret())
-            setDictionaryValue(dictionary, kSecAttrAccount.reinterpret(), account.reinterpret())
+            setDictionaryValue(dictionary, kSecClass, kSecClassGenericPassword)
+            setDictionaryValue(dictionary, kSecAttrService, service)
+            setDictionaryValue(dictionary, kSecAttrAccount, account)
             // Explicitly disable synchronizable/iCloud Keychain items.
-            setDictionaryValue(dictionary, kSecAttrSynchronizable.reinterpret(), kCFBooleanFalse!!.reinterpret())
+            setDictionaryValue(dictionary, kSecAttrSynchronizable, kCFBooleanFalse)
             return dictionary
         } catch (error: Throwable) {
             CFRelease(dictionary)
             throw error
         } finally {
-            // CFType dictionary callbacks retain inserted values.
             CFRelease(service)
             CFRelease(account)
         }
@@ -201,33 +199,33 @@ internal object IosSecureKeyValueStore {
 
     private fun setDictionaryValue(
         dictionary: CFMutableDictionaryRef,
-        key: CFTypeRef,
-        value: CFTypeRef
+        key: CValuesRef<*>?,
+        value: CValuesRef<*>?
     ) {
         CFDictionarySetValue(dictionary, key, value)
     }
 
-    private fun createCFString(value: String) = memScoped {
+    private fun createCFString(value: String) =
         CFStringCreateWithCString(
             kCFAllocatorDefault,
-            value.cstr.getPointer(this),
+            value,
             kCFStringEncodingUTF8
         ) ?: error("CFStringCreateWithCString returned null")
-    }
 
     @OptIn(BetaInteropApi::class)
-    private fun String.toCFData() : platform.CoreFoundation.CFDataRef {
+    private fun String.toCFData() = run {
         val bytes = encodeToByteArray()
         if (bytes.isEmpty()) {
-            return CFDataCreate(kCFAllocatorDefault, null, 0)
+            CFDataCreate(kCFAllocatorDefault, null, 0)
                 ?: error("CFDataCreate returned null")
-        }
-        return bytes.usePinned { pinned ->
-            CFDataCreate(
-                kCFAllocatorDefault,
-                pinned.addressOf(0).reinterpret(),
-                bytes.size.toLong()
-            ) ?: error("CFDataCreate returned null")
+        } else {
+            bytes.usePinned { pinned ->
+                CFDataCreate(
+                    kCFAllocatorDefault,
+                    pinned.addressOf(0).reinterpret(),
+                    bytes.size.toLong()
+                ) ?: error("CFDataCreate returned null")
+            }
         }
     }
 
