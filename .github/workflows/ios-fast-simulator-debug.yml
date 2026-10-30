@@ -117,9 +117,9 @@ jobs:
               continue
             fi
             find "$PLATFORM_DIR" -maxdepth 1 \( -iname '*CoreFoundation*' -o -iname '*Security*' \) -print | tee "$TARGET_OUT/klib-files.txt"
-            COREFOUNDATION_KLIB="$(find "$PLATFORM_DIR" -maxdepth 1 -iname '*CoreFoundation.klib' -print -quit)"
-            COREFOUNDATIONBASE_KLIB="$(find "$PLATFORM_DIR" -maxdepth 1 -iname '*CoreFoundationBase*' -print -quit)"
-            SECURITY_KLIB="$(find "$PLATFORM_DIR" -maxdepth 1 -iname '*Security*' -print -quit)"
+            COREFOUNDATION_KLIB="$(find "$PLATFORM_DIR" -maxdepth 1 -type d -name 'org.jetbrains.kotlin.native.platform.CoreFoundation' -print -quit)"
+            COREFOUNDATIONBASE_KLIB="$(find "$PLATFORM_DIR" -maxdepth 1 -type d -name 'org.jetbrains.kotlin.native.platform.CoreFoundationBase' -print -quit)"
+            SECURITY_KLIB="$(find "$PLATFORM_DIR" -maxdepth 1 -type d -name 'org.jetbrains.kotlin.native.platform.Security' -print -quit)"
             if [[ -z "$COREFOUNDATION_KLIB" || -z "$COREFOUNDATIONBASE_KLIB" || -z "$SECURITY_KLIB" ]]; then
               echo "COREFOUNDATION_KLIB=${COREFOUNDATION_KLIB:-NOT_FOUND}" | tee "$TARGET_OUT/status.txt"
               echo "COREFOUNDATIONBASE_KLIB=${COREFOUNDATIONBASE_KLIB:-NOT_FOUND}" | tee -a "$TARGET_OUT/status.txt"
