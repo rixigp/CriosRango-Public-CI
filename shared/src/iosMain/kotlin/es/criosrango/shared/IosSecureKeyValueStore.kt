@@ -118,7 +118,8 @@ internal object IosSecureKeyValueStore {
             val resultValue = result.value ?: return@memScoped null
             try {
                 if (CFGetTypeID(resultValue) != CFDataGetTypeID()) return@memScoped null
-                resultValue.reinterpret().toKotlinString()
+                val data: platform.CoreFoundation.CFDataRef = resultValue.reinterpret()
+                data.toKotlinString()
             } finally {
                 CFRelease(resultValue)
             }
