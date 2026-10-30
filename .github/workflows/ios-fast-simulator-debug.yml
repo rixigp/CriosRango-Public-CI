@@ -141,10 +141,12 @@ jobs:
           [[ -s "$SIM_DIR/corefoundation.txt" && -s "$SIM_DIR/corefoundationbase.txt" && -s "$SIM_DIR/security.txt" ]] || { echo "::error::Required simulator CoreFoundation/CoreFoundationBase/Security KLIB metadata not found"; exit 1; }
           cat "$OUT/konan-home.txt" "$OUT/konanc-version.txt" "$SIM_DIR/paths.txt" "$SIM_DIR/corefoundation-selected.txt" "$SIM_DIR/corefoundationbase-selected.txt" "$SIM_DIR/security-selected.txt" > "$OUT/diagnostic-summary.txt"
           cat "$OUT/diagnostic-summary.txt" >> "$GITHUB_STEP_SUMMARY"
-          echo "::error::COREFOUNDATIONBASE_DIAGNOSTIC_ONLY: stop before app build/runtime; inspect uploaded metadata artifact."
-          exit 1
+          echo "COMPILE_ONLY=STARTED"
+          ./gradlew :shared:compileKotlinIosSimulatorArm64 --no-daemon --stacktrace
+          echo "COMPILE_ONLY=SUCCESS" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Select and boot iPhone Simulator
+        if: failure()
         id: simulator
         shell: bash
         run: |
@@ -176,6 +178,7 @@ jobs:
           xcrun simctl bootstatus "$SIM_UDID" -b
 
       - name: Reconstruct and validate Firebase iOS configuration
+        if: failure()
         shell: bash
         env:
           GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
@@ -192,6 +195,7 @@ jobs:
           echo "Firebase iOS configuration reconstructed and validated (values not logged)."
 
       - name: Build Debug app for Simulator
+        if: failure()
         id: ios_build
         timeout-minutes: 30
         shell: bash
@@ -257,6 +261,7 @@ jobs:
           echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
 
       - name: Install, launch, capture screenshots and logs
+        if: failure()
         id: runtime
         if: steps.ios_build.outcome == 'success'
         timeout-minutes: 7
