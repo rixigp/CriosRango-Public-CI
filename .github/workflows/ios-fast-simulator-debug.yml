@@ -261,9 +261,8 @@ jobs:
           echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
 
       - name: Install, launch, capture screenshots and logs
-        if: failure()
+        if: failure() && steps.ios_build.outcome == 'success'
         id: runtime
-        if: steps.ios_build.outcome == 'success'
         timeout-minutes: 7
         env:
           SIM_UDID: ${{ steps.simulator.outputs.udid }}
