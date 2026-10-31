@@ -65,6 +65,17 @@ private data class CheckoutImeTraceState(
     val effectivePaddingBottomDp: Float, val scaffoldPaddingBottomDp: Float,
     val bottomBarVisible: Boolean
 )
+
+private object CheckoutImeTraceBuffer {
+    const val MAX_LINES = 400
+    private val lines = mutableListOf<String>()
+    fun append(line: String) {
+        if (lines.size == MAX_LINES) lines.removeAt(0)
+        lines.add(line)
+    }
+    fun clear() = lines.clear()
+    fun snapshot(): String = lines.joinToString("\n")
+}
 private val CheckoutUiGreen = Color(0xFF183B35)
 private val CheckoutUiSoftGreen = Color(0xFFE4F1ED)
 private val CheckoutUiBorder = Color(0xFFD0C9D0)
@@ -84,7 +95,9 @@ fun StoreCheckoutScreen(
     cartQuantity: Int = 0,
     onSearch: () -> Unit = {},
     onCart: () -> Unit = {},
-    showInlineCardSuccess: Boolean = true
+    showInlineCardSuccess: Boolean = true,
+    debugImeTraceEnabled: Boolean = false,
+    onCopyImeTrace: ((String) -> Unit)? = null
 ) {
     val checkout by checkoutStore.checkout.collectAsState()
     val cart by checkoutStore.cart.collectAsState()
@@ -215,8 +228,12 @@ fun StoreCheckoutScreen(
         )
     }
     val traceStartedAt = remember { TimeSource.Monotonic.markNow() }
-    val traceLog: (String) -> Unit = remember(traceStartedAt) {
-        { message -> println("CHECKOUT_IME_TRACE tMs=${traceStartedAt.elapsedNow().inWholeMilliseconds} $message") }
+    val traceLog: (String) -> Unit = remember(traceStartedAt, debugImeTraceEnabled) {
+        { message ->
+            val line = "CHECKOUT_IME_TRACE tMs=${traceStartedAt.elapsedNow().inWholeMilliseconds} $message"
+            if (debugImeTraceEnabled) CheckoutImeTraceBuffer.append(line)
+            println(line)
+        }
     }
     var focusedField by remember { mutableStateOf("none") }
     var viewportTopRootPx by remember { mutableIntStateOf(-1) }
@@ -227,18 +244,19 @@ fun StoreCheckoutScreen(
         val next = CheckoutFieldGeometry(top, bottom, bottom - top)
         if (fieldGeometry[field] != next) {
             fieldGeometry[field] = next
-            traceLog("event=FIELD_POSITION field=$field FIELD_TOP=$top FIELD_BOTTOM=$bottom FIELD_HEIGHT=${bottom - top} viewportEndRoot=$viewportBottomRootPx index=${listState.firstVisibleItemIndex} offset=${listState.firstVisibleItemScrollOffset}")
+            traceLog("EVENT=FIELD_GEOMETRY_CHANGED FIELD=$field FIELD_TOP=$top FIELD_BOTTOM=$bottom FIELD_HEIGHT=${bottom - top} VIEWPORT_END_ROOT=$viewportBottomRootPx FIRST_VISIBLE_ITEM_INDEX=${listState.firstVisibleItemIndex} FIRST_VISIBLE_ITEM_OFFSET=${listState.firstVisibleItemScrollOffset}")
         }
     }
     val onFieldFocus: (String, Boolean) -> Unit = { field, hasFocus ->
         if (hasFocus) focusedField = field else if (focusedField == field) focusedField = "none"
         val geometry = fieldGeometry[field]
         val currentImeBottomPx = imeInsets.getBottom(density)
-        val focusEvent = if (hasFocus && currentImeBottomPx == 0) "BEFORE_FOCUS" else "FOCUS"
-        traceLog("event=$focusEvent field=$field focused=$hasFocus ime=${currentImeBottomPx > 0} IME_BOTTOM_PX=$currentImeBottomPx index=${listState.firstVisibleItemIndex} offset=${listState.firstVisibleItemScrollOffset} viewportEnd=${listState.layoutInfo.viewportEndOffset} viewportEndRoot=$viewportBottomRootPx FIELD_TOP=${geometry?.top ?: -1} FIELD_BOTTOM=${geometry?.bottom ?: -1} FIELD_HEIGHT=${geometry?.height ?: -1}")
+        val focusEvent = if (hasFocus) "FOCUS_GAINED" else "FOCUS_LOST"
+        traceLog("EVENT=$focusEvent FIELD=$field FOCUSED=$hasFocus IME_VISIBLE=${currentImeBottomPx > 0} IME_BOTTOM_PX=$currentImeBottomPx FIRST_VISIBLE_ITEM_INDEX=${listState.firstVisibleItemIndex} FIRST_VISIBLE_ITEM_OFFSET=${listState.firstVisibleItemScrollOffset} VIEWPORT_START=${listState.layoutInfo.viewportStartOffset} VIEWPORT_END=${listState.layoutInfo.viewportEndOffset} FIELD_TOP=${geometry?.top ?: -1} FIELD_BOTTOM=${geometry?.bottom ?: -1} FIELD_HEIGHT=${geometry?.height ?: -1}")
     }
     LaunchedEffect(focusedField, fieldRequesters, listState, traceLog) {
-        val requester = fieldRequesters[focusedField] ?: return@LaunchedEffect
+        val targetField = focusedField
+        val requester = fieldRequesters[targetField] ?: return@LaunchedEffect
         snapshotFlow { imeInsets.getBottom(density) > 0 }.first { it }
         var previousViewportEnd = listState.layoutInfo.viewportEndOffset
         var stableFrames = 0
@@ -253,8 +271,15 @@ fun StoreCheckoutScreen(
             }
             previousViewportEnd = viewportEnd
         }
-        traceLog("event=CONTROLLED_BRING_INTO_VIEW field=$focusedField IME_VISIBLE=true viewportEnd=${listState.layoutInfo.viewportEndOffset} stableFrames=$stableFrames")
-        requester.bringIntoView()
+        val geometry = fieldGeometry[targetField]
+        val stableState = "FIELD=$targetField IME_VISIBLE=true IME_BOTTOM_PX=${imeInsets.getBottom(density)} FIRST_VISIBLE_ITEM_INDEX=${listState.firstVisibleItemIndex} FIRST_VISIBLE_ITEM_OFFSET=${listState.firstVisibleItemScrollOffset} VIEWPORT_START=${listState.layoutInfo.viewportStartOffset} VIEWPORT_END=${listState.layoutInfo.viewportEndOffset} FIELD_TOP=${geometry?.top ?: -1} FIELD_BOTTOM=${geometry?.bottom ?: -1} FIELD_HEIGHT=${geometry?.height ?: -1} BOTTOM_BAR_VISIBLE=false EFFECTIVE_PADDING_BOTTOM=0.0 SCAFFOLD_PADDING_BOTTOM=${padding.calculateBottomPadding().value}"
+        traceLog("EVENT=VIEWPORT_STABLE $stableState STABLE_FRAMES=$stableFrames")
+        traceLog("EVENT=CONTROLLED_BRING_INTO_VIEW_START $stableState")
+        try {
+            requester.bringIntoView()
+        } finally {
+            traceLog("EVENT=CONTROLLED_BRING_INTO_VIEW_END $stableState")
+        }
     }
 
     LaunchedEffect(listState, traceLog) {
@@ -283,22 +308,20 @@ fun StoreCheckoutScreen(
             )
         }.distinctUntilChanged().collect { current ->
             val before = previous
-            val common = "field=${current.focusedField} ime=${current.imeVisible} IME_VISIBLE=${current.imeVisible} IME_BOTTOM_PX=${current.imeBottomPx} index=${current.firstVisibleItemIndex} offset=${current.firstVisibleItemScrollOffset} viewportStart=${current.viewportStartOffset} viewportEnd=${current.viewportEndOffset} viewportTopRoot=${current.viewportTopRootPx} viewportBottomRoot=${current.viewportBottomRootPx} rootHeightPx=${current.rootHeightPx} totalItems=${current.totalItemsCount} visibleItems=[${current.visibleItems}] fields=[${current.fieldGeometry}]"
+            val focusedGeometry = fieldGeometry[current.focusedField]
+            val common = "FIELD=${current.focusedField} IME_VISIBLE=${current.imeVisible} IME_BOTTOM_PX=${current.imeBottomPx} FIRST_VISIBLE_ITEM_INDEX=${current.firstVisibleItemIndex} FIRST_VISIBLE_ITEM_OFFSET=${current.firstVisibleItemScrollOffset} VIEWPORT_START=${current.viewportStartOffset} VIEWPORT_END=${current.viewportEndOffset} VIEWPORT_TOP_ROOT=${current.viewportTopRootPx} VIEWPORT_BOTTOM_ROOT=${current.viewportBottomRootPx} ROOT_HEIGHT_PX=${current.rootHeightPx} FIELD_TOP=${focusedGeometry?.top ?: -1} FIELD_BOTTOM=${focusedGeometry?.bottom ?: -1} FIELD_HEIGHT=${focusedGeometry?.height ?: -1} TOTAL_ITEMS=${current.totalItemsCount} VISIBLE_ITEMS=[${current.visibleItems}] FIELD_GEOMETRY=[${current.fieldGeometry}] BOTTOM_BAR_VISIBLE=${current.bottomBarVisible} EFFECTIVE_PADDING_BOTTOM=${current.effectivePaddingBottomDp} SCAFFOLD_PADDING_BOTTOM=${current.scaffoldPaddingBottomDp}"
             if (before == null) {
-                traceLog("event=CHECKOUT_ENTER $common EFFECTIVE_PADDING_BOTTOM=${current.effectivePaddingBottomDp} SCAFFOLD_PADDING_BOTTOM=${current.scaffoldPaddingBottomDp} BOTTOM_BAR_VISIBLE=${current.bottomBarVisible}")
+                traceLog("EVENT=CHECKOUT_ENTER $common")
             } else {
-                if (before.imeVisible != current.imeVisible) {
-                    traceLog("event=IME_VISIBILITY $common")
-                    if (current.imeVisible) traceLog("event=AFTER_IME_VISIBLE $common")
-                }
-                if (before.bottomBarVisible != current.bottomBarVisible) traceLog("event=BOTTOM_BAR $common BOTTOM_BAR_VISIBLE=${current.bottomBarVisible}")
-                if (before.effectivePaddingBottomDp != current.effectivePaddingBottomDp || before.scaffoldPaddingBottomDp != current.scaffoldPaddingBottomDp) traceLog("event=PADDING $common EFFECTIVE_PADDING_BOTTOM=${current.effectivePaddingBottomDp} SCAFFOLD_PADDING_BOTTOM=${current.scaffoldPaddingBottomDp}")
-                if (before.viewportStartOffset != current.viewportStartOffset || before.viewportEndOffset != current.viewportEndOffset || before.viewportTopRootPx != current.viewportTopRootPx || before.viewportBottomRootPx != current.viewportBottomRootPx) traceLog("event=VIEWPORT $common")
-                if (before.firstVisibleItemIndex != current.firstVisibleItemIndex || before.firstVisibleItemScrollOffset != current.firstVisibleItemScrollOffset) traceLog("event=SCROLL_CHANGE $common")
-                if (before.totalItemsCount != current.totalItemsCount || before.visibleItems != current.visibleItems) traceLog("event=VISIBLE_ITEMS $common")
-                if (before.fieldGeometry != current.fieldGeometry) traceLog("event=FIELD_GEOMETRY $common")
+                if (before.imeVisible != current.imeVisible || before.imeBottomPx != current.imeBottomPx) traceLog("EVENT=IME_CHANGED $common")
+                if (before.bottomBarVisible != current.bottomBarVisible) traceLog("EVENT=BOTTOM_BAR_CHANGED $common")
+                if (before.effectivePaddingBottomDp != current.effectivePaddingBottomDp || before.scaffoldPaddingBottomDp != current.scaffoldPaddingBottomDp) traceLog("EVENT=PADDING_CHANGED $common")
+                if (before.viewportStartOffset != current.viewportStartOffset || before.viewportEndOffset != current.viewportEndOffset || before.viewportTopRootPx != current.viewportTopRootPx || before.viewportBottomRootPx != current.viewportBottomRootPx) traceLog("EVENT=VIEWPORT_CHANGED $common")
+                if (before.firstVisibleItemIndex != current.firstVisibleItemIndex || before.firstVisibleItemScrollOffset != current.firstVisibleItemScrollOffset) traceLog("EVENT=SCROLL_CHANGED $common")
+                if (before.totalItemsCount != current.totalItemsCount || before.visibleItems != current.visibleItems) traceLog("EVENT=VISIBLE_ITEMS_CHANGED $common")
+                if (before.fieldGeometry != current.fieldGeometry) traceLog("EVENT=FIELD_GEOMETRY_CHANGED $common")
             }
-            traceLog("event=STATE $common EFFECTIVE_PADDING_BOTTOM=${current.effectivePaddingBottomDp} SCAFFOLD_PADDING_BOTTOM=${current.scaffoldPaddingBottomDp} BOTTOM_BAR_VISIBLE=${current.bottomBarVisible}")
+            traceLog("EVENT=STATE $common")
             previous = current
         }
     }
@@ -595,6 +618,26 @@ fun StoreCheckoutScreen(
             fontSize = 9.sp,
             lineHeight = 10.sp
         )
+    }
+    if (debugImeTraceEnabled && onCopyImeTrace != null) {
+        Surface(
+            modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 3.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = { onCopyImeTrace(CheckoutImeTraceBuffer.snapshot()) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)) {
+                    Text("Copiar diagnóstico", fontSize = 11.sp)
+                }
+                TextButton(onClick = { CheckoutImeTraceBuffer.clear() }, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)) {
+                    Text("Limpiar", fontSize = 11.sp)
+                }
+            }
+        }
     }
     }
 
