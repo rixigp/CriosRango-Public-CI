@@ -639,7 +639,13 @@ private fun CheckoutField(
         onValueChange = onValueChange,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         modifier = modifier
-            .then(if (requester != null) attachBringIntoViewRequester(requester) else Modifier)
+            .then(
+            if (requester != null) {
+                Modifier.attachBringIntoViewRequester(requester)
+            } else {
+                Modifier
+            }
+        )
             .onGloballyPositioned { coordinates ->
                 val top = coordinates.positionInRoot().y.toInt()
                 onFieldPosition?.invoke(traceField.orEmpty(), top, top + coordinates.size.height)
