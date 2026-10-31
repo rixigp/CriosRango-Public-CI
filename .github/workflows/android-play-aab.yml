@@ -76,7 +76,12 @@ jobs:
           VERSION_NAME="$(grep -E 'versionName[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')"
           VERSION_CODE="$(grep -E 'versionCode[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/')"
           test "$VERSION_NAME" = "1.0.3" || { echo "::error::VERSION_NAME must be 1.0.3"; exit 1; }
-          test "$VERSION_CODE" = "30002" || { echo "::error::VERSION_CODE must be 30002"; exit 1; }
+          [[ "$VERSION_CODE" =~ ^[0-9]+$ ]] || { echo "::error::Invalid Android versionCode: $VERSION_CODE"; exit 1; }
+          IOS_MARKETING_VERSIONS="$(grep 'MARKETING_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\\1/' | tr -d ' ' | sort -u)"
+          IOS_CURRENT_BUILDS="$(grep 'CURRENT_PROJECT_VERSION =' iosApp/iosApp.xcodeproj/project.pbxproj | sed -E 's/.*CURRENT_PROJECT_VERSION = ([^;]+);.*/\\1/' | tr -d ' ' | sort -u)"
+          [[ "$IOS_MARKETING_VERSIONS" == "$VERSION_NAME" ]] || { echo "::error::Android/iOS marketing version mismatch: Android=$VERSION_NAME iOS=$IOS_MARKETING_VERSIONS"; exit 1; }
+          [[ "$IOS_CURRENT_BUILDS" =~ ^[0-9]+$ ]] || { echo "::error::Invalid iOS CURRENT_PROJECT_VERSION: $IOS_CURRENT_BUILDS"; exit 1; }
+          [[ "$IOS_CURRENT_BUILDS" == "$VERSION_CODE" ]] || { echo "::error::Android/iOS build number mismatch: Android=$VERSION_CODE iOS=$IOS_CURRENT_BUILDS"; exit 1; }
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
