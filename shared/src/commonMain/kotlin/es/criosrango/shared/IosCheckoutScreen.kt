@@ -20,6 +20,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collect
+import kotlin.time.TimeSource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
@@ -45,6 +51,16 @@ import es.criosrango.shared.loyalty.LoyaltyRepository
 import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.resolveCouponPresentation
 
+private data class CheckoutFieldGeometry(val top: Int, val bottom: Int, val height: Int)
+private data class CheckoutImeTraceState(
+    val imeVisible: Boolean, val imeBottomPx: Int, val focusedField: String,
+    val firstVisibleItemIndex: Int, val firstVisibleItemScrollOffset: Int,
+    val viewportStartOffset: Int, val viewportEndOffset: Int, val totalItemsCount: Int,
+    val visibleItems: String, val fieldGeometry: String,
+    val viewportTopRootPx: Int, val viewportBottomRootPx: Int, val rootHeightPx: Int,
+    val effectivePaddingBottomDp: Float, val scaffoldPaddingBottomDp: Float,
+    val bottomBarVisible: Boolean
+)
 private val CheckoutUiGreen = Color(0xFF183B35)
 private val CheckoutUiSoftGreen = Color(0xFFE4F1ED)
 private val CheckoutUiBorder = Color(0xFFD0C9D0)
@@ -178,13 +194,92 @@ fun StoreCheckoutScreen(
         createdOrder == null &&
         !paymentInProgress
 
-    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val imeInsets = WindowInsets.ime
+    val density = LocalDensity.current
+    val imeVisible = imeInsets.getBottom(density) > 0
     val effectivePadding = if (imeVisible) PaddingValues(0.dp) else padding
-    Column(modifier = Modifier.fillMaxSize().padding(effectivePadding).imePadding()) {
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val traceStartedAt = remember { TimeSource.Monotonic.markNow() }
+    val traceLog: (String) -> Unit = remember(traceStartedAt) {
+        { message -> println("CHECKOUT_IME_TRACE tMs=${traceStartedAt.elapsedNow().inWholeMilliseconds} $message") }
+    }
+    var focusedField by remember { mutableStateOf("none") }
+    var viewportTopRootPx by remember { mutableIntStateOf(-1) }
+    var viewportBottomRootPx by remember { mutableIntStateOf(-1) }
+    var rootHeightPx by remember { mutableIntStateOf(-1) }
+    val fieldGeometry = remember { mutableStateMapOf<String, CheckoutFieldGeometry>() }
+    val onFieldPosition: (String, Int, Int) -> Unit = { field, top, bottom ->
+        val next = CheckoutFieldGeometry(top, bottom, bottom - top)
+        if (fieldGeometry[field] != next) {
+            fieldGeometry[field] = next
+            traceLog("event=FIELD_POSITION field=$field FIELD_TOP=$top FIELD_BOTTOM=$bottom FIELD_HEIGHT=${bottom - top} viewportEndRoot=$viewportBottomRootPx index=${listState.firstVisibleItemIndex} offset=${listState.firstVisibleItemScrollOffset}")
+        }
+    }
+    val onFieldFocus: (String, Boolean) -> Unit = { field, hasFocus ->
+        if (hasFocus) focusedField = field else if (focusedField == field) focusedField = "none"
+        val geometry = fieldGeometry[field]
+        val currentImeBottomPx = imeInsets.getBottom(density)
+        val focusEvent = if (hasFocus && currentImeBottomPx == 0) "BEFORE_FOCUS" else "FOCUS"
+        traceLog("event=$focusEvent field=$field focused=$hasFocus ime=${currentImeBottomPx > 0} IME_BOTTOM_PX=$currentImeBottomPx index=${listState.firstVisibleItemIndex} offset=${listState.firstVisibleItemScrollOffset} viewportEnd=${listState.layoutInfo.viewportEndOffset} viewportEndRoot=$viewportBottomRootPx FIELD_TOP=${geometry?.top ?: -1} FIELD_BOTTOM=${geometry?.bottom ?: -1} FIELD_HEIGHT=${geometry?.height ?: -1}")
+    }
+    LaunchedEffect(listState, traceLog) {
+        var previous: CheckoutImeTraceState? = null
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val currentImeBottomPx = imeInsets.getBottom(density)
+            val currentImeVisible = currentImeBottomPx > 0
+            CheckoutImeTraceState(
+                imeVisible = currentImeVisible,
+                imeBottomPx = currentImeBottomPx,
+                focusedField = focusedField,
+                firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset,
+                viewportStartOffset = info.viewportStartOffset,
+                viewportEndOffset = info.viewportEndOffset,
+                totalItemsCount = info.totalItemsCount,
+                visibleItems = info.visibleItemsInfo.joinToString(",") { "index=${it.index}:offset=${it.offset}:size=${it.size}" },
+                fieldGeometry = fieldGeometry.entries.sortedBy { it.key }.joinToString(";") { "${it.key}:${it.value.top}-${it.value.bottom}(${it.value.height})" },
+                viewportTopRootPx = viewportTopRootPx,
+                viewportBottomRootPx = viewportBottomRootPx,
+                rootHeightPx = rootHeightPx,
+                effectivePaddingBottomDp = if (currentImeVisible) 0f else padding.calculateBottomPadding().value,
+                scaffoldPaddingBottomDp = padding.calculateBottomPadding().value,
+                bottomBarVisible = !currentImeVisible
+            )
+        }.distinctUntilChanged().collect { current ->
+            val before = previous
+            val common = "field=${current.focusedField} ime=${current.imeVisible} IME_VISIBLE=${current.imeVisible} IME_BOTTOM_PX=${current.imeBottomPx} index=${current.firstVisibleItemIndex} offset=${current.firstVisibleItemScrollOffset} viewportStart=${current.viewportStartOffset} viewportEnd=${current.viewportEndOffset} viewportTopRoot=${current.viewportTopRootPx} viewportBottomRoot=${current.viewportBottomRootPx} rootHeightPx=${current.rootHeightPx} totalItems=${current.totalItemsCount} visibleItems=[${current.visibleItems}] fields=[${current.fieldGeometry}]"
+            if (before == null) {
+                traceLog("event=CHECKOUT_ENTER $common EFFECTIVE_PADDING_BOTTOM=${current.effectivePaddingBottomDp} SCAFFOLD_PADDING_BOTTOM=${current.scaffoldPaddingBottomDp} BOTTOM_BAR_VISIBLE=${current.bottomBarVisible}")
+            } else {
+                if (before.imeVisible != current.imeVisible) {
+                    traceLog("event=IME_VISIBILITY $common")
+                    if (current.imeVisible) traceLog("event=AFTER_IME_VISIBLE $common")
+                }
+                if (before.bottomBarVisible != current.bottomBarVisible) traceLog("event=BOTTOM_BAR $common BOTTOM_BAR_VISIBLE=${current.bottomBarVisible}")
+                if (before.effectivePaddingBottomDp != current.effectivePaddingBottomDp || before.scaffoldPaddingBottomDp != current.scaffoldPaddingBottomDp) traceLog("event=PADDING $common EFFECTIVE_PADDING_BOTTOM=${current.effectivePaddingBottomDp} SCAFFOLD_PADDING_BOTTOM=${current.scaffoldPaddingBottomDp}")
+                if (before.viewportStartOffset != current.viewportStartOffset || before.viewportEndOffset != current.viewportEndOffset || before.viewportTopRootPx != current.viewportTopRootPx || before.viewportBottomRootPx != current.viewportBottomRootPx) traceLog("event=VIEWPORT $common")
+                if (before.firstVisibleItemIndex != current.firstVisibleItemIndex || before.firstVisibleItemScrollOffset != current.firstVisibleItemScrollOffset) traceLog("event=SCROLL_CHANGE $common")
+                if (before.totalItemsCount != current.totalItemsCount || before.visibleItems != current.visibleItems) traceLog("event=VISIBLE_ITEMS $common")
+                if (before.fieldGeometry != current.fieldGeometry) traceLog("event=FIELD_GEOMETRY $common")
+            }
+            traceLog("event=STATE $common EFFECTIVE_PADDING_BOTTOM=${current.effectivePaddingBottomDp} SCAFFOLD_PADDING_BOTTOM=${current.scaffoldPaddingBottomDp} BOTTOM_BAR_VISIBLE=${current.bottomBarVisible}")
+            previous = current
+        }
+    }
+    Column(
+        modifier = Modifier.fillMaxSize().padding(effectivePadding).imePadding()
+            .onGloballyPositioned { coordinates -> rootHeightPx = coordinates.size.height }
+    ) {
         StoreGlobalTopBar(cartQuantity = cartQuantity, onSearch = onSearch, onCart = onCart)
         StoreCatalogHeader(title = "Finalizar compra", showBack = true, onBack = onBack)
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            state = listState,
+            modifier = Modifier.fillMaxSize().onGloballyPositioned { coordinates ->
+                val top = coordinates.positionInRoot().y.toInt()
+                viewportTopRootPx = top
+                viewportBottomRootPx = top + coordinates.size.height
+            },
             contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 40.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -227,11 +322,11 @@ fun StoreCheckoutScreen(
             }
         }
         item { CheckoutSection(1, "Entrega") }
-        item { CheckoutField("Nombre", firstName) { firstName = it } }
-        item { CheckoutField("Apellidos", lastName) { lastName = it } }
-        item { CheckoutField("Email", email, KeyboardType.Email) { email = it } }
-        item { CheckoutField("Teléfono", phone, KeyboardType.Phone) { phone = it } }
-        item { CheckoutField("Dirección", address) { address = it } }
+        item { CheckoutField("Nombre", firstName, traceField = "name", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { firstName = it } }
+        item { CheckoutField("Apellidos", lastName, traceField = "surname", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { lastName = it } }
+        item { CheckoutField("Email", email, KeyboardType.Email, traceField = "email", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { email = it } }
+        item { CheckoutField("Teléfono", phone, KeyboardType.Phone, traceField = "phone", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { phone = it } }
+        item { CheckoutField("Dirección", address, traceField = "address", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { address = it } }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 CheckoutProvinceSelector(state, modifier = Modifier.weight(1f)) { selected -> state = selected; city = ""; postcode = "" }
@@ -240,7 +335,7 @@ fun StoreCheckoutScreen(
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                CheckoutField("Código postal", postcode, KeyboardType.Number, modifier = Modifier.weight(1f)) { postcode = it.filter(Char::isDigit).take(5) }
+                CheckoutField("Código postal", postcode, KeyboardType.Number, modifier = Modifier.weight(1f), traceField = "postalCode", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { postcode = it.filter(Char::isDigit).take(5) }
                 CheckoutCountry(
                     value = country,
                     expanded = countryOpen,
@@ -449,13 +544,24 @@ private fun CheckoutField(
     value: String,
     keyboardType: KeyboardType = KeyboardType.Text,
     modifier: Modifier = Modifier,
+    traceField: String? = null,
+    onFieldPosition: ((String, Int, Int) -> Unit)? = null,
+    onFieldFocus: ((String, Boolean) -> Unit)? = null,
     onValueChange: (String) -> Unit
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        modifier = modifier.fillMaxWidth().heightIn(min = 58.dp),
+        modifier = modifier
+            .onGloballyPositioned { coordinates ->
+                val top = coordinates.positionInRoot().y.toInt()
+                onFieldPosition?.invoke(traceField.orEmpty(), top, top + coordinates.size.height)
+            }
+            .onFocusChanged { focusState ->
+                traceField?.let { onFieldFocus?.invoke(it, focusState.isFocused) }
+            }
+            .fillMaxWidth().heightIn(min = 58.dp),
         label = { Text(label, fontSize = 13.sp) },
         textStyle = androidx.compose.ui.text.TextStyle(fontSize = 16.sp),
         singleLine = true,
