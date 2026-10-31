@@ -97,6 +97,7 @@ private val CheckoutUiGreen = Color(0xFF183B35)
 private val CheckoutUiSoftGreen = Color(0xFFE4F1ED)
 private val CheckoutUiBorder = Color(0xFFD0C9D0)
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun StoreCheckoutScreen(
     checkoutStore: StoreCheckoutStore,
@@ -229,6 +230,7 @@ fun StoreCheckoutScreen(
         !paymentInProgress
 
     val imeInsets = WindowInsets.ime
+    val imeAnimationTargetInsets = WindowInsets.imeAnimationTarget
     val density = LocalDensity.current
     val imeVisible = imeInsets.getBottom(density) > 0
     val layoutDirection = LocalLayoutDirection.current
@@ -291,7 +293,7 @@ fun StoreCheckoutScreen(
             val geometry = fieldGeometry[targetField]
             CheckoutBringIntoViewState(
                 imeBottomPx = imeInsets.getBottom(density),
-                imeTargetBottomPx = WindowInsets.imeAnimationTarget.getBottom(density),
+                imeTargetBottomPx = imeAnimationTargetInsets.getBottom(density),
                 bounds = CheckoutBringIntoViewBounds(
                     fieldTop = geometry?.top ?: -1,
                     fieldBottom = geometry?.bottom ?: -1,
