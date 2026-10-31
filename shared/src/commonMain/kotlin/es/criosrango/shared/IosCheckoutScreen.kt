@@ -15,20 +15,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester as attachBringIntoViewRequester
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.first
 import kotlin.time.TimeSource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
@@ -228,17 +224,6 @@ fun StoreCheckoutScreen(
     val contentPaddingBottom = existingContentBottomPadding +
         if (imeVisible) 0.dp else padding.calculateBottomPadding()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-    val fieldRequesters = remember {
-        mapOf(
-            "name" to BringIntoViewRequester(),
-            "surname" to BringIntoViewRequester(),
-            "email" to BringIntoViewRequester(),
-            "phone" to BringIntoViewRequester(),
-            "address" to BringIntoViewRequester(),
-            "postalCode" to BringIntoViewRequester(),
-            "locality" to BringIntoViewRequester()
-        )
-    }
     val traceStartedAt = remember { TimeSource.Monotonic.markNow() }
     val traceLog: (String) -> Unit = remember(traceStartedAt, debugImeTraceEnabled) {
         { message ->
@@ -266,26 +251,6 @@ fun StoreCheckoutScreen(
         val focusEvent = if (hasFocus) "FOCUS_GAINED" else "FOCUS_LOST"
         traceLog("EVENT=$focusEvent FIELD=$field FOCUSED=$hasFocus IME_VISIBLE=${currentImeBottomPx > 0} IME_BOTTOM_PX=$currentImeBottomPx FIRST_VISIBLE_ITEM_INDEX=${listState.firstVisibleItemIndex} FIRST_VISIBLE_ITEM_OFFSET=${listState.firstVisibleItemScrollOffset} VIEWPORT_START=${listState.layoutInfo.viewportStartOffset} VIEWPORT_END=${listState.layoutInfo.viewportEndOffset} FIELD_TOP=${geometry?.top ?: -1} FIELD_BOTTOM=${geometry?.bottom ?: -1} FIELD_HEIGHT=${geometry?.height ?: -1}")
     }
-    LaunchedEffect(focusedField, fieldRequesters, listState, traceLog) {
-        val requester = fieldRequesters[focusedField] ?: return@LaunchedEffect
-        snapshotFlow { imeInsets.getBottom(density) > 0 }.first { it }
-        var previousViewportEnd = listState.layoutInfo.viewportEndOffset
-        var stableFrames = 0
-        while (stableFrames < 2) {
-            withFrameNanos { }
-            if (imeInsets.getBottom(density) == 0) return@LaunchedEffect
-            val viewportEnd = listState.layoutInfo.viewportEndOffset
-            if (viewportEnd >= 0 && viewportEnd == previousViewportEnd) {
-                stableFrames += 1
-            } else {
-                stableFrames = 0
-            }
-            previousViewportEnd = viewportEnd
-        }
-        traceLog("event=CONTROLLED_BRING_INTO_VIEW field=$focusedField IME_VISIBLE=true viewportEnd=${listState.layoutInfo.viewportEndOffset} stableFrames=$stableFrames")
-        requester.bringIntoView()
-    }
-
     LaunchedEffect(listState, traceLog) {
         var previous: CheckoutImeTraceState? = null
         snapshotFlow {
@@ -387,20 +352,20 @@ fun StoreCheckoutScreen(
             }
         }
         item { CheckoutSection(1, "Entrega") }
-        item { CheckoutField("Nombre", firstName, traceField = "name", requester = fieldRequesters.getValue("name"), onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { firstName = it } }
-        item { CheckoutField("Apellidos", lastName, traceField = "surname", requester = fieldRequesters.getValue("surname"), onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { lastName = it } }
-        item { CheckoutField("Email", email, KeyboardType.Email, traceField = "email", requester = fieldRequesters.getValue("email"), onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { email = it } }
-        item { CheckoutField("Teléfono", phone, KeyboardType.Phone, traceField = "phone", requester = fieldRequesters.getValue("phone"), onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { phone = it } }
-        item { CheckoutField("Dirección", address, traceField = "address", requester = fieldRequesters.getValue("address"), onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { address = it } }
+        item { CheckoutField("Nombre", firstName, traceField = "name", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { firstName = it } }
+        item { CheckoutField("Apellidos", lastName, traceField = "surname", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { lastName = it } }
+        item { CheckoutField("Email", email, KeyboardType.Email, traceField = "email", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { email = it } }
+        item { CheckoutField("Teléfono", phone, KeyboardType.Phone, traceField = "phone", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { phone = it } }
+        item { CheckoutField("Dirección", address, traceField = "address", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { address = it } }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 CheckoutProvinceSelector(state, modifier = Modifier.weight(1f)) { selected -> state = selected; city = ""; postcode = "" }
-                CheckoutField("Localidad", city, modifier = Modifier.weight(1f), traceField = "locality", requester = fieldRequesters.getValue("locality"), onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { city = it }
+                CheckoutField("Localidad", city, modifier = Modifier.weight(1f), traceField = "locality", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { city = it }
             }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                CheckoutField("Código postal", postcode, KeyboardType.Number, modifier = Modifier.weight(1f), traceField = "postalCode", requester = fieldRequesters.getValue("postalCode"), onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { postcode = it.filter(Char::isDigit).take(5) }
+                CheckoutField("Código postal", postcode, KeyboardType.Number, modifier = Modifier.weight(1f), traceField = "postalCode", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { postcode = it.filter(Char::isDigit).take(5) }
                 CheckoutCountry(
                     value = country,
                     expanded = countryOpen,
@@ -684,7 +649,6 @@ private fun CheckoutField(
     keyboardType: KeyboardType = KeyboardType.Text,
     modifier: Modifier = Modifier,
     traceField: String? = null,
-    requester: BringIntoViewRequester? = null,
     onFieldPosition: ((String, Int, Int) -> Unit)? = null,
     onFieldFocus: ((String, Boolean) -> Unit)? = null,
     onValueChange: (String) -> Unit
@@ -694,13 +658,6 @@ private fun CheckoutField(
         onValueChange = onValueChange,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         modifier = modifier
-            .then(
-            if (requester != null) {
-                Modifier.attachBringIntoViewRequester(requester)
-            } else {
-                Modifier
-            }
-        )
             .onGloballyPositioned { coordinates ->
                 val top = coordinates.positionInRoot().y.toInt()
                 onFieldPosition?.invoke(traceField.orEmpty(), top, top + coordinates.size.height)
