@@ -621,20 +621,27 @@ fun StoreCheckoutScreen(
     }
     if (debugImeTraceEnabled && onCopyImeTrace != null) {
         Surface(
-            modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 108.dp, start = 8.dp, end = 8.dp),
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surface,
-            shadowElevation = 3.dp
+            shadowElevation = 6.dp
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.dp),
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
             ) {
-                TextButton(onClick = { onCopyImeTrace(CheckoutImeTraceBuffer.snapshot()) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)) {
-                    Text("Copiar diagnóstico", fontSize = 11.sp)
+                TextButton(
+                    onClick = { CheckoutImeTraceBuffer.clear() },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Text("Limpiar diagnóstico", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
                 }
-                TextButton(onClick = { CheckoutImeTraceBuffer.clear() }, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)) {
-                    Text("Limpiar", fontSize = 11.sp)
+                TextButton(
+                    onClick = { onCopyImeTrace(CheckoutImeTraceBuffer.snapshot()) },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Text("Copiar diagnóstico", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
         }
