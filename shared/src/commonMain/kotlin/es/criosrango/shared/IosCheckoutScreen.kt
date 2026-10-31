@@ -12,6 +12,7 @@ import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.CreditCard
 import androidx.compose.material.icons.outlined.LocalShipping
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
@@ -22,11 +23,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlin.time.TimeSource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
@@ -264,47 +267,55 @@ fun StoreCheckoutScreen(
         val focusEvent = if (hasFocus) "FOCUS_GAINED" else "FOCUS_LOST"
         traceLog("EVENT=$focusEvent FIELD=$field FOCUSED=$hasFocus IME_VISIBLE=${currentImeBottomPx > 0} IME_BOTTOM_PX=$currentImeBottomPx FIRST_VISIBLE_ITEM_INDEX=${listState.firstVisibleItemIndex} FIRST_VISIBLE_ITEM_OFFSET=${listState.firstVisibleItemScrollOffset} VIEWPORT_START=${listState.layoutInfo.viewportStartOffset} VIEWPORT_END=${listState.layoutInfo.viewportEndOffset} FIELD_TOP=${geometry?.top ?: -1} FIELD_BOTTOM=${geometry?.bottom ?: -1} FIELD_HEIGHT=${geometry?.height ?: -1}")
     }
-    LaunchedEffect(focusedField, fieldRequesters, listState, traceLog) {
-        val requester = fieldRequesters[focusedField] ?: return@LaunchedEffect
-        var lastRequestedGeometry: List<Int>? = null
-        var lastEvaluatedGeometry: List<Int>? = null
+    LaunchedEffect(focusedField, listState, traceLog) {
+        if (focusedField == "none") return@LaunchedEffect
+        var previousImeViewport: List<Int>? = null
         snapshotFlow {
-            val geometry = fieldGeometry[focusedField]
             listOf(
                 imeInsets.getBottom(density),
                 viewportTopRootPx,
-                viewportBottomRootPx,
-                geometry?.top ?: -1,
-                geometry?.bottom ?: -1,
-                listState.firstVisibleItemIndex,
-                listState.firstVisibleItemScrollOffset
+                viewportBottomRootPx
             )
-        }.collect { values ->
-            val imeBottomPx = values[0]
-            val viewportTop = values[1]
-            val viewportBottom = values[2]
-            val fieldTop = values[3]
-            val fieldBottom = values[4]
-            val geometryKey = values.drop(1)
-            if (imeBottomPx <= 0 || viewportTop < 0 || viewportBottom <= viewportTop ||
-                fieldTop < 0 || fieldBottom <= fieldTop
-            ) return@collect
+        }.collect { imeViewport ->
+            val previous = previousImeViewport
+            previousImeViewport = imeViewport
+            if (previous == imeViewport) return@collect
+            val imeBottomPx = imeViewport[0]
+            val viewportTop = imeViewport[1]
+            val viewportBottom = imeViewport[2]
+            if (imeBottomPx <= 0 || viewportTop < 0 || viewportBottom <= viewportTop) return@collect
 
-            val outsideViewport = fieldTop < viewportTop || fieldBottom > viewportBottom
-            val geometryChangedSinceRequest = geometryKey != lastRequestedGeometry
-            val evaluationChanged = geometryKey != lastEvaluatedGeometry
-            if (outsideViewport) {
-                traceLog("EVENT=BIV_REQUIRED FIELD=$focusedField IME_BOTTOM_PX=$imeBottomPx VIEWPORT_TOP_ROOT=$viewportTop VIEWPORT_BOTTOM_ROOT=$viewportBottom FIELD_TOP=$fieldTop FIELD_BOTTOM=$fieldBottom FIRST_VISIBLE_ITEM_INDEX=${values[5]} FIRST_VISIBLE_ITEM_OFFSET=${values[6]}")
-                if (geometryChangedSinceRequest) {
-                    lastRequestedGeometry = geometryKey
-                    traceLog("EVENT=BIV_REQUEST FIELD=$focusedField IME_BOTTOM_PX=$imeBottomPx VIEWPORT_TOP_ROOT=$viewportTop VIEWPORT_BOTTOM_ROOT=$viewportBottom FIELD_TOP=$fieldTop FIELD_BOTTOM=$fieldBottom FIRST_VISIBLE_ITEM_INDEX=${values[5]} FIRST_VISIBLE_ITEM_OFFSET=${values[6]}")
-                    requester.bringIntoView()
-                }
-            } else if (evaluationChanged) {
-                traceLog("EVENT=BIV_SKIPPED_VISIBLE FIELD=$focusedField IME_BOTTOM_PX=$imeBottomPx VIEWPORT_TOP_ROOT=$viewportTop VIEWPORT_BOTTOM_ROOT=$viewportBottom FIELD_TOP=$fieldTop FIELD_BOTTOM=$fieldBottom FIRST_VISIBLE_ITEM_INDEX=${values[5]} FIRST_VISIBLE_ITEM_OFFSET=${values[6]}")
+            val geometry = fieldGeometry[focusedField] ?: return@collect
+            val deltaPx = when {
+                geometry.bottom > viewportBottom -> geometry.bottom - viewportBottom
+                geometry.top < viewportTop -> geometry.top - viewportTop
+                else -> 0
             }
-            lastEvaluatedGeometry = geometryKey
+            if (deltaPx != 0) {
+                traceLog("EVENT=IME_FOLLOW_SCROLL FIELD=$focusedField DELTA_PX=$deltaPx FIELD_TOP=${geometry.top} FIELD_BOTTOM=${geometry.bottom} VIEWPORT_TOP=$viewportTop VIEWPORT_BOTTOM=$viewportBottom IME_BOTTOM=$imeBottomPx")
+                listState.scrollBy(deltaPx.toFloat())
+            }
         }
+    }
+
+    LaunchedEffect(focusedField, fieldRequesters, listState, traceLog) {
+        val requester = fieldRequesters[focusedField] ?: return@LaunchedEffect
+        snapshotFlow { imeInsets.getBottom(density) > 0 }.first { it }
+        var previousViewportEnd = listState.layoutInfo.viewportEndOffset
+        var stableFrames = 0
+        while (stableFrames < 2) {
+            withFrameNanos { }
+            if (imeInsets.getBottom(density) == 0) return@LaunchedEffect
+            val viewportEnd = listState.layoutInfo.viewportEndOffset
+            if (viewportEnd >= 0 && viewportEnd == previousViewportEnd) {
+                stableFrames += 1
+            } else {
+                stableFrames = 0
+            }
+            previousViewportEnd = viewportEnd
+        }
+        traceLog("EVENT=FINAL_BIV_REQUEST FIELD=$focusedField IME_BOTTOM_PX=${imeInsets.getBottom(density)} VIEWPORT_TOP_ROOT=$viewportTopRootPx VIEWPORT_BOTTOM_ROOT=$viewportBottomRootPx FIELD_TOP=${fieldGeometry[focusedField]?.top ?: -1} FIELD_BOTTOM=${fieldGeometry[focusedField]?.bottom ?: -1} FIRST_VISIBLE_ITEM_INDEX=${listState.firstVisibleItemIndex} FIRST_VISIBLE_ITEM_OFFSET=${listState.firstVisibleItemScrollOffset}")
+        requester.bringIntoView()
     }
 
     LaunchedEffect(listState, traceLog) {
