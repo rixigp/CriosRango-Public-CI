@@ -20,16 +20,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.collect
-import kotlin.time.TimeSource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
@@ -52,29 +45,6 @@ import es.criosrango.shared.loyalty.LoyaltyRepository
 import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.resolveCouponPresentation
 
-private data class CheckoutFieldGeometry(val top: Int, val bottom: Int, val height: Int)
-private data class CheckoutImeTraceState(
-    val imeVisible: Boolean, val imeBottomPx: Int, val focusedField: String,
-    val firstVisibleItemIndex: Int, val firstVisibleItemScrollOffset: Int,
-    val viewportStartOffset: Int, val viewportEndOffset: Int, val totalItemsCount: Int,
-    val visibleItems: String, val fieldGeometry: String,
-    val viewportTopRootPx: Int, val viewportBottomRootPx: Int, val rootHeightPx: Int,
-    val effectivePaddingBottomDp: Float, val scaffoldPaddingBottomDp: Float,
-    val contentPaddingBottomDp: Float,
-    val bottomBarVisible: Boolean
-)
-
-
-private object CheckoutImeTraceBuffer {
-    const val MAX_LINES = 400
-    private val lines = mutableListOf<String>()
-    fun append(line: String) {
-        if (lines.size == MAX_LINES) lines.removeAt(0)
-        lines.add(line)
-    }
-    fun clear() = lines.clear()
-    fun snapshot(): String = lines.joinToString("\n")
-}
 private val CheckoutUiGreen = Color(0xFF183B35)
 private val CheckoutUiSoftGreen = Color(0xFFE4F1ED)
 private val CheckoutUiBorder = Color(0xFFD0C9D0)
@@ -95,8 +65,6 @@ fun StoreCheckoutScreen(
     onSearch: () -> Unit = {},
     onCart: () -> Unit = {},
     showInlineCardSuccess: Boolean = true,
-    debugImeTraceEnabled: Boolean = false,
-    onCopyImeTrace: ((String) -> Unit)? = null
 ) {
     val checkout by checkoutStore.checkout.collectAsState()
     val cart by checkoutStore.cart.collectAsState()
@@ -210,9 +178,6 @@ fun StoreCheckoutScreen(
         createdOrder == null &&
         !paymentInProgress
 
-    val imeInsets = WindowInsets.ime
-    val density = LocalDensity.current
-    val imeVisible = imeInsets.getBottom(density) > 0
     val layoutDirection = LocalLayoutDirection.current
     val effectivePadding = PaddingValues(
         start = padding.calculateStartPadding(layoutDirection),
@@ -224,85 +189,11 @@ fun StoreCheckoutScreen(
     val contentPaddingBottom =
         existingContentBottomPadding + padding.calculateBottomPadding()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-    val traceStartedAt = remember { TimeSource.Monotonic.markNow() }
-    val traceLog: (String) -> Unit = remember(traceStartedAt, debugImeTraceEnabled) {
-        { message ->
-            val line = "CHECKOUT_IME_TRACE tMs=${traceStartedAt.elapsedNow().inWholeMilliseconds} $message"
-            if (debugImeTraceEnabled) CheckoutImeTraceBuffer.append(line)
-            println(line)
-        }
-    }
-    var focusedField by remember { mutableStateOf("none") }
-    var viewportTopRootPx by remember { mutableIntStateOf(-1) }
-    var viewportBottomRootPx by remember { mutableIntStateOf(-1) }
-    var rootHeightPx by remember { mutableIntStateOf(-1) }
-    val fieldGeometry = remember { mutableStateMapOf<String, CheckoutFieldGeometry>() }
-    val onFieldPosition: (String, Int, Int) -> Unit = { field, top, bottom ->
-        val next = CheckoutFieldGeometry(top, bottom, bottom - top)
-        if (fieldGeometry[field] != next) {
-            fieldGeometry[field] = next
-            traceLog("EVENT=FIELD_GEOMETRY_CHANGED FIELD=$field FIELD_TOP=$top FIELD_BOTTOM=$bottom FIELD_HEIGHT=${bottom - top} VIEWPORT_END_ROOT=$viewportBottomRootPx FIRST_VISIBLE_ITEM_INDEX=${listState.firstVisibleItemIndex} FIRST_VISIBLE_ITEM_OFFSET=${listState.firstVisibleItemScrollOffset}")
-        }
-    }
-    val onFieldFocus: (String, Boolean) -> Unit = { field, hasFocus ->
-        if (hasFocus) focusedField = field else if (focusedField == field) focusedField = "none"
-        val geometry = fieldGeometry[field]
-        val currentImeBottomPx = imeInsets.getBottom(density)
-        val focusEvent = if (hasFocus) "FOCUS_GAINED" else "FOCUS_LOST"
-        traceLog("EVENT=$focusEvent FIELD=$field FOCUSED=$hasFocus IME_VISIBLE=${currentImeBottomPx > 0} IME_BOTTOM_PX=$currentImeBottomPx FIRST_VISIBLE_ITEM_INDEX=${listState.firstVisibleItemIndex} FIRST_VISIBLE_ITEM_OFFSET=${listState.firstVisibleItemScrollOffset} VIEWPORT_START=${listState.layoutInfo.viewportStartOffset} VIEWPORT_END=${listState.layoutInfo.viewportEndOffset} FIELD_TOP=${geometry?.top ?: -1} FIELD_BOTTOM=${geometry?.bottom ?: -1} FIELD_HEIGHT=${geometry?.height ?: -1}")
-    }
-    LaunchedEffect(listState, traceLog) {
-        var previous: CheckoutImeTraceState? = null
-        snapshotFlow {
-            val info = listState.layoutInfo
-            val currentImeBottomPx = imeInsets.getBottom(density)
-            val currentImeVisible = currentImeBottomPx > 0
-            CheckoutImeTraceState(
-                imeVisible = currentImeVisible,
-                imeBottomPx = currentImeBottomPx,
-                focusedField = focusedField,
-                firstVisibleItemIndex = listState.firstVisibleItemIndex,
-                firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset,
-                viewportStartOffset = info.viewportStartOffset,
-                viewportEndOffset = info.viewportEndOffset,
-                totalItemsCount = info.totalItemsCount,
-                visibleItems = info.visibleItemsInfo.joinToString(",") { "index=${it.index}:offset=${it.offset}:size=${it.size}" },
-                fieldGeometry = fieldGeometry.entries.sortedBy { it.key }.joinToString(";") { "${it.key}:${it.value.top}-${it.value.bottom}(${it.value.height})" },
-                viewportTopRootPx = viewportTopRootPx,
-                viewportBottomRootPx = viewportBottomRootPx,
-                rootHeightPx = rootHeightPx,
-                effectivePaddingBottomDp = effectivePadding.calculateBottomPadding().value,
-                scaffoldPaddingBottomDp = padding.calculateBottomPadding().value,
-                contentPaddingBottomDp = (existingContentBottomPadding + if (currentImeVisible) 0.dp else padding.calculateBottomPadding()).value,
-                bottomBarVisible = !currentImeVisible
-            )
-        }.distinctUntilChanged().collect { current ->
-            val before = previous
-            val focusedGeometry = fieldGeometry[current.focusedField]
-            val common = "FIELD=${current.focusedField} IME_VISIBLE=${current.imeVisible} IME_BOTTOM_PX=${current.imeBottomPx} FIRST_VISIBLE_ITEM_INDEX=${current.firstVisibleItemIndex} FIRST_VISIBLE_ITEM_OFFSET=${current.firstVisibleItemScrollOffset} VIEWPORT_START=${current.viewportStartOffset} VIEWPORT_END=${current.viewportEndOffset} VIEWPORT_TOP_ROOT=${current.viewportTopRootPx} VIEWPORT_BOTTOM_ROOT=${current.viewportBottomRootPx} ROOT_HEIGHT_PX=${current.rootHeightPx} FIELD_TOP=${focusedGeometry?.top ?: -1} FIELD_BOTTOM=${focusedGeometry?.bottom ?: -1} FIELD_HEIGHT=${focusedGeometry?.height ?: -1} TOTAL_ITEMS=${current.totalItemsCount} VISIBLE_ITEMS=[${current.visibleItems}] FIELD_GEOMETRY=[${current.fieldGeometry}] BOTTOM_BAR_VISIBLE=${current.bottomBarVisible} EFFECTIVE_PADDING_BOTTOM=${current.effectivePaddingBottomDp} SCAFFOLD_PADDING_BOTTOM=${current.scaffoldPaddingBottomDp} CONTENT_PADDING_BOTTOM=${current.contentPaddingBottomDp}"
-            if (before == null) {
-                traceLog("EVENT=CHECKOUT_ENTER $common")
-            } else {
-                if (before.imeVisible != current.imeVisible || before.imeBottomPx != current.imeBottomPx) traceLog("EVENT=IME_CHANGED $common")
-                if (before.bottomBarVisible != current.bottomBarVisible) traceLog("EVENT=BOTTOM_BAR_CHANGED $common")
-                if (before.effectivePaddingBottomDp != current.effectivePaddingBottomDp || before.scaffoldPaddingBottomDp != current.scaffoldPaddingBottomDp || before.contentPaddingBottomDp != current.contentPaddingBottomDp) traceLog("EVENT=PADDING_CHANGED $common")
-                if (before.viewportStartOffset != current.viewportStartOffset || before.viewportEndOffset != current.viewportEndOffset || before.viewportTopRootPx != current.viewportTopRootPx || before.viewportBottomRootPx != current.viewportBottomRootPx) traceLog("EVENT=VIEWPORT_CHANGED $common")
-                if (before.firstVisibleItemIndex != current.firstVisibleItemIndex || before.firstVisibleItemScrollOffset != current.firstVisibleItemScrollOffset) traceLog("EVENT=SCROLL_CHANGED $common")
-                if (before.totalItemsCount != current.totalItemsCount || before.visibleItems != current.visibleItems) traceLog("EVENT=VISIBLE_ITEMS_CHANGED $common")
-                if (before.fieldGeometry != current.fieldGeometry) traceLog("EVENT=FIELD_GEOMETRY_CHANGED $common")
-            }
-            traceLog("EVENT=STATE $common")
-            previous = current
-        }
-    }
     Box(Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(effectivePadding)
-            .onGloballyPositioned { coordinates ->
-                rootHeightPx = coordinates.size.height
-            }
     ) {
         StoreGlobalTopBar(cartQuantity = cartQuantity, onSearch = onSearch, onCart = onCart)
         StoreCatalogHeader(title = "Finalizar compra", showBack = true, onBack = onBack)
@@ -311,12 +202,7 @@ fun StoreCheckoutScreen(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .imePadding()
-                .onGloballyPositioned { coordinates ->
-                    val top = coordinates.positionInRoot().y.toInt()
-                    viewportTopRootPx = top
-                    viewportBottomRootPx = top + coordinates.size.height
-                },
+                .imePadding(),
             contentPadding = PaddingValues(
                 start = 20.dp,
                 top = 8.dp,
@@ -364,20 +250,20 @@ fun StoreCheckoutScreen(
             }
         }
         item { CheckoutSection(1, "Entrega") }
-        item { CheckoutField("Nombre", firstName, traceField = "name", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { firstName = it } }
-        item { CheckoutField("Apellidos", lastName, traceField = "surname", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { lastName = it } }
-        item { CheckoutField("Email", email, KeyboardType.Email, traceField = "email", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { email = it } }
-        item { CheckoutField("Teléfono", phone, KeyboardType.Phone, traceField = "phone", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { phone = it } }
-        item { CheckoutField("Dirección", address, traceField = "address", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { address = it } }
+        item { CheckoutField("Nombre", firstName) { firstName = it } }
+        item { CheckoutField("Apellidos", lastName) { lastName = it } }
+        item { CheckoutField("Email", email, KeyboardType.Email) { email = it } }
+        item { CheckoutField("Teléfono", phone, KeyboardType.Phone) { phone = it } }
+        item { CheckoutField("Dirección", address) { address = it } }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 CheckoutProvinceSelector(state, modifier = Modifier.weight(1f)) { selected -> state = selected; city = ""; postcode = "" }
-                CheckoutField("Localidad", city, modifier = Modifier.weight(1f), traceField = "locality", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { city = it }
+                CheckoutField("Localidad", city, modifier = Modifier.weight(1f)) { city = it }
             }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                CheckoutField("Código postal", postcode, KeyboardType.Number, modifier = Modifier.weight(1f), traceField = "postalCode", onFieldPosition = onFieldPosition, onFieldFocus = onFieldFocus) { postcode = it.filter(Char::isDigit).take(5) }
+                CheckoutField("Código postal", postcode, KeyboardType.Number, modifier = Modifier.weight(1f)) { postcode = it.filter(Char::isDigit).take(5) }
                 CheckoutCountry(
                     value = country,
                     expanded = countryOpen,
@@ -559,78 +445,6 @@ fun StoreCheckoutScreen(
             )
         }
         }
-        Box(Modifier.matchParentSize()) {
-            Text(
-                "DBG-LAZY",
-                modifier = Modifier.align(Alignment.TopStart)
-                    .background(Color(0xDD183B35)).padding(horizontal = 3.dp, vertical = 1.dp),
-                color = Color.White,
-                fontSize = 9.sp,
-                lineHeight = 10.sp
-            )
-            Text(
-                "DBG-LAZY-END",
-                modifier = Modifier.align(Alignment.BottomEnd)
-                    .background(Color(0xDD183B35)).padding(horizontal = 3.dp, vertical = 1.dp),
-                color = Color.White,
-                fontSize = 9.sp,
-                lineHeight = 10.sp
-            )
-        }
-        }
-    }
-    Box(Modifier.matchParentSize()) {
-        Text(
-            "DBG-ROOT",
-            modifier = Modifier.align(Alignment.TopStart)
-                .background(Color(0xDD7A1FA2)).padding(horizontal = 3.dp, vertical = 1.dp),
-            color = Color.White,
-            fontSize = 9.sp,
-            lineHeight = 10.sp
-        )
-        Text(
-            "DBG-SCAFFOLD-PADDING",
-            modifier = Modifier.align(Alignment.BottomCenter)
-                .offset(y = -contentPaddingBottom)
-                .background(Color(0xDD8A4B08)).padding(horizontal = 3.dp, vertical = 1.dp),
-            color = Color.White,
-            fontSize = 9.sp,
-            lineHeight = 10.sp
-        )
-        Text(
-            "DBG-IME-AREA",
-            modifier = Modifier.align(Alignment.BottomStart)
-                .background(Color(0xDD1565C0)).padding(horizontal = 3.dp, vertical = 1.dp),
-            color = Color.White,
-            fontSize = 9.sp,
-            lineHeight = 10.sp
-        )
-    }
-    if (debugImeTraceEnabled && onCopyImeTrace != null) {
-        Surface(
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 108.dp, start = 8.dp, end = 8.dp),
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surface,
-            shadowElevation = 6.dp
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                TextButton(
-                    onClick = { CheckoutImeTraceBuffer.clear() },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                ) {
-                    Text("Limpiar diagnóstico", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
-                }
-                TextButton(
-                    onClick = { onCopyImeTrace(CheckoutImeTraceBuffer.snapshot()) },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                ) {
-                    Text("Copiar diagnóstico", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
-                }
-            }
         }
     }
     }
@@ -665,9 +479,6 @@ private fun CheckoutField(
     value: String,
     keyboardType: KeyboardType = KeyboardType.Text,
     modifier: Modifier = Modifier,
-    traceField: String? = null,
-    onFieldPosition: ((String, Int, Int) -> Unit)? = null,
-    onFieldFocus: ((String, Boolean) -> Unit)? = null,
     onValueChange: (String) -> Unit
 ) {
     OutlinedTextField(
@@ -675,13 +486,6 @@ private fun CheckoutField(
         onValueChange = onValueChange,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         modifier = modifier
-            .onGloballyPositioned { coordinates ->
-                val top = coordinates.positionInRoot().y.toInt()
-                onFieldPosition?.invoke(traceField.orEmpty(), top, top + coordinates.size.height)
-            }
-            .onFocusChanged { focusState ->
-                traceField?.let { onFieldFocus?.invoke(it, focusState.isFocused) }
-            }
             .fillMaxWidth().heightIn(min = 58.dp),
         label = { Text(label, fontSize = 13.sp) },
         textStyle = androidx.compose.ui.text.TextStyle(fontSize = 16.sp),

@@ -29,9 +29,6 @@ import android.os.Bundle
 import android.Manifest
 import android.content.Context
 import android.content.Intent
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.widget.Toast
 import android.os.Build
 import android.net.Uri
 import android.util.Log
@@ -557,13 +554,7 @@ private fun CriosRangoApp(
                     cartQuantity = cartQuantity,
                     onSearch = { checkoutOpen = false; tab = AppTab.SEARCH },
                     onCart = { checkoutOpen = false; tab = AppTab.CART },
-                    showInlineCardSuccess = false,
-                    debugImeTraceEnabled = BuildConfig.DEBUG,
-                    onCopyImeTrace = { diagnostic ->
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("Checkout IME diagnostic", diagnostic))
-                        Toast.makeText(context, "Diagnóstico copiado", Toast.LENGTH_SHORT).show()
-                    }
+                    showInlineCardSuccess = false
                 )
 
                 }
