@@ -98,8 +98,8 @@ jobs:
             | sort -u
           )"
 
-          IOS_MARKETING_COUNT="$(printf '%s\\n' "$IOS_MARKETING_VALUES" | sed '/^$/d' | wc -l | tr -d ' ')"
-          IOS_BUILD_COUNT="$(printf '%s\\n' "$IOS_BUILD_VALUES" | sed '/^$/d' | wc -l | tr -d ' ')"
+          IOS_MARKETING_COUNT="$(printf '%s\n' "$IOS_MARKETING_VALUES" | sed '/^$/d' | wc -l | tr -d ' ')"
+          IOS_BUILD_COUNT="$(printf '%s\n' "$IOS_BUILD_VALUES" | sed '/^$/d' | wc -l | tr -d ' ')"
 
           [[ "$IOS_MARKETING_COUNT" == "1" ]] || {
             echo "::error::Multiple iOS MARKETING_VERSION values: $IOS_MARKETING_VALUES"
