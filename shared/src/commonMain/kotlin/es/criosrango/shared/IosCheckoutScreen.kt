@@ -28,6 +28,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlin.time.TimeSource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
@@ -67,21 +68,6 @@ private data class CheckoutImeTraceState(
     val bottomBarVisible: Boolean
 )
 
-private data class CheckoutBringIntoViewBounds(
-    val fieldTop: Int,
-    val fieldBottom: Int,
-    val viewportTopRoot: Int,
-    val viewportBottomRoot: Int
-)
-private data class CheckoutBringIntoViewState(
-    val imeBottomPx: Int,
-    val imeTargetBottomPx: Int,
-    val bounds: CheckoutBringIntoViewBounds
-) {
-    val fieldVisible: Boolean
-        get() = bounds.fieldTop >= bounds.viewportTopRoot &&
-            bounds.fieldBottom <= bounds.viewportBottomRoot
-}
 
 private object CheckoutImeTraceBuffer {
     const val MAX_LINES = 400
@@ -97,7 +83,6 @@ private val CheckoutUiGreen = Color(0xFF183B35)
 private val CheckoutUiSoftGreen = Color(0xFFE4F1ED)
 private val CheckoutUiBorder = Color(0xFFD0C9D0)
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun StoreCheckoutScreen(
     checkoutStore: StoreCheckoutStore,
@@ -230,7 +215,6 @@ fun StoreCheckoutScreen(
         !paymentInProgress
 
     val imeInsets = WindowInsets.ime
-    val imeAnimationTargetInsets = WindowInsets.imeAnimationTarget
     val density = LocalDensity.current
     val imeVisible = imeInsets.getBottom(density) > 0
     val layoutDirection = LocalLayoutDirection.current
@@ -283,98 +267,23 @@ fun StoreCheckoutScreen(
         traceLog("EVENT=$focusEvent FIELD=$field FOCUSED=$hasFocus IME_VISIBLE=${currentImeBottomPx > 0} IME_BOTTOM_PX=$currentImeBottomPx FIRST_VISIBLE_ITEM_INDEX=${listState.firstVisibleItemIndex} FIRST_VISIBLE_ITEM_OFFSET=${listState.firstVisibleItemScrollOffset} VIEWPORT_START=${listState.layoutInfo.viewportStartOffset} VIEWPORT_END=${listState.layoutInfo.viewportEndOffset} FIELD_TOP=${geometry?.top ?: -1} FIELD_BOTTOM=${geometry?.bottom ?: -1} FIELD_HEIGHT=${geometry?.height ?: -1}")
     }
     LaunchedEffect(focusedField, fieldRequesters, listState, traceLog) {
-        val targetField = focusedField
-        val requester = fieldRequesters[targetField] ?: return@LaunchedEffect
-        var wasVisible: Boolean? = null
-        var lastRequestedBounds: CheckoutBringIntoViewBounds? = null
-        var finalRequestBounds: CheckoutBringIntoViewBounds? = null
-
-        snapshotFlow {
-            val geometry = fieldGeometry[targetField]
-            CheckoutBringIntoViewState(
-                imeBottomPx = imeInsets.getBottom(density),
-                imeTargetBottomPx = imeAnimationTargetInsets.getBottom(density),
-                bounds = CheckoutBringIntoViewBounds(
-                    fieldTop = geometry?.top ?: -1,
-                    fieldBottom = geometry?.bottom ?: -1,
-                    viewportTopRoot = viewportTopRootPx,
-                    viewportBottomRoot = viewportBottomRootPx
-                )
-            )
-        }.distinctUntilChanged().collect { current ->
-            if (current.imeBottomPx <= 0) {
-                wasVisible = null
-                lastRequestedBounds = null
-                finalRequestBounds = null
-                return@collect
-            }
-
-            val bounds = current.bounds
-            if (bounds.fieldTop < 0 || bounds.fieldBottom < 0 ||
-                bounds.viewportTopRoot < 0 || bounds.viewportBottomRoot < 0
-            ) return@collect
-
-            val visible = current.fieldVisible
-            if (visible) {
-                if (wasVisible != true) {
-                    traceLog(
-                        "EVENT=FIELD_VISIBLE FIELD=$targetField FIELD_TOP=${bounds.fieldTop} " +
-                            "FIELD_BOTTOM=${bounds.fieldBottom} VIEWPORT_TOP_ROOT=${bounds.viewportTopRoot} " +
-                            "VIEWPORT_BOTTOM_ROOT=${bounds.viewportBottomRoot} IME_BOTTOM_PX=${current.imeBottomPx} " +
-                            "IME_TARGET_BOTTOM_PX=${current.imeTargetBottomPx}"
-                    )
-                }
-                wasVisible = true
-                lastRequestedBounds = null
-                finalRequestBounds = null
-                return@collect
-            }
-
-            wasVisible = false
-            val isFinalImeViewport = current.imeBottomPx == current.imeTargetBottomPx
-            val boundsChangedSinceRequest = bounds != lastRequestedBounds
-            val finalCheckNotYetRequested = isFinalImeViewport && bounds != finalRequestBounds
-            if (!boundsChangedSinceRequest && !finalCheckNotYetRequested) return@collect
-
-            lastRequestedBounds = bounds
-            if (isFinalImeViewport) finalRequestBounds = bounds
-            traceLog(
-                "EVENT=BRING_INTO_VIEW_REQUESTED FIELD=$targetField REASON=FIELD_OUTSIDE_VIEWPORT " +
-                    "FIELD_TOP=${bounds.fieldTop} FIELD_BOTTOM=${bounds.fieldBottom} " +
-                    "VIEWPORT_TOP_ROOT=${bounds.viewportTopRoot} VIEWPORT_BOTTOM_ROOT=${bounds.viewportBottomRoot} " +
-                    "IME_BOTTOM_PX=${current.imeBottomPx} IME_TARGET_BOTTOM_PX=${current.imeTargetBottomPx} " +
-                    "FINAL_IME_VIEWPORT=$isFinalImeViewport"
-            )
-            try {
-                requester.bringIntoView()
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                throw cancelled
-            } catch (failure: Throwable) {
-                traceLog("EVENT=BRING_INTO_VIEW_FAILED FIELD=$targetField ERROR=${failure::class.simpleName}")
-            }
-
-            // Re-measure after relocation; subsequent viewport/geometry changes remain observed above.
+        val requester = fieldRequesters[focusedField] ?: return@LaunchedEffect
+        snapshotFlow { imeInsets.getBottom(density) > 0 }.first { it }
+        var previousViewportEnd = listState.layoutInfo.viewportEndOffset
+        var stableFrames = 0
+        while (stableFrames < 2) {
             withFrameNanos { }
-            val latestGeometry = fieldGeometry[targetField]
-            val latestViewportTop = viewportTopRootPx
-            val latestViewportBottom = viewportBottomRootPx
-            val latestImeBottom = imeInsets.getBottom(density)
-            if (latestGeometry != null && latestViewportTop >= 0 && latestViewportBottom >= 0) {
-                val nowVisible = latestGeometry.top >= latestViewportTop &&
-                    latestGeometry.bottom <= latestViewportBottom
-                if (nowVisible && wasVisible != true) {
-                    traceLog(
-                        "EVENT=FIELD_VISIBLE FIELD=$targetField FIELD_TOP=${latestGeometry.top} " +
-                            "FIELD_BOTTOM=${latestGeometry.bottom} VIEWPORT_TOP_ROOT=$latestViewportTop " +
-                            "VIEWPORT_BOTTOM_ROOT=$latestViewportBottom IME_BOTTOM_PX=$latestImeBottom " +
-                            "VERIFIED_AFTER_BRING_INTO_VIEW=true"
-                    )
-                    wasVisible = true
-                    lastRequestedBounds = null
-                    finalRequestBounds = null
-                }
+            if (imeInsets.getBottom(density) == 0) return@LaunchedEffect
+            val viewportEnd = listState.layoutInfo.viewportEndOffset
+            if (viewportEnd >= 0 && viewportEnd == previousViewportEnd) {
+                stableFrames += 1
+            } else {
+                stableFrames = 0
             }
+            previousViewportEnd = viewportEnd
         }
+        traceLog("event=CONTROLLED_BRING_INTO_VIEW field=$focusedField IME_VISIBLE=true viewportEnd=${listState.layoutInfo.viewportEndOffset} stableFrames=$stableFrames")
+        requester.bringIntoView()
     }
 
     LaunchedEffect(listState, traceLog) {
