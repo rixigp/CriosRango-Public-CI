@@ -267,12 +267,14 @@ fun StoreCheckoutScreen(
             previous = current
         }
     }
+    Box(Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier.fillMaxSize().padding(effectivePadding).imePadding()
             .onGloballyPositioned { coordinates -> rootHeightPx = coordinates.size.height }
     ) {
         StoreGlobalTopBar(cartQuantity = cartQuantity, onSearch = onSearch, onCart = onCart)
         StoreCatalogHeader(title = "Finalizar compra", showBack = true, onBack = onBack)
+        Box(Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize().onGloballyPositioned { coordinates ->
@@ -512,6 +514,53 @@ fun StoreCheckoutScreen(
             }
         }
         }
+        Box(Modifier.matchParentSize()) {
+            Text(
+                "DBG-LAZY",
+                modifier = Modifier.align(Alignment.TopStart)
+                    .background(Color(0xDD183B35)).padding(horizontal = 3.dp, vertical = 1.dp),
+                color = Color.White,
+                fontSize = 9.sp,
+                lineHeight = 10.sp
+            )
+            Text(
+                "DBG-LAZY-END",
+                modifier = Modifier.align(Alignment.BottomEnd)
+                    .background(Color(0xDD183B35)).padding(horizontal = 3.dp, vertical = 1.dp),
+                color = Color.White,
+                fontSize = 9.sp,
+                lineHeight = 10.sp
+            )
+        }
+        }
+    }
+    Box(Modifier.matchParentSize()) {
+        Text(
+            "DBG-ROOT",
+            modifier = Modifier.align(Alignment.TopStart)
+                .background(Color(0xDD7A1FA2)).padding(horizontal = 3.dp, vertical = 1.dp),
+            color = Color.White,
+            fontSize = 9.sp,
+            lineHeight = 10.sp
+        )
+        Text(
+            "DBG-SCAFFOLD-PADDING",
+            modifier = Modifier.align(Alignment.BottomCenter)
+                .offset(y = -effectivePadding.calculateBottomPadding())
+                .background(Color(0xDD8A4B08)).padding(horizontal = 3.dp, vertical = 1.dp),
+            color = Color.White,
+            fontSize = 9.sp,
+            lineHeight = 10.sp
+        )
+        Text(
+            "DBG-IME-AREA",
+            modifier = Modifier.align(Alignment.BottomStart)
+                .background(Color(0xDD1565C0)).padding(horizontal = 3.dp, vertical = 1.dp),
+            color = Color.White,
+            fontSize = 9.sp,
+            lineHeight = 10.sp
+        )
+    }
     }
 
     if (postOrderState == StoreCheckoutPostOrderState.MANUAL_ORDER_CREATED && stableCreatedOrder?.orderId != null) {
