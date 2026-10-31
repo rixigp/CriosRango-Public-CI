@@ -349,6 +349,7 @@ fun CriosRangoIOSRootScreen(
                     StoreMainTab.CART -> IosRootSection.CART
                     StoreMainTab.ACCOUNT -> IosRootSection.ACCOUNT
                 }
+                if (destination == IosRootSection.HOME) brandsController.backToBrands()
                 section = destination
                 // Every root-tab selection exits the current child route, including Home.
                 resetCatalog()
@@ -403,6 +404,7 @@ fun CriosRangoIOSRootScreen(
                             openCatalog(IosCatalogPage.Brands)
                         },
                         onAllBrands = {
+                            brandsController.backToBrands()
                             resetCatalog()
                             catalogOriginHome = true
                             openCatalog(IosCatalogPage.Brands)
