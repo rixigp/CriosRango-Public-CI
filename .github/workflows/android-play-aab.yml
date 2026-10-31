@@ -77,12 +77,65 @@ jobs:
           VERSION_CODE="$(grep -E 'versionCode[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/')"
           test "$VERSION_NAME" = "1.0.3" || { echo "::error::VERSION_NAME must be 1.0.3"; exit 1; }
           [[ "$VERSION_CODE" =~ ^[0-9]+$ ]] || { echo "::error::Invalid Android versionCode: $VERSION_CODE"; exit 1; }
-          IOS_MARKETING_VERSION_VALUES="$(grep 'MARKETING_VERSION = ' iosApp/iosApp.xcodeproj/project.pbxproj | awk -F' = ' '{print $2}' | tr -d ';[:space:]' | sort -u)"
-          IOS_BUILD_VALUES="$(grep 'CURRENT_PROJECT_VERSION = ' iosApp/iosApp.xcodeproj/project.pbxproj | awk -F' = ' '{print $2}' | tr -d ';[:space:]' | sort -u)"
-          [[ -n "$IOS_MARKETING_VERSION_VALUES" && -n "$IOS_BUILD_VALUES" ]] || { echo "::error::Unable to extract iOS release metadata"; exit 1; }
-          [[ "$IOS_MARKETING_VERSION_VALUES" == "$VERSION_NAME" ]] || { echo "::error::Android/iOS marketing version mismatch: Android=$VERSION_NAME iOS=$IOS_MARKETING_VERSION_VALUES"; exit 1; }
-          [[ "$IOS_BUILD_VALUES" =~ ^[0-9]+$ ]] || { echo "::error::Invalid or divergent iOS CURRENT_PROJECT_VERSION values: $IOS_BUILD_VALUES"; exit 1; }
-          [[ "$IOS_BUILD_VALUES" == "$VERSION_CODE" ]] || { echo "::error::Android/iOS build number mismatch: Android=$VERSION_CODE iOS=$IOS_BUILD_VALUES"; exit 1; }
+          IOS_MARKETING_VALUES="$(
+            awk -F' = ' '
+              /MARKETING_VERSION = / {
+                value=$2
+                gsub(/[;[:space:]]/, "", value)
+                print value
+              }
+            ' iosApp/iosApp.xcodeproj/project.pbxproj \
+            | sort -u
+          )"
+          IOS_BUILD_VALUES="$(
+            awk -F' = ' '
+              /CURRENT_PROJECT_VERSION = / {
+                value=$2
+                gsub(/[;[:space:]]/, "", value)
+                print value
+              }
+            ' iosApp/iosApp.xcodeproj/project.pbxproj \
+            | sort -u
+          )"
+
+          IOS_MARKETING_COUNT="$(printf '%s\\n' "$IOS_MARKETING_VALUES" | sed '/^$/d' | wc -l | tr -d ' ')"
+          IOS_BUILD_COUNT="$(printf '%s\\n' "$IOS_BUILD_VALUES" | sed '/^$/d' | wc -l | tr -d ' ')"
+
+          [[ "$IOS_MARKETING_COUNT" == "1" ]] || {
+            echo "::error::Multiple iOS MARKETING_VERSION values: $IOS_MARKETING_VALUES"
+            exit 1
+          }
+          [[ "$IOS_BUILD_COUNT" == "1" ]] || {
+            echo "::error::Multiple iOS CURRENT_PROJECT_VERSION values: $IOS_BUILD_VALUES"
+            exit 1
+          }
+
+          IOS_MARKETING_VERSION="$IOS_MARKETING_VALUES"
+          IOS_BUILD_NUMBER="$IOS_BUILD_VALUES"
+
+          [[ "$IOS_MARKETING_VERSION" == "$VERSION_NAME" ]] || {
+            echo "::error::Android/iOS marketing version mismatch: Android=$VERSION_NAME iOS=$IOS_MARKETING_VERSION"
+            exit 1
+          }
+          [[ "$IOS_BUILD_NUMBER" =~ ^[0-9]+$ ]] || {
+            echo "::error::Invalid iOS CURRENT_PROJECT_VERSION: $IOS_BUILD_NUMBER"
+            exit 1
+          }
+          [[ "$IOS_BUILD_NUMBER" == "$VERSION_CODE" ]] || {
+            echo "::error::Android/iOS build number mismatch: Android=$VERSION_CODE iOS=$IOS_BUILD_NUMBER"
+            exit 1
+          }
+
+          echo "RAW_IOS_MARKETING_VALUES=$IOS_MARKETING_VALUES"
+          echo "RAW_IOS_BUILD_VALUES=$IOS_BUILD_VALUES"
+          echo "UNIQUE_IOS_MARKETING_COUNT=$IOS_MARKETING_COUNT"
+          echo "UNIQUE_IOS_BUILD_COUNT=$IOS_BUILD_COUNT"
+          echo "IOS_MARKETING_VERSION=$IOS_MARKETING_VERSION"
+          echo "IOS_BUILD_NUMBER=$IOS_BUILD_NUMBER"
+          echo "ANDROID_VERSION_NAME=$VERSION_NAME"
+          echo "ANDROID_VERSION_CODE=$VERSION_CODE"
+          echo "MARKETING_VERSION_MATCH=YES"
+          echo "BUILD_NUMBER_MATCH=YES"
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
