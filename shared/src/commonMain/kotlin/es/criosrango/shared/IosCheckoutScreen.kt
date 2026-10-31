@@ -22,13 +22,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.first
 import kotlin.time.TimeSource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
@@ -268,22 +266,45 @@ fun StoreCheckoutScreen(
     }
     LaunchedEffect(focusedField, fieldRequesters, listState, traceLog) {
         val requester = fieldRequesters[focusedField] ?: return@LaunchedEffect
-        snapshotFlow { imeInsets.getBottom(density) > 0 }.first { it }
-        var previousViewportEnd = listState.layoutInfo.viewportEndOffset
-        var stableFrames = 0
-        while (stableFrames < 2) {
-            withFrameNanos { }
-            if (imeInsets.getBottom(density) == 0) return@LaunchedEffect
-            val viewportEnd = listState.layoutInfo.viewportEndOffset
-            if (viewportEnd >= 0 && viewportEnd == previousViewportEnd) {
-                stableFrames += 1
-            } else {
-                stableFrames = 0
+        var lastRequestedGeometry: List<Int>? = null
+        var lastEvaluatedGeometry: List<Int>? = null
+        snapshotFlow {
+            val geometry = fieldGeometry[focusedField]
+            listOf(
+                imeInsets.getBottom(density),
+                viewportTopRootPx,
+                viewportBottomRootPx,
+                geometry?.top ?: -1,
+                geometry?.bottom ?: -1,
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset
+            )
+        }.collect { values ->
+            val imeBottomPx = values[0]
+            val viewportTop = values[1]
+            val viewportBottom = values[2]
+            val fieldTop = values[3]
+            val fieldBottom = values[4]
+            val geometryKey = values.drop(1)
+            if (imeBottomPx <= 0 || viewportTop < 0 || viewportBottom <= viewportTop ||
+                fieldTop < 0 || fieldBottom <= fieldTop
+            ) return@collect
+
+            val outsideViewport = fieldTop < viewportTop || fieldBottom > viewportBottom
+            val geometryChangedSinceRequest = geometryKey != lastRequestedGeometry
+            val evaluationChanged = geometryKey != lastEvaluatedGeometry
+            if (outsideViewport) {
+                traceLog("EVENT=BIV_REQUIRED FIELD=$focusedField IME_BOTTOM_PX=$imeBottomPx VIEWPORT_TOP_ROOT=$viewportTop VIEWPORT_BOTTOM_ROOT=$viewportBottom FIELD_TOP=$fieldTop FIELD_BOTTOM=$fieldBottom FIRST_VISIBLE_ITEM_INDEX=${values[5]} FIRST_VISIBLE_ITEM_OFFSET=${values[6]}")
+                if (geometryChangedSinceRequest) {
+                    lastRequestedGeometry = geometryKey
+                    traceLog("EVENT=BIV_REQUEST FIELD=$focusedField IME_BOTTOM_PX=$imeBottomPx VIEWPORT_TOP_ROOT=$viewportTop VIEWPORT_BOTTOM_ROOT=$viewportBottom FIELD_TOP=$fieldTop FIELD_BOTTOM=$fieldBottom FIRST_VISIBLE_ITEM_INDEX=${values[5]} FIRST_VISIBLE_ITEM_OFFSET=${values[6]}")
+                    requester.bringIntoView()
+                }
+            } else if (evaluationChanged) {
+                traceLog("EVENT=BIV_SKIPPED_VISIBLE FIELD=$focusedField IME_BOTTOM_PX=$imeBottomPx VIEWPORT_TOP_ROOT=$viewportTop VIEWPORT_BOTTOM_ROOT=$viewportBottom FIELD_TOP=$fieldTop FIELD_BOTTOM=$fieldBottom FIRST_VISIBLE_ITEM_INDEX=${values[5]} FIRST_VISIBLE_ITEM_OFFSET=${values[6]}")
             }
-            previousViewportEnd = viewportEnd
+            lastEvaluatedGeometry = geometryKey
         }
-        traceLog("event=CONTROLLED_BRING_INTO_VIEW field=$focusedField IME_VISIBLE=true viewportEnd=${listState.layoutInfo.viewportEndOffset} stableFrames=$stableFrames")
-        requester.bringIntoView()
     }
 
     LaunchedEffect(listState, traceLog) {
