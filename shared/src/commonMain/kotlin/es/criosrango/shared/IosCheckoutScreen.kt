@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.KeyboardOptions
@@ -62,6 +63,7 @@ private data class CheckoutImeTraceState(
     val visibleItems: String, val fieldGeometry: String,
     val viewportTopRootPx: Int, val viewportBottomRootPx: Int, val rootHeightPx: Int,
     val effectivePaddingBottomDp: Float, val scaffoldPaddingBottomDp: Float,
+    val contentPaddingBottomDp: Float,
     val bottomBarVisible: Boolean
 )
 
@@ -229,7 +231,16 @@ fun StoreCheckoutScreen(
     val imeInsets = WindowInsets.ime
     val density = LocalDensity.current
     val imeVisible = imeInsets.getBottom(density) > 0
-    val effectivePadding = if (imeVisible) PaddingValues(0.dp) else padding
+    val layoutDirection = LocalLayoutDirection.current
+    val effectivePadding = PaddingValues(
+        start = padding.calculateStartPadding(layoutDirection),
+        top = padding.calculateTopPadding(),
+        end = padding.calculateEndPadding(layoutDirection),
+        bottom = 0.dp
+    )
+    val existingContentBottomPadding = 40.dp
+    val contentPaddingBottom = existingContentBottomPadding +
+        if (imeVisible) 0.dp else padding.calculateBottomPadding()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val fieldRequesters = remember {
         mapOf(
@@ -384,20 +395,21 @@ fun StoreCheckoutScreen(
                 viewportTopRootPx = viewportTopRootPx,
                 viewportBottomRootPx = viewportBottomRootPx,
                 rootHeightPx = rootHeightPx,
-                effectivePaddingBottomDp = if (currentImeVisible) 0f else padding.calculateBottomPadding().value,
+                effectivePaddingBottomDp = effectivePadding.calculateBottomPadding().value,
                 scaffoldPaddingBottomDp = padding.calculateBottomPadding().value,
+                contentPaddingBottomDp = (existingContentBottomPadding + if (currentImeVisible) 0.dp else padding.calculateBottomPadding()).value,
                 bottomBarVisible = !currentImeVisible
             )
         }.distinctUntilChanged().collect { current ->
             val before = previous
             val focusedGeometry = fieldGeometry[current.focusedField]
-            val common = "FIELD=${current.focusedField} IME_VISIBLE=${current.imeVisible} IME_BOTTOM_PX=${current.imeBottomPx} FIRST_VISIBLE_ITEM_INDEX=${current.firstVisibleItemIndex} FIRST_VISIBLE_ITEM_OFFSET=${current.firstVisibleItemScrollOffset} VIEWPORT_START=${current.viewportStartOffset} VIEWPORT_END=${current.viewportEndOffset} VIEWPORT_TOP_ROOT=${current.viewportTopRootPx} VIEWPORT_BOTTOM_ROOT=${current.viewportBottomRootPx} ROOT_HEIGHT_PX=${current.rootHeightPx} FIELD_TOP=${focusedGeometry?.top ?: -1} FIELD_BOTTOM=${focusedGeometry?.bottom ?: -1} FIELD_HEIGHT=${focusedGeometry?.height ?: -1} TOTAL_ITEMS=${current.totalItemsCount} VISIBLE_ITEMS=[${current.visibleItems}] FIELD_GEOMETRY=[${current.fieldGeometry}] BOTTOM_BAR_VISIBLE=${current.bottomBarVisible} EFFECTIVE_PADDING_BOTTOM=${current.effectivePaddingBottomDp} SCAFFOLD_PADDING_BOTTOM=${current.scaffoldPaddingBottomDp}"
+            val common = "FIELD=${current.focusedField} IME_VISIBLE=${current.imeVisible} IME_BOTTOM_PX=${current.imeBottomPx} FIRST_VISIBLE_ITEM_INDEX=${current.firstVisibleItemIndex} FIRST_VISIBLE_ITEM_OFFSET=${current.firstVisibleItemScrollOffset} VIEWPORT_START=${current.viewportStartOffset} VIEWPORT_END=${current.viewportEndOffset} VIEWPORT_TOP_ROOT=${current.viewportTopRootPx} VIEWPORT_BOTTOM_ROOT=${current.viewportBottomRootPx} ROOT_HEIGHT_PX=${current.rootHeightPx} FIELD_TOP=${focusedGeometry?.top ?: -1} FIELD_BOTTOM=${focusedGeometry?.bottom ?: -1} FIELD_HEIGHT=${focusedGeometry?.height ?: -1} TOTAL_ITEMS=${current.totalItemsCount} VISIBLE_ITEMS=[${current.visibleItems}] FIELD_GEOMETRY=[${current.fieldGeometry}] BOTTOM_BAR_VISIBLE=${current.bottomBarVisible} EFFECTIVE_PADDING_BOTTOM=${current.effectivePaddingBottomDp} SCAFFOLD_PADDING_BOTTOM=${current.scaffoldPaddingBottomDp} CONTENT_PADDING_BOTTOM=${current.contentPaddingBottomDp}"
             if (before == null) {
                 traceLog("EVENT=CHECKOUT_ENTER $common")
             } else {
                 if (before.imeVisible != current.imeVisible || before.imeBottomPx != current.imeBottomPx) traceLog("EVENT=IME_CHANGED $common")
                 if (before.bottomBarVisible != current.bottomBarVisible) traceLog("EVENT=BOTTOM_BAR_CHANGED $common")
-                if (before.effectivePaddingBottomDp != current.effectivePaddingBottomDp || before.scaffoldPaddingBottomDp != current.scaffoldPaddingBottomDp) traceLog("EVENT=PADDING_CHANGED $common")
+                if (before.effectivePaddingBottomDp != current.effectivePaddingBottomDp || before.scaffoldPaddingBottomDp != current.scaffoldPaddingBottomDp || before.contentPaddingBottomDp != current.contentPaddingBottomDp) traceLog("EVENT=PADDING_CHANGED $common")
                 if (before.viewportStartOffset != current.viewportStartOffset || before.viewportEndOffset != current.viewportEndOffset || before.viewportTopRootPx != current.viewportTopRootPx || before.viewportBottomRootPx != current.viewportBottomRootPx) traceLog("EVENT=VIEWPORT_CHANGED $common")
                 if (before.firstVisibleItemIndex != current.firstVisibleItemIndex || before.firstVisibleItemScrollOffset != current.firstVisibleItemScrollOffset) traceLog("EVENT=SCROLL_CHANGED $common")
                 if (before.totalItemsCount != current.totalItemsCount || before.visibleItems != current.visibleItems) traceLog("EVENT=VISIBLE_ITEMS_CHANGED $common")
@@ -422,7 +434,7 @@ fun StoreCheckoutScreen(
                 viewportTopRootPx = top
                 viewportBottomRootPx = top + coordinates.size.height
             },
-            contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = 40.dp),
+            contentPadding = PaddingValues(start = 20.dp, top = 8.dp, end = 20.dp, bottom = contentPaddingBottom),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
         item {
@@ -686,7 +698,7 @@ fun StoreCheckoutScreen(
         Text(
             "DBG-SCAFFOLD-PADDING",
             modifier = Modifier.align(Alignment.BottomCenter)
-                .offset(y = -effectivePadding.calculateBottomPadding())
+                .offset(y = -contentPaddingBottom)
                 .background(Color(0xDD8A4B08)).padding(horizontal = 3.dp, vertical = 1.dp),
             color = Color.White,
             fontSize = 9.sp,
