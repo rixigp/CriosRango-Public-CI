@@ -481,6 +481,15 @@ private fun CriosRangoApp(
         utilityReturnTab = null
     }
 
+    // Search is a root destination; system Back returns to the catalog root without
+    // disposing its SaveableStateProvider("SEARCH") state.
+    BackHandler(
+        enabled = tab == AppTab.SEARCH && selectedProduct == null &&
+            !checkoutOpen && !showStartupBranding
+    ) {
+        selectRootTab(es.criosrango.shared.StoreMainTab.CATEGORIES)
+    }
+
     LaunchedEffect(showStartupBranding) {
         if (showStartupBranding) return@LaunchedEffect
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return@LaunchedEffect
