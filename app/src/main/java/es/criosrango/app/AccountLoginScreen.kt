@@ -94,6 +94,7 @@ fun AccountLoginScreen(
     val orders by vm.orders.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val ordersRefreshing by vm.ordersRefreshing.collectAsStateWithLifecycle()
+    val loggingOut by vm.loggingOut.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val accountError by vm.accountError.collectAsStateWithLifecycle()
     val notificationContext = LocalContext.current
@@ -345,7 +346,9 @@ fun AccountLoginScreen(
                             selectedInfoPage = null
                             accountSection = AccountSection.HOME
                             vm.clearAccountMessages()
-                        } })
+                        } },
+                        isLoggingOut = loggingOut
+                    )
                     AccountSection.DATA -> es.criosrango.shared.StoreProfileScreen(
                         repository = vm.sharedRepository,
                         sessionState = vm.sharedAuthSession,

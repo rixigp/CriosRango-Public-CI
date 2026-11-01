@@ -195,6 +195,9 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     private val _loading = MutableStateFlow(false)
     val loading = _loading.asStateFlow()
 
+    private val _loggingOut = MutableStateFlow(false)
+    val loggingOut = _loggingOut.asStateFlow()
+
     private val _ordersRefreshing = MutableStateFlow(false)
     val ordersRefreshing = _ordersRefreshing.asStateFlow()
     private val ordersLoadGate = SingleActionGate()
@@ -655,6 +658,8 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun logout(beforeLogout: suspend () -> Unit = {}, onLogoutComplete: () -> Unit = {}) {
+        if (_loggingOut.value) return
+        _loggingOut.value = true
         ++accountGeneration
         restoreJob?.cancel()
         viewModelScope.launch {
@@ -681,6 +686,7 @@ class AccountViewModel(application: Application) : AndroidViewModel(application)
                 _addressSaveError.value = null
                 _addressSaveNotice.value = null
                 _loading.value = false
+                _loggingOut.value = false
                 _ordersRefreshing.value = false
                 _savingAccountDetails.value = false
                 _savingAddress.value = false

@@ -339,6 +339,7 @@ fun StoreProfileMenuScreen(
     notificationPreferences: @Composable () -> Unit,
     onDeleteAccount: () -> Unit,
     onLogout: () -> Unit,
+    isLoggingOut: Boolean = false,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -357,11 +358,20 @@ fun StoreProfileMenuScreen(
             Spacer(Modifier.height(12.dp))
             notificationPreferences()
             Spacer(Modifier.height(12.dp))
-            Card(Modifier.fillMaxWidth().clickable(onClick = onLogout), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFECEF))) {
+            Card(Modifier.fillMaxWidth().clickable(enabled = !isLoggingOut, onClick = onLogout), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFECEF))) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(androidx.compose.material.icons.Icons.AutoMirrored.Outlined.Logout, null, tint = Color(0xFFC73B4C))
+                    if (isLoggingOut) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color(0xFFC73B4C))
+                    } else {
+                        Icon(androidx.compose.material.icons.Icons.AutoMirrored.Outlined.Logout, null, tint = Color(0xFFC73B4C))
+                    }
                     Spacer(Modifier.width(14.dp))
-                    Text("Cerrar sesión", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = Color(0xFFC73B4C))
+                    Text(
+                        if (isLoggingOut) "Cerrando sesión…" else "Cerrar sesión",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFFC73B4C)
+                    )
                 }
             }
         }
