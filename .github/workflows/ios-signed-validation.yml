@@ -3,13 +3,13 @@ name: iOS Signed Validation
 on:
   push:
     branches:
-      - develop/1.0.3
+      - 'develop/1.0.*'
     paths:
       - .github/workflows/ios-signed-validation.yml
   workflow_dispatch:
     inputs:
       target_sha:
-        description: "Exact commit SHA to build from develop/1.0.3"
+        description: "Exact commit SHA to build from the current develop/1.0.x release branch"
         required: true
         type: string
 
@@ -19,13 +19,13 @@ permissions:
 env:
   EXPECTED_BUNDLE_ID: "es.criosrango.app"
   EXPECTED_TEAM_ID: "3793344J72"
-  EXPECTED_BRANCH: "develop/1.0.3"
+  EXPECTED_BRANCH: ${{ github.ref_name }}
   EXPECTED_SHA: ${{ github.event_name == 'push' && github.sha || inputs.target_sha }}
 
 jobs:
   signed-validation:
     name: Build, sign and inspect IPA (artifact only)
-    if: github.ref == 'refs/heads/develop/1.0.3'
+    if: startsWith(github.ref, 'refs/heads/develop/1.0.')
     runs-on: macos-26
     timeout-minutes: 60
     steps:
@@ -36,13 +36,13 @@ jobs:
           TARGET_SHA: ${{ github.event_name == 'push' && github.sha || inputs.target_sha }}
         run: |
           set -euo pipefail
-          [[ "$GITHUB_REF" == "refs/heads/$EXPECTED_BRANCH" ]] || { echo "::error::Workflow must run from develop/1.0.3"; exit 1; }
+          [[ "$GITHUB_REF" == "refs/heads/$EXPECTED_BRANCH" && "$EXPECTED_BRANCH" =~ ^develop/1\.0\.[0-9]+$ ]] || { echo "::error::Workflow is restricted to develop/1.0.x release branches; found $EXPECTED_BRANCH"; exit 1; }
           [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Target SHA must be an exact lowercase 40-character SHA"; exit 1; }
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
             [[ "$TARGET_SHA" == "$GITHUB_SHA" ]] || { echo "::error::Push target must equal github.sha"; exit 1; }
           else
             CURRENT_BRANCH_SHA="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$EXPECTED_BRANCH" --jq '.object.sha')"
-            [[ "$CURRENT_BRANCH_SHA" == "$TARGET_SHA" ]] || { echo "::error::target_sha must equal the current develop/1.0.3 HEAD"; exit 1; }
+            [[ "$CURRENT_BRANCH_SHA" == "$TARGET_SHA" ]] || { echo "::error::target_sha must equal the current $EXPECTED_BRANCH HEAD"; exit 1; }
           fi
           echo "Validation target SHA: $TARGET_SHA"
 
@@ -84,6 +84,14 @@ jobs:
           [[ "$VERSION_CODE" =~ ^[0-9]+$ ]]
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          ANDROID_VERSION_NAME="$(grep -E 'versionName[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')"
+          ANDROID_VERSION_CODE="$(grep -E 'versionCode[[:space:]]*=' app/build.gradle.kts | head -1 | sed -E 's/.*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/')"
+          [[ "$ANDROID_VERSION_NAME" == "$VERSION_NAME" ]] || { echo "::error::Android/iOS marketing version mismatch: Android=$ANDROID_VERSION_NAME iOS=$VERSION_NAME"; exit 1; }
+          [[ "$ANDROID_VERSION_CODE" =~ ^[0-9]+$ && "$ANDROID_VERSION_CODE" == "$VERSION_CODE" ]] || { echo "::error::Android/iOS build number mismatch: Android=$ANDROID_VERSION_CODE iOS=$VERSION_CODE"; exit 1; }
+          echo "ANDROID_VERSION=$ANDROID_VERSION_NAME"
+          echo "ANDROID_BUILD=$ANDROID_VERSION_CODE"
+          echo "VERSION_CORRELATION=YES"
+          echo "BUILD_CORRELATION=YES"
           echo "VERSION=$VERSION_NAME" >> release-artifacts/validation-summary.txt
           echo "BUILD=$VERSION_CODE" >> release-artifacts/validation-summary.txt
           echo "Version/build read from target SHA; no version values are changed."
