@@ -145,10 +145,10 @@ jobs:
           java-version: "17"
 
       - name: Configure Gradle caching
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Cache Kotlin/Native Konan downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.konan
           key: macos-konan-physical-v1-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', 'shared/build.gradle.kts', 'gradle.properties') }}
@@ -415,7 +415,7 @@ jobs:
 
       - name: Upload IPA, archive report, dSYM and build logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ios-physical-testflight-build-${{ github.run_id }}
           path: release-artifacts/**
@@ -436,7 +436,7 @@ jobs:
           fetch-depth: 1
 
       - name: Download signed IPA and evidence
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ios-physical-testflight-build-${{ github.run_id }}
           path: release-artifacts
@@ -785,7 +785,7 @@ jobs:
 
       - name: Upload final report, IPA and App Store logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ios-physical-testflight-final-${{ github.run_id }}
           path: release-artifacts/**
