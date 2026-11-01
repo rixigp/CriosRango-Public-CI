@@ -297,7 +297,7 @@ object PushNotificationController {
         writePendingUnregisterTokens(state.store, pending)
         return withTimeoutOrNull(4_500L) {
             syncMutex.withLock {
-                val removed = withContext(Dispatchers.IO) { deactivateToken(token, prefs.getString("account_token", null)) }
+                val removed = withContext(Dispatchers.IO) { deactivateToken(token, AccountSessionStore.shared(context).load()) }
                 val updatedPending = pendingUnregisterTokensAfterAttempt(
                     readPendingUnregisterTokens(state.store), token, unregisterSucceeded = removed
                 )
@@ -315,7 +315,7 @@ object PushNotificationController {
         val prefs = state.preferences
         val previousIdentifierType = prefs.getString(IDENTIFIER_TYPE_KEY, null)
         val previousToken = state.store.get(IDENTIFIER_KEY)?.takeIf { previousIdentifierType == "fid" }
-        val accountToken = prefs.getString("account_token", null)
+        val accountToken = AccountSessionStore.shared(context).load()
         val pending = readPendingUnregisterTokens(state.store).toMutableSet()
         val pushPrefs = PushPreferencesStore(context)
         val payload = pushRegistrationPayload(fid, pushPrefs.newProducts, pushPrefs.orderUpdates)
