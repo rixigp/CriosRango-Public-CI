@@ -1,8 +1,8 @@
 package es.criosrango.shared
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material.icons.filled.Close
@@ -290,15 +290,30 @@ fun StoreProductDetailFullscreenGallery(
                 var offsetX by androidx.compose.runtime.remember(page) { androidx.compose.runtime.mutableStateOf(0f) }
                 var offsetY by androidx.compose.runtime.remember(page) { androidx.compose.runtime.mutableStateOf(0f) }
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    imageSlot(page, Modifier.fillMaxWidth().pointerInput(page) {
-                        detectTransformGestures { _, pan, zoom, _ ->
-                            scale = (scale * zoom).coerceIn(1f, 4f)
-                            if (scale > 1f) { offsetX += pan.x; offsetY += pan.y }
-                            else { offsetX = 0f; offsetY = 0f }
+                    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
+                        scale = (scale * zoomChange).coerceIn(1f, 4f)
+                        if (scale > 1f) {
+                            offsetX += panChange.x
+                            offsetY += panChange.y
+                        } else {
+                            offsetX = 0f
+                            offsetY = 0f
                         }
-                    }.graphicsLayer {
-                        scaleX = scale; scaleY = scale; translationX = offsetX; translationY = offsetY
-                    })
+                    }
+                    imageSlot(
+                        page,
+                        Modifier.fillMaxWidth()
+                            .transformable(
+                                state = transformState,
+                                canPan = { scale > 1f }
+                            )
+                            .graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
+                                translationX = offsetX
+                                translationY = offsetY
+                            }
+                    )
                 }
             }
             IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp)
