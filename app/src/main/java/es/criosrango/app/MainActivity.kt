@@ -296,6 +296,14 @@ private fun CriosRangoApp(
     val bizumOrderId by viewModel.bizumOrderId.collectAsStateWithLifecycle()
     val sharedCreatedOrder by sharedCheckoutStore.createdOrder.collectAsStateWithLifecycle()
     val sharedCardPaymentState by sharedPaymentStore.state.collectAsStateWithLifecycle()
+    val sharedCheckoutPhase by sharedCheckoutStore.phase.collectAsStateWithLifecycle()
+    val checkoutBusy = sharedCheckoutPhase == es.criosrango.shared.StoreCheckoutPhase.LOADING ||
+        sharedCheckoutPhase == es.criosrango.shared.StoreCheckoutPhase.CREATING_ORDER
+    val paymentInProgress = sharedCardPaymentState in setOf(
+        es.criosrango.shared.StoreCardPaymentState.OPENING,
+        es.criosrango.shared.StoreCardPaymentState.WAITING_RETURN,
+        es.criosrango.shared.StoreCardPaymentState.RECONCILING
+    )
     val sharedCardPaymentOrderId by sharedPaymentStore.orderId.collectAsStateWithLifecycle()
     LaunchedEffect(checkout?.orderId, checkout?.orderKey) {
         val orderId = checkout?.orderId ?: return@LaunchedEffect
@@ -469,8 +477,11 @@ private fun CriosRangoApp(
 
     // Native Android Back reuses the exact checkout visual-back callback. Other screens already own their BackHandler; Home/Cart fall through to Android default.
     BackHandler(enabled = checkoutOpen && !showStartupBranding) {
-        checkoutOpen = false
-        viewModel.abandonCheckout()
+        // Consume system Back during checkout mutations or an active payment attempt.
+        if (!checkoutBusy && !paymentInProgress) {
+            checkoutOpen = false
+            viewModel.abandonCheckout()
+        }
     }
 
     BackHandler(
