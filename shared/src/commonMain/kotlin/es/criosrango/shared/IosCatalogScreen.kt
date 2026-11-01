@@ -73,8 +73,18 @@ internal fun IosCatalogScreen(
     onRetryOutletCategorySnapshot: () -> Unit
 ) {
     val rootFilterState by rootFilterOwner.state.collectAsState()
+    val brandsState by brandsController.state.collectAsState()
     if (rootFilterState.dialogVisible) IosBackHandler(IosBackPriority.OVERLAY) { rootFilterOwner.cancel() }
-    IosBackHandler(IosBackPriority.CATALOG, onBack = onBack)
+    IosBackHandler(IosBackPriority.CATALOG) {
+        if (
+            page == IosCatalogPage.Brands &&
+            brandsState.selectedBrand != null
+        ) {
+            brandsController.backToBrands()
+        } else {
+            onBack()
+        }
+    }
     // This state is owned above the page switch so Outlet → Product → Outlet restores presentation.
     var showOutletChooser by remember(outletController) { mutableStateOf(true) }
     val outletGridState = rememberLazyGridState()
