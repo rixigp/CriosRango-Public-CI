@@ -118,12 +118,24 @@ fun MainViewController() : UIViewController {
 
 fun handleIosPaymentReturn(result: String?, orderId: Int?) {
     val paymentStore = iosPaymentStore ?: return
-    paymentStore.handlePaymentReturn(result, orderId)
-    if (result.equals("cancel", ignoreCase = true) &&
-        paymentStore.state.value == StoreCardPaymentState.NOT_PAID
-    ) {
-        iosPaymentCancellationEvent.value += 1
+    if (result.equals("cancel", ignoreCase = true)) {
+        val activeOrderId = paymentStore.orderId.value
+        val activeState = paymentStore.state.value
+        val hasActiveAttempt = activeState == StoreCardPaymentState.OPENING ||
+            activeState == StoreCardPaymentState.WAITING_RETURN ||
+            activeState == StoreCardPaymentState.ERROR
+        if (orderId == null || orderId != activeOrderId || !hasActiveAttempt) {
+            // Route invalid cancellation returns through the existing error policy.
+            paymentStore.handlePaymentReturn("invalid", orderId)
+            return
+        }
+        paymentStore.handlePaymentReturn(result, orderId)
+        if (paymentStore.state.value == StoreCardPaymentState.NOT_PAID) {
+            iosPaymentCancellationEvent.value += 1
+        }
+        return
     }
+    paymentStore.handlePaymentReturn(result, orderId)
 }
 
 fun handleIosPaymentForeground() {
