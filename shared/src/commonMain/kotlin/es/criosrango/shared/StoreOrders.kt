@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material3.Icon
@@ -272,6 +274,7 @@ fun StoreOrdersScreen(
     }
 }
 
+
 @Composable
 fun StoreOrderDetailScreen(
     order: AccountOrderSummary,
@@ -292,47 +295,115 @@ fun StoreOrderDetailScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(11.dp)
     ) {
         item {
-            Column(Modifier.fillMaxWidth()) {
-                StorePageHeader(title = "Pedido #\${order.number.ifBlank { order.id.toString() }}", onBack = onBack, horizontalPadding = 0.dp)
-                Row(Modifier.fillMaxWidth().padding(top = 1.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    StoreOrderStatusBadge(order.status, order.statusLabel)
+            StorePageHeader(
+                title = "Detalle de pedido",
+                onBack = onBack,
+                titleFontWeight = FontWeight.SemiBold,
+                horizontalPadding = 0.dp
+            )
+        }
+        item {
+            StoreOrderDetailCard {
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text(
+                        "Pedido #${order.number.ifBlank { order.id.toString() }}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    StoreOrderDetailStatusBadge(order.status, order.statusLabel)
                     val date = formatStoreOrderDate(order.dateCreated.orEmpty())
-                    if (date.isNotBlank()) Text("Fecha: $date", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                if (order.total.isNotBlank()) {
-                    Row(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Total", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.width(8.dp))
-                        Text(formatStoreMinorUnits(totalMinor, order.currency), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    if (date.isNotBlank()) {
+                        Text(
+                            "Realizado el $date",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (order.total.isNotBlank()) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = 1.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Total:", style = MaterialTheme.typography.bodyMedium)
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                formatStoreMinorUnits(totalMinor, order.currency),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
         }
         item {
-            StoreOrderDetailCard(title = "Productos (\${order.items.size})") {
+            StoreOrderDetailCard(title = "Productos (${order.items.size})") {
+                Surface(Modifier.fillMaxWidth().height(1.dp), color = Color(0xFFEAEAEA)) {}
+                Spacer(Modifier.height(9.dp))
                 if (order.items.isEmpty()) {
                     Text("No hay productos disponibles.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     order.items.forEachIndexed { index, item ->
                         if (index > 0) {
+                            Spacer(Modifier.height(9.dp))
                             Surface(Modifier.fillMaxWidth().height(1.dp), color = Color(0xFFEAEAEA)) {}
-                            Spacer(Modifier.height(7.dp))
+                            Spacer(Modifier.height(9.dp))
                         }
-                        Text(cleanStoreWooText(item.name), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        val variations = storeOrderVariations(item)
-                        if (variations.isNotBlank()) Text(variations, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.height(4.dp))
-                        Text("Cantidad: \${item.quantity}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Surface(
+                                modifier = Modifier.size(68.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFF3F4F2)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Filled.Image,
+                                        contentDescription = "Imagen de producto no disponible",
+                                        tint = Color(0xFF9A9D98),
+                                        modifier = Modifier.size(27.dp)
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    cleanStoreWooText(item.name),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                val variations = storeOrderVariations(item)
+                                if (variations.isNotBlank()) {
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(
+                                        variations,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "Cantidad: ${item.quantity}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
         item {
-            StoreOrderDetailCard(title = "Entrega", icon = { Icon(Icons.Filled.LocalShipping, null, tint = green, modifier = Modifier.size(18.dp)) }) {
+            StoreOrderDetailCard(
+                title = "Entrega",
+                icon = { Icon(Icons.Filled.LocalShipping, null, tint = green, modifier = Modifier.size(18.dp)) }
+            ) {
                 if (!hasAddress) {
                     Text("No hay dirección de entrega disponible.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
@@ -340,32 +411,64 @@ fun StoreOrderDetailScreen(
                     if (address.address2.isNotBlank()) Text(cleanStoreWooText(address.address2), style = MaterialTheme.typography.bodySmall)
                     val location = listOf(address.postcode, city, province).filter { it.isNotBlank() }.joinToString(" · ")
                     if (location.isNotBlank()) Text(location, style = MaterialTheme.typography.bodySmall)
-                    if (address.country.isNotBlank()) Text(if (address.country.equals("ES", true)) "España" else address.country, style = MaterialTheme.typography.bodySmall)
+                    if (address.country.isNotBlank()) {
+                        Text(
+                            if (address.country.equals("ES", true)) "España" else address.country,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
                 if (order.shippingTotal.isNotBlank()) {
-                    Spacer(Modifier.height(5.dp))
-                    Text(if (shippingMinor == 0L) "Envío gratuito" else "Envío: \${formatStoreMinorUnits(shippingMinor, order.currency)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium, color = green)
-                } else if (order.shippingMethod.isNotBlank()) {
-                    Spacer(Modifier.height(5.dp))
-                    Text(cleanStoreWooText(order.shippingMethod), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        if (shippingMinor == 0L) "Envío gratuito" else formatStoreMinorUnits(shippingMinor, order.currency),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = green
+                    )
                 }
             }
         }
         item {
-            StoreOrderDetailCard(title = "Pago", icon = { Icon(Icons.Filled.CreditCard, null, tint = green, modifier = Modifier.size(18.dp)) }, compact = true) {
+            StoreOrderDetailCard(
+                title = "Pago",
+                icon = { Icon(Icons.Filled.CreditCard, null, tint = green, modifier = Modifier.size(18.dp)) },
+                compact = true
+            ) {
                 val payment = storeFriendlyPaymentMethod(order.paymentMethodTitle, order.paymentMethod)
-                if (payment.isNotBlank()) Text(payment, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                if (payment.isNotBlank()) {
+                    Text(payment, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                }
             }
         }
         item {
-            StoreOrderDetailCard(title = "Resumen", icon = { Icon(Icons.Filled.ReceiptLong, null, tint = green, modifier = Modifier.size(18.dp)) }) {
+            StoreOrderDetailCard(
+                title = "Resumen",
+                icon = { Icon(Icons.Filled.ReceiptLong, null, tint = green, modifier = Modifier.size(18.dp)) }
+            ) {
                 StoreOrderSummaryLine("Productos", formatStoreMinorUnits(productsMinor, order.currency))
-                if (order.shippingTotal.isNotBlank()) StoreOrderSummaryLine("Envío", if (shippingMinor == 0L) "Gratis" else formatStoreMinorUnits(shippingMinor, order.currency))
-                if (vatMinor > 0L) StoreOrderSummaryLine("IVA", formatStoreMinorUnits(vatMinor, order.currency))
+                if (vatMinor > 0L) {
+                    StoreOrderSummaryLine("IVA", formatStoreMinorUnits(vatMinor, order.currency))
+                }
+                if (order.shippingTotal.isNotBlank()) {
+                    StoreOrderSummaryLine(
+                        "Envío",
+                        if (shippingMinor == 0L) "Gratis" else formatStoreMinorUnits(shippingMinor, order.currency)
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
                 Surface(Modifier.fillMaxWidth().height(1.dp), color = Color(0xFFE6E6E6)) {}
-                Row(Modifier.fillMaxWidth().padding(top = 5.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 7.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text("Total", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    Text(formatStoreMinorUnits(totalMinor, order.currency), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        formatStoreMinorUnits(totalMinor, order.currency),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
@@ -374,12 +477,37 @@ fun StoreOrderDetailScreen(
                 StoreOrderDetailCard(compact = true) {
                     Text("¿Necesitas devolver algo?", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(5.dp))
-                    OutlinedButton(onClick = { onRequestReturn(order) }, modifier = Modifier.fillMaxWidth()) { Text("Solicitar devolución") }
+                    OutlinedButton(
+                        onClick = { onRequestReturn(order) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Solicitar devolución")
+                    }
                 }
             }
         }
     }
 }
+
+@Composable
+private fun StoreOrderDetailStatusBadge(status: String, label: String) {
+    val style = StoreOrderStatusMapper.style(status, label)
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = Color(style.background),
+        contentColor = Color(style.foreground)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(13.dp))
+            Text(style.label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
 
 @Composable
 private fun StoreOrderDetailCard(
@@ -390,20 +518,29 @@ private fun StoreOrderDetailCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(13.dp),
-        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = Color(0xFFFFFEFD)),
-        border = BorderStroke(0.7.dp, Color(0xFFE5E5E5)),
-        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 0.5.dp)
+        shape = RoundedCornerShape(16.dp),
+        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(0.7.dp, Color(0xFFE7E8E6)),
+        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compact) 8.dp else 10.dp)) {
-            if (title != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (icon != null) { icon(); Spacer(Modifier.width(7.dp)) }
-                    Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        Column(Modifier.fillMaxWidth().padding(15.dp)) {
+            if (title != null && icon != null) {
+                Row(verticalAlignment = Alignment.Top) {
+                    icon()
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(if (compact) 3.dp else 6.dp))
+                        content()
+                    }
                 }
-                Spacer(Modifier.height(if (compact) 4.dp else 6.dp))
+            } else if (title != null) {
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(if (compact) 3.dp else 6.dp))
+                content()
+            } else {
+                content()
             }
-            content()
         }
     }
 }
