@@ -206,6 +206,22 @@ internal fun IosOutletScreen(
     val controllerState by controller.state.collectAsState()
     var availabilityError by remember(outlet.id) { mutableStateOf<String?>(null) }
 
+    fun handleOutletBack() {
+        val activeCategoryId = controllerState.activeCategoryId ?: outlet.id
+        val showBubbles = activeCategoryId != outlet.id
+        if (!showOutletChooser && showBubbles && controllerState.selectedBubbleKey != null) {
+            controller.selectBubble(null)
+        } else if (!showOutletChooser) {
+            controller.selectCategory(outlet.id)
+            onShowOutletChooserChange(true)
+        } else {
+            onBack()
+        }
+    }
+
+    // The visible arrow and the iOS edge gesture resolve Outlet navigation identically.
+    IosBackHandler(IosBackPriority.CATALOG, canGoBack = true, onBack = ::handleOutletBack)
+
     LaunchedEffect(controllerState.activeCategoryId, controllerState.activeFilterCount, outlet.id, initialCategoryId, showOutletChooser) {
         val activeCategoryId = controllerState.activeCategoryId
         val isRootCategory = activeCategoryId == null || activeCategoryId == outlet.id
@@ -235,7 +251,7 @@ internal fun IosOutletScreen(
             parent = outlet,
             categories = outletChildren,
             loading = false,
-            onBack = onBack,
+            onBack = ::handleOutletBack,
             onCategory = { category ->
                 controller.selectCategory(category.id)
                 onShowOutletChooserChange(false)
@@ -309,14 +325,7 @@ internal fun IosOutletScreen(
                 state = listState,
                 gridState = gridState,
                 modifier = Modifier.fillMaxSize().padding(padding),
-                onBack = {
-                    if (showBubbles && controllerState.selectedBubbleKey != null) {
-                        controller.selectBubble(null)
-                    } else {
-                        controller.selectCategory(outlet.id)
-                        onShowOutletChooserChange(true)
-                    }
-                },
+                onBack = ::handleOutletBack,
                 onProductSelected = { id ->
                     controllerState.sortedProducts.firstOrNull { it.id == id }?.let(onProduct)
                 },
