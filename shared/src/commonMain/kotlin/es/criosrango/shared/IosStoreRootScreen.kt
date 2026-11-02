@@ -179,6 +179,7 @@ fun CriosRangoIOSRootScreen(
     var postOrderSuccess by remember { mutableStateOf<PostOrderSuccessSnapshot?>(null) }
     var catalogPage by remember { mutableStateOf<IosCatalogPage>(IosCatalogPage.Root) }
     var catalogOriginHome by remember { mutableStateOf(false) }
+    var utilityReturnSection by remember { mutableStateOf<IosRootSection?>(null) }
     val catalogHistory = remember { mutableStateListOf<IosCatalogPage>() }
     val catalogRestoration = remember { mutableStateMapOf<Long, IosCatalogRestorationState>() }
     val outletControllerScope = rememberCoroutineScope()
@@ -229,6 +230,18 @@ fun CriosRangoIOSRootScreen(
         }
     }
     fun resetCatalog() { catalogHistory.clear(); catalogPage = IosCatalogPage.Root; catalogOriginHome = false }
+    fun openUtility(destination: IosRootSection) {
+        if (section != IosRootSection.CART && section != IosRootSection.ACCOUNT && !checkoutOpen) {
+            utilityReturnSection = section
+        }
+        section = destination
+    }
+    fun returnFromUtility() {
+        val destination = utilityReturnSection ?: IosRootSection.HOME
+        utilityReturnSection = null
+        if (destination == IosRootSection.HOME) resetCatalog()
+        section = destination
+    }
     IosBackHandler(IosBackPriority.ROOT, canGoBack = section != IosRootSection.HOME) { resetCatalog(); section = IosRootSection.HOME }
     fun retryCategorySnapshot() {
         categorySnapshot = null
@@ -281,10 +294,12 @@ fun CriosRangoIOSRootScreen(
         val n = pushNavigation ?: return@LaunchedEffect
         when (val destination = n.destination) {
             is PushDestination.Order -> {
+                utilityReturnSection = null
                 pendingPushOrderId = destination.orderId
                 section = IosRootSection.ACCOUNT
             }
             PushDestination.Account -> {
+                utilityReturnSection = null
                 pendingPushOrderId = null
                 section = IosRootSection.ACCOUNT
             }
@@ -294,6 +309,7 @@ fun CriosRangoIOSRootScreen(
                 openCatalog(IosCatalogPage.Novedades)
             }
             PushDestination.Promotions -> {
+                utilityReturnSection = null
                 openPromotionsOnStart = true
                 section = IosRootSection.ACCOUNT
             }
@@ -359,6 +375,7 @@ fun CriosRangoIOSRootScreen(
             onTabSelected = { item ->
                 // The shell stays mounted during Checkout; leaving Checkout must also close its route.
                 checkoutOpen = false
+                val wasUtilitySection = section == IosRootSection.CART || section == IosRootSection.ACCOUNT
                 val destination = when (item) {
                     StoreMainTab.HOME -> IosRootSection.HOME
                     StoreMainTab.CATEGORIES -> IosRootSection.CATEGORIES
@@ -367,17 +384,22 @@ fun CriosRangoIOSRootScreen(
                     StoreMainTab.ACCOUNT -> IosRootSection.ACCOUNT
                 }
                 if (destination == IosRootSection.HOME) brandsController.backToBrands()
-                section = destination
-                // Every root-tab selection exits the current child route, including Home.
-                resetCatalog()
-                if (destination == IosRootSection.OUTLET) openCatalog(IosCatalogPage.Outlet())
+                if (destination == IosRootSection.CART || destination == IosRootSection.ACCOUNT) {
+                    if (!wasUtilitySection) utilityReturnSection = section
+                    section = destination
+                } else {
+                    section = destination
+                    // Normal root destinations retain their existing child-route reset behavior.
+                    resetCatalog()
+                    if (destination == IosRootSection.OUTLET) openCatalog(IosCatalogPage.Outlet())
+                }
             },
             hideBottomBarWhenImeVisible = checkoutOpen,
             topBar = {
                 if (!checkoutOpen) StoreGlobalTopBar(
                     cartQuantity = cartQuantity,
                     onSearch = { section = IosRootSection.CATEGORIES; resetCatalog(); openCatalog(IosCatalogPage.Search) },
-                    onCart = { resetCatalog(); section = IosRootSection.CART }
+                    onCart = { openUtility(IosRootSection.CART) }
                 )
             },
         ) { paddingValues ->
@@ -512,18 +534,18 @@ fun CriosRangoIOSRootScreen(
                                 onRetryOutletCategorySnapshot = ::retryOutletCategorySnapshot
                 )
                 IosRootSection.CART -> {
-                    IosBackHandler(IosBackPriority.CART) { resetCatalog(); section = IosRootSection.HOME }
+                    IosBackHandler(IosBackPriority.CART) { returnFromUtility() }
                     StoreCartScreen(
                     storeApi = storeApi,
                     cartController = cartController,
                     loyaltyRepository = loyaltyRepository,
                     walletEnabled = accountRepository.hasSession,
                     padding = padding,
-                    onBack = { resetCatalog(); section = IosRootSection.HOME },
+                    onBack = { returnFromUtility() },
                     onCheckout = { checkoutOpen = true },
                     onOpenProduct = { product -> section = IosRootSection.CATEGORIES; catalogPage = IosCatalogPage.Product(product) },
                     isAuthenticated = accountRepository.hasSession,
-                    onLogin = { accountLoginFromCart = true; resetCatalog(); section = IosRootSection.ACCOUNT },
+                    onLogin = { accountLoginFromCart = true; section = IosRootSection.ACCOUNT },
                     promotionBearerTokenProvider = { accountTokenStore.load() },
                     refreshOnEnter = false
                     )
@@ -543,13 +565,12 @@ fun CriosRangoIOSRootScreen(
                     openPromotionsOnStart = openPromotionsOnStart,
                     openLoginOnStart = accountLoginFromCart,
                     onBackFromLogin = if (accountLoginFromCart) {
-                        { accountLoginFromCart = false; resetCatalog(); section = IosRootSection.CART }
+                        { accountLoginFromCart = false; section = IosRootSection.CART }
                     } else null,
-                    onBackFromRoot = { resetCatalog(); section = IosRootSection.HOME },
+                    onBackFromRoot = { returnFromUtility() },
                     onAuthenticated = {
                         if (accountLoginFromCart) {
                             accountLoginFromCart = false
-                            resetCatalog()
                             section = IosRootSection.CART
                         }
                     },
