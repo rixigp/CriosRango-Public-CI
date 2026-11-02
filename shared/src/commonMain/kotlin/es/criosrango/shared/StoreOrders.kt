@@ -44,6 +44,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -288,7 +289,7 @@ private fun StoreOrderSummaryCard(order: AccountOrderSummary, onOpenOrder: (Acco
             HorizontalDivider(color = Color(0xFFE7E9E7), thickness = 1.dp)
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                if (storeOrderIsReturnEligible(order.status, order.statusLabel)) Text("↩ Solicitar devolución", modifier = Modifier.clickable { onRequestReturn(order) }.padding(vertical = 6.dp, end = 8.dp), color = OrdersGreen, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
+                if (storeOrderIsReturnEligible(order.status, order.statusLabel)) Text("↩ Solicitar devolución", modifier = Modifier.clickable { onRequestReturn(order) }.padding(vertical = 6.dp).padding(end = 8.dp), color = OrdersGreen, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
                 else Spacer(Modifier.width(1.dp))
                 Row(modifier = Modifier.clickable { onOpenOrder(order) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text("Ver detalle", color = OrdersGreen, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
