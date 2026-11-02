@@ -271,29 +271,97 @@ private fun StoreOrderThumbnailStack(itemCount: Int) {
 }
 
 @Composable
-private fun StoreOrderSummaryCard(order: AccountOrderSummary, onOpenOrder: (AccountOrderSummary) -> Unit, onRequestReturn: (AccountOrderSummary) -> Unit) {
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, Color(0xFFE2E5E2)), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+private fun StoreOrderSummaryCard(
+    order: AccountOrderSummary,
+    onOpenOrder: (AccountOrderSummary) -> Unit,
+    onRequestReturn: (AccountOrderSummary) -> Unit
+) {
+    Card(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, Color(0xFFE2E5E2)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
         Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 StoreOrderThumbnailStack(order.items.size)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("Pedido #${order.number.ifBlank { order.id.toString() }}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color(0xFF202923))
+                Column(
+                    Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "Pedido #${order.number.ifBlank { order.id.toString() }}",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF202923)
+                        )
+                        StoreOrderStatusBadge(order.status, order.statusLabel)
+                    }
                     val date = formatStoreOrderDate(order.dateCreated.orEmpty())
-                    if (date.isNotBlank()) Text("Realizado el $date", style = MaterialTheme.typography.bodySmall, color = Color(0xFF727A75))
-                    if (order.total.isNotBlank()) Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Total: ", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = Color(0xFF303832))
-                        Text(formatStoreMinorUnits(storeOrderMinorUnits(order.total), order.currency), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color(0xFF202923))
+                    if (date.isNotBlank()) {
+                        Text(
+                            "Realizado el $date",
+                            modifier = Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF727A75),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                    if (order.total.isNotBlank()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Total: ",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF303832)
+                            )
+                            Text(
+                                formatStoreMinorUnits(storeOrderMinorUnits(order.total), order.currency),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF202923)
+                            )
+                        }
                     }
                 }
-                StoreOrderStatusBadge(order.status, order.statusLabel)
             }
             Spacer(Modifier.height(12.dp))
             HorizontalDivider(color = Color(0xFFE7E9E7), thickness = 1.dp)
             Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                if (storeOrderIsReturnEligible(order.status, order.statusLabel)) Text("↩ Solicitar devolución", modifier = Modifier.clickable { onRequestReturn(order) }.padding(vertical = 6.dp).padding(end = 8.dp), color = OrdersGreen, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
-                else Spacer(Modifier.width(1.dp))
-                Row(modifier = Modifier.clickable { onOpenOrder(order) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                if (storeOrderIsReturnEligible(order.status, order.statusLabel)) {
+                    Text(
+                        "↩ Solicitar devolución",
+                        modifier = Modifier.clickable { onRequestReturn(order) }
+                            .padding(vertical = 6.dp).padding(end = 8.dp),
+                        color = OrdersGreen,
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                } else {
+                    Spacer(Modifier.width(1.dp))
+                }
+                Row(
+                    modifier = Modifier.clickable { onOpenOrder(order) }.padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
                     Text("Ver detalle", color = OrdersGreen, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
                     Text("›", color = OrdersGreen, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
                 }
@@ -301,7 +369,6 @@ private fun StoreOrderSummaryCard(order: AccountOrderSummary, onOpenOrder: (Acco
         }
     }
 }
-
 @Composable
 private fun StoreOrdersEmptyState(message: String) {
     Box(Modifier.fillMaxWidth().padding(vertical = 38.dp, horizontal = 16.dp), contentAlignment = Alignment.Center) {
