@@ -242,10 +242,10 @@ fun CriosRangoIOSAccountScreen(
                     StoreAccountRootScreen(
                         modifier = Modifier.weight(1f),
                         contentHorizontalPadding = 4.dp,
-                        contentTopSpacing = 20.dp,
+                        contentTopSpacing = 10.dp,
                         headerHorizontalPadding = 0.dp,
                         onBack = onBackFromRoot,
-                        fullName = user?.let { it.displayName.ifBlank { it.email } },
+                        fullName = user?.displayName,
                         email = user?.email,
                         appVersion = appVersion,
                         onOrders = { if (user == null) page = IosAccountPage.LOGIN else page = IosAccountPage.ORDERS },
