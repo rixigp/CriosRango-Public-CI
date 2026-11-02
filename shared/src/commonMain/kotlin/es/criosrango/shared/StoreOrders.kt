@@ -319,7 +319,7 @@ fun StoreOrderDetailScreen(
                 Text("Total: ${formatStoreAmount(order.total, order.currency)}", style = MaterialTheme.typography.titleLarge)
             }
         }
-        if (storeCanRequestReturn(order.status, order.statusLabel)) item {
+        if (storeOrderIsReturnEligible(order.status, order.statusLabel)) item {
             Column(Modifier.fillMaxWidth().padding(bottom = 20.dp)) {
                 Text("¿Necesitas devolver algo?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = Color(0xFF454145))
                 Spacer(Modifier.height(8.dp))
@@ -378,12 +378,6 @@ private fun formatStoreAmount(value: String, currency: String): String {
     return if (currency.equals("EUR", true)) "$amount €" else "$amount $currency"
 }
 
-private fun storeCanRequestReturn(status: String, label: String): Boolean {
-    val value = "${StoreOrderStatusMapper.normalize(status)} ${StoreOrderStatusMapper.normalize(label)}"
-    val allowed = listOf("processing", "procesando", "preparacion", "completed", "completado", "shipped", "enviado")
-    val denied = listOf("cancelled", "canceled", "cancelado", "failed", "fallido", "refunded", "reembolsado", "pending", "pending payment", "pendiente", "on hold", "en espera")
-    return allowed.any { value.contains(it) } && denied.none { value.contains(it) }
-}
 
 private fun storeProvinceName(code: String): String = listOf(
     "C" to "A Coruña", "VI" to "Araba/Álava", "AB" to "Albacete", "A" to "Alicante", "AL" to "Almería",
