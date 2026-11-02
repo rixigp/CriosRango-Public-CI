@@ -741,17 +741,29 @@ private fun CriosRangoApp(
         if (httpsReturn || customReturn) {
             val result = uri.getQueryParameter("result")
             val orderId = uri.getQueryParameter("order_id")?.toIntOrNull()
-            when (result) {
+            when (result?.lowercase()) {
                 "cancel" -> {
-                    // The gateway/backend has cancelled this attempt. Drop all client-side
-                    // order, payment-session and redirect state before Checkout can be reopened.
-                    sharedPaymentStore.cancel(orderId)
-                    sharedCheckoutStore.clearForNewProcess()
-                    sharedPaymentStore.clearForNewProcess()
-                    checkoutOpen = false
-                    tab = AppTab.CART
+                    // Only navigate after the active attempt was accepted and its pending state was cleared.
+                    val activeOrderId = sharedPaymentStore.orderId.value
+                    if (orderId != null && activeOrderId == orderId) {
+                        sharedPaymentStore.cancel(orderId)
+                        val cancellationAccepted =
+                            sharedPaymentStore.state.value == es.criosrango.shared.StoreCardPaymentState.NOT_PAID &&
+                                sharedPaymentStore.orderId.value == orderId
+                        if (cancellationAccepted) {
+                            sharedCheckoutStore.clearForNewProcess()
+                            sharedPaymentStore.clearForNewProcess()
+                            checkoutOpen = false
+                            tab = AppTab.CART
+                        }
+                        // StorePaymentStore exposes ERROR if clearing the pending attempt failed.
+                    } else {
+                        // Route an invalid/mismatched return through the existing payment error state.
+                        sharedPaymentStore.handlePaymentReturn("unknown", orderId)
+                    }
                 }
                 "ok" -> sharedPaymentStore.handlePaymentReturn("ok", orderId)
+                else -> sharedPaymentStore.handlePaymentReturn(result, orderId)
             }
         }
         val isProductLink = (uri.scheme == "https" || uri.scheme == "http") && (host == "criosrango.es" || host == "www.criosrango.es") && uri.pathSegments.firstOrNull()?.equals("producto", ignoreCase = true) == true
