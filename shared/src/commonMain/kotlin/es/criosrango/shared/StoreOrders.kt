@@ -270,73 +270,150 @@ fun StoreOrderDetailScreen(
     onBack: () -> Unit,
     onRequestReturn: (AccountOrderSummary) -> Unit
 ) {
-    val a = order.shippingAddress
-    val province = storeProvinceName(a.state)
-    val city = if (a.city.equals("tarancon", true)) "Tarancón" else a.city
-    val shippingMinor = storeOrderMinorUnits(order.shippingTotal)
-    val productsMinor = (storeOrderMinorUnits(order.total) - shippingMinor).coerceAtLeast(0L)
+    val address = order.shippingAddress
+    val province = storeProvinceName(address.state)
+    val city = if (address.city.equals("tarancon", true)) "Tarancón" else address.city
+    val hasAddress = listOf(address.address1, address.address2, address.city, address.postcode, address.country).any { it.isNotBlank() }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 0.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            StorePageHeader(title = "Pedido #${order.number}", onBack = onBack, horizontalPadding = 0.dp)
-            Spacer(Modifier.height(8.dp))
-            StoreOrderStatusBadge(order.status, order.statusLabel)
-            val date = formatStoreOrderDate(order.dateCreated.orEmpty())
-            if (date.isNotBlank()) { Spacer(Modifier.height(10.dp)); Text("Fecha: $date") }
-            Spacer(Modifier.height(24.dp))
+            StorePageHeader(title = "Detalle de pedido", onBack = onBack, horizontalPadding = 0.dp)
         }
         item {
-            StoreOrderDetailCard("Productos") {
-                order.items.forEach { item ->
-                    Text("${item.quantity} × ${cleanStoreWooText(item.name)}")
-                    val vars = storeOrderVariations(item)
-                    if (vars.isNotBlank()) Text(vars, style = MaterialTheme.typography.bodyMedium)
+            StoreOrderDetailCard(title = "Pedido #${order.number.ifBlank { order.id.toString() }}") {
+                StoreOrderStatusBadge(order.status, order.statusLabel)
+                val date = formatStoreOrderDate(order.dateCreated.orEmpty())
+                if (date.isNotBlank()) {
                     Spacer(Modifier.height(10.dp))
+                    Text("Fecha: $date", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-            }
-        }
-        item { StoreOrderDetailCard("Pago") { Text(if (order.paymentMethodTitle.contains("bizum", true)) "Bizum" else "Pago con tarjeta") } }
-        if (a.address1.isNotBlank() || a.city.isNotBlank() || a.postcode.isNotBlank()) item {
-            StoreOrderDetailCard("Entrega") {
-                if (a.address1.isNotBlank()) Text(a.address1)
-                val location = listOf(a.postcode, city, province).filter { it.isNotBlank() }.joinToString(" · ")
-                if (location.isNotBlank()) Text(location)
-                if (a.country.isNotBlank()) Text(if (a.country == "ES") "España" else a.country)
-                if (order.shippingMethod.isNotBlank()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(if (order.shippingMethod.startsWith("Envío", true)) cleanStoreWooText(order.shippingMethod) else "Envío: ${cleanStoreWooText(order.shippingMethod)}")
+                if (order.total.isNotBlank()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text("Total", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(formatStoreAmount(order.total, order.currency), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 }
             }
         }
         item {
-            StoreOrderDetailCard("Resumen") {
-                Text("Productos: ${formatStoreMinorUnits(productsMinor, order.currency)}")
-                Text(if (shippingMinor == 0L) "Envío: Gratis" else "Envío: ${formatStoreAmount(order.shippingTotal, order.currency)}")
-                Spacer(Modifier.height(8.dp))
-                Text("Total: ${formatStoreAmount(order.total, order.currency)}", style = MaterialTheme.typography.titleLarge)
+            StoreOrderDetailCard(title = "Productos (${order.items.size})") {
+                if (order.items.isEmpty()) {
+                    Text("No hay productos disponibles.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    order.items.forEachIndexed { index, item ->
+                        if (index > 0) Surface(modifier = Modifier.fillMaxWidth().height(1.dp), color = MaterialTheme.colorScheme.outlineVariant) {}
+                        Text(cleanStoreWooText(item.name), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                        val variations = storeOrderVariations(item)
+                        if (variations.isNotBlank()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(variations, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceVariant) {
+                                Text("Cantidad: ${item.quantity}", modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                }
             }
         }
-        if (storeOrderIsReturnEligible(order.status, order.statusLabel)) item {
-            Column(Modifier.fillMaxWidth().padding(bottom = 20.dp)) {
-                Text("¿Necesitas devolver algo?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = Color(0xFF454145))
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = { onRequestReturn(order) }, modifier = Modifier.fillMaxWidth()) { Text("Solicitar devolución") }
+        item {
+            StoreOrderDetailCard(title = "Entrega") {
+                if (!hasAddress) {
+                    Text("No hay dirección de entrega disponible.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    if (address.address1.isNotBlank()) Text(cleanStoreWooText(address.address1), style = MaterialTheme.typography.bodyLarge)
+                    if (address.address2.isNotBlank()) Text(cleanStoreWooText(address.address2), style = MaterialTheme.typography.bodyMedium)
+                    val location = listOf(address.postcode, city, province).filter { it.isNotBlank() }.joinToString(" · ")
+                    if (location.isNotBlank()) Text(location, style = MaterialTheme.typography.bodyMedium)
+                    if (address.country.isNotBlank()) Text(if (address.country.equals("ES", true)) "España" else address.country, style = MaterialTheme.typography.bodyMedium)
+                }
+                if (order.shippingMethod.isNotBlank()) {
+                    Spacer(Modifier.height(10.dp))
+                    Text("Método de envío", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(cleanStoreWooText(order.shippingMethod), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+        item {
+            StoreOrderDetailCard(title = "Pago") {
+                val payment = storeFriendlyPaymentMethod(order.paymentMethodTitle, order.paymentMethod)
+                if (payment.isNotBlank()) Text(payment, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+        item {
+            StoreOrderDetailCard(title = "Resumen") {
+                if (order.subtotal.isNotBlank()) {
+                    StoreOrderSummaryLine("Productos", formatStoreAmount(order.subtotal, order.currency))
+                }
+                if (order.shippingTotal.isNotBlank()) {
+                    StoreOrderSummaryLine("Envío", formatStoreAmount(order.shippingTotal, order.currency))
+                }
+                Surface(modifier = Modifier.fillMaxWidth().height(1.dp), color = MaterialTheme.colorScheme.outlineVariant) {}
+                if (order.total.isNotBlank()) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(formatStoreAmount(order.total, order.currency), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+        if (storeOrderIsReturnEligible(order.status, order.statusLabel)) {
+            item {
+                StoreOrderDetailCard(title = "Devolución") {
+                    Text("¿Necesitas devolver algo?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(onClick = { onRequestReturn(order) }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Solicitar devolución")
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun StoreOrderDetailCard(title: String, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
-    Card(Modifier.fillMaxWidth().padding(bottom = 14.dp)) {
-        Column(Modifier.padding(16.dp)) {
-            Text(title, style = if (title == "Resumen") MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.height(10.dp))
+private fun StoreOrderDetailCard(
+    title: String,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(12.dp))
             content()
         }
+    }
+}
+
+@Composable
+private fun StoreOrderSummaryLine(label: String, value: String) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+    }
+}
+
+private fun storeFriendlyPaymentMethod(title: String, method: String): String {
+    val source = "$title $method".trim()
+    if (source.isBlank()) return ""
+    return when {
+        source.contains("bizum", true) -> "Bizum"
+        source.contains("tarjeta", true) || source.contains("card", true) ||
+            source.contains("credit", true) || source.contains("debit", true) ||
+            source.contains("ceca", true) || source.contains("redsys", true) ||
+            source.contains("stripe", true) -> "Tarjeta"
+        title.isNotBlank() && title.any { it.isWhitespace() } -> cleanStoreWooText(title)
+        else -> "Pago"
     }
 }
 
