@@ -1,6 +1,14 @@
 package es.criosrango.shared
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.LocalShipping
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -274,102 +282,99 @@ fun StoreOrderDetailScreen(
     val province = storeProvinceName(address.state)
     val city = if (address.city.equals("tarancon", true)) "Tarancón" else address.city
     val hasAddress = listOf(address.address1, address.address2, address.city, address.postcode, address.country).any { it.isNotBlank() }
+    val shippingMinor = storeOrderMinorUnits(order.shippingTotal)
+    val totalMinor = storeOrderMinorUnits(order.total)
+    val subtotalMinor = storeOrderMinorUnits(order.subtotal)
+    val hasSubtotal = order.subtotal.isNotBlank()
+    val productsMinor = if (hasSubtotal) subtotalMinor else totalMinor - shippingMinor
+    val unclassifiedMinor = if (hasSubtotal) totalMinor - subtotalMinor - shippingMinor else 0L
+    val green = Color(0xFF285C3B)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp)
     ) {
         item {
-            StorePageHeader(title = "Detalle de pedido", onBack = onBack, horizontalPadding = 0.dp)
-        }
-        item {
-            StoreOrderDetailCard(title = "Pedido #${order.number.ifBlank { order.id.toString() }}") {
-                StoreOrderStatusBadge(order.status, order.statusLabel)
-                val date = formatStoreOrderDate(order.dateCreated.orEmpty())
-                if (date.isNotBlank()) {
-                    Spacer(Modifier.height(10.dp))
-                    Text("Fecha: $date", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.fillMaxWidth()) {
+                StorePageHeader(title = "Pedido #\${order.number.ifBlank { order.id.toString() }}", onBack = onBack, horizontalPadding = 0.dp)
+                Row(Modifier.fillMaxWidth().padding(top = 1.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    StoreOrderStatusBadge(order.status, order.statusLabel)
+                    val date = formatStoreOrderDate(order.dateCreated.orEmpty())
+                    if (date.isNotBlank()) Text("Fecha: $date", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (order.total.isNotBlank()) {
-                    Spacer(Modifier.height(12.dp))
-                    Text("Total", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(formatStoreAmount(order.total, order.currency), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Row(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Total", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.width(8.dp))
+                        Text(formatStoreMinorUnits(totalMinor, order.currency), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
         item {
-            StoreOrderDetailCard(title = "Productos (${order.items.size})") {
+            StoreOrderDetailCard(title = "Productos (\${order.items.size})") {
                 if (order.items.isEmpty()) {
-                    Text("No hay productos disponibles.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("No hay productos disponibles.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     order.items.forEachIndexed { index, item ->
-                        if (index > 0) Surface(modifier = Modifier.fillMaxWidth().height(1.dp), color = MaterialTheme.colorScheme.outlineVariant) {}
-                        Text(cleanStoreWooText(item.name), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                        if (index > 0) {
+                            Surface(Modifier.fillMaxWidth().height(1.dp), color = Color(0xFFEAEAEA)) {}
+                            Spacer(Modifier.height(7.dp))
+                        }
+                        Text(cleanStoreWooText(item.name), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                         val variations = storeOrderVariations(item)
-                        if (variations.isNotBlank()) {
-                            Spacer(Modifier.height(4.dp))
-                            Text(variations, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceVariant) {
-                                Text("Cantidad: ${item.quantity}", modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
+                        if (variations.isNotBlank()) Text(variations, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(4.dp))
+                        Text("Cantidad: \${item.quantity}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
         }
         item {
-            StoreOrderDetailCard(title = "Entrega") {
+            StoreOrderDetailCard(title = "Entrega", icon = { Icon(Icons.Filled.LocalShipping, null, tint = green, modifier = Modifier.size(18.dp)) }) {
                 if (!hasAddress) {
-                    Text("No hay dirección de entrega disponible.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("No hay dirección de entrega disponible.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    if (address.address1.isNotBlank()) Text(cleanStoreWooText(address.address1), style = MaterialTheme.typography.bodyLarge)
-                    if (address.address2.isNotBlank()) Text(cleanStoreWooText(address.address2), style = MaterialTheme.typography.bodyMedium)
+                    if (address.address1.isNotBlank()) Text(cleanStoreWooText(address.address1), style = MaterialTheme.typography.bodySmall)
+                    if (address.address2.isNotBlank()) Text(cleanStoreWooText(address.address2), style = MaterialTheme.typography.bodySmall)
                     val location = listOf(address.postcode, city, province).filter { it.isNotBlank() }.joinToString(" · ")
-                    if (location.isNotBlank()) Text(location, style = MaterialTheme.typography.bodyMedium)
-                    if (address.country.isNotBlank()) Text(if (address.country.equals("ES", true)) "España" else address.country, style = MaterialTheme.typography.bodyMedium)
-                }
-                if (order.shippingMethod.isNotBlank()) {
-                    Spacer(Modifier.height(10.dp))
-                    Text("Método de envío", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(cleanStoreWooText(order.shippingMethod), style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-        }
-        item {
-            StoreOrderDetailCard(title = "Pago") {
-                val payment = storeFriendlyPaymentMethod(order.paymentMethodTitle, order.paymentMethod)
-                if (payment.isNotBlank()) Text(payment, style = MaterialTheme.typography.bodyLarge)
-            }
-        }
-        item {
-            StoreOrderDetailCard(title = "Resumen") {
-                if (order.subtotal.isNotBlank()) {
-                    StoreOrderSummaryLine("Productos", formatStoreAmount(order.subtotal, order.currency))
+                    if (location.isNotBlank()) Text(location, style = MaterialTheme.typography.bodySmall)
+                    if (address.country.isNotBlank()) Text(if (address.country.equals("ES", true)) "España" else address.country, style = MaterialTheme.typography.bodySmall)
                 }
                 if (order.shippingTotal.isNotBlank()) {
-                    StoreOrderSummaryLine("Envío", formatStoreAmount(order.shippingTotal, order.currency))
+                    Spacer(Modifier.height(5.dp))
+                    Text(if (shippingMinor == 0L) "Envío gratuito" else "Envío: \${formatStoreMinorUnits(shippingMinor, order.currency)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium, color = green)
+                } else if (order.shippingMethod.isNotBlank()) {
+                    Spacer(Modifier.height(5.dp))
+                    Text(cleanStoreWooText(order.shippingMethod), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Surface(modifier = Modifier.fillMaxWidth().height(1.dp), color = MaterialTheme.colorScheme.outlineVariant) {}
-                if (order.total.isNotBlank()) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Text(formatStoreAmount(order.total, order.currency), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    }
+            }
+        }
+        item {
+            StoreOrderDetailCard(title = "Pago", icon = { Icon(Icons.Filled.CreditCard, null, tint = green, modifier = Modifier.size(18.dp)) }, compact = true) {
+                val payment = storeFriendlyPaymentMethod(order.paymentMethodTitle, order.paymentMethod)
+                if (payment.isNotBlank()) Text(payment, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+            }
+        }
+        item {
+            StoreOrderDetailCard(title = "Resumen", icon = { Icon(Icons.Filled.ReceiptLong, null, tint = green, modifier = Modifier.size(18.dp)) }) {
+                StoreOrderSummaryLine("Productos", formatStoreMinorUnits(productsMinor, order.currency))
+                if (order.shippingTotal.isNotBlank()) StoreOrderSummaryLine("Envío", if (shippingMinor == 0L) "Gratis" else formatStoreMinorUnits(shippingMinor, order.currency))
+                if (unclassifiedMinor != 0L) StoreOrderSummaryLine("Otros conceptos (sin desglose)", formatStoreMinorUnits(unclassifiedMinor, order.currency), subdued = true)
+                Surface(Modifier.fillMaxWidth().height(1.dp), color = Color(0xFFE6E6E6)) {}
+                Row(Modifier.fillMaxWidth().padding(top = 5.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Total", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(formatStoreMinorUnits(totalMinor, order.currency), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
             }
         }
         if (storeOrderIsReturnEligible(order.status, order.statusLabel)) {
             item {
-                StoreOrderDetailCard(title = "Devolución") {
-                    Text("¿Necesitas devolver algo?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(10.dp))
-                    OutlinedButton(onClick = { onRequestReturn(order) }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Solicitar devolución")
-                    }
+                StoreOrderDetailCard(compact = true) {
+                    Text("¿Necesitas devolver algo?", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(5.dp))
+                    OutlinedButton(onClick = { onRequestReturn(order) }, modifier = Modifier.fillMaxWidth()) { Text("Solicitar devolución") }
                 }
             }
         }
@@ -378,42 +383,37 @@ fun StoreOrderDetailScreen(
 
 @Composable
 private fun StoreOrderDetailCard(
-    title: String,
+    title: String? = null,
+    icon: (@Composable () -> Unit)? = null,
+    compact: Boolean = false,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 1.dp)
+        shape = RoundedCornerShape(13.dp),
+        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = Color(0xFFFFFEFD)),
+        border = BorderStroke(0.7.dp, Color(0xFFE5E5E5)),
+        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 0.5.dp)
     ) {
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(12.dp))
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = if (compact) 8.dp else 10.dp)) {
+            if (title != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (icon != null) { icon(); Spacer(Modifier.width(7.dp)) }
+                    Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.height(if (compact) 4.dp else 6.dp))
+            }
             content()
         }
     }
 }
 
 @Composable
-private fun StoreOrderSummaryLine(label: String, value: String) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-    }
-}
-
-private fun storeFriendlyPaymentMethod(title: String, method: String): String {
-    val source = "$title $method".trim()
-    if (source.isBlank()) return ""
-    return when {
-        source.contains("bizum", true) -> "Bizum"
-        source.contains("tarjeta", true) || source.contains("card", true) ||
-            source.contains("credit", true) || source.contains("debit", true) ||
-            source.contains("ceca", true) || source.contains("redsys", true) ||
-            source.contains("stripe", true) -> "Tarjeta"
-        title.isNotBlank() && title.any { it.isWhitespace() } -> cleanStoreWooText(title)
-        else -> "Pago"
+private fun StoreOrderSummaryLine(label: String, value: String, subdued: Boolean = false) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = if (subdued) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+        Spacer(Modifier.width(10.dp))
+        Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
     }
 }
 
