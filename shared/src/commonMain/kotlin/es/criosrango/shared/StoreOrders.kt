@@ -209,7 +209,7 @@ object StoreOrderStatusMapper {
         StoreOrderStatusKind.PENDING -> StoreOrderStatusStyle(StoreOrderStatusKind.PENDING, visibleLabel(status, label), 0xFFFFF4D8, 0xFF765A16)
         StoreOrderStatusKind.ON_HOLD -> StoreOrderStatusStyle(StoreOrderStatusKind.ON_HOLD, visibleLabel(status, label), 0xFFECE9E3, 0xFF5E5A53)
         StoreOrderStatusKind.CANCELLED -> StoreOrderStatusStyle(StoreOrderStatusKind.CANCELLED, visibleLabel(status, label), 0xFFF8E3E1, 0xFF8A332D)
-        StoreOrderStatusKind.REFUNDED -> StoreOrderStatusStyle(StoreOrderStatusKind.REFUNDED, visibleLabel(status, label), 0xFFEDE7F3, 0xFF5A476D)
+        StoreOrderStatusKind.REFUNDED -> StoreOrderStatusStyle(StoreOrderStatusKind.REFUNDED, "Reembolsado", 0xFFEDE7F3, 0xFF5A476D)
         StoreOrderStatusKind.FAILED -> StoreOrderStatusStyle(StoreOrderStatusKind.FAILED, visibleLabel(status, label), 0xFFF6E0DE, 0xFF8A332D)
         StoreOrderStatusKind.UNKNOWN -> StoreOrderStatusStyle(StoreOrderStatusKind.UNKNOWN, visibleLabel(status, label), 0xFFE9E9E7, 0xFF5C5C58)
     }
@@ -232,7 +232,7 @@ private fun StoreOrdersHeader(title: String, onBack: () -> Unit) {
     )
 }
 
-enum class StoreOrdersFilter { ALL, PROCESSING, CANCELLED, ON_HOLD, COMPLETED }
+enum class StoreOrdersFilter { ALL, PROCESSING, CANCELLED, ON_HOLD, COMPLETED, REFUNDED }
 
 fun filterStoreOrders(orders: List<AccountOrderSummary>, filter: StoreOrdersFilter): List<AccountOrderSummary> =
     when (filter) {
@@ -241,6 +241,7 @@ fun filterStoreOrders(orders: List<AccountOrderSummary>, filter: StoreOrdersFilt
         StoreOrdersFilter.CANCELLED -> orders.filter { StoreOrderStatusMapper.classify(it.status, it.statusLabel) == StoreOrderStatusKind.CANCELLED }
         StoreOrdersFilter.ON_HOLD -> orders.filter { StoreOrderStatusMapper.classify(it.status, it.statusLabel) in setOf(StoreOrderStatusKind.PENDING, StoreOrderStatusKind.ON_HOLD) }
         StoreOrdersFilter.COMPLETED -> orders.filter { StoreOrderStatusMapper.classify(it.status, it.statusLabel) == StoreOrderStatusKind.COMPLETED }
+        StoreOrdersFilter.REFUNDED -> orders.filter { StoreOrderStatusMapper.classify(it.status, it.statusLabel) == StoreOrderStatusKind.REFUNDED }
     }
 
 private val OrdersGreen = Color(0xFF183B35)
@@ -248,7 +249,7 @@ private val OrdersGreen = Color(0xFF183B35)
 @Composable
 private fun StoreOrdersFilterRow(selected: StoreOrdersFilter, onSelected: (StoreOrdersFilter) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp).horizontalScroll(rememberScrollState()).padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(StoreOrdersFilter.ALL to "Todos", StoreOrdersFilter.PROCESSING to "Procesando", StoreOrdersFilter.CANCELLED to "Cancelado", StoreOrdersFilter.ON_HOLD to "En espera", StoreOrdersFilter.COMPLETED to "Completado").forEach { (filter, label) ->
+        listOf(StoreOrdersFilter.ALL to "Todos", StoreOrdersFilter.PROCESSING to "Procesando", StoreOrdersFilter.CANCELLED to "Cancelado", StoreOrdersFilter.ON_HOLD to "En espera", StoreOrdersFilter.COMPLETED to "Completado", StoreOrdersFilter.REFUNDED to "Reembolsado").forEach { (filter, label) ->
             val active = selected == filter
             Surface(modifier = Modifier.clickable { onSelected(filter) }, shape = RoundedCornerShape(50), color = if (active) OrdersGreen else Color.White, border = if (active) null else BorderStroke(1.dp, Color(0xFFD9DEDB))) {
                 Text(label, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp), color = if (active) Color.White else Color(0xFF29332F), fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium, style = MaterialTheme.typography.labelLarge)
@@ -315,9 +316,10 @@ fun StoreOrdersScreen(owner: StoreOrdersOwner, sessionState: StoreAccountSession
     var selectedFilter by remember { mutableStateOf(StoreOrdersFilter.ALL) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(auth.user?.id) {
+        selectedFilter = StoreOrdersFilter.ALL
         owner.onSessionChanged(auth.user?.id)
         if (auth.user != null) {
-            try { owner.load() }
+            try { owner.refresh() }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { if (!owner.hasActiveSession()) onSessionExpired() }
         }
@@ -342,6 +344,7 @@ fun StoreOrdersScreen(owner: StoreOrdersOwner, sessionState: StoreAccountSession
                     StoreOrdersFilter.CANCELLED -> "No tienes pedidos cancelados."
                     StoreOrdersFilter.ON_HOLD -> "No tienes pedidos en espera."
                     StoreOrdersFilter.COMPLETED -> "No tienes pedidos completados."
+                    StoreOrdersFilter.REFUNDED -> "No tienes pedidos reembolsados."
                 }
                 if (visibleOrders.isEmpty()) StoreOrdersEmptyState(emptyMessage)
                 else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 4.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
