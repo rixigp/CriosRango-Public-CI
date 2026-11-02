@@ -1,10 +1,8 @@
 package es.criosrango.shared
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -19,6 +17,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.BorderStroke
 
 enum class StoreAccountHelpContactKind { WHATSAPP, PHONE, EMAIL }
 data class StoreAccountHelpContact(val title: String, val value: String, val kind: StoreAccountHelpContactKind)
@@ -51,26 +51,76 @@ fun StoreAccountHelpScreen(
     modifier: Modifier = Modifier
 ) {
     Column(modifier.fillMaxSize()) {
+        // Keep the validated root-page header geometry unchanged.
         StorePageHeader(title = "Ayuda", onBack = onBack)
-        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp)
+        ) {
             Spacer(Modifier.height(4.dp))
-            Text("Contacta con nosotros", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = Color(0xFF183B35))
-            Spacer(Modifier.height(16.dp))
+            Text(
+                "Contacta con nosotros",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF183B35)
+            )
+            Spacer(Modifier.height(12.dp))
             STORE_ACCOUNT_HELP_CONTACTS.forEachIndexed { index, contact ->
-                StoreAccountHelpContactRow(contact, when (contact.kind) {
+                val action = when (contact.kind) {
                     StoreAccountHelpContactKind.WHATSAPP -> onWhatsApp
                     StoreAccountHelpContactKind.PHONE -> onCall
                     StoreAccountHelpContactKind.EMAIL -> onEmail
-                })
-                if (index != STORE_ACCOUNT_HELP_CONTACTS.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+                StoreAccountHelpContactCard(contact, action)
+                if (index != STORE_ACCOUNT_HELP_CONTACTS.lastIndex) {
+                    Spacer(Modifier.height(10.dp))
+                }
             }
-            Spacer(Modifier.height(28.dp))
-            Text("Horario de atención", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, color = Color(0xFF183B35))
-            Spacer(Modifier.height(14.dp))
-            STORE_ACCOUNT_BUSINESS_HOURS.forEach { row ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.Top) {
-                    Text(row.day, modifier = Modifier.width(90.dp), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                    Text(row.hours, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+            Spacer(Modifier.height(18.dp))
+            Text(
+                "Horario de atención",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF183B35)
+            )
+            Spacer(Modifier.height(10.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, Color(0xFFE3E7E4)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp)) {
+                    STORE_ACCOUNT_BUSINESS_HOURS.forEachIndexed { index, row ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                row.day,
+                                modifier = Modifier.width(72.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF26332D)
+                            )
+                            Text(
+                                row.hours,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color(0xFF4E5A53)
+                            )
+                        }
+                        if (index != STORE_ACCOUNT_BUSINESS_HOURS.lastIndex) {
+                            HorizontalDivider(color = Color(0xFFE9ECE9), thickness = 1.dp)
+                        }
+                    }
                 }
             }
         }
@@ -78,23 +128,55 @@ fun StoreAccountHelpScreen(
 }
 
 @Composable
-private fun StoreAccountHelpContactRow(contact: StoreAccountHelpContact, onClick: () -> Unit) {
+private fun StoreAccountHelpContactCard(contact: StoreAccountHelpContact, onClick: () -> Unit) {
     val icon: ImageVector = when (contact.kind) {
         StoreAccountHelpContactKind.WHATSAPP -> Icons.AutoMirrored.Outlined.Chat
         StoreAccountHelpContactKind.PHONE -> Icons.Outlined.Phone
         StoreAccountHelpContactKind.EMAIL -> Icons.Outlined.Email
     }
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(44.dp).background(Color(0xFFE3EFEB), CircleShape), contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = null, tint = Color(0xFF183B35), modifier = Modifier.size(24.dp))
+    val background = when (contact.kind) {
+        StoreAccountHelpContactKind.WHATSAPP -> Color(0xFFEAF4EF)
+        StoreAccountHelpContactKind.PHONE -> Color(0xFFFBF4E2)
+        StoreAccountHelpContactKind.EMAIL -> Color(0xFFF1EDFA)
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = background),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 15.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = Color(0xFF1F6B42),
+                modifier = Modifier.size(27.dp)
+            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    contact.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF202923)
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    contact.value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF4E5A53)
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
+                tint = Color(0xFF52635A)
+            )
         }
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            Text(contact.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.height(3.dp))
-            Text(contact.value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
