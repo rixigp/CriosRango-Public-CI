@@ -215,6 +215,15 @@ fun StoreOrderStatusBadge(status: String, label: String) {
 }
 
 @Composable
+private fun StoreOrdersHeader(title: String, onBack: () -> Unit) {
+    StorePageHeader(
+        title = title,
+        onBack = onBack,
+        horizontalPadding = 0.dp
+    )
+}
+
+@Composable
 fun StoreOrdersScreen(
     owner: StoreOrdersOwner,
     sessionState: StoreAccountSessionState,
@@ -234,7 +243,7 @@ fun StoreOrdersScreen(
         }
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-        StorePageHeader(title = "Pedidos", onBack = onBack, horizontalPadding = 0.dp)
+        StoreOrdersHeader(title = "Pedidos", onBack = onBack)
         when {
             auth.user == null -> Unit
             state.authenticatedUserId != auth.user?.id -> Box(Modifier.fillMaxWidth().padding(top = 36.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -295,20 +304,17 @@ fun StoreOrderDetailScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(11.dp)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp)
     ) {
         item {
-            StorePageHeader(
-                title = "Detalle de pedido",
-                onBack = onBack,
-                titleFontWeight = FontWeight.SemiBold,
-                horizontalPadding = 0.dp
-            )
+            Box(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+                StoreOrdersHeader(title = "Detalle de pedido", onBack = onBack)
+            }
         }
         item {
             StoreOrderDetailCard {
-                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text(
                         "Pedido #${order.number.ifBlank { order.id.toString() }}",
                         style = MaterialTheme.typography.titleMedium,
@@ -343,15 +349,15 @@ fun StoreOrderDetailScreen(
         item {
             StoreOrderDetailCard(title = "Productos (${order.items.size})") {
                 Surface(Modifier.fillMaxWidth().height(1.dp), color = Color(0xFFEAEAEA)) {}
-                Spacer(Modifier.height(9.dp))
+                Spacer(Modifier.height(6.dp))
                 if (order.items.isEmpty()) {
                     Text("No hay productos disponibles.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     order.items.forEachIndexed { index, item ->
                         if (index > 0) {
-                            Spacer(Modifier.height(9.dp))
+                            Spacer(Modifier.height(6.dp))
                             Surface(Modifier.fillMaxWidth().height(1.dp), color = Color(0xFFEAEAEA)) {}
-                            Spacer(Modifier.height(9.dp))
+                            Spacer(Modifier.height(6.dp))
                         }
                         Row(
                             Modifier.fillMaxWidth(),
@@ -380,14 +386,14 @@ fun StoreOrderDetailScreen(
                                 )
                                 val variations = storeOrderVariations(item)
                                 if (variations.isNotBlank()) {
-                                    Spacer(Modifier.height(3.dp))
+                                    Spacer(Modifier.height(2.dp))
                                     Text(
                                         variations,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                Spacer(Modifier.height(4.dp))
+                                Spacer(Modifier.height(2.dp))
                                 Text(
                                     "Cantidad: ${item.quantity}",
                                     style = MaterialTheme.typography.bodySmall,
@@ -419,7 +425,7 @@ fun StoreOrderDetailScreen(
                     }
                 }
                 if (order.shippingTotal.isNotBlank()) {
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(2.dp))
                     Text(
                         if (shippingMinor == 0L) "Envío gratuito" else formatStoreMinorUnits(shippingMinor, order.currency),
                         style = MaterialTheme.typography.bodySmall,
@@ -456,10 +462,10 @@ fun StoreOrderDetailScreen(
                         if (shippingMinor == 0L) "Gratis" else formatStoreMinorUnits(shippingMinor, order.currency)
                     )
                 }
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(2.dp))
                 Surface(Modifier.fillMaxWidth().height(1.dp), color = Color(0xFFE6E6E6)) {}
                 Row(
-                    Modifier.fillMaxWidth().padding(top = 7.dp),
+                    Modifier.fillMaxWidth().padding(top = 5.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -476,10 +482,11 @@ fun StoreOrderDetailScreen(
             item {
                 StoreOrderDetailCard(compact = true) {
                     Text("¿Necesitas devolver algo?", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(5.dp))
+                    Spacer(Modifier.height(3.dp))
                     OutlinedButton(
                         onClick = { onRequestReturn(order) },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Text("Solicitar devolución")
                     }
@@ -523,14 +530,14 @@ private fun StoreOrderDetailCard(
         border = BorderStroke(0.7.dp, Color(0xFFE7E8E6)),
         elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Column(Modifier.fillMaxWidth().padding(15.dp)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = if (compact) 10.dp else 12.dp)) {
             if (title != null && icon != null) {
                 Row(verticalAlignment = Alignment.Top) {
                     icon()
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
                         Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.height(if (compact) 3.dp else 6.dp))
+                        Spacer(Modifier.height(if (compact) 2.dp else 4.dp))
                         content()
                     }
                 }
@@ -547,7 +554,7 @@ private fun StoreOrderDetailCard(
 
 @Composable
 private fun StoreOrderSummaryLine(label: String, value: String, subdued: Boolean = false) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 1.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = if (subdued) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
         Spacer(Modifier.width(10.dp))
         Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
