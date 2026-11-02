@@ -46,18 +46,23 @@ class StoreOrdersStatusTest {
             AccountOrderSummary(id = 4, number = "4", status = "shipped"),
             AccountOrderSummary(id = 5, number = "5", status = "refunded"),
             AccountOrderSummary(id = 6, number = "6", status = "cancelled"),
-            AccountOrderSummary(id = 7, number = "7", status = "failed")
+            AccountOrderSummary(id = 7, number = "7", status = "failed"),
+            AccountOrderSummary(id = 8, number = "8", status = "preparacion_pedido"),
+            AccountOrderSummary(id = 9, number = "9", status = "on hold"),
+            AccountOrderSummary(id = 10, number = "10", status = "canceled")
         )
         assertEquals(orders, filterStoreOrders(orders, StoreOrdersFilter.ALL))
-        assertEquals(listOf(1, 2), filterStoreOrders(orders, StoreOrdersFilter.IN_PROGRESS).map { it.id })
-        assertEquals(listOf(3, 4), filterStoreOrders(orders, StoreOrdersFilter.COMPLETED).map { it.id })
-        assertEquals(listOf(5), filterStoreOrders(orders, StoreOrdersFilter.REFUNDED).map { it.id })
+        assertEquals(listOf(1, 8), filterStoreOrders(orders, StoreOrdersFilter.PROCESSING).map { it.id })
+        assertEquals(listOf(6, 10), filterStoreOrders(orders, StoreOrdersFilter.CANCELLED).map { it.id })
+        assertEquals(listOf(2, 9), filterStoreOrders(orders, StoreOrdersFilter.ON_HOLD).map { it.id })
+        assertEquals(listOf(3), filterStoreOrders(orders, StoreOrdersFilter.COMPLETED).map { it.id })
     }
 
-    @Test fun returnActionEligibilityContractRemainsShared() {
-        assertEquals(true, storeOrderIsReturnEligible("processing", ""))
+    @Test fun returnActionIsEligibleOnlyForCompletedOrders() {
         assertEquals(true, storeOrderIsReturnEligible("completed", ""))
-        assertEquals(false, storeOrderIsReturnEligible("cancelled", ""))
-        assertEquals(false, storeOrderIsReturnEligible("refunded", ""))
+        assertEquals(true, storeOrderIsReturnEligible("completado", ""))
+        listOf("processing", "procesando", "preparacion", "pending", "pending payment", "pendiente", "on hold", "en espera", "cancelled", "canceled", "cancelado", "failed", "refunded", "shipped", "enviado").forEach { status ->
+            assertEquals(false, storeOrderIsReturnEligible(status, ""), "status=$status")
+        }
     }
 }

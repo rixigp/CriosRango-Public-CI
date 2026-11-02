@@ -232,22 +232,23 @@ private fun StoreOrdersHeader(title: String, onBack: () -> Unit) {
     )
 }
 
-enum class StoreOrdersFilter { ALL, IN_PROGRESS, COMPLETED, REFUNDED }
+enum class StoreOrdersFilter { ALL, PROCESSING, CANCELLED, ON_HOLD, COMPLETED }
 
 fun filterStoreOrders(orders: List<AccountOrderSummary>, filter: StoreOrdersFilter): List<AccountOrderSummary> =
     when (filter) {
         StoreOrdersFilter.ALL -> orders
-        StoreOrdersFilter.IN_PROGRESS -> orders.filter { StoreOrderStatusMapper.classify(it.status, it.statusLabel) in setOf(StoreOrderStatusKind.PROCESSING, StoreOrderStatusKind.PENDING, StoreOrderStatusKind.ON_HOLD) }
-        StoreOrdersFilter.COMPLETED -> orders.filter { StoreOrderStatusMapper.classify(it.status, it.statusLabel) in setOf(StoreOrderStatusKind.COMPLETED, StoreOrderStatusKind.SHIPPED) }
-        StoreOrdersFilter.REFUNDED -> orders.filter { StoreOrderStatusMapper.classify(it.status, it.statusLabel) == StoreOrderStatusKind.REFUNDED }
+        StoreOrdersFilter.PROCESSING -> orders.filter { StoreOrderStatusMapper.classify(it.status, it.statusLabel) == StoreOrderStatusKind.PROCESSING }
+        StoreOrdersFilter.CANCELLED -> orders.filter { StoreOrderStatusMapper.classify(it.status, it.statusLabel) == StoreOrderStatusKind.CANCELLED }
+        StoreOrdersFilter.ON_HOLD -> orders.filter { StoreOrderStatusMapper.classify(it.status, it.statusLabel) in setOf(StoreOrderStatusKind.PENDING, StoreOrderStatusKind.ON_HOLD) }
+        StoreOrdersFilter.COMPLETED -> orders.filter { StoreOrderStatusMapper.classify(it.status, it.statusLabel) == StoreOrderStatusKind.COMPLETED }
     }
 
 private val OrdersGreen = Color(0xFF183B35)
 
 @Composable
 private fun StoreOrdersFilterRow(selected: StoreOrdersFilter, onSelected: (StoreOrdersFilter) -> Unit) {
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(StoreOrdersFilter.ALL to "Todos", StoreOrdersFilter.IN_PROGRESS to "En curso", StoreOrdersFilter.COMPLETED to "Completados", StoreOrdersFilter.REFUNDED to "Devueltos").forEach { (filter, label) ->
+    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp).horizontalScroll(rememberScrollState()).padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(StoreOrdersFilter.ALL to "Todos", StoreOrdersFilter.PROCESSING to "Procesando", StoreOrdersFilter.CANCELLED to "Cancelado", StoreOrdersFilter.ON_HOLD to "En espera", StoreOrdersFilter.COMPLETED to "Completado").forEach { (filter, label) ->
             val active = selected == filter
             Surface(modifier = Modifier.clickable { onSelected(filter) }, shape = RoundedCornerShape(50), color = if (active) OrdersGreen else Color.White, border = if (active) null else BorderStroke(1.dp, Color(0xFFD9DEDB))) {
                 Text(label, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp), color = if (active) Color.White else Color(0xFF29332F), fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium, style = MaterialTheme.typography.labelLarge)
@@ -337,9 +338,10 @@ fun StoreOrdersScreen(owner: StoreOrdersOwner, sessionState: StoreAccountSession
                 val visibleOrders = filterStoreOrders(state.orders, selectedFilter)
                 val emptyMessage = when (selectedFilter) {
                     StoreOrdersFilter.ALL -> "No tienes pedidos todavía."
-                    StoreOrdersFilter.IN_PROGRESS -> "No tienes pedidos en curso."
+                    StoreOrdersFilter.PROCESSING -> "No tienes pedidos procesando."
+                    StoreOrdersFilter.CANCELLED -> "No tienes pedidos cancelados."
+                    StoreOrdersFilter.ON_HOLD -> "No tienes pedidos en espera."
                     StoreOrdersFilter.COMPLETED -> "No tienes pedidos completados."
-                    StoreOrdersFilter.REFUNDED -> "No tienes pedidos devueltos."
                 }
                 if (visibleOrders.isEmpty()) StoreOrdersEmptyState(emptyMessage)
                 else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 4.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

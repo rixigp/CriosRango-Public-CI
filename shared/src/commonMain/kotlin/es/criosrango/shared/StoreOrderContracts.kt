@@ -42,12 +42,8 @@ fun buildStoreReturnRequest(order: AccountOrderSummary, item: AccountOrderItem):
     return StoreReturnRequest(order.id, order.number.ifBlank { order.id.toString() }, cleanReturnText(item.name), item.quantity, variations, message)
 }
 
-fun storeOrderIsReturnEligible(status: String, label: String): Boolean {
-    val normalized = StoreOrderStatusMapper.normalize("$status $label")
-    val allowed = listOf("processing", "procesando", "preparacion", "completed", "completado", "shipped", "enviado")
-    val denied = listOf("cancelled", "canceled", "cancelado", "failed", "fallido", "refunded", "reembolsado", "pending", "pending payment", "pendiente", "on hold", "en espera")
-    return allowed.any { normalized.contains(it) } && denied.none { normalized.contains(it) }
-}
+fun storeOrderIsReturnEligible(status: String, label: String): Boolean =
+    StoreOrderStatusMapper.classify(status, label) == StoreOrderStatusKind.COMPLETED
 
 private fun cleanReturnText(value: String): String = value
     .replace("&amp;", "&").replace("&#038;", "&").replace("&quot;", "\"")

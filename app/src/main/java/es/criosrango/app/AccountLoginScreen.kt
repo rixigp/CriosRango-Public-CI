@@ -152,6 +152,13 @@ fun AccountLoginScreen(
         selectedOrderFromShared = cleared.sharedOrder
     }
     var returnPickerOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
+    val requestReturnForOrder: (AccountOrderSummary) -> Unit = { order ->
+        when (accountReturnActionForItemCount(order.items.size)) {
+            AccountReturnAction.SINGLE_PRODUCT -> requestReturnViaWhatsApp(notificationContext, order, order.items.first())
+            AccountReturnAction.MULTI_PRODUCT -> returnPickerOrder = order
+            AccountReturnAction.NONE -> Unit
+        }
+    }
     val sharedOrdersOwner = vm.sharedOrdersOwner
     val sharedOrdersState by sharedOrdersOwner.state.collectAsStateWithLifecycle()
     LaunchedEffect(currentUser?.id) { sharedOrdersOwner.onSessionChanged(currentUser?.id); selectedOrderFromShared = null }
@@ -166,6 +173,7 @@ fun AccountLoginScreen(
         }
     }
     val selectedOrder = AccountOrderSelectionState(selectedOrderId, selectedOrderFromShared).resolveFrom(sharedOrdersState.orders)
+    returnPickerOrder?.let { order -> AccountReturnProductPicker(order) { returnPickerOrder = null } }
     LaunchedEffect(initialOrderId, currentUser?.id, selectedOrder?.id) {
         val targetOrderId = initialOrderId ?: return@LaunchedEffect
         if (shouldConsumePendingOrder(targetOrderId, selectedOrder?.id, authenticated = currentUser != null)) {
@@ -283,14 +291,9 @@ fun AccountLoginScreen(
             StoreOrderDetailScreen(
                 order = selectedOrder,
                 onBack = { clearOrderSelection() },
-                onRequestReturn = { order ->
-                    if (order.items.size == 1) {
-                        requestReturnViaWhatsApp(notificationContext, order, order.items.first())
-                    } else if (order.items.isNotEmpty()) returnPickerOrder = order
-                }
+                onRequestReturn = requestReturnForOrder
             )
         }
-        returnPickerOrder?.let { order -> AccountReturnProductPicker(order) { returnPickerOrder = null } }
         return
     }
     if (currentUser != null) {
@@ -302,11 +305,7 @@ fun AccountLoginScreen(
                     sessionState = vm.sharedAuthSession,
                     onBack = { accountSection = AccountSection.HOME },
                     onOpenOrder = { val selected = AccountOrderSelectionState().select(it); selectedOrderFromShared = selected.sharedOrder; selectedOrderId = selected.orderId },
-                    onRequestReturn = { order ->
-                        if (order.items.size == 1) {
-                            requestReturnViaWhatsApp(notificationContext, order, order.items.first())
-                        } else if (order.items.isNotEmpty()) returnPickerOrder = order
-                    },
+                    onRequestReturn = requestReturnForOrder,
                     onSessionExpired = { vm.retrySession() }
                 )
             }
@@ -442,6 +441,14 @@ internal fun accountAuthBackDestination(
     AccountAuthDestination.REGISTER, AccountAuthDestination.FORGOT_PASSWORD -> AccountAuthDestination.LOGIN
     AccountAuthDestination.LOGIN -> if (returnToCartAfterLogin) AccountAuthDestination.CART else AccountAuthDestination.ACCOUNT
     AccountAuthDestination.ACCOUNT, AccountAuthDestination.CART -> AccountAuthDestination.ACCOUNT
+}
+
+internal enum class AccountReturnAction { NONE, SINGLE_PRODUCT, MULTI_PRODUCT }
+
+internal fun accountReturnActionForItemCount(itemCount: Int): AccountReturnAction = when {
+    itemCount == 1 -> AccountReturnAction.SINGLE_PRODUCT
+    itemCount > 1 -> AccountReturnAction.MULTI_PRODUCT
+    else -> AccountReturnAction.NONE
 }
 
 private enum class AccountSection { HOME, ORDERS, WALLET, PROFILE, DATA, ADDRESSES, HELP }

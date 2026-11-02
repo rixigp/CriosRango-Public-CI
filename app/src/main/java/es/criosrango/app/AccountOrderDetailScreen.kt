@@ -172,11 +172,8 @@ fun AccountOrderDetailScreenV2(
     }
 }
 
-private fun canRequestReturn(status: String, label: String): Boolean {
-    val normalized = "${normalizeOrderStatus(status)} ${normalizeOrderStatus(label)}"
-    return hasStatus(normalized, "PROCESSING", "PROCESANDO", "PREPARACION", "COMPLETED", "COMPLETADO", "SHIPPED", "ENVIADO") &&
-        !hasStatus(normalized, "CANCELLED", "CANCELED", "CANCELADO", "FAILED", "FALLIDO", "REFUNDED", "REEMBOLSADO", "PENDING", "PENDING PAYMENT", "PENDIENTE", "ON HOLD", "EN ESPERA")
-}
+private fun canRequestReturn(status: String, label: String): Boolean =
+    es.criosrango.shared.storeOrderIsReturnEligible(status, label)
 
 private fun returnVariationDetails(item: AccountOrderItem): List<Pair<String, String>> =
     item.variations
