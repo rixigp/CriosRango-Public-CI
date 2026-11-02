@@ -529,7 +529,7 @@ private fun StoreProfileGroupedRow(title: String, icon: androidx.compose.ui.grap
         Icon(icon, contentDescription = null, tint = Color(0xFF183B35), modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(12.dp))
         Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = Color(0xFF24332E))
-        Icon(androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight, contentDescription = null, tint = Color(0xFF78847E), modifier = Modifier.size(21.dp))
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Color(0xFF78847E), modifier = Modifier.size(21.dp))
     }
 }
 
