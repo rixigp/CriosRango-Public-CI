@@ -61,7 +61,7 @@ class StoreOrdersStatusTest {
         assertEquals(listOf(6, 10), filterStoreOrders(orders, StoreOrdersFilter.CANCELLED).map { it.id })
         assertEquals(listOf(2, 9), filterStoreOrders(orders, StoreOrdersFilter.ON_HOLD).map { it.id })
         assertEquals(listOf(3), filterStoreOrders(orders, StoreOrdersFilter.COMPLETED).map { it.id })
-        assertEquals(listOf(11, 12), filterStoreOrders(orders, StoreOrdersFilter.REFUNDED).map { it.id })
+        assertEquals(listOf(5, 11, 12), filterStoreOrders(orders, StoreOrdersFilter.REFUNDED).map { it.id })
     }
 
     @Test fun returnActionIsEligibleOnlyForCompletedOrders() {
