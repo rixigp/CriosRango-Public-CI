@@ -159,7 +159,8 @@ fun StoreCheckoutScreen(
         StoreCardPaymentState.RECONCILING
     )
     val checkoutBusy = phase == StoreCheckoutPhase.LOADING || phase == StoreCheckoutPhase.CREATING_ORDER
-    IosBackHandler(IosBackPriority.CHECKOUT, canGoBack = !paymentInProgress && !checkoutBusy, onBack = onBack)
+    val checkoutBackAllowed = !checkoutBusy && !paymentInProgress
+    IosBackHandler(IosBackPriority.CHECKOUT, canGoBack = checkoutBackAllowed, onBack = onBack)
     val freeShippingProgress = checkoutFreeShippingProgress(
         cart.totals.consumerSubtotal(),
         cart.totals.currencyMinorUnit
@@ -196,7 +197,7 @@ fun StoreCheckoutScreen(
             .padding(effectivePadding)
     ) {
         StoreGlobalTopBar(cartQuantity = cartQuantity, onSearch = onSearch, onCart = onCart)
-        StoreCatalogHeader(title = "Finalizar compra", showBack = true, onBack = onBack)
+        StoreCatalogHeader(title = "Finalizar compra", showBack = true, onBack = { if (checkoutBackAllowed) onBack() })
         Box(Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
