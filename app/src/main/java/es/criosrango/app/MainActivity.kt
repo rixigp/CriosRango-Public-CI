@@ -377,11 +377,13 @@ private fun CriosRangoApp(
             }
             when (val destination = PushNotificationContract.destination(pushType, pushOrderId?.toString())) {
                 is es.criosrango.shared.PushDestination.Order -> {
+                    utilityReturnTab = null
                     pendingPushOrderId = destination.orderId
                     logAndroidPushRoute("HOST_PENDING=${destination.orderId}")
                     tab = AppTab.ACCOUNT
                 }
                 es.criosrango.shared.PushDestination.Account -> {
+                    utilityReturnTab = null
                     tab = AppTab.ACCOUNT
                 }
                 es.criosrango.shared.PushDestination.NewProducts -> {
@@ -390,6 +392,7 @@ private fun CriosRangoApp(
                     homeShowAll = true
                 }
                 es.criosrango.shared.PushDestination.Promotions -> {
+                    utilityReturnTab = null
                     openPromotionsOnStart = true
                     tab = AppTab.ACCOUNT
                 }
