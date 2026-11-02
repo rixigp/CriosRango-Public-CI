@@ -287,7 +287,7 @@ fun StoreOrderDetailScreen(
     val subtotalMinor = storeOrderMinorUnits(order.subtotal)
     val hasSubtotal = order.subtotal.isNotBlank()
     val productsMinor = if (hasSubtotal) subtotalMinor else totalMinor - shippingMinor
-    val unclassifiedMinor = if (hasSubtotal) totalMinor - subtotalMinor - shippingMinor else 0L
+    val vatMinor = if (hasSubtotal) totalMinor - subtotalMinor - shippingMinor else 0L
     val green = Color(0xFF285C3B)
 
     LazyColumn(
@@ -361,7 +361,7 @@ fun StoreOrderDetailScreen(
             StoreOrderDetailCard(title = "Resumen", icon = { Icon(Icons.Filled.ReceiptLong, null, tint = green, modifier = Modifier.size(18.dp)) }) {
                 StoreOrderSummaryLine("Productos", formatStoreMinorUnits(productsMinor, order.currency))
                 if (order.shippingTotal.isNotBlank()) StoreOrderSummaryLine("Envío", if (shippingMinor == 0L) "Gratis" else formatStoreMinorUnits(shippingMinor, order.currency))
-                if (unclassifiedMinor != 0L) StoreOrderSummaryLine("Otros conceptos (sin desglose)", formatStoreMinorUnits(unclassifiedMinor, order.currency), subdued = true)
+                if (vatMinor > 0L) StoreOrderSummaryLine("IVA", formatStoreMinorUnits(vatMinor, order.currency))
                 Surface(Modifier.fillMaxWidth().height(1.dp), color = Color(0xFFE6E6E6)) {}
                 Row(Modifier.fillMaxWidth().padding(top = 5.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Total", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
@@ -414,6 +414,20 @@ private fun StoreOrderSummaryLine(label: String, value: String, subdued: Boolean
         Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = if (subdued) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
         Spacer(Modifier.width(10.dp))
         Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+    }
+}
+
+private fun storeFriendlyPaymentMethod(title: String, method: String): String {
+    val source = "$title $method".trim()
+    if (source.isBlank()) return ""
+    return when {
+        source.contains("bizum", true) -> "Bizum"
+        source.contains("tarjeta", true) || source.contains("card", true) ||
+            source.contains("credit", true) || source.contains("debit", true) ||
+            source.contains("ceca", true) || source.contains("redsys", true) ||
+            source.contains("stripe", true) -> "Tarjeta"
+        title.isNotBlank() && title.any { it.isWhitespace() } -> cleanStoreWooText(title)
+        else -> "Pago"
     }
 }
 
