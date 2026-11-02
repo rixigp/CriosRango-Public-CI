@@ -117,7 +117,13 @@ fun MainViewController() : UIViewController {
 }
 
 fun handleIosPaymentReturn(result: String?, orderId: Int?) {
-    iosPaymentStore?.handlePaymentReturn(result, orderId)
+    val paymentStore = iosPaymentStore ?: return
+    paymentStore.handlePaymentReturn(result, orderId)
+    if (result.equals("cancel", ignoreCase = true) &&
+        paymentStore.state.value == StoreCardPaymentState.NOT_PAID
+    ) {
+        iosPaymentCancellationEvent.value += 1
+    }
 }
 
 fun handleIosPaymentForeground() {

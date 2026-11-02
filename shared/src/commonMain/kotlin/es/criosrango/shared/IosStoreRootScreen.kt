@@ -103,6 +103,9 @@ import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
 internal enum class IosRootSection { HOME, CATEGORIES, OUTLET, CART, ACCOUNT }
+
+// Incremented only after an explicit gateway cancellation has cleared its pending attempt.
+internal val iosPaymentCancellationEvent = androidx.compose.runtime.mutableStateOf(0)
 internal enum class PostOrderSuccessType { CARD, BIZUM }
 internal data class PostOrderSuccessSnapshot(val type: PostOrderSuccessType, val orderId: Int)
 internal enum class IosCatalogSortModeState { RECENT, PRICE_ASC, PRICE_DESC, NAME_ASC }
@@ -307,6 +310,20 @@ fun CriosRangoIOSRootScreen(
     val createdOrder by checkoutStore.createdOrder.collectAsState()
     val paymentState by paymentStore.state.collectAsState()
     val paymentOrderId by paymentStore.orderId.collectAsState()
+    var handledPaymentCancellationEvent by remember { mutableStateOf(0) }
+    LaunchedEffect(iosPaymentCancellationEvent.value) {
+        val event = iosPaymentCancellationEvent.value
+        if (event <= handledPaymentCancellationEvent) return@LaunchedEffect
+        handledPaymentCancellationEvent = event
+        if (paymentStore.state.value != StoreCardPaymentState.NOT_PAID) return@LaunchedEffect
+
+        // Mirror Android's explicit cancellation policy: clear only the checkout/payment
+        // attempt, keep the cart and session, then return to the Cart root.
+        checkoutStore.clearForNewProcess()
+        paymentStore.clearForNewProcess()
+        checkoutOpen = false
+        section = IosRootSection.CART
+    }
     LaunchedEffect(createdOrder?.orderId, createdOrder?.orderKey) {
         val order = createdOrder ?: return@LaunchedEffect
         val orderId = order.orderId ?: return@LaunchedEffect
