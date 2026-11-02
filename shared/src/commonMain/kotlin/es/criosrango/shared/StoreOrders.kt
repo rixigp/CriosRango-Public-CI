@@ -249,7 +249,7 @@ private val OrdersGreen = Color(0xFF183B35)
 @Composable
 private fun StoreOrdersFilterRow(selected: StoreOrdersFilter, onSelected: (StoreOrdersFilter) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp).horizontalScroll(rememberScrollState()).padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(StoreOrdersFilter.ALL to "Todos", StoreOrdersFilter.PROCESSING to "Procesando", StoreOrdersFilter.CANCELLED to "Cancelado", StoreOrdersFilter.ON_HOLD to "En espera", StoreOrdersFilter.COMPLETED to "Completado", StoreOrdersFilter.REFUNDED to "Reembolsado").forEach { (filter, label) ->
+        listOf(StoreOrdersFilter.ALL to "Todos", StoreOrdersFilter.ON_HOLD to "En espera", StoreOrdersFilter.PROCESSING to "Procesando", StoreOrdersFilter.COMPLETED to "Completado", StoreOrdersFilter.REFUNDED to "Reembolsado", StoreOrdersFilter.CANCELLED to "Cancelado").forEach { (filter, label) ->
             val active = selected == filter
             Surface(modifier = Modifier.clickable { onSelected(filter) }, shape = RoundedCornerShape(50), color = if (active) OrdersGreen else Color.White, border = if (active) null else BorderStroke(1.dp, Color(0xFFD9DEDB))) {
                 Text(label, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp), color = if (active) Color.White else Color(0xFF29332F), fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium, style = MaterialTheme.typography.labelLarge)
