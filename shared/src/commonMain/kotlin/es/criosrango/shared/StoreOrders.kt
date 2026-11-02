@@ -1,6 +1,14 @@
 package es.criosrango.shared
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.offset
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.CardDefaults
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -223,16 +231,86 @@ private fun StoreOrdersHeader(title: String, onBack: () -> Unit) {
     )
 }
 
+enum class StoreOrdersFilter { ALL, IN_PROGRESS, COMPLETED, REFUNDED }
+
+fun filterStoreOrders(orders: List<AccountOrderSummary>, filter: StoreOrdersFilter): List<AccountOrderSummary> =
+    when (filter) {
+        StoreOrdersFilter.ALL -> orders
+        StoreOrdersFilter.IN_PROGRESS -> orders.filter { StoreOrderStatusMapper.classify(it.status, it.statusLabel) in setOf(StoreOrderStatusKind.PROCESSING, StoreOrderStatusKind.PENDING, StoreOrderStatusKind.ON_HOLD) }
+        StoreOrdersFilter.COMPLETED -> orders.filter { StoreOrderStatusMapper.classify(it.status, it.statusLabel) in setOf(StoreOrderStatusKind.COMPLETED, StoreOrderStatusKind.SHIPPED) }
+        StoreOrdersFilter.REFUNDED -> orders.filter { StoreOrderStatusMapper.classify(it.status, it.statusLabel) == StoreOrderStatusKind.REFUNDED }
+    }
+
+private val OrdersGreen = Color(0xFF183B35)
+
 @Composable
-fun StoreOrdersScreen(
-    owner: StoreOrdersOwner,
-    sessionState: StoreAccountSessionState,
-    onBack: () -> Unit,
-    onOpenOrder: (AccountOrderSummary) -> Unit,
-    onSessionExpired: () -> Unit
-) {
+private fun StoreOrdersFilterRow(selected: StoreOrdersFilter, onSelected: (StoreOrdersFilter) -> Unit) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(StoreOrdersFilter.ALL to "Todos", StoreOrdersFilter.IN_PROGRESS to "En curso", StoreOrdersFilter.COMPLETED to "Completados", StoreOrdersFilter.REFUNDED to "Devueltos").forEach { (filter, label) ->
+            val active = selected == filter
+            Surface(modifier = Modifier.clickable { onSelected(filter) }, shape = RoundedCornerShape(50), color = if (active) OrdersGreen else Color.White, border = if (active) null else BorderStroke(1.dp, Color(0xFFD9DEDB))) {
+                Text(label, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp), color = if (active) Color.White else Color(0xFF29332F), fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium, style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StoreOrderThumbnailStack(itemCount: Int) {
+    Box(Modifier.size(width = 78.dp, height = 76.dp)) {
+        if (itemCount >= 2) Surface(Modifier.size(62.dp).offset(x = 14.dp, y = 10.dp), shape = RoundedCornerShape(11.dp), color = Color(0xFFE7EFEB), border = BorderStroke(1.dp, Color(0xFFD8E2DD))) {
+            Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Image, contentDescription = null, tint = Color(0xFF9BAAA3), modifier = Modifier.size(24.dp)) }
+        }
+        Surface(Modifier.size(74.dp), shape = RoundedCornerShape(11.dp), color = Color(0xFFF1F3F1), border = BorderStroke(1.dp, Color(0xFFE0E4E1))) {
+            Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Image, contentDescription = "Imagen de producto no disponible", tint = Color(0xFFA3AAA5), modifier = Modifier.size(28.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun StoreOrderSummaryCard(order: AccountOrderSummary, onOpenOrder: (AccountOrderSummary) -> Unit, onRequestReturn: (AccountOrderSummary) -> Unit) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, Color(0xFFE2E5E2)), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StoreOrderThumbnailStack(order.items.size)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("Pedido #${order.number.ifBlank { order.id.toString() }}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color(0xFF202923))
+                    val date = formatStoreOrderDate(order.dateCreated.orEmpty())
+                    if (date.isNotBlank()) Text("Realizado el $date", style = MaterialTheme.typography.bodySmall, color = Color(0xFF727A75))
+                    if (order.total.isNotBlank()) Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Total: ", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = Color(0xFF303832))
+                        Text(formatStoreMinorUnits(storeOrderMinorUnits(order.total), order.currency), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color(0xFF202923))
+                    }
+                }
+                StoreOrderStatusBadge(order.status, order.statusLabel)
+            }
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = Color(0xFFE7E9E7), thickness = 1.dp)
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                if (storeOrderIsReturnEligible(order.status, order.statusLabel)) Text("↩ Solicitar devolución", modifier = Modifier.clickable { onRequestReturn(order) }.padding(vertical = 6.dp, end = 8.dp), color = OrdersGreen, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
+                else Spacer(Modifier.width(1.dp))
+                Row(modifier = Modifier.clickable { onOpenOrder(order) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("Ver detalle", color = OrdersGreen, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
+                    Text("›", color = OrdersGreen, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StoreOrdersEmptyState(message: String) {
+    Box(Modifier.fillMaxWidth().padding(vertical = 38.dp, horizontal = 16.dp), contentAlignment = Alignment.Center) {
+        Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+fun StoreOrdersScreen(owner: StoreOrdersOwner, sessionState: StoreAccountSessionState, onBack: () -> Unit, onOpenOrder: (AccountOrderSummary) -> Unit, onRequestReturn: (AccountOrderSummary) -> Unit, onSessionExpired: () -> Unit) {
     val state by owner.state.collectAsState()
     val auth by sessionState.snapshot.collectAsState()
+    var selectedFilter by remember { mutableStateOf(StoreOrdersFilter.ALL) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(auth.user?.id) {
         owner.onSessionChanged(auth.user?.id)
@@ -242,8 +320,9 @@ fun StoreOrdersScreen(
             catch (_: Exception) { if (!owner.hasActiveSession()) onSessionExpired() }
         }
     }
-    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+    Column(Modifier.fillMaxSize().background(Color(0xFFFAFBFA)).padding(horizontal = 20.dp)) {
         StoreOrdersHeader(title = "Pedidos", onBack = onBack)
+        StoreOrdersFilterRow(selectedFilter) { selectedFilter = it }
         when {
             auth.user == null -> Unit
             state.authenticatedUserId != auth.user?.id -> Box(Modifier.fillMaxWidth().padding(top = 36.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -253,36 +332,22 @@ fun StoreOrdersScreen(
                 Spacer(Modifier.height(16.dp))
                 OutlinedButton(onClick = { scope.launch { try { owner.refresh() } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { if (!owner.hasActiveSession()) onSessionExpired() } } }) { Text("Reintentar") }
             }
-            state.orders.isEmpty() -> Text("Todavía no tienes pedidos.", modifier = Modifier.padding(20.dp), style = MaterialTheme.typography.bodyLarge)
-            else -> LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(state.orders, key = { it.id }) { order ->
-                    Card(Modifier.fillMaxWidth().clickable { onOpenOrder(order) }, shape = RoundedCornerShape(16.dp)) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text("Pedido #${order.number.ifBlank { order.id.toString() }}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-                            Spacer(Modifier.height(6.dp))
-                            StoreOrderStatusBadge(order.status, order.statusLabel)
-                            val date = formatStoreOrderDate(order.dateCreated.orEmpty())
-                            if (date.isNotBlank()) { Spacer(Modifier.height(6.dp)); Text("Fecha: $date", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            order.items.forEach { item ->
-                                Spacer(Modifier.height(8.dp))
-                                Text("${item.quantity} × ${cleanStoreWooText(item.name)}", style = MaterialTheme.typography.bodyMedium)
-                                val vars = storeOrderVariations(item)
-                                if (vars.isNotBlank()) Text(vars, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            if (order.paymentMethodTitle.isNotBlank()) { Spacer(Modifier.height(8.dp)); Text(if (order.paymentMethodTitle.contains("bizum", true)) "Pago con Bizum" else "Pago con tarjeta", style = MaterialTheme.typography.bodySmall) }
-                            if (order.total.isNotBlank()) { Spacer(Modifier.height(8.dp)); Text("Total: ${formatStoreAmount(order.total, order.currency)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium) }
-                        }
-                    }
+            else -> {
+                val visibleOrders = filterStoreOrders(state.orders, selectedFilter)
+                val emptyMessage = when (selectedFilter) {
+                    StoreOrdersFilter.ALL -> "No tienes pedidos todavía."
+                    StoreOrdersFilter.IN_PROGRESS -> "No tienes pedidos en curso."
+                    StoreOrdersFilter.COMPLETED -> "No tienes pedidos completados."
+                    StoreOrdersFilter.REFUNDED -> "No tienes pedidos devueltos."
+                }
+                if (visibleOrders.isEmpty()) StoreOrdersEmptyState(emptyMessage)
+                else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 0.dp, end = 0.dp, top = 4.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(visibleOrders, key = { it.id }) { order -> StoreOrderSummaryCard(order, onOpenOrder, onRequestReturn) }
                 }
             }
         }
     }
 }
-
 
 @Composable
 fun StoreOrderDetailScreen(

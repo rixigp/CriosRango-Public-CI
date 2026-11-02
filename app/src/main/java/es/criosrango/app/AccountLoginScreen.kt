@@ -302,6 +302,11 @@ fun AccountLoginScreen(
                     sessionState = vm.sharedAuthSession,
                     onBack = { accountSection = AccountSection.HOME },
                     onOpenOrder = { val selected = AccountOrderSelectionState().select(it); selectedOrderFromShared = selected.sharedOrder; selectedOrderId = selected.orderId },
+                    onRequestReturn = { order ->
+                        if (order.items.size == 1) {
+                            requestReturnViaWhatsApp(notificationContext, order, order.items.first())
+                        } else if (order.items.isNotEmpty()) returnPickerOrder = order
+                    },
                     onSessionExpired = { vm.retrySession() }
                 )
             }

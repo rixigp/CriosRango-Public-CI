@@ -331,7 +331,21 @@ fun CriosRangoIOSAccountScreen(
                     onSessionExpired = ::invalidateExpiredSession,
                     onBack = { page = addressReturnPage }
                 )
-                IosAccountPage.ORDERS -> StoreOrdersScreen(ordersOwner, sessionState, onBack = { page = IosAccountPage.HOME }, onOpenOrder = { selectedOrder = it; page = IosAccountPage.ORDER_DETAIL }, onSessionExpired = ::invalidateExpiredSession)
+                IosAccountPage.ORDERS -> StoreOrdersScreen(
+                    ordersOwner,
+                    sessionState,
+                    onBack = { page = IosAccountPage.HOME },
+                    onOpenOrder = { selectedOrder = it; page = IosAccountPage.ORDER_DETAIL },
+                    onRequestReturn = { selected ->
+                        val requests = storeReturnRequests(selected)
+                        when (requests.size) {
+                            0 -> Unit
+                            1 -> onOpenExternalUrl("https://wa.me/34633246788?text=" + encodeStoreWhatsAppMessage(requests.single().message))
+                            else -> returnPickerOrder = selected
+                        }
+                    },
+                    onSessionExpired = ::invalidateExpiredSession
+                )
                 IosAccountPage.WALLET -> StoreWalletScreen(
                     owner = walletOwner,
                     authenticated = user != null,
