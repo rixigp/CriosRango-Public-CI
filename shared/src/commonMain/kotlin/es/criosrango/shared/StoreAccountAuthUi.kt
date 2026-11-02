@@ -1,5 +1,6 @@
 package es.criosrango.shared
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -457,32 +458,55 @@ fun StoreProfileMenuScreen(
     var showDeleteConfirmation by remember { androidx.compose.runtime.mutableStateOf(false) }
     Column(modifier.fillMaxWidth()) {
         StorePageHeader(title = "Perfil", onBack = onBack)
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)) {
-            Spacer(Modifier.height(8.dp))
-            StoreProfileMenuRow("Datos personales", androidx.compose.material.icons.Icons.Outlined.Person, onPersonalData)
-            Spacer(Modifier.height(8.dp))
-            StoreProfileMenuRow("Dirección de entrega", androidx.compose.material.icons.Icons.Outlined.LocationOn, onAddress)
-            Spacer(Modifier.height(8.dp))
-            StoreProfileMenuRow("Cambiar contraseña", androidx.compose.material.icons.Icons.Outlined.Lock, onPassword)
-            Spacer(Modifier.height(8.dp))
-            StoreProfileMenuRow(AccountDeletion.TITLE, androidx.compose.material.icons.Icons.Outlined.Delete, onClick = { showDeleteConfirmation = true }, containerColor = AccountDeletion.background, contentColor = AccountDeletion.accent)
-            Spacer(Modifier.height(12.dp))
+        Column(
+            Modifier.fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(top = 12.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, Color(0xFFE6EBE8)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Column(Modifier.fillMaxWidth()) {
+                    StoreProfileGroupedRow("Datos personales", androidx.compose.material.icons.Icons.Outlined.Person, onPersonalData)
+                    HorizontalDivider(color = Color(0xFFE8ECE9), thickness = 1.dp)
+                    StoreProfileGroupedRow("Dirección de entrega", androidx.compose.material.icons.Icons.Outlined.LocationOn, onAddress)
+                    HorizontalDivider(color = Color(0xFFE8ECE9), thickness = 1.dp)
+                    StoreProfileGroupedRow("Cambiar contraseña", androidx.compose.material.icons.Icons.Outlined.Lock, onPassword)
+                }
+            }
             notificationPreferences()
-            Spacer(Modifier.height(12.dp))
-            Card(Modifier.fillMaxWidth().clickable(enabled = !isLoggingOut, onClick = onLogout), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFECEF))) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Card(
+                modifier = Modifier.fillMaxWidth().clickable(onClick = { showDeleteConfirmation = true }),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = AccountDeletion.background),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(androidx.compose.material.icons.Icons.Outlined.Delete, contentDescription = null, tint = AccountDeletion.accent, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Text(AccountDeletion.TITLE, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = AccountDeletion.accent)
+                }
+            }
+            Card(
+                modifier = Modifier.fillMaxWidth().clickable(enabled = !isLoggingOut, onClick = onLogout),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFECEF)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (isLoggingOut) {
-                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color(0xFFC73B4C))
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Color(0xFFC73B4C))
                     } else {
-                        Icon(androidx.compose.material.icons.Icons.AutoMirrored.Outlined.Logout, null, tint = Color(0xFFC73B4C))
+                        Icon(androidx.compose.material.icons.Icons.AutoMirrored.Outlined.Logout, contentDescription = null, tint = Color(0xFFC73B4C), modifier = Modifier.size(22.dp))
                     }
-                    Spacer(Modifier.width(14.dp))
-                    Text(
-                        if (isLoggingOut) "Cerrando sesión…" else "Cerrar sesión",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFFC73B4C)
-                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(if (isLoggingOut) "Cerrando sesión…" else "Cerrar sesión", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = Color(0xFFC73B4C))
                 }
             }
         }
@@ -497,20 +521,15 @@ fun StoreProfileMenuScreen(
 }
 
 @Composable
-private fun StoreProfileMenuRow(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit,
-    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
-    contentColor: Color = MaterialTheme.colorScheme.onSurface
-) {
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = containerColor)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = contentColor, modifier = Modifier.size(28.dp))
-            Spacer(Modifier.width(14.dp))
-            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium, color = contentColor)
-            Text("›", style = MaterialTheme.typography.titleLarge, color = contentColor)
-        }
+private fun StoreProfileGroupedRow(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = Color(0xFF183B35), modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = Color(0xFF24332E))
+        Icon(androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight, contentDescription = null, tint = Color(0xFF78847E), modifier = Modifier.size(21.dp))
     }
 }
 

@@ -103,6 +103,7 @@ fun CriosRangoIOSAccountScreen(
     }
     var user by remember(sessionState) { mutableStateOf(sessionState.snapshot.value.user) }
     var error by remember { mutableStateOf<String?>(null) }
+    var loggingOut by remember { mutableStateOf(false) }
     var selectedOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
     var returnPickerOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
     val ordersOwner = remember(repository, sessionState) { StoreOrdersOwner(repository, sessionState) }
@@ -304,16 +305,21 @@ fun CriosRangoIOSAccountScreen(
                     onPassword = { forgotReturnPage = IosAccountPage.PROFILE; page = IosAccountPage.FORGOT },
                     onDeleteAccount = { onOpenExternalUrl(AccountDeletion.URL) },
                     onLogout = {
-                        scope.launch {
-                            runCatching { PushDeviceRegistration.unregisterCurrentDevice() }
-                            runCatching { onBeforeLogout() }
-                            runCatching { repository.logout() }
-                            sessionState.logout()
-                            user = null
-                            error = null
-                            page = IosAccountPage.HOME
+                        if (!loggingOut) {
+                            loggingOut = true
+                            scope.launch {
+                                runCatching { PushDeviceRegistration.unregisterCurrentDevice() }
+                                runCatching { onBeforeLogout() }
+                                runCatching { repository.logout() }
+                                sessionState.logout()
+                                user = null
+                                error = null
+                                page = IosAccountPage.HOME
+                                loggingOut = false
+                            }
                         }
                     },
+                    isLoggingOut = loggingOut,
                     notificationPreferences = { IosPushPreferences() },
                 onBack = { page = IosAccountPage.HOME }
                 )
