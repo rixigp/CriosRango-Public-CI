@@ -1,9 +1,6 @@
 package es.criosrango.app
 
-import es.criosrango.shared.StoreAccountInformationScreen
 import es.criosrango.shared.StorePageHeader
-
-import android.text.Html
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -23,36 +20,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.GET
-import retrofit2.http.Query
+import es.criosrango.shared.StoreAccountInformationScreen
+import es.criosrango.shared.WordPressPagesClient
 
-private const val WORDPRESS_BASE_URL = "https://www.criosrango.es/"
-
-data class WordPressRendered(val rendered: String = "")
-
-data class WordPressPage(
-    val id: Long = 0,
-    val slug: String = "",
-    val title: WordPressRendered = WordPressRendered(),
-    val content: WordPressRendered = WordPressRendered()
-)
-
-interface WordPressPagesApi {
-    @GET("wp-json/wp/v2/pages")
-    suspend fun getPageBySlug(@Query("slug") slug: String): List<WordPressPage>
-}
-
-private object WordPressPagesClient {
-    val api: WordPressPagesApi by lazy {
-        Retrofit.Builder()
-            .baseUrl(WORDPRESS_BASE_URL)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(WordPressPagesApi::class.java)
-    }
-}
 
 enum class AccountInfoPage(val title: String, val slug: String) {
     RETURNS("Cambios y devoluciones", "cambios-y-devoluciones"),
@@ -126,26 +96,22 @@ private fun wordpressHtmlToText(
 
 @Composable
 private fun rememberInfoPageState(page: AccountInfoPage): Pair<InfoPageUiState, () -> Unit> {
+    val client = remember { WordPressPagesClient() }
     var retryKey by remember { mutableIntStateOf(0) }
     var state by remember(page, retryKey) { mutableStateOf<InfoPageUiState>(InfoPageUiState.Loading) }
-
     LaunchedEffect(page, retryKey) {
         state = InfoPageUiState.Loading
         state = try {
-            val result = WordPressPagesClient.api.getPageBySlug(page.slug).firstOrNull()
-            if (result == null) {
-                InfoPageUiState.Error("No se ha podido cargar esta información.")
-            } else {
-                InfoPageUiState.Success(
-                    title = wordpressHtmlToText(result.title.rendered).ifBlank { page.title },
-                    content = wordpressHtmlToText(result.content.rendered)
-                )
-            }
+            val result = client.getPageBySlug(page.slug)
+            if (result == null) InfoPageUiState.Error("No se ha podido cargar esta información.")
+            else InfoPageUiState.Success(
+                title = result.title.rendered,
+                content = result.content.rendered
+            )
         } catch (_: Exception) {
             InfoPageUiState.Error("No se ha podido cargar esta información.")
         }
     }
-
     return state to { retryKey++ }
 }
 
@@ -158,6 +124,7 @@ fun AccountInformationPageAdapter(page: AccountInfoPage, onBack: () -> Unit) {
         loading = state is InfoPageUiState.Loading,
         errorMessage = (state as? InfoPageUiState.Error)?.message,
         content = (state as? InfoPageUiState.Success)?.content.orEmpty(),
+        pageSlug = page.slug,
         onRetry = retry,
         onBack = onBack
     )

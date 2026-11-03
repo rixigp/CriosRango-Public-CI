@@ -612,20 +612,15 @@ private fun IosInformationPageAdapter(page: AccountInfoPage, onBack: () -> Unit)
         result = null
         error = null
         runCatching { client.getPageBySlug(page.slug) }
-            .onSuccess { loaded ->
-                if (loaded == null) error = "No se ha podido cargar esta información." else result = loaded
-                loading = false
-            }
-            .onFailure {
-                error = "No se ha podido cargar esta información."
-                loading = false
-            }
+            .onSuccess { loaded -> if (loaded == null) error = "No se ha podido cargar esta información." else result = loaded; loading = false }
+            .onFailure { error = "No se ha podido cargar esta información."; loading = false }
     }
     StoreAccountInformationScreen(
         title = page.title,
         loading = loading,
         errorMessage = error,
-        content = result?.let { wordpressHtmlToText(it.content.rendered) }.orEmpty(),
+        content = result?.content?.rendered.orEmpty(),
+        pageSlug = page.slug,
         onRetry = { retryKey++ },
         onBack = onBack
     )
