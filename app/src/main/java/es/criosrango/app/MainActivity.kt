@@ -361,6 +361,7 @@ private fun CriosRangoApp(
     var openPromotionsOnStart by remember { mutableStateOf(false) }
     var pendingPushOrderId by remember { mutableStateOf<Int?>(null) }
     var orderProductReturnOrderId by remember { mutableStateOf<Int?>(null) }
+    var openingOrderProductId by remember { mutableStateOf<Int?>(null) }
 
     fun openUtilityTab(destination: AppTab) {
         if (tab != AppTab.CART && tab != AppTab.ACCOUNT) {
@@ -608,13 +609,14 @@ private fun CriosRangoApp(
                         val returnOrderId = orderProductReturnOrderId
                         viewModel.closeProduct()
                         if (returnOrderId != null) {
+                            openingOrderProductId = null
                             orderProductReturnOrderId = null
                             pendingPushOrderId = returnOrderId
                             tab = AppTab.ACCOUNT
                         }
                     },
-                    onCart = { orderProductReturnOrderId = null; openUtilityTab(AppTab.CART); viewModel.closeProduct() },
-                    onSearch = { orderProductReturnOrderId = null; selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH; viewModel.closeProduct() },
+                    onCart = { openingOrderProductId = null; orderProductReturnOrderId = null; openUtilityTab(AppTab.CART); viewModel.closeProduct() },
+                    onSearch = { openingOrderProductId = null; orderProductReturnOrderId = null; selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH; viewModel.closeProduct() },
                     onAdd = { item -> viewModel.addToSharedCart(item, sharedCartController) }
                 )
 
@@ -655,11 +657,18 @@ private fun CriosRangoApp(
                         vm = accountViewModel,
                         openLoginOnStart = returnToCartAfterLogin,
                         initialOrderId = pendingPushOrderId,
+                        openingOrderProductId = openingOrderProductId,
                         onOpenOrderProduct = { orderId, productId ->
-                            orderProductReturnOrderId = orderId
-                            rootFilterScope.launch {
-                                if (!viewModel.openOrderProduct(productId)) {
-                                    if (orderProductReturnOrderId == orderId) orderProductReturnOrderId = null
+                            if (productId > 0 && openingOrderProductId == null) {
+                                openingOrderProductId = productId
+                                orderProductReturnOrderId = orderId
+                                rootFilterScope.launch {
+                                    if (viewModel.openOrderProduct(productId)) {
+                                        if (openingOrderProductId == productId) openingOrderProductId = null
+                                    } else {
+                                        if (openingOrderProductId == productId) openingOrderProductId = null
+                                        if (orderProductReturnOrderId == orderId) orderProductReturnOrderId = null
+                                    }
                                 }
                             }
                         },

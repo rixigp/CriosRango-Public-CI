@@ -79,6 +79,7 @@ fun AccountLoginScreen(
     initialOrderId: Int? = null,
     onPushOrderConsumed: (Int) -> Unit = {},
     onOpenOrderProduct: (Int, Int) -> Unit = { _, _ -> },
+    openingOrderProductId: Int? = null,
     openPromotionsOnStart: Boolean = false,
     onAuthenticated: (() -> Unit)? = null,
     onPromotionsOpened: () -> Unit = {},
@@ -305,7 +306,8 @@ fun AccountLoginScreen(
                 order = selectedOrder,
                 onBack = { clearOrderSelection() },
                 onRequestReturn = requestReturnForOrder,
-                onOpenProduct = { productId -> onOpenOrderProduct(selectedOrder.id, productId) }
+                onOpenProduct = { productId -> onOpenOrderProduct(selectedOrder.id, productId) },
+                openingProductId = openingOrderProductId
             )
         }
         return

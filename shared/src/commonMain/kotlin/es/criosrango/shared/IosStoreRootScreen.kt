@@ -174,7 +174,7 @@ fun CriosRangoIOSRootScreen(
     var section by remember { mutableStateOf(IosRootSection.HOME) }
     var pendingPushOrderId by remember { mutableStateOf<Int?>(null) }
     var orderProductReturnOrderId by remember { mutableStateOf<Int?>(null) }
-    var openingOrderProduct by remember { mutableStateOf(false) }
+    var openingOrderProductId by remember { mutableStateOf<Int?>(null) }
     var openPromotionsOnStart by remember { mutableStateOf(false) }
     var accountLoginFromCart by remember { mutableStateOf(false) }
     var checkoutOpen by remember { mutableStateOf(false) }
@@ -568,9 +568,10 @@ fun CriosRangoIOSRootScreen(
                         if (orderProductReturnOrderId == consumedOrderId) orderProductReturnOrderId = null
                         if (pendingPushOrderId == consumedOrderId) pendingPushOrderId = null
                     },
+                    openingOrderProductId = openingOrderProductId,
                     onOpenOrderProduct = { orderId, productId ->
-                        if (orderId > 0 && productId > 0 && !openingOrderProduct) {
-                            openingOrderProduct = true
+                        if (orderId > 0 && productId > 0 && openingOrderProductId == null) {
+                            openingOrderProductId = productId
                             orderProductReturnOrderId = orderId
                             outletControllerScope.launch {
                                 try {
@@ -588,7 +589,7 @@ fun CriosRangoIOSRootScreen(
                                 } catch (_: Exception) {
                                     orderProductReturnOrderId = null
                                 } finally {
-                                    openingOrderProduct = false
+                                    openingOrderProductId = null
                                 }
                             }
                         }

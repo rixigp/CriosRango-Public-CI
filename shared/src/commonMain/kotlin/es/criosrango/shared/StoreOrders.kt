@@ -439,7 +439,8 @@ fun StoreOrderDetailScreen(
     order: AccountOrderSummary,
     onBack: () -> Unit,
     onRequestReturn: (AccountOrderSummary) -> Unit,
-    onOpenProduct: (Int) -> Unit = {}
+    onOpenProduct: (Int) -> Unit = {},
+    openingProductId: Int? = null
 ) {
     val address = order.shippingAddress
     val province = storeProvinceName(address.state)
@@ -514,9 +515,10 @@ fun StoreOrderDetailScreen(
                         val imageUrl = item.imageUrl?.trim()?.takeIf {
                             it.startsWith("https://", true) || it.startsWith("http://", true)
                         }
+                        val isOpening = productId != null && productId == openingProductId
                         Row(
                             Modifier.fillMaxWidth().then(
-                                if (productId != null) Modifier.clickable { onOpenProduct(productId) } else Modifier
+                                if (productId != null) Modifier.clickable(enabled = openingProductId == null) { onOpenProduct(productId) } else Modifier
                             ),
                             verticalAlignment = Alignment.Top
                         ) {
@@ -525,21 +527,35 @@ fun StoreOrderDetailScreen(
                                 shape = RoundedCornerShape(10.dp),
                                 color = Color(0xFFF3F4F2)
                             ) {
-                                if (imageUrl != null) {
-                                    RemoteStoreImage(
-                                        url = imageUrl,
-                                        contentDescription = cleanStoreWooText(item.name),
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
-                                    )
-                                } else {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            Icons.Filled.Image,
-                                            contentDescription = "Imagen de producto no disponible",
-                                            tint = Color(0xFF9A9D98),
-                                            modifier = Modifier.size(27.dp)
+                                Box(Modifier.fillMaxSize()) {
+                                    if (imageUrl != null) {
+                                        RemoteStoreImage(
+                                            url = imageUrl,
+                                            contentDescription = cleanStoreWooText(item.name),
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
                                         )
+                                    } else {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                Icons.Filled.Image,
+                                                contentDescription = "Imagen de producto no disponible",
+                                                tint = Color(0xFF9A9D98),
+                                                modifier = Modifier.size(27.dp)
+                                            )
+                                        }
+                                    }
+                                    if (isOpening) {
+                                        Box(
+                                            Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.28f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(26.dp),
+                                                color = Color.White,
+                                                strokeWidth = 2.dp
+                                            )
+                                        }
                                     }
                                 }
                             }

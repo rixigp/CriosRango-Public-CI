@@ -97,7 +97,8 @@ fun CriosRangoIOSAccountScreen(
     onAuthenticated: (() -> Unit)? = null,
     onPromotionsOpened: () -> Unit = {},
     onBeforeLogout: suspend () -> Unit = {},
-    onOpenOrderProduct: (orderId: Int, productId: Int) -> Unit = { _, _ -> }
+    onOpenOrderProduct: (orderId: Int, productId: Int) -> Unit = { _, _ -> },
+    openingOrderProductId: Int? = null
 ) {
     var page by remember {
         mutableStateOf(if (openPromotionsOnStart) IosAccountPage.WALLET else if (openLoginOnStart) IosAccountPage.LOGIN else IosAccountPage.HOME)
@@ -416,7 +417,7 @@ fun CriosRangoIOSAccountScreen(
                 )
                 IosAccountPage.ORDER_DETAIL -> selectedOrder?.let { order -> StoreOrderDetailScreen(order, onBack = { page = IosAccountPage.ORDERS }, onOpenProduct = { productId ->
                     val orderId = selectedOrder?.id
-                    if (orderId != null && orderId > 0 && productId > 0) onOpenOrderProduct(orderId, productId)
+                    if (orderId != null && orderId > 0 && productId > 0 && openingOrderProductId == null) onOpenOrderProduct(orderId, productId)
                 }, onRequestReturn = { selected ->
                     val requests = storeReturnRequests(selected)
                     when (requests.size) {
@@ -424,7 +425,7 @@ fun CriosRangoIOSAccountScreen(
                         1 -> onOpenExternalUrl("https://wa.me/34633246788?text=" + encodeStoreWhatsAppMessage(requests.single().message))
                         else -> returnPickerOrder = selected
                     }
-                }) }
+                }, openingProductId = openingOrderProductId) }
             }
             returnPickerOrder?.let { order ->
                 IosBackHandler(IosBackPriority.OVERLAY) { returnPickerOrder = null }
