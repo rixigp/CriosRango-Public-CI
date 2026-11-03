@@ -259,13 +259,23 @@ private fun StoreOrdersFilterRow(selected: StoreOrdersFilter, onSelected: (Store
 }
 
 @Composable
-private fun StoreOrderThumbnailStack(itemCount: Int) {
+private fun StoreOrderThumbnailStack(imageUrls: List<String>) {
+    val urls = imageUrls.take(2)
     Box(Modifier.size(width = 78.dp, height = 76.dp)) {
-        if (itemCount >= 2) Surface(Modifier.size(62.dp).offset(x = 14.dp, y = 10.dp), shape = RoundedCornerShape(11.dp), color = Color(0xFFE7EFEB), border = BorderStroke(1.dp, Color(0xFFD8E2DD))) {
-            Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Image, contentDescription = null, tint = Color(0xFF9BAAA3), modifier = Modifier.size(24.dp)) }
-        }
-        Surface(Modifier.size(74.dp), shape = RoundedCornerShape(11.dp), color = Color(0xFFF1F3F1), border = BorderStroke(1.dp, Color(0xFFE0E4E1))) {
-            Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Image, contentDescription = "Imagen de producto no disponible", tint = Color(0xFFA3AAA5), modifier = Modifier.size(28.dp)) }
+        if (urls.isEmpty()) {
+            if (imageUrls.size >= 2) Surface(Modifier.size(62.dp).offset(x = 14.dp, y = 10.dp), shape = RoundedCornerShape(11.dp), color = Color(0xFFE7EFEB), border = BorderStroke(1.dp, Color(0xFFD8E2DD))) {
+                Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Image, contentDescription = null, tint = Color(0xFF9BAAA3), modifier = Modifier.size(24.dp)) }
+            }
+            Surface(Modifier.size(74.dp), shape = RoundedCornerShape(11.dp), color = Color(0xFFF1F3F1), border = BorderStroke(1.dp, Color(0xFFE0E4E1))) {
+                Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Image, contentDescription = "Imagen de producto no disponible", tint = Color(0xFFA3AAA5), modifier = Modifier.size(28.dp)) }
+            }
+        } else {
+            if (urls.size >= 2) Surface(Modifier.size(62.dp).offset(x = 14.dp, y = 10.dp), shape = RoundedCornerShape(11.dp), color = Color(0xFFE7EFEB), border = BorderStroke(1.dp, Color(0xFFD8E2DD))) {
+                RemoteStoreImage(url = urls[1], contentDescription = "Imagen de producto", modifier = Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+            }
+            Surface(Modifier.size(74.dp), shape = RoundedCornerShape(11.dp), color = Color(0xFFF1F3F1), border = BorderStroke(1.dp, Color(0xFFE0E4E1))) {
+                RemoteStoreImage(url = urls[0], contentDescription = "Imagen de producto", modifier = Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+            }
         }
     }
 }
@@ -289,7 +299,9 @@ private fun StoreOrderSummaryCard(
                 verticalAlignment = Alignment.Top,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                StoreOrderThumbnailStack(order.items.size)
+                StoreOrderThumbnailStack(order.items.mapNotNull { item ->
+                    item.imageUrl?.trim()?.takeIf { it.startsWith("https://", true) || it.startsWith("http://", true) }
+                })
                 Column(
                     Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(5.dp)
@@ -426,7 +438,8 @@ fun StoreOrdersScreen(owner: StoreOrdersOwner, sessionState: StoreAccountSession
 fun StoreOrderDetailScreen(
     order: AccountOrderSummary,
     onBack: () -> Unit,
-    onRequestReturn: (AccountOrderSummary) -> Unit
+    onRequestReturn: (AccountOrderSummary) -> Unit,
+    onOpenProduct: (Int) -> Unit = {}
 ) {
     val address = order.shippingAddress
     val province = storeProvinceName(address.state)
@@ -497,8 +510,14 @@ fun StoreOrderDetailScreen(
                             Surface(Modifier.fillMaxWidth().height(1.dp), color = Color(0xFFEAEAEA)) {}
                             Spacer(Modifier.height(6.dp))
                         }
+                        val productId = item.productId?.takeIf { it > 0 }
+                        val imageUrl = item.imageUrl?.trim()?.takeIf {
+                            it.startsWith("https://", true) || it.startsWith("http://", true)
+                        }
                         Row(
-                            Modifier.fillMaxWidth(),
+                            Modifier.fillMaxWidth().then(
+                                if (productId != null) Modifier.clickable { onOpenProduct(productId) } else Modifier
+                            ),
                             verticalAlignment = Alignment.Top
                         ) {
                             Surface(
@@ -506,13 +525,22 @@ fun StoreOrderDetailScreen(
                                 shape = RoundedCornerShape(10.dp),
                                 color = Color(0xFFF3F4F2)
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        Icons.Filled.Image,
-                                        contentDescription = "Imagen de producto no disponible",
-                                        tint = Color(0xFF9A9D98),
-                                        modifier = Modifier.size(27.dp)
+                                if (imageUrl != null) {
+                                    RemoteStoreImage(
+                                        url = imageUrl,
+                                        contentDescription = cleanStoreWooText(item.name),
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
                                     )
+                                } else {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            Icons.Filled.Image,
+                                            contentDescription = "Imagen de producto no disponible",
+                                            tint = Color(0xFF9A9D98),
+                                            modifier = Modifier.size(27.dp)
+                                        )
+                                    }
                                 }
                             }
                             Spacer(Modifier.width(12.dp))

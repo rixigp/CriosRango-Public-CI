@@ -426,6 +426,30 @@ class ShopViewModel(
             }
         }
     }
+    suspend fun openOrderProduct(productId: Int): Boolean {
+        if (productId <= 0) return false
+        _isLoading.value = true
+        _error.value = null
+        return try {
+            val detailedProduct = repository.productWithVariationAvailability(productId)
+            if (detailedProduct.id != productId) {
+                _error.value = StoreUiError(StoreErrorType.UNEXPECTED)
+                false
+            } else {
+                _selectedProduct.value = detailedProduct
+                _selectedVariation.value = null
+                true
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            _error.value = StoreUiError(StoreErrorType.UNEXPECTED)
+            false
+        } finally {
+            _isLoading.value = false
+        }
+    }
+
     fun closeProduct() { _selectedProduct.value = null; _selectedVariation.value = null }
 
     fun updateCartQuantity(item: CartLine, quantity: Int) {

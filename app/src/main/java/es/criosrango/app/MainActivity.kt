@@ -360,6 +360,7 @@ private fun CriosRangoApp(
     var returnToCartAfterLogin by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
     var openPromotionsOnStart by remember { mutableStateOf(false) }
     var pendingPushOrderId by remember { mutableStateOf<Int?>(null) }
+    var orderProductReturnOrderId by remember { mutableStateOf<Int?>(null) }
 
     fun openUtilityTab(destination: AppTab) {
         if (tab != AppTab.CART && tab != AppTab.ACCOUNT) {
@@ -603,9 +604,17 @@ private fun CriosRangoApp(
                     variation = selectedVariation,
                     cartItems = cartItems,
                     loadVariation = viewModel::loadVariation,
-                    onBack = viewModel::closeProduct,
-                    onCart = { openUtilityTab(AppTab.CART); viewModel.closeProduct() },
-                    onSearch = { selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH; viewModel.closeProduct() },
+                    onBack = {
+                        val returnOrderId = orderProductReturnOrderId
+                        viewModel.closeProduct()
+                        if (returnOrderId != null) {
+                            orderProductReturnOrderId = null
+                            pendingPushOrderId = returnOrderId
+                            tab = AppTab.ACCOUNT
+                        }
+                    },
+                    onCart = { orderProductReturnOrderId = null; openUtilityTab(AppTab.CART); viewModel.closeProduct() },
+                    onSearch = { orderProductReturnOrderId = null; selectedBrand = null; showAllBrands = false; tab = AppTab.SEARCH; viewModel.closeProduct() },
                     onAdd = { item -> viewModel.addToSharedCart(item, sharedCartController) }
                 )
 
@@ -646,6 +655,14 @@ private fun CriosRangoApp(
                         vm = accountViewModel,
                         openLoginOnStart = returnToCartAfterLogin,
                         initialOrderId = pendingPushOrderId,
+                        onOpenOrderProduct = { orderId, productId ->
+                            orderProductReturnOrderId = orderId
+                            rootFilterScope.launch {
+                                if (!viewModel.openOrderProduct(productId)) {
+                                    if (orderProductReturnOrderId == orderId) orderProductReturnOrderId = null
+                                }
+                            }
+                        },
                         onPushOrderConsumed = { consumedOrderId ->
                             if (pendingPushOrderId == consumedOrderId) {
                                 logAndroidPushRoute("PUSH_CONSUMED=$consumedOrderId")
