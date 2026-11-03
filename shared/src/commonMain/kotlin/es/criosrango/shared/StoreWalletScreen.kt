@@ -1,5 +1,6 @@
 package es.criosrango.shared
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,7 +11,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import es.criosrango.shared.loyalty.LoyaltyReward
 import es.criosrango.shared.loyalty.LoyaltyWallet
@@ -83,13 +87,26 @@ private val InfoLineIcon = buildLineIcon("InfoLineIcon") {
 
 @Composable
 private fun WalletVisualIcon() {
-    Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+    Box(
+        Modifier.size(40.dp).background(Color(0xFFF0ECFA), RoundedCornerShape(50)),
+        contentAlignment = Alignment.Center
+    ) {
         Icon(
             imageVector = WalletLineIcon,
             contentDescription = null,
             tint = Color(0xFF0F5C4D),
-            modifier = Modifier.size(28.dp)
+            modifier = Modifier.size(22.dp)
         )
+    }
+}
+
+@Composable
+private fun PromotionVisualIcon(promotion: Promotion) {
+    Box(
+        Modifier.size(38.dp).background(Color(0xFFDCEEFF), RoundedCornerShape(50)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(accountPromotionIcon(promotion), fontWeight = FontWeight.SemiBold)
     }
 }
 private fun accountPromotionIcon(promotion: Promotion): String {
@@ -211,7 +228,15 @@ Card(
                                     color = Color(0xFF183B35)
                                 )
                                 Text(
-                                    formatWalletMoney(wallet.walletValue) + if (walletMinor >= minimumMinor) " disponibles" else " acumulados",
+                                    buildAnnotatedString {
+                                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                                            append(formatWalletMoney(wallet.walletValue))
+                                        }
+                                        append(" de ")
+                                        withStyle(SpanStyle(fontWeight = FontWeight.Normal)) {
+                                            append(formatWalletMoney(wallet.minimumRedeemValue))
+                                        }
+                                    },
                                     style = MaterialTheme.typography.headlineSmall,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
@@ -234,11 +259,6 @@ Card(
                         }
 
                          if (walletMinor < minimumMinor) {
-                            Text(
-                                walletProgressLabel(wallet),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF40514D)
-                            )
                             Box(
                                 modifier = Modifier.fillMaxWidth().height(6.dp)
                                     .background(Color(0xFFD7E8E1), RoundedCornerShape(3.dp))
@@ -280,8 +300,10 @@ Card(
             )
             Card(
                 Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF2F0F8))
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, Color(0xFFE9E7ED)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Column(
                     Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp)
@@ -292,15 +314,10 @@ Card(
                             Modifier.fillMaxWidth().padding(vertical = 7.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = WalletLineIcon,
-                                contentDescription = "Saldo de monedero",
-                                tint = Color(0xFF0F5C4D),
-                                modifier = Modifier.size(22.dp)
-                            )
+                            WalletVisualIcon()
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                "Saldo de monedero · " + formatWalletMoney(reward.amount),
+                                "Saldo disponible · " + formatWalletMoney(reward.amount),
                                 modifier = Modifier.weight(1f),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
@@ -331,7 +348,7 @@ Card(
                         if (index < pendingRewards.lastIndex) {
                             HorizontalDivider(
                                 Modifier.padding(start = 30.dp),
-                                color = Color(0xFFDCD8E8),
+                                color = Color(0xFFE9E7ED),
                                 thickness = 1.dp
                             )
                         }
@@ -355,7 +372,8 @@ Card(
         Text(
             "Promociones disponibles (${visiblePromotions.size})",
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF183B35)
         )
 
         when {
@@ -380,7 +398,7 @@ Card(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.Top
                     ) {
-                        Text(accountPromotionIcon(promotion), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 1.dp))
+                        PromotionVisualIcon(promotion)
                         Spacer(Modifier.width(10.dp))
                         Column(
                             modifier = Modifier.weight(1f),
