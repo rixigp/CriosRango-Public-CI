@@ -82,6 +82,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 
 enum class StoreAccountAuthStatus { CHECKING, AUTHENTICATED, UNAUTHENTICATED }
+enum class StoreAccountAuthReturnDestination { NONE, ACCOUNT_ROOT, ORDERS, COUPONS, PROFILE }
 enum class StoreAccountInfoPage { RETURNS, TERMS, PRIVACY, LEGAL, COOKIES }
 
 
@@ -235,8 +236,11 @@ fun StoreAccountRootScreen(
                 .padding(bottom = 32.dp)
         ) {
             Spacer(Modifier.height(contentTopSpacing))
+            val guestAccount = !hasUserName && email.isNullOrBlank()
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().then(
+                    if (guestAccount) Modifier.clickable(onClick = onLogin) else Modifier
+                ),
                 shape = RoundedCornerShape(20.dp),
                 color = Color(0xFFF1F2F1),
                 tonalElevation = 0.dp,

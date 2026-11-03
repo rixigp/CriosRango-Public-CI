@@ -5,15 +5,13 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class AccountLogoutStateTest {
-
     @Test
-    fun unauthenticatedStateForcesAccountUiBackToLogin() {
-        assertTrue(shouldResetAccountUiForAuthState(AccountAuthState.UNAUTHENTICATED))
+    fun unauthenticatedAccountEntryDoesNotForceLogin() {
+        assertFalse(shouldOpenLoginForAccountEntry(explicitLoginRequested = false))
     }
 
     @Test
-    fun authenticatedAndCheckingStatesDoNotForceLogoutUiReset() {
-        assertFalse(shouldResetAccountUiForAuthState(AccountAuthState.AUTHENTICATED))
-        assertFalse(shouldResetAccountUiForAuthState(AccountAuthState.CHECKING))
+    fun explicitLoginEntryFromProtectedFlowStillOpensLogin() {
+        assertTrue(shouldOpenLoginForAccountEntry(explicitLoginRequested = true))
     }
 }

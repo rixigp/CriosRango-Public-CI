@@ -54,6 +54,7 @@ import es.criosrango.shared.promotions.Promotion
 import es.criosrango.shared.promotions.PromotionRepository
 import es.criosrango.shared.StoreAccountHelpScreen
 import es.criosrango.shared.StoreAccountRootScreen
+import es.criosrango.shared.StoreAccountAuthReturnDestination
 import es.criosrango.shared.StorePageHeader
 import es.criosrango.shared.StoreOrdersOwner
 import es.criosrango.shared.StoreOrdersScreen
@@ -113,24 +114,14 @@ fun AccountLoginScreen(
     var password by remember { mutableStateOf("") }
     var showRegister by remember { mutableStateOf(false) }
     var showForgot by remember { mutableStateOf(false) }
-    var showLogin by remember { mutableStateOf(openLoginOnStart) }
+    var showLogin by remember { mutableStateOf(shouldOpenLoginForAccountEntry(openLoginOnStart)) }
+    var pendingAuthDestination by remember { mutableStateOf(StoreAccountAuthReturnDestination.NONE) }
     var selectedInfoPage by remember { mutableStateOf<AccountInfoPage?>(null) }
     val currentUser = user
+    var hadAuthenticatedSession by remember { mutableStateOf(currentUser != null) }
     LaunchedEffect(currentUser?.id) { walletOwner.onSessionChanged(currentUser?.id?.toString()) }
     var accountSection by remember {
         mutableStateOf(if (openPromotionsOnStart) AccountSection.WALLET else AccountSection.HOME)
-    }
-    LaunchedEffect(authState) {
-        if (shouldResetAccountUiForAuthState(authState)) {
-            showLogin = true
-            showRegister = false
-            showForgot = false
-            login = ""
-            password = ""
-            selectedInfoPage = null
-            accountSection = AccountSection.HOME
-            vm.clearAccountMessages()
-        }
     }
     var selectedOrderId by remember { mutableStateOf<Int?>(initialOrderId) }
     var selectedOrderFromShared by remember { mutableStateOf<AccountOrderSummary?>(null) }
@@ -193,12 +184,14 @@ fun AccountLoginScreen(
     val accountRootBackAvailable = selectedInfoPage == null && selectedOrder == null && !showLogin && accountSection == AccountSection.HOME
     SideEffect { onRootBackAvailable(accountRootBackAvailable) }
     val leaveLogin: () -> Unit = {
+        pendingAuthDestination = StoreAccountAuthReturnDestination.NONE
         when (accountAuthBackDestination(AccountAuthDestination.LOGIN, returnToCartAfterLogin = onBackFromLogin != null)) {
             AccountAuthDestination.CART -> onBackFromLogin?.invoke()
             AccountAuthDestination.ACCOUNT -> {
                 showLogin = false
                 showRegister = false
                 showForgot = false
+                accountSection = AccountSection.HOME
                 vm.clearAccountMessages()
             }
             else -> Unit
@@ -226,15 +219,34 @@ fun AccountLoginScreen(
 
     LaunchedEffect(currentUser?.id) {
         if (currentUser != null) {
+            hadAuthenticatedSession = true
             showLogin = false
-            if (openPromotionsOnStart) accountSection = AccountSection.WALLET
+            when {
+                initialOrderId != null -> accountSection = AccountSection.ORDERS
+                pendingAuthDestination != StoreAccountAuthReturnDestination.NONE -> {
+                    accountSection = accountSectionForAuthDestination(pendingAuthDestination)
+                    pendingAuthDestination = StoreAccountAuthReturnDestination.NONE
+                }
+                openPromotionsOnStart -> accountSection = AccountSection.WALLET
+            }
             PushNotificationController.initialize(notificationContext)
             onAuthenticated?.invoke()
+        } else if (hadAuthenticatedSession) {
+            // A 401 while inside a protected section must return to Login, not lose the intent.
+            hadAuthenticatedSession = false
+            if (accountSection in setOf(AccountSection.ORDERS, AccountSection.WALLET, AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES)) {
+                pendingAuthDestination = authDestinationForAccountSection(accountSection)
+                showLogin = true
+            }
         }
     }
 
     if (currentUser == null && accountError?.type == StoreErrorType.SESSION_EXPIRED) {
-        StoreErrorState(accountError!!, padding, onLogin = { vm.clearAccountMessages(); showLogin = true })
+        StoreErrorState(accountError!!, padding, onLogin = {
+            pendingAuthDestination = authDestinationForAccountSection(accountSection)
+            vm.clearAccountMessages()
+            showLogin = true
+        })
         return
     }
 
@@ -343,7 +355,11 @@ fun AccountLoginScreen(
                             }
                         },
                         onLogout = { vm.logout(onBeforeLogout) {
-                            showLogin = true
+                            hadAuthenticatedSession = false
+                            showLogin = false
+                            pendingAuthDestination = StoreAccountAuthReturnDestination.NONE
+                            login = ""
+                            password = ""
                             showRegister = false
                             showForgot = false
                             selectedOrderId = null
@@ -402,10 +418,10 @@ fun AccountLoginScreen(
                     email = null,
                     appVersion = BuildConfig.VERSION_NAME,
                     onBack = onRootBack,
-                    onOrders = { showLogin = true },
-                    onWallet = { showLogin = true },
-                    onProfile = { showLogin = true },
-                    onLogin = { showLogin = true },
+                    onOrders = { pendingAuthDestination = StoreAccountAuthReturnDestination.ORDERS; showLogin = true },
+                    onWallet = { pendingAuthDestination = StoreAccountAuthReturnDestination.COUPONS; showLogin = true },
+                    onProfile = { pendingAuthDestination = StoreAccountAuthReturnDestination.PROFILE; showLogin = true },
+                    onLogin = { pendingAuthDestination = StoreAccountAuthReturnDestination.ACCOUNT_ROOT; showLogin = true },
                     onHelp = { accountSection = AccountSection.HELP },
                     onInfoPage = { selectedInfoPage = AccountInfoPage.valueOf(it.name) }
                 )
@@ -432,7 +448,26 @@ fun AccountLoginScreen(
     }
 }
 
+internal fun shouldOpenLoginForAccountEntry(explicitLoginRequested: Boolean): Boolean = explicitLoginRequested
+
 internal enum class AccountAuthDestination { ACCOUNT, LOGIN, REGISTER, FORGOT_PASSWORD, CART }
+internal enum class AccountSection { HOME, ORDERS, WALLET, PROFILE, DATA, ADDRESSES, HELP }
+
+internal fun accountSectionForAuthDestination(destination: StoreAccountAuthReturnDestination): AccountSection =
+    when (destination) {
+        StoreAccountAuthReturnDestination.NONE, StoreAccountAuthReturnDestination.ACCOUNT_ROOT -> AccountSection.HOME
+        StoreAccountAuthReturnDestination.ORDERS -> AccountSection.ORDERS
+        StoreAccountAuthReturnDestination.COUPONS -> AccountSection.WALLET
+        StoreAccountAuthReturnDestination.PROFILE -> AccountSection.PROFILE
+    }
+
+internal fun authDestinationForAccountSection(section: AccountSection): StoreAccountAuthReturnDestination =
+    when (section) {
+        AccountSection.ORDERS -> StoreAccountAuthReturnDestination.ORDERS
+        AccountSection.WALLET -> StoreAccountAuthReturnDestination.COUPONS
+        AccountSection.PROFILE, AccountSection.DATA, AccountSection.ADDRESSES -> StoreAccountAuthReturnDestination.PROFILE
+        else -> StoreAccountAuthReturnDestination.ACCOUNT_ROOT
+    }
 
 internal fun accountAuthBackDestination(
     current: AccountAuthDestination,
@@ -450,8 +485,6 @@ internal fun accountReturnActionForItemCount(itemCount: Int): AccountReturnActio
     itemCount > 1 -> AccountReturnAction.MULTI_PRODUCT
     else -> AccountReturnAction.NONE
 }
-
-private enum class AccountSection { HOME, ORDERS, WALLET, PROFILE, DATA, ADDRESSES, HELP }
 
 @Composable
 private fun AccountCompactAccess(
@@ -728,9 +761,6 @@ private fun formatWalletRemaining(value: Double): String {
 }
 
 
-
-internal fun shouldResetAccountUiForAuthState(authState: AccountAuthState): Boolean =
-    authState == AccountAuthState.UNAUTHENTICATED
 
 internal fun incomingPushOrderSelection(currentOrderId: Int?, incomingOrderId: Int?): Int? =
     incomingOrderId?.takeIf { it > 0 } ?: currentOrderId
