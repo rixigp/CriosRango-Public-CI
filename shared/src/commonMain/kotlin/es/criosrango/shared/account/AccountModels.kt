@@ -88,7 +88,9 @@ data class AccountOrderVariation(
 data class AccountOrderItem(
     @Serializable(with = OrderStringSerializer::class) val name: String = "",
     val quantity: Int = 0,
-    val variations: List<AccountOrderVariation> = emptyList()
+    val variations: List<AccountOrderVariation> = emptyList(),
+    @SerialName("product_id") val productId: Int? = null,
+    @SerialName("image_url") val imageUrl: String? = null
 )
 
 @Serializable
