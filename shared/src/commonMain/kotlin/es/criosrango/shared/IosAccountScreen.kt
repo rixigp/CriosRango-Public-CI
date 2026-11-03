@@ -103,6 +103,7 @@ fun CriosRangoIOSAccountScreen(
     }
     var user by remember(sessionState) { mutableStateOf(sessionState.snapshot.value.user) }
     var error by remember { mutableStateOf<String?>(null) }
+    var pendingAuthDestination by remember { mutableStateOf(StoreAccountAuthReturnDestination.NONE) }
     var loggingOut by remember { mutableStateOf(false) }
     var selectedOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
     var returnPickerOrder by remember { mutableStateOf<AccountOrderSummary?>(null) }
@@ -124,7 +125,10 @@ fun CriosRangoIOSAccountScreen(
     IosBackHandler(IosBackPriority.ACCOUNT) {
         when (page) {
             IosAccountPage.HOME -> onBackFromRoot()
-            IosAccountPage.LOGIN, IosAccountPage.REGISTER -> if (onBackFromLogin != null) onBackFromLogin() else page = IosAccountPage.HOME
+            IosAccountPage.LOGIN, IosAccountPage.REGISTER -> {
+                pendingAuthDestination = StoreAccountAuthReturnDestination.NONE
+                if (onBackFromLogin != null) onBackFromLogin() else page = IosAccountPage.HOME
+            }
             IosAccountPage.FORGOT -> page = forgotReturnPage
             IosAccountPage.PROFILE, IosAccountPage.ORDERS, IosAccountPage.WALLET, IosAccountPage.INFO, IosAccountPage.HELP -> page = IosAccountPage.HOME
             IosAccountPage.DATA -> page = IosAccountPage.PROFILE
@@ -149,7 +153,21 @@ fun CriosRangoIOSAccountScreen(
         walletOwner.onSessionChanged(user?.id?.toString())
         if (user != null) runCatching { PushDeviceRegistration.registerCurrentDevice() }
     }
-    fun invalidateExpiredSession() { sessionState.logout(); user = null; selectedOrder = null; error = null; page = IosAccountPage.HOME }
+    fun invalidateExpiredSession() {
+        if (pendingAuthDestination == StoreAccountAuthReturnDestination.NONE) {
+            pendingAuthDestination = when (page) {
+                IosAccountPage.ORDERS, IosAccountPage.ORDER_DETAIL -> StoreAccountAuthReturnDestination.ORDERS
+                IosAccountPage.WALLET -> StoreAccountAuthReturnDestination.COUPONS
+                IosAccountPage.PROFILE, IosAccountPage.DATA, IosAccountPage.ADDRESS -> StoreAccountAuthReturnDestination.PROFILE
+                else -> StoreAccountAuthReturnDestination.ACCOUNT_ROOT
+            }
+        }
+        sessionState.logout()
+        user = null
+        selectedOrder = null
+        error = null
+        page = IosAccountPage.LOGIN
+    }
 
     LaunchedEffect(openPromotionsOnStart, user?.id) {
         if (openPromotionsOnStart && user != null) {
@@ -205,19 +223,29 @@ fun CriosRangoIOSAccountScreen(
     fun finishAuthentication(authenticatedUser: AccountUser) {
         user = authenticatedUser
         error = null
-        page = when {
-            pendingPushOrderId != null -> IosAccountPage.ORDERS
-            openPromotionsOnStart -> IosAccountPage.WALLET
-            else -> IosAccountPage.HOME
-        }
         scope.launch {
             runCatching { ordersOwner.claimPendingOrderAndRefresh() }
                 .onFailure { println("KMP_ACCOUNT_CLAIM_FAILED=${it.stackTraceToString().safeDiagnosticText(1_800)}") }
             if (!repository.hasSession) {
                 user = null
                 error = "La sesión ha caducado. Vuelve a iniciar sesión."
-                page = IosAccountPage.HOME
+                page = IosAccountPage.LOGIN
             } else {
+                page = when {
+                    pendingPushOrderId != null -> IosAccountPage.ORDERS
+                    pendingAuthDestination != StoreAccountAuthReturnDestination.NONE -> {
+                        val destination = when (pendingAuthDestination) {
+                            StoreAccountAuthReturnDestination.NONE, StoreAccountAuthReturnDestination.ACCOUNT_ROOT -> IosAccountPage.HOME
+                            StoreAccountAuthReturnDestination.ORDERS -> IosAccountPage.ORDERS
+                            StoreAccountAuthReturnDestination.COUPONS -> IosAccountPage.WALLET
+                            StoreAccountAuthReturnDestination.PROFILE -> IosAccountPage.PROFILE
+                        }
+                        pendingAuthDestination = StoreAccountAuthReturnDestination.NONE
+                        destination
+                    }
+                    openPromotionsOnStart -> IosAccountPage.WALLET
+                    else -> IosAccountPage.HOME
+                }
                 onAuthenticated?.invoke()
             }
         }
@@ -249,10 +277,19 @@ fun CriosRangoIOSAccountScreen(
                         fullName = user?.displayName,
                         email = user?.email,
                         appVersion = appVersion,
-                        onOrders = { if (user == null) page = IosAccountPage.LOGIN else page = IosAccountPage.ORDERS },
-                        onWallet = { if (user == null) page = IosAccountPage.LOGIN else page = IosAccountPage.WALLET },
-                        onProfile = { if (user == null) page = IosAccountPage.LOGIN else page = IosAccountPage.PROFILE },
-                        onLogin = { error = null; page = IosAccountPage.LOGIN },
+                        onOrders = {
+                            if (user == null) { pendingAuthDestination = StoreAccountAuthReturnDestination.ORDERS; page = IosAccountPage.LOGIN }
+                            else page = IosAccountPage.ORDERS
+                        },
+                        onWallet = {
+                            if (user == null) { pendingAuthDestination = StoreAccountAuthReturnDestination.COUPONS; page = IosAccountPage.LOGIN }
+                            else page = IosAccountPage.WALLET
+                        },
+                        onProfile = {
+                            if (user == null) { pendingAuthDestination = StoreAccountAuthReturnDestination.PROFILE; page = IosAccountPage.LOGIN }
+                            else page = IosAccountPage.PROFILE
+                        },
+                        onLogin = { error = null; pendingAuthDestination = StoreAccountAuthReturnDestination.ACCOUNT_ROOT; page = IosAccountPage.LOGIN },
                         onHelp = { error = null; page = IosAccountPage.HELP },
                         onInfoPage = { selectedInfoPage = AccountInfoPage.valueOf(it.name); error = null; page = IosAccountPage.INFO }
                     )
@@ -263,10 +300,14 @@ fun CriosRangoIOSAccountScreen(
                     onAuthenticated = ::finishAuthentication,
                     onRegister = { page = IosAccountPage.REGISTER },
                     onForgot = { forgotReturnPage = IosAccountPage.LOGIN; page = IosAccountPage.FORGOT },
-                    onBack = { if (onBackFromLogin != null) onBackFromLogin() else page = IosAccountPage.HOME }
+                    onBack = {
+                        pendingAuthDestination = StoreAccountAuthReturnDestination.NONE
+                        if (onBackFromLogin != null) onBackFromLogin() else page = IosAccountPage.HOME
+                    }
                 )
                 IosAccountPage.REGISTER -> androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
                     IosLoginScreen(repository, sessionState, ::finishAuthentication, onRegister = {}, onForgot = {}, onBack = {
+                        pendingAuthDestination = StoreAccountAuthReturnDestination.NONE
                         if (onBackFromLogin != null) onBackFromLogin() else page = IosAccountPage.HOME
                     })
                     StoreRegisterScreen(owner = registerOwner, onDismiss = { page = IosAccountPage.LOGIN }, onRegistered = ::finishAuthentication)
@@ -288,6 +329,7 @@ fun CriosRangoIOSAccountScreen(
                                     runCatching { onBeforeLogout() }
                                     runCatching { repository.logout() }
                                     sessionState.logout()
+                                    pendingAuthDestination = StoreAccountAuthReturnDestination.NONE
                                     user = null
                                     error = null
                                     page = IosAccountPage.HOME
@@ -312,6 +354,7 @@ fun CriosRangoIOSAccountScreen(
                                 runCatching { onBeforeLogout() }
                                 runCatching { repository.logout() }
                                 sessionState.logout()
+                                pendingAuthDestination = StoreAccountAuthReturnDestination.NONE
                                 user = null
                                 error = null
                                 page = IosAccountPage.HOME
