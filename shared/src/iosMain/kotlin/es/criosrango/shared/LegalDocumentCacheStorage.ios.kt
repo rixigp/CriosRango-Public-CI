@@ -1,6 +1,7 @@
 package es.criosrango.shared
 
 import platform.Foundation.NSDate
+import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.NSUserDefaults
 
 actual object LegalDocumentCacheStorage {

@@ -63,14 +63,14 @@ object LegalDocumentParser {
     fun parse(titleHtml: String, contentHtml: String): LegalDocument {
         val title = legalDecodeEntities(titleHtml.replace(Regex("<[^>]+>"), "")).trim()
         val html = legalNormalizeShortcodes(contentHtml)
-        val headingFound = Regex("""<h[1-6]\b[^>]*>.*?</h[1-6]>""", RegexOption.IGNORE_CASE or RegexOption.DOT_MATCHES_ALL).containsMatchIn(html)
+        val headingFound = Regex("""<h[1-6]\b[^>]*>.*?</h[1-6]>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)).containsMatchIn(html)
         val blocks = parseBlocks(html)
         val sections = if (headingFound) {
             val result = mutableListOf<LegalSection>()
             var currentTitle = ""
             var currentBlocks = mutableListOf<LegalBlock>()
             // Reparse sequentially so only semantic h1-h4 establish sections.
-            val tokens = Regex("""(<h[1-6]\b[^>]*>.*?</h[1-6]>|<p\b[^>]*>.*?</p>|<ol\b[^>]*>.*?</ol>|<ul\b[^>]*>.*?</ul>|<table\b[^>]*>.*?</table>|<br\s*/?>)""", RegexOption.IGNORE_CASE or RegexOption.DOT_MATCHES_ALL)
+            val tokens = Regex("""(<h[1-6]\b[^>]*>.*?</h[1-6]>|<p\b[^>]*>.*?</p>|<ol\b[^>]*>.*?</ol>|<ul\b[^>]*>.*?</ul>|<table\b[^>]*>.*?</table>|<br\s*/?>)""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
             tokens.findAll(html).forEach { token ->
                 val value = token.value
                 if (Regex("""^<h[1-4]\b""", RegexOption.IGNORE_CASE).containsMatchIn(value)) {
@@ -87,7 +87,7 @@ object LegalDocumentParser {
 
     private fun parseBlocks(html: String): List<LegalBlock> {
         val result = mutableListOf<LegalBlock>()
-        val tokenRegex = Regex("""(<ol\b[^>]*>.*?</ol>|<ul\b[^>]*>.*?</ul>|<table\b[^>]*>.*?</table>|<p\b[^>]*>.*?</p>|<h[1-6]\b[^>]*>.*?</h[1-6]>)""", RegexOption.IGNORE_CASE or RegexOption.DOT_MATCHES_ALL)
+        val tokenRegex = Regex("""(<ol\b[^>]*>.*?</ol>|<ul\b[^>]*>.*?</ul>|<table\b[^>]*>.*?</table>|<p\b[^>]*>.*?</p>|<h[1-6]\b[^>]*>.*?</h[1-6]>)""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
         var cursor = 0
         fun appendLooseText(fragment: String) {
             inline(fragment).takeIf { it.text.isNotBlank() }?.let { result += LegalBlock.Paragraph(it) }
@@ -98,16 +98,16 @@ object LegalDocumentParser {
             val node = match.value
             when {
                 Regex("""^<ol\b""", RegexOption.IGNORE_CASE).containsMatchIn(node) -> {
-                    val items = Regex("""<li\b[^>]*>(.*?)</li>""", RegexOption.IGNORE_CASE or RegexOption.DOT_MATCHES_ALL).findAll(node).map { inline(it.groupValues[1]) }.toList()
+                    val items = Regex("""<li\b[^>]*>(.*?)</li>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)).findAll(node).map { inline(it.groupValues[1]) }.toList()
                     if (items.isNotEmpty()) result += LegalBlock.OrderedList(items)
                 }
                 Regex("""^<ul\b""", RegexOption.IGNORE_CASE).containsMatchIn(node) -> {
-                    val items = Regex("""<li\b[^>]*>(.*?)</li>""", RegexOption.IGNORE_CASE or RegexOption.DOT_MATCHES_ALL).findAll(node).map { inline(it.groupValues[1]) }.toList()
+                    val items = Regex("""<li\b[^>]*>(.*?)</li>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)).findAll(node).map { inline(it.groupValues[1]) }.toList()
                     if (items.isNotEmpty()) result += LegalBlock.UnorderedList(items)
                 }
                 Regex("""^<table\b""", RegexOption.IGNORE_CASE).containsMatchIn(node) -> {
-                    val rows = Regex("""<tr\b[^>]*>(.*?)</tr>""", RegexOption.IGNORE_CASE or RegexOption.DOT_MATCHES_ALL).findAll(node).mapNotNull { row ->
-                        val cells = Regex("""<(?:td|th)\b[^>]*>(.*?)</(?:td|th)>""", RegexOption.IGNORE_CASE or RegexOption.DOT_MATCHES_ALL).findAll(row.groupValues[1]).map { inline(it.groupValues[1]) }.toList()
+                    val rows = Regex("""<tr\b[^>]*>(.*?)</tr>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)).findAll(node).mapNotNull { row ->
+                        val cells = Regex("""<(?:td|th)\b[^>]*>(.*?)</(?:td|th)>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)).findAll(row.groupValues[1]).map { inline(it.groupValues[1]) }.toList()
                         if (cells.size >= 2) cells[0] to (if (cells.size == 2) cells[1] else joinLegalInline(cells.drop(1), " · ")) else null
                     }.toList()
                     if (rows.isNotEmpty()) result += LegalBlock.KeyValueTable(rows)
