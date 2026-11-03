@@ -296,7 +296,8 @@ Card(
             Text(
                 "Saldo listo para usar",
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF183B35)
             )
             Card(
                 Modifier.fillMaxWidth(),
