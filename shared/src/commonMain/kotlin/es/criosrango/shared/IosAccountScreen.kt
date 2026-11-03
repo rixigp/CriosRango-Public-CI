@@ -602,18 +602,28 @@ private fun formatPromotionExpiry(value: String): String {
 
 @Composable
 private fun IosInformationPageAdapter(page: AccountInfoPage, onBack: () -> Unit) {
-    val client = remember { WordPressPagesClient() }
     var retryKey by remember { mutableStateOf(0) }
-    var loading by remember(page, retryKey) { mutableStateOf(true) }
-    var result by remember(page, retryKey) { mutableStateOf<WordPressPage?>(null) }
+    var initial by remember(page, retryKey) { mutableStateOf(LegalDocumentRepository.peek(page.slug)) }
+    var loading by remember(page, retryKey) { mutableStateOf(initial == null) }
+    var result by remember(page, retryKey) { mutableStateOf(initial?.let { WordPressPage(slug = it.slug, title = WordPressRendered(it.title), content = WordPressRendered(it.rawHtml)) }) }
     var error by remember(page, retryKey) { mutableStateOf<String?>(null) }
     LaunchedEffect(page, retryKey) {
-        loading = true
-        result = null
+        loading = (result == null)
         error = null
-        runCatching { client.getPageBySlug(page.slug) }
-            .onSuccess { loaded -> if (loaded == null) error = "No se ha podido cargar esta información." else result = loaded; loading = false }
+        runCatching { LegalDocumentRepository.load(page.slug) }
+            .onSuccess { entry ->
+                if (entry == null) error = "No se ha podido cargar esta información."
+                else result = WordPressPage(slug = entry.slug, title = WordPressRendered(entry.title), content = WordPressRendered(entry.rawHtml))
+                loading = false
+            }
             .onFailure { error = "No se ha podido cargar esta información."; loading = false }
+    }
+    val updates by LegalDocumentRepository.updates.collectAsState()
+    LaunchedEffect(page.slug, updates[page.slug]) {
+        updates[page.slug]?.let { entry ->
+            result = WordPressPage(slug = entry.slug, title = WordPressRendered(entry.title), content = WordPressRendered(entry.rawHtml))
+            error = null
+        }
     }
     StoreAccountInformationScreen(
         title = page.title,

@@ -25,7 +25,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -232,8 +231,10 @@ fun StoreAccountInformationScreen(
                     }
                 }
                 Spacer(Modifier.height(18.dp))
-                val sections = parsed.sections.filterNot { it.title.equals(parsed.title, ignoreCase = true) }
+                val bodyBlocks = parsed.sections.filter { it.title.isBlank() || it.title.equals(parsed.title, ignoreCase = true) }.flatMap { it.blocks }
+                val sections = parsed.sections.filter { it.title.isNotBlank() && !it.title.equals(parsed.title, ignoreCase = true) }
                 if (sections.isNotEmpty()) {
+                    if (bodyBlocks.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { bodyBlocks.forEach { LegalBlockView(it) }; Spacer(Modifier.height(4.dp)) }
                     sections.forEachIndexed { index, section ->
                         var expanded by remember(parsed.rawHtml, index) { mutableStateOf(index == 0) }
                         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, Color(0xFFE6EBE7)), elevation = CardDefaults.cardElevation(0.dp)) {
@@ -249,7 +250,9 @@ fun StoreAccountInformationScreen(
                         }
                     }
                 } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { parsed.continuousBlocks.forEach { LegalBlockView(it) } }
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        (bodyBlocks.ifEmpty { parsed.continuousBlocks }).forEach { LegalBlockView(it) }
+                    }
                 }
                 Spacer(Modifier.height(40.dp))
             }
@@ -262,7 +265,7 @@ private fun LegalBlockView(block: LegalBlock) {
     when (block) {
         is LegalBlock.Paragraph -> LegalInlineText(block.inline)
         is LegalBlock.OrderedList -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { block.items.forEachIndexed { i, item -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Text("${i + 1}.", color = Color(0xFF26724F), fontWeight = FontWeight.SemiBold); LegalInlineText(item) } } }
-        is LegalBlock.UnorderedList -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { block.items.forEach { item -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Text("•", color = Color(0xFF26724F)); Text(item.text, style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 23.sp), color = Color(0xFF29352E)) } } }
+        is LegalBlock.UnorderedList -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { block.items.forEach { item -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Text("•", color = Color(0xFF26724F)); LegalInlineText(item) } } }
         is LegalBlock.KeyValueTable -> Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { block.rows.forEach { (key, value) -> Column(verticalArrangement = Arrangement.spacedBy(3.dp)) { LegalInlineText(key, baseWeight = FontWeight.SemiBold); LegalInlineText(value); HorizontalDivider(color = Color(0xFFE8ECE8)) } } }
     }
 }

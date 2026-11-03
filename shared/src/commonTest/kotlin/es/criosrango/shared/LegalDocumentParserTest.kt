@@ -38,6 +38,17 @@ class LegalDocumentParserTest {
         assertTrue(text.contains("»"))
         assertTrue(text.contains("A"))
         assertTrue(text.contains("😀"))
+        val spanish = LegalDocumentParser.parse("Title", "<p>Condici&oacute;n &aacute;rea &oacute;ptima</p>").continuousBlocks.filterIsInstance<LegalBlock.Paragraph>().first().inline.text
+        assertTrue(spanish.contains("Condición área óptima"))
+        val punctuation = LegalDocumentParser.parse("Title", "<p>&iexcl;Qu&eacute; &oacute;ptimo! &iquest;Cu&aacute;l?</p>").continuousBlocks.filterIsInstance<LegalBlock.Paragraph>().first().inline.text
+        assertTrue(punctuation.contains("¡Qué óptimo! ¿Cuál?"))
+    }
+    @Test fun looseTextBetweenBuilderWrappersIsNotDropped() {
+        val doc = LegalDocumentParser.parse("Title", "<div>before<p>Paragraph</p>after</div>")
+        val visible = doc.continuousBlocks.filterIsInstance<LegalBlock.Paragraph>().joinToString(" ") { it.inline.text }
+        assertTrue(visible.contains("before"))
+        assertTrue(visible.contains("Paragraph"))
+        assertTrue(visible.contains("after"))
     }
     @Test fun linksAreRetained() {
         val doc = LegalDocumentParser.parse("Title", "<p><a href=\"https://example.com\">Link</a></p>")

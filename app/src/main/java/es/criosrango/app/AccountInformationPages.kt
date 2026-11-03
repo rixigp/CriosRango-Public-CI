@@ -1,6 +1,5 @@
 package es.criosrango.app
 
-import es.criosrango.shared.StorePageHeader
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -21,7 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import es.criosrango.shared.StoreAccountInformationScreen
-import es.criosrango.shared.WordPressPagesClient
+import es.criosrango.shared.LegalDocumentRepository
 
 
 enum class AccountInfoPage(val title: String, val slug: String) {
@@ -38,79 +37,23 @@ sealed interface InfoPageUiState {
     data class Error(val message: String) : InfoPageUiState
 }
 
-private fun wordpressHtmlToText(
-    html: String
-): String {
-
-    if (html.isBlank()) return ""
-
-    val withoutShortcodes = html
-        .replace(
-            Regex(
-                """\[(?:/)?vc_[^\]]*]""",
-                RegexOption.IGNORE_CASE
-            ),
-            ""
-        )
-        .replace(
-            Regex(
-                """\[(?:/)?(?:nectar|salient)_[^\]]*]""",
-                RegexOption.IGNORE_CASE
-            ),
-            ""
-        )
-        .replace(
-            Regex(
-                """<li[^>]*>""",
-                RegexOption.IGNORE_CASE
-            ),
-            "• "
-        )
-        .replace(
-            Regex(
-                """</li>""",
-                RegexOption.IGNORE_CASE
-            ),
-            "\n"
-        )
-        .replace(
-            Regex(
-                """</(?:p|div|h1|h2|h3|h4|h5|h6|ul|ol)>""",
-                RegexOption.IGNORE_CASE
-            ),
-            "\n\n"
-        )
-
-    return Html.fromHtml(
-        withoutShortcodes,
-        Html.FROM_HTML_MODE_LEGACY
-    )
-        .toString()
-        .replace("\u00A0", " ")
-        .replace("»", "")
-        .replace(Regex("""[ \t]+\n"""), "\n")
-        .replace(Regex("""\n[ \t]+"""), "\n")
-        .replace(Regex("""\n{3,}"""), "\n\n")
-        .trim()
-}
-
 @Composable
 private fun rememberInfoPageState(page: AccountInfoPage): Pair<InfoPageUiState, () -> Unit> {
-    val client = remember { WordPressPagesClient() }
     var retryKey by remember { mutableIntStateOf(0) }
-    var state by remember(page, retryKey) { mutableStateOf<InfoPageUiState>(InfoPageUiState.Loading) }
+    var state by remember(page, retryKey) { mutableStateOf<InfoPageUiState>(LegalDocumentRepository.peek(page.slug)?.let { InfoPageUiState.Success(it.title, it.rawHtml) } ?: InfoPageUiState.Loading) }
     LaunchedEffect(page, retryKey) {
-        state = InfoPageUiState.Loading
+        if (LegalDocumentRepository.peek(page.slug) == null) state = InfoPageUiState.Loading
         state = try {
-            val result = client.getPageBySlug(page.slug)
-            if (result == null) InfoPageUiState.Error("No se ha podido cargar esta información.")
-            else InfoPageUiState.Success(
-                title = result.title.rendered,
-                content = result.content.rendered
-            )
+            val entry = LegalDocumentRepository.load(page.slug)
+            if (entry == null) InfoPageUiState.Error("No se ha podido cargar esta información.")
+            else InfoPageUiState.Success(title = entry.title, content = entry.rawHtml)
         } catch (_: Exception) {
             InfoPageUiState.Error("No se ha podido cargar esta información.")
         }
+    }
+    val updates by LegalDocumentRepository.updates.collectAsState()
+    LaunchedEffect(page.slug, updates[page.slug]) {
+        updates[page.slug]?.let { entry -> state = InfoPageUiState.Success(entry.title, entry.rawHtml) }
     }
     return state to { retryKey++ }
 }
