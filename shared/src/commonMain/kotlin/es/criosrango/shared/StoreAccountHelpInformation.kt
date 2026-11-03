@@ -235,9 +235,26 @@ fun StoreAccountInformationScreen(
                     }
                 }
                 Spacer(Modifier.height(18.dp))
-                val bodyBlocks = parsed.sections.filter { it.title.isBlank() || it.title.equals(parsed.title, ignoreCase = true) }.flatMap { it.blocks }
-                val sections = parsed.sections.filter { it.title.isNotBlank() && !it.title.equals(parsed.title, ignoreCase = true) }
-                if (sections.isNotEmpty()) {
+                val normalizedTitle = normalizeLegalTitle(parsed.title)
+                val visibleSections = parsed.sections.filter { it.title.isNotBlank() && normalizeLegalTitle(it.title) != normalizedTitle }
+                val sections = visibleSections
+                val bodyBlocks = parsed.sections.filter { it.title.isBlank() || normalizeLegalTitle(it.title) == normalizedTitle }.flatMap { it.blocks }
+                val continuousBlocks = buildList<LegalBlock> {
+                    addAll(bodyBlocks)
+                    visibleSections.forEach { section ->
+                        add(LegalBlock.Heading(section.level, LegalTextBlock(section.title)))
+                        addAll(section.blocks)
+                    }
+                    if (parsed.sections.isEmpty()) addAll(parsed.continuousBlocks.filterNot { block ->
+                        when (block) {
+                            is LegalBlock.Heading -> isDuplicateLegalTitle(block.inline.text, parsed.title)
+                            is LegalBlock.Paragraph -> isDuplicateLegalTitle(block.inline.text, parsed.title) && block.inline.strongRanges.any { it.first == 0 && it.last >= block.inline.text.lastIndex }
+                            else -> false
+                        }
+                    })
+                }
+                val accordionMode = pageSlug == "condiciones-generales-de-contratacion" && sections.size >= 2
+                if (accordionMode) {
                     if (bodyBlocks.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { bodyBlocks.forEach { LegalBlockView(it) }; Spacer(Modifier.height(4.dp)) }
                     sections.forEachIndexed { index, section ->
                         var expanded by remember(parsed.rawHtml, index) { mutableStateOf(index == 0) }
@@ -255,7 +272,7 @@ fun StoreAccountInformationScreen(
                     }
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        (bodyBlocks.ifEmpty { parsed.continuousBlocks }).forEach { LegalBlockView(it) }
+                        continuousBlocks.forEach { LegalBlockView(it) }
                     }
                 }
                 Spacer(Modifier.height(40.dp))
@@ -268,6 +285,7 @@ fun StoreAccountInformationScreen(
 private fun LegalBlockView(block: LegalBlock) {
     when (block) {
         is LegalBlock.Paragraph -> LegalInlineText(block.inline)
+        is LegalBlock.Heading -> Text(block.inline.text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Color(0xFF21382E))
         is LegalBlock.OrderedList -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { block.items.forEachIndexed { i, item -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Text("${i + 1}.", color = Color(0xFF26724F), fontWeight = FontWeight.SemiBold); LegalInlineText(item) } } }
         is LegalBlock.UnorderedList -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { block.items.forEach { item -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Text("•", color = Color(0xFF26724F)); LegalInlineText(item) } } }
         is LegalBlock.KeyValueTable -> Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { block.rows.forEach { (key, value) -> Column(verticalArrangement = Arrangement.spacedBy(3.dp)) { LegalInlineText(key, baseWeight = FontWeight.SemiBold); LegalInlineText(value); HorizontalDivider(color = Color(0xFFE8ECE8)) } } }

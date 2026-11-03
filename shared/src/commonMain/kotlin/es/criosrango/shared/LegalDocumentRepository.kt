@@ -22,6 +22,10 @@ private val legalCacheJson = Json { ignoreUnknownKeys = true }
 @Serializable
 data class LegalPageCacheEntry(val slug: String, val title: String, val rawHtml: String, val fetchedAt: Long)
 
+internal fun isValidLegalCacheEntry(entry: LegalPageCacheEntry?): Boolean = entry != null && entry.rawHtml.isNotBlank()
+internal fun chooseValidLegalEntry(remote: LegalPageCacheEntry?, cached: LegalPageCacheEntry?): LegalPageCacheEntry? =
+    if (isValidLegalCacheEntry(remote)) remote else cached?.takeIf { isValidLegalCacheEntry(it) }
+
 expect object LegalDocumentCacheStorage {
     fun get(key: String): String?
     fun put(key: String, value: String)
@@ -39,10 +43,10 @@ object LegalDocumentRepository {
     private fun cacheKey(slug: String) = "legal_cache_v1_$slug"
 
     fun peek(slug: String): LegalPageCacheEntry? {
-        _updates.value[slug]?.let { return it }
+        _updates.value[slug]?.takeIf { it.rawHtml.isNotBlank() }?.let { return it }
         val loaded = LegalDocumentCacheStorage.get(cacheKey(slug))?.let { raw ->
             runCatching { legalCacheJson.decodeFromString<LegalPageCacheEntry>(raw) }.getOrNull()
-        } ?: return null
+        }?.takeIf { it.rawHtml.isNotBlank() } ?: return null
         publish(loaded)
         return loaded
     }
@@ -63,6 +67,7 @@ object LegalDocumentRepository {
             inFlight[slug] ?: scope.async {
                 val page = client.getPageBySlug(slug) ?: return@async null
                 val entry = LegalPageCacheEntry(slug, page.title.rendered, page.content.rendered, legalCurrentTimeMillis())
+                if (entry.rawHtml.isBlank()) return@async peek(slug)
                 val serialized = legalCacheJson.encodeToString(entry)
                 lock.withLock {
                     runCatching { LegalDocumentCacheStorage.put(cacheKey(slug), serialized) }

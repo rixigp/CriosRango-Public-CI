@@ -4,11 +4,12 @@ data class LegalInlineLink(val start: Int, val end: Int, val url: String)
 data class LegalTextBlock(val text: String, val links: List<LegalInlineLink> = emptyList(), val strongRanges: List<IntRange> = emptyList())
 sealed interface LegalBlock {
     data class Paragraph(val inline: LegalTextBlock) : LegalBlock
+    data class Heading(val level: Int, val inline: LegalTextBlock) : LegalBlock
     data class OrderedList(val items: List<LegalTextBlock>) : LegalBlock
     data class UnorderedList(val items: List<LegalTextBlock>) : LegalBlock
     data class KeyValueTable(val rows: List<Pair<LegalTextBlock, LegalTextBlock>>) : LegalBlock
 }
-data class LegalSection(val title: String, val blocks: List<LegalBlock>)
+data class LegalSection(val title: String, val blocks: List<LegalBlock>, val level: Int = 2)
 data class LegalDocument(val title: String, val sections: List<LegalSection>, val continuousBlocks: List<LegalBlock>, val rawHtml: String)
 
 private val legalEntityMap = mapOf(
@@ -45,6 +46,16 @@ private fun legalNormalizeShortcodes(html: String): String =
     html.replace(Regex("""\[(?:/)?(?:vc|nectar|salient)_[^\]]*\]""", RegexOption.IGNORE_CASE), "")
         .replace(Regex("""\[(?:/)?(?:vc_column_text|vc_row|vc_column|nectar_ct|salient_text)\s*[^\]]*\]""", RegexOption.IGNORE_CASE), "")
 
+fun isDuplicateLegalTitle(value: String, title: String): Boolean = normalizeLegalTitle(value).isNotEmpty() && normalizeLegalTitle(value) == normalizeLegalTitle(title)
+
+fun normalizeLegalTitle(value: String): String = legalDecodeEntities(value)
+    .replace(Regex("""<[^>]*>"""), " ")
+    .trim()
+    .replace(Regex("""\s+"""), " ")
+    .lowercase()
+    .replace(Regex("""[. :;]+$"""), "")
+    .trim()
+
 private fun joinLegalInline(blocks: List<LegalTextBlock>, separator: String): LegalTextBlock {
     val text = StringBuilder()
     val links = mutableListOf<LegalInlineLink>()
@@ -63,26 +74,32 @@ object LegalDocumentParser {
     fun parse(titleHtml: String, contentHtml: String): LegalDocument {
         val title = legalDecodeEntities(titleHtml.replace(Regex("<[^>]+>"), "")).trim()
         val html = legalNormalizeShortcodes(contentHtml)
-        val headingFound = Regex("""<h[1-6]\b[^>]*>.*?</h[1-6]>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)).containsMatchIn(html)
+        val headingLevels = Regex("""<h([1-6])\b[^>]*>.*?</h[1-6]>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)).findAll(html).mapNotNull { it.groupValues[1].toIntOrNull() }.toList()
+        val structuralLevel = headingLevels.groupingBy { it }.eachCount().filterValues { it >= 2 }.maxByOrNull { it.value }?.key
         val blocks = parseBlocks(html)
-        val sections = if (headingFound) {
+        val sections = if (structuralLevel != null) {
             val result = mutableListOf<LegalSection>()
             var currentTitle = ""
             var currentBlocks = mutableListOf<LegalBlock>()
-            // Reparse sequentially so only semantic h1-h4 establish sections.
+            // Preserve loose text and wrapper contents around semantic block tokens.
             val tokens = Regex("""(<h[1-6]\b[^>]*>.*?</h[1-6]>|<p\b[^>]*>.*?</p>|<ol\b[^>]*>.*?</ol>|<ul\b[^>]*>.*?</ul>|<table\b[^>]*>.*?</table>|<br\s*/?>)""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+            var cursor = 0
             tokens.findAll(html).forEach { token ->
+                if (token.range.first > cursor) parseBlocks(html.substring(cursor, token.range.first)).forEach(currentBlocks::add)
                 val value = token.value
-                if (Regex("""^<h[1-4]\b""", RegexOption.IGNORE_CASE).containsMatchIn(value)) {
-                    if (currentTitle.isNotBlank() || currentBlocks.isNotEmpty()) result += LegalSection(currentTitle, currentBlocks.toList())
+                if (Regex("""^<h${structuralLevel}\b""", RegexOption.IGNORE_CASE).containsMatchIn(value)) {
+                    if (currentTitle.isNotBlank() || currentBlocks.isNotEmpty()) result += LegalSection(currentTitle, currentBlocks.toList(), structuralLevel)
                     currentTitle = plainText(value).trim()
                     currentBlocks = mutableListOf()
                 } else parseBlocks(value).forEach(currentBlocks::add)
+                cursor = token.range.last + 1
             }
-            if (currentTitle.isNotBlank() || currentBlocks.isNotEmpty()) result += LegalSection(currentTitle, currentBlocks.toList())
+            if (cursor < html.length) parseBlocks(html.substring(cursor)).forEach(currentBlocks::add)
+            if (currentTitle.isNotBlank() || currentBlocks.isNotEmpty()) result += LegalSection(currentTitle, currentBlocks.toList(), structuralLevel)
             result.filter { it.title.isNotBlank() || it.blocks.isNotEmpty() }
         } else emptyList()
-        return LegalDocument(title, sections, if (sections.isEmpty()) blocks else emptyList(), contentHtml)
+        val safeBlocks = if (blocks.isNotEmpty()) blocks else legalHtmlToPlainText(contentHtml).takeIf { it.isNotBlank() }?.let { listOf(LegalBlock.Paragraph(LegalTextBlock(it))) }.orEmpty()
+        return LegalDocument(title, sections, if (sections.isEmpty()) safeBlocks else emptyList(), contentHtml)
     }
 
     private fun parseBlocks(html: String): List<LegalBlock> {
@@ -112,6 +129,10 @@ object LegalDocumentParser {
                     }.toList()
                     if (rows.isNotEmpty()) result += LegalBlock.KeyValueTable(rows)
                     else inline(node).takeIf { it.text.isNotBlank() }?.let { result += LegalBlock.Paragraph(it) }
+                }
+                Regex("""^<h[1-6]\b""", RegexOption.IGNORE_CASE).containsMatchIn(node) -> {
+                    val level = Regex("""^<h([1-6])""", RegexOption.IGNORE_CASE).find(node)?.groupValues?.get(1)?.toIntOrNull() ?: 2
+                    inline(node).takeIf { it.text.isNotBlank() }?.let { result += LegalBlock.Heading(level, it) }
                 }
                 else -> inline(node).takeIf { it.text.isNotBlank() }?.let { result += LegalBlock.Paragraph(it) }
             }
@@ -146,6 +167,7 @@ object LegalDocumentParser {
                     if (output.length > start) strong += start until output.length
                 }
                 "br" -> output.append('\n')
+                "section", "article", "li" -> if (closing) output.append('\n')
                 "p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "tr" -> if (closing) output.append('\n')
                 "td", "th" -> if (closing) output.append("  |  ")
             }
@@ -154,4 +176,22 @@ object LegalDocumentParser {
         return LegalTextBlock(normalized, links, strong)
     }
     private fun plainText(source: String) = inline(source).text
+}
+
+/** Last-resort HTML-to-text conversion; wrapper syntax is removed, inner text is retained. */
+fun legalHtmlToPlainText(rawHtml: String): String {
+    if (rawHtml.isBlank()) return ""
+    val normalized = rawHtml
+        .replace(Regex("""<!--.*?-->""", RegexOption.DOT_MATCHES_ALL), " ")
+        .replace(Regex("""<(script|style)\b[^>]*>.*?</\1>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), " ")
+        .replace(Regex("""\[(?:/)?(?:vc|nectar|salient)_[^\]]*\]""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\[(?:/)?[A-Za-z][A-Za-z0-9_-]*(?:\s+[^\]]*)?\]"""), "")
+        .replace(Regex("""<br\s*/?>""", RegexOption.IGNORE_CASE), "\n")
+        .replace(Regex("""</(?:p|div|section|article|h[1-6]|li|tr|ul|ol|table)>""", RegexOption.IGNORE_CASE), "\n\n")
+        .replace(Regex("""<[^>]*>"""), " ")
+    return legalDecodeEntities(normalized).replace("\u00A0", " ")
+        .replace(Regex("""[ \t]+\n"""), "\n")
+        .replace(Regex("""\n[ \t]+"""), "\n")
+        .replace(Regex("""[ \t]{2,}"""), " ")
+        .replace(Regex("""\n{3,}"""), "\n\n").trim()
 }
