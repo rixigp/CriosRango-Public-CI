@@ -96,7 +96,8 @@ fun CriosRangoIOSAccountScreen(
     onBackFromRoot: () -> Unit = {},
     onAuthenticated: (() -> Unit)? = null,
     onPromotionsOpened: () -> Unit = {},
-    onBeforeLogout: suspend () -> Unit = {}
+    onBeforeLogout: suspend () -> Unit = {},
+    onOpenOrderProduct: (orderId: Int, productId: Int) -> Unit = { _, _ -> }
 ) {
     var page by remember {
         mutableStateOf(if (openPromotionsOnStart) IosAccountPage.WALLET else if (openLoginOnStart) IosAccountPage.LOGIN else IosAccountPage.HOME)
@@ -413,7 +414,10 @@ fun CriosRangoIOSAccountScreen(
                     onCall = { onOpenExternalUrl("tel:+34969091236") },
                     onEmail = { onOpenExternalUrl("mailto:criosrango@criosrango.es?subject=Consulta%20desde%20la%20app%20Cr%C3%ADos%26Rango") }
                 )
-                IosAccountPage.ORDER_DETAIL -> selectedOrder?.let { order -> StoreOrderDetailScreen(order, onBack = { page = IosAccountPage.ORDERS }, onRequestReturn = { selected ->
+                IosAccountPage.ORDER_DETAIL -> selectedOrder?.let { order -> StoreOrderDetailScreen(order, onBack = { page = IosAccountPage.ORDERS }, onOpenProduct = { productId ->
+                    val orderId = selectedOrder?.id
+                    if (orderId != null && orderId > 0 && productId > 0) onOpenOrderProduct(orderId, productId)
+                }, onRequestReturn = { selected ->
                     val requests = storeReturnRequests(selected)
                     when (requests.size) {
                         0 -> Unit

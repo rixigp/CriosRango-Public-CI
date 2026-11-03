@@ -173,6 +173,8 @@ fun CriosRangoIOSRootScreen(
 ) {
     var section by remember { mutableStateOf(IosRootSection.HOME) }
     var pendingPushOrderId by remember { mutableStateOf<Int?>(null) }
+    var orderProductReturnOrderId by remember { mutableStateOf<Int?>(null) }
+    var openingOrderProduct by remember { mutableStateOf(false) }
     var openPromotionsOnStart by remember { mutableStateOf(false) }
     var accountLoginFromCart by remember { mutableStateOf(false) }
     var checkoutOpen by remember { mutableStateOf(false) }
@@ -507,7 +509,10 @@ fun CriosRangoIOSRootScreen(
                     onOpenRootFilter = { scope -> rootFilterOwner.open(scope) },
                     onOpenProduct = { openCatalog(IosCatalogPage.Product(it)) },
                     onBack = {
-                        if (section == IosRootSection.OUTLET && catalogPage is IosCatalogPage.Outlet) {
+                        if (catalogPage is IosCatalogPage.Product && orderProductReturnOrderId != null) {
+                            resetCatalog()
+                            section = IosRootSection.ACCOUNT
+                        } else if (section == IosRootSection.OUTLET && catalogPage is IosCatalogPage.Outlet) {
                             section = IosRootSection.HOME
                             resetCatalog()
                         } else if (catalogPage == IosCatalogPage.Root) {
@@ -558,9 +563,35 @@ fun CriosRangoIOSRootScreen(
                     cartCouponCodes = cartStore.cart.collectAsState().value.coupons.map { it.code }.toSet(),
                     onApplyWalletCoupon = { code -> cartStore.applyCouponAwait(code) },
                     modifier = Modifier.padding(padding),
-                    initialOrderId = pendingPushOrderId,
+                    initialOrderId = orderProductReturnOrderId ?: pendingPushOrderId,
                     onInitialOrderConsumed = { consumedOrderId ->
+                        if (orderProductReturnOrderId == consumedOrderId) orderProductReturnOrderId = null
                         if (pendingPushOrderId == consumedOrderId) pendingPushOrderId = null
+                    },
+                    onOpenOrderProduct = { orderId, productId ->
+                        if (orderId > 0 && productId > 0 && !openingOrderProduct) {
+                            openingOrderProduct = true
+                            orderProductReturnOrderId = orderId
+                            outletControllerScope.launch {
+                                try {
+                                    val product = storeApi.productWithVariationAvailability(productId)
+                                    if (product.id > 0) {
+                                        catalogOriginHome = false
+                                        section = IosRootSection.CATEGORIES
+                                        openCatalog(IosCatalogPage.Product(product))
+                                    } else {
+                                        orderProductReturnOrderId = null
+                                    }
+                                } catch (cancelled: CancellationException) {
+                                    orderProductReturnOrderId = null
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    orderProductReturnOrderId = null
+                                } finally {
+                                    openingOrderProduct = false
+                                }
+                            }
+                        }
                     },
                     openPromotionsOnStart = openPromotionsOnStart,
                     openLoginOnStart = accountLoginFromCart,
