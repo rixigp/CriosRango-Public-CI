@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Críos & Rango — Order Product Data
  * Description: Enriches the existing authenticated orders-detailed REST response with safe product IDs and thumbnail URLs.
- * Version: 1.0.0
+ * Version: 1.0.1-diagnostic
  * Author: Críos & Rango
  * Text Domain: criosrango-order-product-data
  */
@@ -10,7 +10,7 @@
 defined( 'ABSPATH' ) || exit;
 
 final class CriosRango_Order_Product_Data {
-    const VERSION = '1.0.0';
+    const VERSION = '1.0.1-diagnostic';
     const ROUTE = '/criosrango/v1/orders-detailed';
 
     public static function boot() {
@@ -18,87 +18,102 @@ final class CriosRango_Order_Product_Data {
     }
 
     public static function enrich_response( $response, $server, $request ) {
-        if ( ! $request instanceof WP_REST_Request || self::ROUTE !== $request->get_route() ) {
-            return $response;
-        }
+        if ( ! $request instanceof WP_REST_Request ) { return $response; }
+        // Match the route exactly, allowing only a trailing slash normalization.
+        $route = untrailingslashit( $request->get_route() );
+        $route_match = ( self::ROUTE === $route );
+        if ( ! $route_match ) { return $response; }
+
+        $response_valid = 0; $orders_seen = 0; $response_items_seen = 0;
+        $wc_items_seen = 0; $unique_matches = 0; $ambiguous_matches = 0;
+        $no_matches = 0; $enriched_product_ids = 0; $enriched_images = 0;
+        $wc_orders_unresolved = 0; $response_item_keys = array();
+        $diagnostic = 'RESPONSE_SHAPE_NOT_MATCHED';
+
         if ( ! $response instanceof WP_REST_Response ) {
+            $diagnostic = 'RESPONSE_NOT_REST_RESPONSE';
+            self::write_diagnostic( $route_match, $response_valid, $orders_seen, $response_items_seen, $wc_items_seen, $unique_matches, $ambiguous_matches, $no_matches, $enriched_product_ids, $enriched_images, $diagnostic, $wc_orders_unresolved, $response_item_keys );
             return $response;
         }
         if ( $response->get_status() < 200 || $response->get_status() >= 300 ) {
-            return $response;
-        }
-        if ( ! function_exists( 'wc_get_order' ) ) {
+            $diagnostic = 'RESPONSE_STATUS_NOT_2XX';
+            self::write_diagnostic( $route_match, $response_valid, $orders_seen, $response_items_seen, $wc_items_seen, $unique_matches, $ambiguous_matches, $no_matches, $enriched_product_ids, $enriched_images, $diagnostic, $wc_orders_unresolved, $response_item_keys );
             return $response;
         }
 
         $data = $response->get_data();
         if ( ! is_array( $data ) || ! isset( $data['orders'] ) || ! is_array( $data['orders'] ) ) {
+            self::write_diagnostic( $route_match, $response_valid, $orders_seen, $response_items_seen, $wc_items_seen, $unique_matches, $ambiguous_matches, $no_matches, $enriched_product_ids, $enriched_images, $diagnostic, $wc_orders_unresolved, $response_item_keys );
+            return $response;
+        }
+
+        $response_valid = 1; $orders_seen = count( $data['orders'] );
+        if ( ! function_exists( 'wc_get_order' ) ) {
+            $diagnostic = 'WOOCOMMERCE_FUNCTION_UNAVAILABLE';
+            self::write_diagnostic( $route_match, $response_valid, $orders_seen, $response_items_seen, $wc_items_seen, $unique_matches, $ambiguous_matches, $no_matches, $enriched_product_ids, $enriched_images, $diagnostic, $wc_orders_unresolved, $response_item_keys );
             return $response;
         }
 
         foreach ( $data['orders'] as &$order_data ) {
-            if ( ! is_array( $order_data ) || empty( $order_data['id'] ) || ! is_numeric( $order_data['id'] ) ) {
-                continue;
-            }
-            if ( ! isset( $order_data['items'] ) || ! is_array( $order_data['items'] ) ) {
-                continue;
+            if ( ! is_array( $order_data ) || empty( $order_data['id'] ) || ! is_numeric( $order_data['id'] ) || ! isset( $order_data['items'] ) || ! is_array( $order_data['items'] ) ) { continue; }
+            $response_items_seen += count( $order_data['items'] );
+            if ( empty( $response_item_keys ) ) {
+                $first_item = reset( $order_data['items'] );
+                if ( is_array( $first_item ) ) { $response_item_keys = array_values( array_map( 'sanitize_key', array_keys( $first_item ) ) ); }
             }
 
             $order = wc_get_order( absint( $order_data['id'] ) );
-            if ( ! $order || ! is_a( $order, 'WC_Order' ) ) {
-                continue;
-            }
-
+            if ( ! $order || ! is_a( $order, 'WC_Order' ) ) { $wc_orders_unresolved++; continue; }
             $line_items = $order->get_items( 'line_item' );
-            if ( ! is_array( $line_items ) || empty( $line_items ) ) {
-                continue;
-            }
+            if ( ! is_array( $line_items ) ) { continue; }
 
             $unused = array();
             foreach ( $line_items as $line_id => $line_item ) {
-                if ( $line_item instanceof WC_Order_Item_Product ) {
-                    $unused[(string) $line_id] = $line_item;
-                }
+                if ( $line_item instanceof WC_Order_Item_Product ) { $unused[(string) $line_id] = $line_item; $wc_items_seen++; }
             }
 
             foreach ( $order_data['items'] as &$response_item ) {
-                if ( ! is_array( $response_item ) ) {
-                    continue;
-                }
-
+                if ( ! is_array( $response_item ) ) { continue; }
                 $matches = array();
                 foreach ( $unused as $line_id => $line_item ) {
-                    if ( self::items_match( $response_item, $line_item ) ) {
-                        $matches[$line_id] = $line_item;
-                    }
+                    if ( self::items_match( $response_item, $line_item ) ) { $matches[$line_id] = $line_item; }
                 }
+                if ( 0 === count( $matches ) ) { $no_matches++; continue; }
+                if ( 1 !== count( $matches ) ) { $ambiguous_matches++; continue; }
 
-                // Only a single exact candidate is safe. Ambiguous and unmatched rows stay untouched.
-                if ( 1 !== count( $matches ) ) {
-                    continue;
-                }
-
+                $unique_matches++;
                 $matched_id = (string) array_key_first( $matches );
-                $line_item = $matches[$matched_id];
-                unset( $unused[$matched_id] );
-
+                $line_item = $matches[$matched_id]; unset( $unused[$matched_id] );
                 $product_id = absint( $line_item->get_product_id() );
-                if ( $product_id <= 0 ) {
-                    continue;
-                }
-
-                $response_item['product_id'] = $product_id;
+                if ( $product_id <= 0 ) { continue; }
+                $response_item['product_id'] = $product_id; $enriched_product_ids++;
                 $image_url = self::thumbnail_url( $line_item, $product_id );
-                if ( '' !== $image_url ) {
-                    $response_item['image_url'] = $image_url;
-                }
+                if ( '' !== $image_url ) { $response_item['image_url'] = $image_url; $enriched_images++; }
             }
             unset( $response_item );
         }
         unset( $order_data );
 
         $response->set_data( $data );
+        if ( $enriched_product_ids > 0 ) { $diagnostic = 'ENRICHMENT_SUCCESS'; }
+        elseif ( $wc_orders_unresolved > 0 && 0 === $wc_items_seen ) { $diagnostic = 'WC_ORDER_NOT_RESOLVED'; }
+        elseif ( $ambiguous_matches > 0 ) { $diagnostic = 'ITEM_MATCH_AMBIGUOUS'; }
+        else { $diagnostic = 'ITEM_MATCH_ZERO'; }
+
+        self::write_diagnostic( $route_match, $response_valid, $orders_seen, $response_items_seen, $wc_items_seen, $unique_matches, $ambiguous_matches, $no_matches, $enriched_product_ids, $enriched_images, $diagnostic, $wc_orders_unresolved, $response_item_keys );
         return $response;
+    }
+
+    private static function write_diagnostic( $route_match, $response_valid, $orders_seen, $response_items_seen, $wc_items_seen, $unique_matches, $ambiguous_matches, $no_matches, $enriched_product_ids, $enriched_images, $diagnostic, $wc_orders_unresolved, $response_item_keys ) {
+        // Log only counters and item field names; never log response values, order IDs, or credentials.
+        $message = sprintf(
+            'CRIOS_ORDER_PRODUCT_DATA: route_match=%d response_valid=%d orders_seen=%d response_items_seen=%d wc_items_seen=%d unique_matches=%d ambiguous_matches=%d no_matches=%d enriched_product_ids=%d enriched_images=%d wc_orders_unresolved=%d diagnostic=%s response_item_keys=%s',
+            (int) $route_match, (int) $response_valid, (int) $orders_seen, (int) $response_items_seen,
+            (int) $wc_items_seen, (int) $unique_matches, (int) $ambiguous_matches, (int) $no_matches,
+            (int) $enriched_product_ids, (int) $enriched_images, (int) $wc_orders_unresolved,
+            sanitize_key( $diagnostic ), wp_json_encode( array_values( $response_item_keys ) )
+        );
+        error_log( $message );
     }
 
     private static function normalize_text( $value ) {
