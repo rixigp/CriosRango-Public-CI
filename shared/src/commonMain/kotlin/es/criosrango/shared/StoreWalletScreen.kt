@@ -104,6 +104,26 @@ private fun accountPromotionIcon(promotion: Promotion): String {
 
 
 @Composable
+private fun ApplyButton(
+    onClick: () -> Unit,
+    enabled: Boolean
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.width(62.dp).height(36.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+        shape = RoundedCornerShape(18.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF0F5C4D),
+            contentColor = Color.White
+        )
+    ) {
+        Text("Aplicar", style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+@Composable
 private fun PromotionDateRow(text: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         Icon(
@@ -302,19 +322,10 @@ Card(
                                     )
                                 }
                             } else {
-                                Button(
+                                ApplyButton(
                                     onClick = { onApplyReward(reward) },
-                                    enabled = !loading,
-                                    shape = RoundedCornerShape(50),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFF0F5C4D),
-                                        contentColor = Color.White
-                                    ),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                                    modifier = Modifier.height(36.dp)
-                                ) {
-                                    Text("Aplicar", style = MaterialTheme.typography.labelMedium)
-                                }
+                                    enabled = !loading
+                                )
                             }
                         }
                         if (index < pendingRewards.lastIndex) {
@@ -423,17 +434,10 @@ Card(
                                     }
                                 }
                             } else {
-                                Button(
+                                ApplyButton(
                                     onClick = { scope.launch { onApplyPromotion(couponCode) } },
-                                    enabled = !loading,
-                                    modifier = Modifier.width(78.dp).height(36.dp),
-                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                                    shape = RoundedCornerShape(18.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFF0F5C4D),
-                                        contentColor = Color.White
-                                    )
-                                ) { Text("Aplicar", style = MaterialTheme.typography.labelMedium) }
+                                    enabled = !loading
+                                )
                             }
                         }
                     }
