@@ -310,7 +310,7 @@ private fun StoreProductSizeHelpCard() {
                     text = body,
                     style = TextStyle(color = Color(0xFF52665E), fontSize = 14.sp, lineHeight = 20.sp),
                     onClick = { offset ->
-                        body.getStringAnnotations("url", offset, offset).firstOrNull()?.let { uriHandler.openUri(it.item) }
+                        body.getStringAnnotations("url", offset, (offset + 1).coerceAtMost(body.length)).firstOrNull()?.let { uriHandler.openUri(it.item) }
                     }
                 )
             }
