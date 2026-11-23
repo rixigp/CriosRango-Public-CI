@@ -68,8 +68,9 @@ fun resolveStoreProductBrand(
     val labelName = brandLabel?.substringAfter(':')?.trim()?.takeIf { it.isNotBlank() }
     val brandByLabel = labelName?.let { name -> brands.firstOrNull { it.name.equals(name, ignoreCase = true) } }
     val brandByTitle = brands.firstOrNull { brand ->
+        val prefix = productTitle.dropLast(brand.name.length).trimEnd()
         productTitle.endsWith(brand.name, ignoreCase = true) &&
-            productTitle.dropLast(brand.name.length).trimEnd().lastOrNull() in listOf('-', '–', '—', '|')
+            prefix.lastOrNull()?.let { it in listOf('-', '–', '—', '|') } == true
     }
     val resolved = brandByLabel ?: brandByTitle
     val name = resolved?.name ?: labelName ?: return null
@@ -81,7 +82,8 @@ fun storeProductDisplayTitle(productTitle: String, brandName: String?): String {
     val brand = brandName?.trim()?.takeIf { it.isNotBlank() } ?: return title
     if (!title.endsWith(brand, ignoreCase = true)) return title
     val prefix = title.dropLast(brand.length).trimEnd()
-    if (prefix.lastOrNull() !in listOf('-', '–', '—', '|')) return title
+    val separator = prefix.lastOrNull() ?: return title
+    if (separator !in listOf('-', '–', '—', '|')) return title
     return prefix.dropLast(1).trimEnd().ifBlank { title }
 }
 

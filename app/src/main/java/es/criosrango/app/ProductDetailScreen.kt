@@ -406,7 +406,7 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
                         selected = chosen,
                         enabled = productDetailAttributeOptionClickable(chosen, existsGlobally),
                         incompatible = existsGlobally && !compatibleNow && !chosen,
-                        strikeThrough = attribute.name.equals("Tallas", true) && !existsGlobally,
+                        strikeThrough = !existsGlobally,
                         kind = when {
                             attribute.name.equals("Color", true) -> es.criosrango.shared.StoreProductDetailOptionKind.Color
                             attribute.name.equals("Tallas", true) -> es.criosrango.shared.StoreProductDetailOptionKind.Size

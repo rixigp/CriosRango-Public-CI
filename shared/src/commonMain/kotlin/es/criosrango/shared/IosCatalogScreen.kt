@@ -795,7 +795,7 @@ internal fun IosProductDetail(
                         selected = chosen,
                         enabled = chosen || optionState.existsGlobally,
                         incompatible = optionState.existsGlobally && !optionState.compatibleWithCurrentSelection && !chosen,
-                        strikeThrough = attribute.name.equals("Tallas", true) && !optionState.existsGlobally,
+                        strikeThrough = !optionState.existsGlobally,
                         kind = when {
                             attribute.name.equals("Color", true) -> StoreProductDetailOptionKind.Color
                             attribute.name.equals("Tallas", true) -> StoreProductDetailOptionKind.Size
