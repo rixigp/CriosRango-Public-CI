@@ -1,6 +1,7 @@
 package es.criosrango.app
 
 import es.criosrango.shared.StoreProductDetailScreen
+import es.criosrango.shared.model.StoreGlobalBrand
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.filled.LocalOffer
@@ -278,7 +279,7 @@ internal fun productSizeSortKey(value: String): Int {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cartItems: List<CartItem>, loadVariation: (Int) -> Unit, onBack: () -> Unit, onCart: () -> Unit, onSearch: () -> Unit, onAdd: (CartItem) -> Unit) {
+internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cartItems: List<CartItem>, brands: List<StoreGlobalBrand> = emptyList(), loadVariation: (Int) -> Unit, onBack: () -> Unit, onCart: () -> Unit, onSearch: () -> Unit, onAdd: (CartItem) -> Unit) {
     val context = LocalContext.current
     val selected = remember(product.id) { mutableStateMapOf<String, String>() }
     var quantity by remember(product.id) { mutableIntStateOf(1) }
@@ -379,9 +380,12 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
         it.startsWith("Composición:", ignoreCase = true) || it.startsWith("Composicion:", ignoreCase = true)
     }
     val detailRemainingInfo = detailInfoLines.filterNot { it == detailBrandLine || it == detailCompositionLine }.joinToString("\n")
+    val brandInfo = es.criosrango.shared.resolveStoreProductBrand(product.name.cleanWooText(), detailBrandLine, brands)
+    val displayProductTitle = es.criosrango.shared.storeProductDisplayTitle(product.name.cleanWooText(), brandInfo?.name)
+    val compositionText = es.criosrango.shared.storeProductCompositionText(detailCompositionLine)
     val galleryImages = (current?.images ?: product.images).ifEmpty { product.images }
     val detailUiState = es.criosrango.shared.StoreProductDetailUiState(
-        title = product.name.cleanWooText(),
+        title = displayProductTitle,
         displayPrice = if (effectiveProduct.hasDisplayablePrice) effectiveProduct.displayPrice() else "",
         regularPrice = if (effectiveProduct.hasDisplayablePrice) effectiveProduct.regularDisplayPrice() else "",
         showRegularPrice = effectiveProduct.onSale,
@@ -432,8 +436,9 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
         shareEnabled = true,
         reserveEnabled = product.type != "variable" || matching != null,
         descriptionText = detailRemainingInfo,
-        brandText = detailBrandLine,
-        compositionText = detailCompositionLine
+        brandText = brandInfo?.name,
+        brandLogoUrl = brandInfo?.logoUrl,
+        compositionText = compositionText
     )
 
     StoreProductDetailScreen(

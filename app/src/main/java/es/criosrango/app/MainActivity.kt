@@ -604,6 +604,7 @@ private fun CriosRangoApp(
                     product = selectedProduct!!,
                     variation = selectedVariation,
                     cartItems = cartItems,
+                    brands = brandControllerState.brands,
                     loadVariation = viewModel::loadVariation,
                     onBack = {
                         val returnOrderId = orderProductReturnOrderId

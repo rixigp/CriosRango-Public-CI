@@ -42,6 +42,7 @@ import androidx.compose.foundation.verticalScroll
 import es.criosrango.shared.api.StoreApiClient
 import es.criosrango.shared.model.StoreCategory
 import es.criosrango.shared.model.StoreProduct
+import es.criosrango.shared.model.StoreGlobalBrand
 import es.criosrango.shared.model.StoreCartVariation
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.window.Dialog
@@ -102,7 +103,7 @@ internal fun IosCatalogScreen(
             storeApi, padding, page.category, onOpenCategory, onOpenProduct, onBack, cartStore,
             catalogRestoration, categorySnapshot, categorySnapshotLoading, categorySnapshotError, onRetryCategorySnapshot
         )
-        is IosCatalogPage.Product -> IosProductDetail(storeApi, padding, page.product, onBack, cartStore, onShareProductText, onReserveProductMessage)
+        is IosCatalogPage.Product -> IosProductDetail(storeApi, padding, page.product, onBack, cartStore, onShareProductText, onReserveProductMessage, brands = brandsState.brands)
         IosCatalogPage.Novedades -> StoreNovedadesScreen(storeApi, padding, null, onOpenProduct, onBack)
         IosCatalogPage.Search -> StoreSearchScreen(storeApi = storeApi, controller = storeSearchController(storeApi), padding = padding, onProduct = onOpenProduct, onCategory = onOpenCategory, onBack = onBack)
         IosCatalogPage.Brands -> IosBrandsScreen(brandsController, padding, onOpenProduct, onBack)
@@ -700,7 +701,8 @@ internal fun IosProductDetail(
     onBack: () -> Unit,
     cartStore: StoreCartStore? = null,
     onShareProductText: (String) -> Unit,
-    onReserveProductMessage: (String) -> Unit
+    onReserveProductMessage: (String) -> Unit,
+    brands: List<StoreGlobalBrand> = emptyList()
 ) {
     var product by remember(initialProduct.id) { mutableStateOf(initialProduct) }
     var loading by remember(initialProduct.id) { mutableStateOf(true) }
@@ -765,8 +767,11 @@ internal fun IosProductDetail(
         it.startsWith("Composición:", ignoreCase = true) || it.startsWith("Composicion:", ignoreCase = true)
     }
     val remainingInfo = infoLines.filterNot { it == brandLine || it == compositionLine }.joinToString("\n")
+    val brandInfo = resolveStoreProductBrand(displayProductName, brandLine, brands)
+    val visibleProductTitle = storeProductDisplayTitle(displayProductName, brandInfo?.name)
+    val compositionText = storeProductCompositionText(compositionLine)
     val detailUiState = StoreProductDetailUiState(
-        title = displayProductName,
+        title = visibleProductTitle,
         displayPrice = if (currentPrices.price.toLongOrNull()?.let { it > 0L } == true) formatStorePrice(currentPrices.price, currentPrices.currencyMinorUnit, currentPrices.currencySymbol) else "",
         regularPrice = formatStorePrice(currentPrices.regularPrice, currentPrices.currencyMinorUnit, currentPrices.currencySymbol),
         showRegularPrice = product.onSale && currentPrices.regularPrice != currentPrices.price,
@@ -811,8 +816,9 @@ internal fun IosProductDetail(
         shareEnabled = true,
         reserveEnabled = product.type != "variable" || (selectedVariation != null && selectedVariation.isInStock == true && selectedVariation.isPurchasable == true),
         descriptionText = remainingInfo,
-        brandText = brandLine,
-        compositionText = compositionLine
+        brandText = brandInfo?.name,
+        brandLogoUrl = brandInfo?.logoUrl,
+        compositionText = compositionText
     )
     StoreProductDetailScreen(
         modifier = Modifier.fillMaxSize().padding(padding),
