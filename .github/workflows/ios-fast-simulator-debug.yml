@@ -2,7 +2,7 @@ name: iOS FAST Simulator Debug
 
 on:
   push:
-    branches: [main, 'develop/1.0.*']
+    branches: [main, 'develop/1.0.*', 'develop-1.0.5']
     paths:
       - ".github/workflows/ios-fast-simulator-debug.yml"
       - "app/**"
