@@ -12,6 +12,7 @@ import es.criosrango.shared.model.ProductAttribute as SharedProductAttribute
 import es.criosrango.shared.model.ProductImage as SharedProductImage
 import es.criosrango.shared.model.ProductPrices as SharedProductPrices
 import es.criosrango.shared.model.ProductTag as SharedProductTag
+import es.criosrango.shared.model.ProductBrand as SharedProductBrand
 import es.criosrango.shared.model.ProductVariation as SharedProductVariation
 import es.criosrango.shared.model.QuantityLimits as SharedQuantityLimits
 import es.criosrango.shared.model.StockAvailability as SharedStockAvailability
@@ -299,6 +300,7 @@ internal fun StoreProduct.toSharedOutletProduct(): SharedStoreProduct = SharedSt
         )
     },
     tags = tags.map { SharedProductTag(id = it.id, name = it.name, slug = it.slug) },
+    brands = brands.map { SharedProductBrand(id = it.id, name = it.name, slug = it.slug) },
     attributes = attributes.map { attribute ->
         SharedProductAttribute(
             name = attribute.name,
@@ -349,6 +351,7 @@ internal fun SharedStoreProduct.toAndroid(): StoreProduct = StoreProduct(
     categories = categories.map(SharedStoreCategory::toAndroid),
     extensions = extensions?.toAndroid(),
     tags = tags.map(SharedProductTag::toAndroid),
+    brands = brands.map { ProductBrandTerm(id = it.id, name = it.name, slug = it.slug) },
     attributes = attributes.map(SharedProductAttribute::toAndroid),
     variations = variations.map(SharedProductVariation::toAndroid),
     isInStock = isInStock,

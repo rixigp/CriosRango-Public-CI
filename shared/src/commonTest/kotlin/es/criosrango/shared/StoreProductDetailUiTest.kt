@@ -58,6 +58,27 @@ class StoreProductDetailUiTest {
         )
     }
 
+
+    @Test
+    fun taxonomyBrandFlowsIntoTitleNormalizationAndKeepsTextFallbackIndependent() {
+        val taxonomyBrand = ProductBrand(id = 7, name = "Spagnolo", slug = "spagnolo")
+        val resolvedBrand = resolveStoreProductBrand(listOf(taxonomyBrand), emptyList())
+
+        assertEquals("Spagnolo", resolvedBrand?.name)
+        assertNull(resolvedBrand?.logoUrl)
+        assertEquals(
+            "Camisa caballero vestir – 102539846M23",
+            storeProductDisplayTitle(
+                "Camisa caballero vestir – 102539846M23 – Spagnolo",
+                resolvedBrand?.name
+            )
+        )
+        assertEquals(
+            "Camisa Spagnolo para niño",
+            storeProductDisplayTitle("Camisa Spagnolo para niño", resolvedBrand?.name)
+        )
+    }
+
     @Test
     fun resolvesBrandLogoFromTheProductBrandTaxonomy() {
         val taxonomyBrand = ProductBrand(id = 7, name = "Spagnolo", slug = "spagnolo")
