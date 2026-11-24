@@ -73,6 +73,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.foundation.layout.statusBarsPadding
 import es.criosrango.shared.account.AccountRepository
@@ -855,30 +856,7 @@ fun StoreCartScreen(
             StorePageHeader(
                 title = "Tu carrito",
                 onBack = onBack,
-                horizontalPadding = 0.dp,
-                trailing = {
-                    if (cart.items.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier
-                                .clickable { clearCartConfirm = true }
-                                .padding(horizontal = 8.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            androidx.compose.material3.Icon(
-                                IosCartDeleteLineIcon,
-                                contentDescription = null,
-                                tint = Color(0xFF183B35),
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                "Vaciar carrito",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = Color(0xFF183B35)
-                            )
-                        }
-                    }
-                }
+                horizontalPadding = 0.dp
             )
         }
         if (state == StoreCartLoadState.LOADING && cart.items.isEmpty()) item { IosStoreLoading() }
@@ -1190,75 +1168,64 @@ fun StoreCartScreen(
             }
         }
         if (cart.items.isNotEmpty()) item {
-            HorizontalDivider(color = Color(0xFFE8E8E3))
             Column(
                 Modifier.fillMaxWidth().padding(top = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Subtotal", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        formatStorePrice(cart.totals.consumerSubtotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol),
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                val discount = cart.totals.consumerDiscount()
-                if (discount.toLongOrNull()?.let { it > 0L } == true) {
+                Column(
+                    Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(15.dp))
+                        .background(Color(0x0B355F4B))
+                        .border(1.dp, Color(0x1F355F4B), RoundedCornerShape(15.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Descuentos", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = Color(0xFF315B52))
-                        Text(
-                            "-" + formatStorePrice(discount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF0F5C4D),
-                            fontWeight = FontWeight.Medium
-                        )
+                        Text("Subtotal", modifier = Modifier.weight(1f), fontSize = 13.sp, color = Color(0xFF183B35))
+                        Text(formatStorePrice(cart.totals.consumerSubtotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol), fontSize = 13.sp, fontWeight = FontWeight.Normal, color = Color(0xFF183B35))
+                    }
+                    val discount = cart.totals.consumerDiscount()
+                    if (discount.toLongOrNull()?.let { it > 0L } == true) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Descuentos", modifier = Modifier.weight(1f), fontSize = 12.sp, color = Color(0xFF315B52))
+                            Text("-" + formatStorePrice(discount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), fontSize = 12.sp, color = Color(0xFF0F5C4D), fontWeight = FontWeight.Medium)
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Envío", modifier = Modifier.weight(1f), fontSize = 13.sp, color = Color(0xFF183B35))
+                        Text("Se calcula en el checkout", fontSize = 13.sp, color = Color(0xFF68716C))
+                    }
+                    HorizontalDivider(color = Color(0x1F20241F), modifier = Modifier.padding(top = 1.dp))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Total", modifier = Modifier.weight(1f), fontSize = 17.sp, color = Color(0xFF183B35), fontWeight = FontWeight.Bold)
+                        Text(formatStorePrice(cart.totals.consumerTotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol), fontSize = 17.sp, color = Color(0xFF183B35), fontWeight = FontWeight.Bold)
                     }
                 }
-
-                when {
-                    cart.totals.consumerShipping() == null -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Envío", modifier = Modifier.weight(1f), color = Color.Gray)
-                        Text("Se calcula en el checkout", color = Color.Gray)
-                    }
-                    cart.totals.consumerShipping() == "0" -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Envío", modifier = Modifier.weight(1f))
-                        Text("Gratis")
-                    }
-                    else -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Envío", modifier = Modifier.weight(1f))
-                        Text(formatStorePrice(cart.totals.consumerShipping().orEmpty(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
-                    }
-                }
-
-                HorizontalDivider(
-                    color = Color(0xFFE8E8E3),
-                    modifier = Modifier.padding(vertical = 3.dp)
-                )
-
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Total", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text(
-                        formatStorePrice(cart.totals.consumerTotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
                 Button(
                     onClick = onCheckout,
                     enabled = state == StoreCartLoadState.SUCCESS_ITEMS,
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))
                 ) {
-                    Text("Continuar compra")
+                    Text("Finalizar compra", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                }
+                OutlinedButton(
+                    onClick = { clearCartConfirm = true },
+                    enabled = cart.items.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(40.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                    shape = RoundedCornerShape(50),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCFA8A1)),
+                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.Transparent, contentColor = Color(0xFF8F4A40))
+                ) {
+                    androidx.compose.material3.Icon(IosCartDeleteLineIcon, contentDescription = null, tint = Color(0xFF8F4A40), modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(7.dp))
+                    Text("Vaciar carrito", fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 }
                 if (shouldShowCartLoginCta(isAuthenticated, onLogin != null)) {
-                    OutlinedButton(
-                        onClick = { onLogin?.invoke() },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
+                    OutlinedButton(onClick = { onLogin?.invoke() }, modifier = Modifier.fillMaxWidth()) {
                         Text("Inicia sesión para consultar tu cuenta")
                     }
                 }
