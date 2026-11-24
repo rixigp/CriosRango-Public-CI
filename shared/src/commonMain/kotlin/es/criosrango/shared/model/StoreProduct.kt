@@ -7,6 +7,7 @@ data class StoreProduct(
     @SerialName("short_description") val shortDescription: String = "", val description: String = "",
     @SerialName("on_sale") val onSale: Boolean = false, val prices: ProductPrices = ProductPrices(),
     val images: List<ProductImage> = emptyList(), val categories: List<StoreCategory> = emptyList(),
+    val brands: List<ProductBrand> = emptyList(),
     val extensions: StoreProductExtensions? = null,
     val tags: List<ProductTag> = emptyList(), val attributes: List<ProductAttribute> = emptyList(),
     val variations: List<ProductVariation> = emptyList(),
@@ -63,6 +64,7 @@ data class OutletOriginExtension(
 )
 @Serializable data class VariationAttribute(val name: String = "", val value: String = "")
 @Serializable data class ProductTag(val id: Int = 0, val name: String = "", val slug: String = "")
+@Serializable data class ProductBrand(val id: Int = 0, val name: String = "", val slug: String = "")
 @Serializable data class StoreGlobalAttribute(val id: Int = 0, val name: String = "", val taxonomy: String = "")
 @Serializable data class StoreGlobalAttributeTerm(val id: Int = 0, val name: String = "", val slug: String = "", val count: Int = 0)
 @Serializable data class StoreGlobalTag(val id: Int = 0, val name: String = "", val slug: String = "", val count: Int = 0)

@@ -370,17 +370,11 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
     BackHandler { onBack() }
 
     val effectiveProduct = current ?: product
-    val detailInfoText = HtmlCompat.fromHtml(
-        product.description.ifBlank { product.shortDescription },
+    val detailLongDescription = HtmlCompat.fromHtml(
+        product.description,
         HtmlCompat.FROM_HTML_MODE_COMPACT
-    ).toString()
-    val detailInfoLines = detailInfoText.lines().map { it.trim() }.filter { it.isNotBlank() }
-    val detailBrandLine = detailInfoLines.firstOrNull { it.startsWith("Marca:", ignoreCase = true) }
-    val detailCompositionLine = detailInfoLines.firstOrNull {
-        it.startsWith("Composición:", ignoreCase = true) || it.startsWith("Composicion:", ignoreCase = true)
-    }
-    val detailRemainingInfo = detailInfoLines.filterNot { it == detailBrandLine || it == detailCompositionLine }.joinToString("\n")
-    val brandInfo = es.criosrango.shared.resolveStoreProductBrand(product.name.cleanWooText(), detailBrandLine, brands)
+    ).toString().trim()
+    val brandInfo = es.criosrango.shared.resolveStoreProductBrand(product.brands, brands)
     val displayProductTitle = es.criosrango.shared.storeProductDisplayTitle(product.name.cleanWooText(), brandInfo?.name)
     val compositionText = es.criosrango.shared.storeProductCompositionText(detailCompositionLine)
     val galleryImages = (current?.images ?: product.images).ifEmpty { product.images }
@@ -435,10 +429,9 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
         ),
         shareEnabled = true,
         reserveEnabled = product.type != "variable" || matching != null,
-        descriptionText = detailRemainingInfo,
+        longDescriptionText = detailLongDescription,
         brandText = brandInfo?.name,
-        brandLogoUrl = brandInfo?.logoUrl,
-        compositionText = compositionText
+        brandLogoUrl = brandInfo?.logoUrl
     )
 
     StoreProductDetailScreen(

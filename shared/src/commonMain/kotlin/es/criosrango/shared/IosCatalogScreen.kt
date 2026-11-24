@@ -746,8 +746,7 @@ internal fun IosProductDetail(
     val currentImages = selectedVariation?.images?.takeIf { it.isNotEmpty() } ?: product.images
     val currentPrices = selectedVariation?.prices ?: product.prices
     val displayProductName = normalizeWooPlainText(product.name)
-    val displayShortDescription = normalizeWooDescriptionText(product.shortDescription)
-    val displayDescription = normalizeWooDescriptionText(product.description)
+    val displayLongDescription = normalizeWooDescriptionText(storeProductLongDescription(product))
     val currentInStock = selectedVariation?.isInStock ?: product.isInStock
     val currentPurchasable = selectedVariation?.isPurchasable ?: product.isPurchasable
     val minimum = selectedVariation?.quantityLimits?.minimum ?: selectedVariation?.addToCart?.minimum ?: product.quantityLimits?.minimum ?: product.addToCart?.minimum ?: 1
@@ -760,14 +759,7 @@ internal fun IosProductDetail(
         if ((quantity - minimum) % multiple != 0) quantity = minimum
     }
 
-    val infoText = normalizeWooDescriptionText(product.description.ifBlank { product.shortDescription })
-    val infoLines = infoText.lines().map { it.trim() }.filter { it.isNotBlank() }
-    val brandLine = infoLines.firstOrNull { it.startsWith("Marca:", ignoreCase = true) }
-    val compositionLine = infoLines.firstOrNull {
-        it.startsWith("Composición:", ignoreCase = true) || it.startsWith("Composicion:", ignoreCase = true)
-    }
-    val remainingInfo = infoLines.filterNot { it == brandLine || it == compositionLine }.joinToString("\n")
-    val brandInfo = resolveStoreProductBrand(displayProductName, brandLine, brands)
+    val brandInfo = resolveStoreProductBrand(product.brands, brands)
     val visibleProductTitle = storeProductDisplayTitle(displayProductName, brandInfo?.name)
     val compositionText = storeProductCompositionText(compositionLine)
     val detailUiState = StoreProductDetailUiState(
@@ -815,10 +807,9 @@ internal fun IosProductDetail(
         primaryActionEnabled = canAdd && cartStore != null,
         shareEnabled = true,
         reserveEnabled = product.type != "variable" || (selectedVariation != null && selectedVariation.isInStock == true && selectedVariation.isPurchasable == true),
-        descriptionText = remainingInfo,
+        longDescriptionText = displayLongDescription,
         brandText = brandInfo?.name,
-        brandLogoUrl = brandInfo?.logoUrl,
-        compositionText = compositionText
+        brandLogoUrl = brandInfo?.logoUrl
     )
     StoreProductDetailScreen(
         modifier = Modifier.fillMaxSize().padding(padding),

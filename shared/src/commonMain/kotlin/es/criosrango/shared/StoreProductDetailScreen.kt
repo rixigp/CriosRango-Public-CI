@@ -8,6 +8,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -27,12 +29,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -165,6 +170,7 @@ fun StoreProductDetailScreen(
             }
             StoreProductDetailSummary(state)
             StoreProductSizeHelpCard()
+            StoreProductDescriptionAccordion(state.longDescriptionText)
             val orderedGroups = state.attributeGroups.filter { it.options.isNotEmpty() }.sortedBy { group ->
                 when {
                     group.label.contains("color", ignoreCase = true) -> 0
@@ -230,14 +236,6 @@ private fun StoreProductDetailSummary(state: StoreProductDetailUiState) {
                         }
                     }
                 }
-                state.compositionText?.takeIf { it.isNotBlank() }?.let {
-                    Spacer(Modifier.height(7.dp))
-                    Text(it, color = ProductMuted, fontSize = 13.sp, lineHeight = 18.sp)
-                }
-                if (state.descriptionText.isNotBlank()) {
-                    Spacer(Modifier.height(7.dp))
-                    Text(state.descriptionText, color = ProductMuted, fontSize = 14.sp, lineHeight = 20.sp)
-                }
             }
             if (hasBrand) {
                 Box(Modifier.padding(horizontal = 10.dp).width(1.dp).height(72.dp).background(Color(0xFFE5E7E2)))
@@ -259,6 +257,92 @@ private fun StoreProductDetailSummary(state: StoreProductDetailUiState) {
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StoreProductDescriptionAccordion(longDescription: String) {
+    if (!shouldRenderStoreProductDescription(longDescription)) return
+
+    var accordionState by remember(longDescription) {
+        mutableStateOf(StoreProductDescriptionAccordionState())
+    }
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (accordionState.isExpanded) 180f else 0f,
+        animationSpec = tween(durationMillis = 160),
+        label = "product-description-chevron"
+    )
+    val visibleText = visibleStoreProductDescription(longDescription, accordionState)
+
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 13.dp)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(1.dp, ProductBorder),
+            color = Color.Transparent
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .heightIn(min = 52.dp)
+                        .clickable(role = Role.Button) {
+                            accordionState = toggleStoreProductDescription(accordionState)
+                        }
+                        .semantics {
+                            contentDescription = "Descripción"
+                            role = Role.Button
+                        }
+                        .padding(horizontal = 15.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Canvas(Modifier.size(26.dp)) {
+                        val stroke = 1.7.dp.toPx()
+                        val document = Path().apply {
+                            moveTo(size.width * 0.27f, size.height * 0.156f)
+                            lineTo(size.width * 0.5625f, size.height * 0.156f)
+                            lineTo(size.width * 0.729f, size.height * 0.323f)
+                            lineTo(size.width * 0.729f, size.height * 0.927f)
+                            lineTo(size.width * 0.27f, size.height * 0.927f)
+                            close()
+                        }
+                        drawPath(document, ProductGreen, style = Stroke(width = stroke, cap = StrokeCap.Round))
+                        drawLine(ProductGreen, Offset(size.width * 0.5625f, size.height * 0.156f), Offset(size.width * 0.5625f, size.height * 0.323f), stroke)
+                        drawLine(ProductGreen, Offset(size.width * 0.5625f, size.height * 0.323f), Offset(size.width * 0.729f, size.height * 0.323f), stroke)
+                        drawLine(ProductGreen, Offset(size.width * 0.396f, size.height * 0.5f), Offset(size.width * 0.604f, size.height * 0.5f), stroke)
+                        drawLine(ProductGreen, Offset(size.width * 0.396f, size.height * 0.646f), Offset(size.width * 0.604f, size.height * 0.646f), stroke)
+                    }
+                    Text(
+                        "Descripción",
+                        modifier = Modifier.weight(1f),
+                        color = ProductGreen,
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Canvas(Modifier.size(8.dp).graphicsLayer { rotationZ = chevronRotation }) {
+                        val chevron = Path().apply {
+                            moveTo(0f, 0f)
+                            lineTo(size.width / 2f, size.height / 2f)
+                            lineTo(size.width, 0f)
+                        }
+                        drawPath(chevron, ProductGreen, style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round))
+                    }
+                }
+                visibleText?.let { text ->
+                    Text(
+                        text = text,
+                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                        color = Color(0xFF555B56),
+                        fontSize = 14.sp,
+                        lineHeight = 22.4.sp,
+                        fontWeight = FontWeight.Normal
+                    )
                 }
             }
         }

@@ -18,7 +18,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import es.criosrango.shared.model.ProductBrand
 import es.criosrango.shared.model.StoreGlobalBrand
+import es.criosrango.shared.model.StoreProduct
 
 enum class StoreProductDetailOptionKind { Default, Size, Color }
 
@@ -36,10 +38,9 @@ data class StoreProductDetailUiState(
     val primaryActionEnabled: Boolean,
     val shareEnabled: Boolean = true,
     val reserveEnabled: Boolean = false,
-    val descriptionText: String,
+    val longDescriptionText: String,
     val brandText: String? = null,
-    val brandLogoUrl: String? = null,
-    val compositionText: String? = null
+    val brandLogoUrl: String? = null
 )
 
 data class StoreProductDetailAttributeGroupUi(
@@ -61,21 +62,33 @@ data class StoreProductDetailOptionUi(
 data class StoreProductBrandUi(val name: String, val logoUrl: String?)
 
 fun resolveStoreProductBrand(
-    productTitle: String,
-    brandLabel: String?,
+    productBrands: List<ProductBrand>,
     brands: List<StoreGlobalBrand>
 ): StoreProductBrandUi? {
-    val labelName = brandLabel?.substringAfter(':')?.trim()?.takeIf { it.isNotBlank() }
-    val brandByLabel = labelName?.let { name -> brands.firstOrNull { it.name.equals(name, ignoreCase = true) } }
-    val brandByTitle = brands.firstOrNull { brand ->
-        val prefix = productTitle.dropLast(brand.name.length).trimEnd()
-        productTitle.endsWith(brand.name, ignoreCase = true) &&
-            prefix.lastOrNull()?.let { it in listOf('-', '–', '—', '|') } == true
+    val productBrand = productBrands.firstOrNull { it.name.isNotBlank() } ?: return null
+    val resolved = brands.firstOrNull { brand ->
+        (productBrand.id > 0 && brand.id == productBrand.id) ||
+            (productBrand.slug.isNotBlank() && brand.slug.equals(productBrand.slug, ignoreCase = true)) ||
+            brand.name.equals(productBrand.name, ignoreCase = true)
     }
-    val resolved = brandByLabel ?: brandByTitle
-    val name = resolved?.name ?: labelName ?: return null
+    val name = resolved?.name?.takeIf { it.isNotBlank() } ?: productBrand.name.trim()
     return StoreProductBrandUi(name, resolved?.imageUrl?.takeIf { it.isNotBlank() })
 }
+
+fun storeProductLongDescription(product: StoreProduct): String = product.description
+
+fun shouldRenderStoreProductDescription(longDescription: String): Boolean =
+    longDescription.any { !it.isWhitespace() }
+
+data class StoreProductDescriptionAccordionState(val isExpanded: Boolean = false)
+
+fun toggleStoreProductDescription(state: StoreProductDescriptionAccordionState): StoreProductDescriptionAccordionState =
+    state.copy(isExpanded = !state.isExpanded)
+
+fun visibleStoreProductDescription(
+    longDescription: String,
+    state: StoreProductDescriptionAccordionState
+): String? = longDescription.takeIf { state.isExpanded && shouldRenderStoreProductDescription(it) }
 
 fun storeProductDisplayTitle(productTitle: String, brandName: String?): String {
     val title = productTitle.trim()
@@ -87,8 +100,3 @@ fun storeProductDisplayTitle(productTitle: String, brandName: String?): String {
     return prefix.dropLast(1).trimEnd().ifBlank { title }
 }
 
-fun storeProductCompositionText(compositionLine: String?): String? {
-    val line = compositionLine?.trim()?.takeIf { it.isNotBlank() } ?: return null
-    val value = line.substringAfter(':', "").trim()
-    return value.takeIf { it.isNotBlank() }?.let { "Composición: $it" }
-}
