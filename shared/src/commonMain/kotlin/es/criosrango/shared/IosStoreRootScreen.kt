@@ -1175,42 +1175,42 @@ fun StoreCartScreen(
             ) {
                 Column(
                     Modifier.fillMaxWidth()
-                        .clip(RoundedCornerShape(15.dp))
-                        .background(Color(0x0B355F4B))
-                        .border(1.dp, Color(0x1F355F4B), RoundedCornerShape(15.dp))
-                        .padding(12.dp)
-                        .padding(bottom = 14.dp),
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color.White)
+                        .border(1.dp, Color(0x1A20241F), RoundedCornerShape(18.dp))
+                        .padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
-                    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Subtotal", modifier = Modifier.weight(1f), fontSize = 13.sp, color = Color(0xFF183B35))
                         Text(formatStorePrice(cart.totals.consumerSubtotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol), fontSize = 13.sp, fontWeight = FontWeight.Normal, color = Color(0xFF183B35))
                     }
                     val discount = cart.totals.consumerDiscount()
                     if (discount.toLongOrNull()?.let { it > 0L } == true) {
-                        Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("Descuentos", modifier = Modifier.weight(1f), fontSize = 12.sp, color = Color(0xFF315B52))
                             Text("-" + formatStorePrice(discount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), fontSize = 12.sp, color = Color(0xFF0F5C4D), fontWeight = FontWeight.Medium)
                         }
                     }
-                    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Envío", modifier = Modifier.weight(1f), fontSize = 13.sp, color = Color(0xFF183B35))
                         Text("Se calcula en el checkout", fontSize = 13.sp, color = Color(0xFF68716C))
                     }
-                    Row(Modifier.fillMaxWidth().padding(top = 15.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    HorizontalDivider(Modifier.padding(top = 5.dp), color = Color(0x1A20241F), thickness = 1.dp)
+                    Row(Modifier.fillMaxWidth().padding(top = 13.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Total", modifier = Modifier.weight(1f), fontSize = 17.sp, color = Color(0xFF183B35), fontWeight = FontWeight.Bold)
                         Text(formatStorePrice(cart.totals.consumerTotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol), fontSize = 17.sp, color = Color(0xFF183B35), fontWeight = FontWeight.Bold)
                     }
-                }
-                Button(
-                    onClick = onCheckout,
-                    enabled = state == StoreCartLoadState.SUCCESS_ITEMS,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(56.dp),
-                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))
-                ) {
-                    Text("Finalizar compra", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Button(
+                        onClick = onCheckout,
+                        enabled = state == StoreCartLoadState.SUCCESS_ITEMS,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(56.dp),
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))
+                    ) {
+                        Text("Finalizar compra", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    }
                 }
                 OutlinedButton(
                     onClick = { clearCartConfirm = true },
