@@ -1205,7 +1205,7 @@ fun StoreCartScreen(
                 Button(
                     onClick = onCheckout,
                     enabled = state == StoreCartLoadState.SUCCESS_ITEMS,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(54.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(56.dp),
                     contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))
