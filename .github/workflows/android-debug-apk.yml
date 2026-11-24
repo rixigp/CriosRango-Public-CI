@@ -82,7 +82,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/develop/1.0.') || github.ref == 'refs/heads/develop-1.0.5'
         run: |
           set +e
-          ./gradlew clean :app:assembleDebug :app:lintDebug test :app:assembleRelease --warning-mode all --stacktrace
+          ./gradlew clean :app:assembleDebug :app:lintDebug :shared:testDebugUnitTest test :app:assembleRelease --warning-mode all --stacktrace
           STATUS=$?
           if [ -f app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt ]; then
             cat app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt

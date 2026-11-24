@@ -30,7 +30,7 @@ jobs:
   ios-debug-simulator:
     name: Build, install, launch and inspect iOS Debug
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 90
 
     steps:
       - name: Checkout exact target SHA
@@ -94,6 +94,17 @@ jobs:
           restore-keys: |
             macos-konan-debug-v1-
 
+      - name: Prepare Kotlin/Native distribution
+        id: konan_prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :shared:downloadKotlinNativeDistribution --no-daemon --stacktrace
+          KONAN_ROOT="$HOME/.konan"
+          test -d "$KONAN_ROOT" || { echo "::error::Gradle completed without creating Kotlin/Native directory $KONAN_ROOT"; exit 1; }
+          echo "KONAN_ROOT=$KONAN_ROOT"
+          find "$KONAN_ROOT" -maxdepth 2 -type d -name 'kotlin-native-prebuilt-*' -print
+
       - name: Dump Kotlin Native CoreFoundation and Security bindings
         id: native_bindings
         shell: bash
@@ -102,6 +113,7 @@ jobs:
           OUT="$GITHUB_WORKSPACE/ios-fast-debug-artifacts/native-bindings"
           mkdir -p "$OUT"
           KONAN_ROOT="$HOME/.konan"
+          test -d "$KONAN_ROOT" || { echo "::error::Kotlin/Native root does not exist after Gradle preparation: $KONAN_ROOT"; exit 1; }
           find "$KONAN_ROOT" -maxdepth 2 -type d -name 'kotlin-native-prebuilt-*' -print | tee "$OUT/konan-installations.txt"
           KONAN_HOME="$(find "$KONAN_ROOT" -maxdepth 2 -type d -name 'kotlin-native-prebuilt-*' -print -quit)"
           [[ -n "$KONAN_HOME" ]] || { echo "::error::No kotlin-native-prebuilt installation found in $KONAN_ROOT"; exit 1; }
@@ -141,12 +153,15 @@ jobs:
           [[ -s "$SIM_DIR/corefoundation.txt" && -s "$SIM_DIR/corefoundationbase.txt" && -s "$SIM_DIR/security.txt" ]] || { echo "::error::Required simulator CoreFoundation/CoreFoundationBase/Security KLIB metadata not found"; exit 1; }
           cat "$OUT/konan-home.txt" "$OUT/konanc-version.txt" "$SIM_DIR/paths.txt" "$SIM_DIR/corefoundation-selected.txt" "$SIM_DIR/corefoundationbase-selected.txt" "$SIM_DIR/security-selected.txt" > "$OUT/diagnostic-summary.txt"
           cat "$OUT/diagnostic-summary.txt" >> "$GITHUB_STEP_SUMMARY"
-          echo "COMPILE_ONLY=STARTED"
+      - name: Compile Kotlin/Native for iOS Simulator
+        id: ios_kotlin_compile
+        shell: bash
+        run: |
+          set -euo pipefail
           ./gradlew :shared:compileKotlinIosSimulatorArm64 --no-daemon --stacktrace
-          echo "COMPILE_ONLY=SUCCESS" >> "$GITHUB_STEP_SUMMARY"
+          echo "IOS_KOTLIN_NATIVE_COMPILE=SUCCESS" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Select and boot iPhone Simulator
-        if: failure()
         id: simulator
         shell: bash
         run: |
@@ -178,7 +193,6 @@ jobs:
           xcrun simctl bootstatus "$SIM_UDID" -b
 
       - name: Reconstruct and validate Firebase iOS configuration
-        if: failure()
         shell: bash
         env:
           GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
@@ -195,9 +209,8 @@ jobs:
           echo "Firebase iOS configuration reconstructed and validated (values not logged)."
 
       - name: Build Debug app for Simulator
-        if: failure()
         id: ios_build
-        timeout-minutes: 30
+        timeout-minutes: 60
         shell: bash
         env:
           TARGET_SHA: ${{ steps.metadata.outputs.target_sha }}
@@ -261,7 +274,7 @@ jobs:
           echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
 
       - name: Install, launch, capture screenshots and logs
-        if: failure() && steps.ios_build.outcome == 'success'
+        if: success() && steps.ios_build.outcome == 'success'
         id: runtime
         timeout-minutes: 7
         env:
