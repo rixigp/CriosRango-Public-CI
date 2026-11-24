@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.*
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.pager.HorizontalPager
@@ -275,6 +276,11 @@ private fun StoreProductDescriptionAccordion(longDescription: String) {
         animationSpec = tween(durationMillis = 160),
         label = "product-description-chevron"
     )
+    val chevronOffsetY by animateDpAsState(
+        targetValue = if (accordionState.isExpanded) 4.dp else (-4).dp,
+        animationSpec = tween(durationMillis = 160),
+        label = "product-description-chevron-offset"
+    )
     val visibleText = visibleStoreProductDescription(longDescription, accordionState)
 
     Column(
@@ -301,21 +307,23 @@ private fun StoreProductDescriptionAccordion(longDescription: String) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Canvas(Modifier.size(26.dp)) {
-                        val stroke = 1.7.dp.toPx()
-                        val document = Path().apply {
-                            moveTo(size.width * 0.27f, size.height * 0.156f)
-                            lineTo(size.width * 0.5625f, size.height * 0.156f)
-                            lineTo(size.width * 0.729f, size.height * 0.323f)
-                            lineTo(size.width * 0.729f, size.height * 0.927f)
-                            lineTo(size.width * 0.27f, size.height * 0.927f)
-                            close()
+                    Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) {
+                        Canvas(Modifier.size(18.dp)) {
+                            val stroke = 1.7.dp.toPx()
+                            val document = Path().apply {
+                                moveTo(size.width * 0.27f, size.height * 0.156f)
+                                lineTo(size.width * 0.5625f, size.height * 0.156f)
+                                lineTo(size.width * 0.729f, size.height * 0.323f)
+                                lineTo(size.width * 0.729f, size.height * 0.927f)
+                                lineTo(size.width * 0.27f, size.height * 0.927f)
+                                close()
+                            }
+                            drawPath(document, ProductGreen, style = Stroke(width = stroke, cap = StrokeCap.Round))
+                            drawLine(ProductGreen, Offset(size.width * 0.5625f, size.height * 0.156f), Offset(size.width * 0.5625f, size.height * 0.323f), stroke)
+                            drawLine(ProductGreen, Offset(size.width * 0.5625f, size.height * 0.323f), Offset(size.width * 0.729f, size.height * 0.323f), stroke)
+                            drawLine(ProductGreen, Offset(size.width * 0.396f, size.height * 0.5f), Offset(size.width * 0.604f, size.height * 0.5f), stroke)
+                            drawLine(ProductGreen, Offset(size.width * 0.396f, size.height * 0.646f), Offset(size.width * 0.604f, size.height * 0.646f), stroke)
                         }
-                        drawPath(document, ProductGreen, style = Stroke(width = stroke, cap = StrokeCap.Round))
-                        drawLine(ProductGreen, Offset(size.width * 0.5625f, size.height * 0.156f), Offset(size.width * 0.5625f, size.height * 0.323f), stroke)
-                        drawLine(ProductGreen, Offset(size.width * 0.5625f, size.height * 0.323f), Offset(size.width * 0.729f, size.height * 0.323f), stroke)
-                        drawLine(ProductGreen, Offset(size.width * 0.396f, size.height * 0.5f), Offset(size.width * 0.604f, size.height * 0.5f), stroke)
-                        drawLine(ProductGreen, Offset(size.width * 0.396f, size.height * 0.646f), Offset(size.width * 0.604f, size.height * 0.646f), stroke)
                     }
                     Text(
                         "Descripción",
@@ -325,7 +333,13 @@ private fun StoreProductDescriptionAccordion(longDescription: String) {
                         lineHeight = 22.sp,
                         fontWeight = FontWeight.SemiBold
                     )
-                    Canvas(Modifier.size(8.dp).graphicsLayer { rotationZ = chevronRotation }) {
+                    Canvas(
+                        Modifier.size(8.dp).graphicsLayer {
+                            rotationZ = chevronRotation
+                            translationY = chevronOffsetY.toPx()
+                            translationX = -3.dp.toPx()
+                        }
+                    ) {
                         val chevron = Path().apply {
                             moveTo(0f, 0f)
                             lineTo(size.width / 2f, size.height / 2f)
