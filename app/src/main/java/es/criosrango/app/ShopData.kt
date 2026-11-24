@@ -16,6 +16,11 @@ data class BrandTerm(
     val imageUrl: String? = null
 )
 
+data class ProductBrandTerm(
+    val id: Int = 0,
+    val name: String = "",
+    val slug: String = ""
+)
 
 const val STORE_API_BASE_URL = "https://criosrango.es/wp-json/wc/store/v1/"
 
@@ -43,7 +48,8 @@ data class StoreProduct(
     @SerializedName("manage_stock") val manageStock: Boolean? = null,
     @SerializedName("quantity_limits") val quantityLimits: QuantityLimits? = null,
     @SerializedName("stock_availability") val stockAvailability: StockAvailability? = null,
-    @SerializedName("add_to_cart") val addToCart: AddToCart? = null
+    @SerializedName("add_to_cart") val addToCart: AddToCart? = null,
+    val brands: List<ProductBrandTerm> = emptyList()
 ) {
     val originalCategoryIds: List<Int>
         get() = extensions?.criosrangoOutlet?.originalCategoryIds.orEmpty()

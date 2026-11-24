@@ -374,7 +374,10 @@ internal fun ProductDetail(product: StoreProduct, variation: StoreProduct?, cart
         product.description,
         HtmlCompat.FROM_HTML_MODE_COMPACT
     ).toString().trim()
-    val brandInfo = es.criosrango.shared.resolveStoreProductBrand(product.brands, brands)
+    val brandInfo = es.criosrango.shared.resolveStoreProductBrand(
+        product.brands.map { es.criosrango.shared.model.ProductBrand(id = it.id, name = it.name, slug = it.slug) },
+        brands
+    )
     val displayProductTitle = es.criosrango.shared.storeProductDisplayTitle(product.name.cleanWooText(), brandInfo?.name)
     val galleryImages = (current?.images ?: product.images).ifEmpty { product.images }
     val detailUiState = es.criosrango.shared.StoreProductDetailUiState(
