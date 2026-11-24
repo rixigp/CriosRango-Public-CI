@@ -7,7 +7,6 @@ data class StoreProduct(
     @SerialName("short_description") val shortDescription: String = "", val description: String = "",
     @SerialName("on_sale") val onSale: Boolean = false, val prices: ProductPrices = ProductPrices(),
     val images: List<ProductImage> = emptyList(), val categories: List<StoreCategory> = emptyList(),
-    val brands: List<ProductBrand> = emptyList(),
     val extensions: StoreProductExtensions? = null,
     val tags: List<ProductTag> = emptyList(), val attributes: List<ProductAttribute> = emptyList(),
     val variations: List<ProductVariation> = emptyList(),
@@ -20,7 +19,8 @@ data class StoreProduct(
     @SerialName("manage_stock") val manageStock: Boolean? = null,
     @SerialName("quantity_limits") val quantityLimits: QuantityLimits? = null,
     @SerialName("stock_availability") val stockAvailability: StockAvailability? = null,
-    @SerialName("add_to_cart") val addToCart: AddToCart? = null
+    @SerialName("add_to_cart") val addToCart: AddToCart? = null,
+    val brands: List<ProductBrand> = emptyList()
 ) {
     val originalCategoryIds: List<Int>
         get() = extensions?.criosrangoOutlet?.originalCategoryIds.orEmpty()

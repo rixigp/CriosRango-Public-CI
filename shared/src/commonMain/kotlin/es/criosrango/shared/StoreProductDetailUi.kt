@@ -77,8 +77,12 @@ fun resolveStoreProductBrand(
 
 fun storeProductLongDescription(product: StoreProduct): String = product.description
 
-fun shouldRenderStoreProductDescription(longDescription: String): Boolean =
-    longDescription.any { !it.isWhitespace() }
+fun shouldRenderStoreProductDescription(longDescription: String): Boolean {
+    val text = longDescription
+        .replace(Regex("<[^>]*>"), "")
+        .replace(Regex("&(?:nbsp|#160|#xA0);", RegexOption.IGNORE_CASE), "")
+    return text.any { !it.isWhitespace() }
+}
 
 data class StoreProductDescriptionAccordionState(val isExpanded: Boolean = false)
 
