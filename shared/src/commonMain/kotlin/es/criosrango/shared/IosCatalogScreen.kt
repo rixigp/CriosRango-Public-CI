@@ -761,7 +761,6 @@ internal fun IosProductDetail(
 
     val brandInfo = resolveStoreProductBrand(product.brands, brands)
     val visibleProductTitle = storeProductDisplayTitle(displayProductName, brandInfo?.name)
-    val compositionText = storeProductCompositionText(compositionLine)
     val detailUiState = StoreProductDetailUiState(
         title = visibleProductTitle,
         displayPrice = if (currentPrices.price.toLongOrNull()?.let { it > 0L } == true) formatStorePrice(currentPrices.price, currentPrices.currencyMinorUnit, currentPrices.currencySymbol) else "",
