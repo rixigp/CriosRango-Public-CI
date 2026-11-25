@@ -1175,16 +1175,16 @@ fun StoreCartScreen(
             ) {
                 Column(
                     Modifier.fillMaxWidth()
+                        .padding(bottom = 14.dp)
                         .clip(RoundedCornerShape(15.dp))
                         .background(Color(0x0B355F4B))
                         .border(1.dp, Color(0x1F355F4B), RoundedCornerShape(15.dp))
-                        .padding(12.dp)
-                        .padding(bottom = 14.dp),
+                        .padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
                     Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Subtotal", modifier = Modifier.weight(1f), fontSize = 13.sp, color = Color(0xFF183B35))
-                        Text(formatStorePrice(cart.totals.consumerSubtotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol), fontSize = 13.sp, fontWeight = FontWeight.Normal, color = Color(0xFF183B35))
+                        Text("Subtotal", modifier = Modifier.weight(1f), fontSize = 13.sp, color = Color(0xFF20241F))
+                        Text(formatStorePrice(cart.totals.consumerSubtotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol), fontSize = 13.sp, fontWeight = FontWeight.Normal, color = Color(0xFF20241F))
                     }
                     val discount = cart.totals.consumerDiscount()
                     if (discount.toLongOrNull()?.let { it > 0L } == true) {
@@ -1194,12 +1194,12 @@ fun StoreCartScreen(
                         }
                     }
                     Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Envío", modifier = Modifier.weight(1f), fontSize = 13.sp, color = Color(0xFF183B35))
-                        Text("Se calcula en el checkout", fontSize = 13.sp, color = Color(0xFF68716C))
+                        Text("Envío", modifier = Modifier.weight(1f), fontSize = 13.sp, color = Color(0xFF20241F))
+                        Text("Se calcula en el checkout", fontSize = 13.sp, color = Color(0xFF20241F))
                     }
                     Row(Modifier.fillMaxWidth().padding(top = 15.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Total", modifier = Modifier.weight(1f), fontSize = 17.sp, color = Color(0xFF183B35), fontWeight = FontWeight.Bold)
-                        Text(formatStorePrice(cart.totals.consumerTotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol), fontSize = 17.sp, color = Color(0xFF183B35), fontWeight = FontWeight.Bold)
+                        Text("Total", modifier = Modifier.weight(1f), fontSize = 17.sp, color = Color(0xFF355F4B), fontWeight = FontWeight.Bold)
+                        Text(formatStorePrice(cart.totals.consumerTotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol), fontSize = 17.sp, color = Color(0xFF355F4B), fontWeight = FontWeight.Bold)
                     }
                 }
                 Button(
@@ -1208,7 +1208,7 @@ fun StoreCartScreen(
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(56.dp),
                     contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
                     shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF183B35))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF355F4B))
                 ) {
                     Text("Finalizar compra", fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 }

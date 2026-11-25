@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
@@ -22,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import es.criosrango.shared.generated.resources.Res
 import es.criosrango.shared.generated.resources.home_logo
 import org.jetbrains.compose.resources.painterResource
@@ -61,7 +63,7 @@ fun StoreGlobalTopBar(
                     .align(Alignment.CenterStart),
                 badge = {
                     if (cartQuantity > 0) {
-                        Badge { Text(cartBadgeText(cartQuantity), maxLines = 1) }
+                        StoreCartBadge(cartQuantity, size = 18.dp, fontSize = 10.sp, modifier = Modifier.offset(x = 1.dp))
                     }
                 }
             ) {

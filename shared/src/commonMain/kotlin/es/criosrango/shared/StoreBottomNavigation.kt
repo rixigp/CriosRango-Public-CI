@@ -23,7 +23,6 @@ import androidx.compose.material.icons.outlined.Home as OutlinedHome
 import androidx.compose.material.icons.outlined.LocalOffer as OutlinedLocalOffer
 import androidx.compose.material.icons.outlined.Person as OutlinedPerson
 import androidx.compose.material.icons.outlined.ShoppingBag as OutlinedShoppingBag
-import androidx.compose.material3.Badge
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -39,6 +38,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.navigationBarsPadding
 
 enum class StoreMainTab { HOME, CATEGORIES, OUTLET, CART, ACCOUNT }
@@ -91,12 +91,13 @@ fun StoreBottomNavigation(
                             modifier = Modifier.size(24.dp)
                         )
                         if (tab == StoreMainTab.CART && cartQuantity > 0) {
-                            Badge(
+                            StoreCartBadge(
+                                cartQuantity,
+                                size = 22.dp,
+                                fontSize = 12.sp,
                                 modifier = Modifier.align(Alignment.TopEnd)
                                     .offset(x = 5.dp, y = (-4).dp)
-                            ) {
-                                Text(cartBadgeText(cartQuantity), maxLines = 1)
-                            }
+                            )
                         }
                     }
                     Spacer(Modifier.height(2.dp))
