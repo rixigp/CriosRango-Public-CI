@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.CreditCard
 import androidx.compose.material.icons.outlined.LocalShipping
+import androidx.compose.material.icons.outlined.Store
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
@@ -49,7 +50,7 @@ import es.criosrango.shared.resolveCouponPresentation
 
 private val CheckoutUiGreen = Color(0xFF183B35)
 private val CheckoutUiSoftGreen = Color(0xFFE4F1ED)
-private val CheckoutUiBorder = Color(0xFFD0C9D0)
+private val CheckoutUiBorder = Color(0x1A20241F)
 
 @Composable
 fun StoreCheckoutScreen(
