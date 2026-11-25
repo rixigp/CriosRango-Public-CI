@@ -28,6 +28,7 @@ internal fun StoreCartBadge(
     quantity: Int,
     size: Dp,
     fontSize: TextUnit,
+    fontWeight: FontWeight = FontWeight.Bold,
     modifier: Modifier = Modifier
 ) {
     if (quantity <= 0) return
@@ -41,7 +42,7 @@ internal fun StoreCartBadge(
             maxLines = 1,
             fontSize = fontSize,
             lineHeight = size.value.sp,
-            fontWeight = FontWeight.Bold
+            fontWeight = fontWeight
         )
     }
 }

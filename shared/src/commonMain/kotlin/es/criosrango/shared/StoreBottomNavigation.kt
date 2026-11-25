@@ -93,10 +93,11 @@ fun StoreBottomNavigation(
                         if (tab == StoreMainTab.CART && cartQuantity > 0) {
                             StoreCartBadge(
                                 cartQuantity,
-                                size = 22.dp,
-                                fontSize = 12.sp,
+                                size = 18.dp,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
                                 modifier = Modifier.align(Alignment.TopEnd)
-                                    .offset(x = 5.dp, y = (-4).dp)
+                                    .offset(x = 14.dp, y = (-4).dp)
                             )
                         }
                     }
