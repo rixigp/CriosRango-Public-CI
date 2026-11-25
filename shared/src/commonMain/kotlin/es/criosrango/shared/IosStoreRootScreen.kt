@@ -954,7 +954,7 @@ fun StoreCartScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("Promociones y descuentos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Promociones y descuentos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color(0xFF355F4B))
 
                 if (walletEnabled && loyaltyWallet != null) {
                     val eligibleSubtotal = subtractMoneyAmounts(
@@ -1065,7 +1065,7 @@ fun StoreCartScreen(
                             code.isBlank() || cart.coupons.none { it.code.equals(code, ignoreCase = true) }
                         }
                         if (hasAvailablePromotions) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Promociones disponibles", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text("Promociones disponibles", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Color(0xFF355F4B))
                         visiblePromotions.sortedByDescending { it.priority }.forEach { promotion ->
                             val code = promotion.code?.trim().orEmpty()
                             val applied = code.isNotBlank() && cart.coupons.any { it.code.equals(code, ignoreCase = true) }
@@ -1207,7 +1207,7 @@ fun StoreCartScreen(
                     enabled = state == StoreCartLoadState.SUCCESS_ITEMS,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(56.dp),
                     contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(28.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF355F4B))
                 ) {
                     Text("Finalizar compra", fontSize = 15.sp, fontWeight = FontWeight.Medium)
