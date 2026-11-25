@@ -296,8 +296,39 @@ private fun CriosRangoApp(
     val pushType = pushTypeState.value
     val pushOrderId = pushOrderIdState.value
     val bizumOrderId by viewModel.bizumOrderId.collectAsStateWithLifecycle()
+    val sharedCheckoutSnapshot by sharedCheckoutStore.checkout.collectAsStateWithLifecycle()
+    val sharedCartSnapshot by sharedCartStore.cart.collectAsStateWithLifecycle()
     val sharedCreatedOrder by sharedCheckoutStore.createdOrder.collectAsStateWithLifecycle()
     val sharedCardPaymentState by sharedPaymentStore.state.collectAsStateWithLifecycle()
+    LaunchedEffect(
+        sharedCheckoutSnapshot?.paymentMethods,
+        sharedCheckoutSnapshot?.experimentalCart?.paymentMethods,
+        sharedCartSnapshot.paymentMethods,
+        sharedCartSnapshot.shippingRates
+    ) {
+        if (BuildConfig.DEBUG) {
+            val checkoutPaymentIds = (
+                sharedCheckoutSnapshot?.paymentMethods.orEmpty() +
+                    sharedCheckoutSnapshot?.experimentalCart?.paymentMethods.orEmpty()
+                ).map(String::trim).filter(String::isNotBlank).distinct()
+            val cartPaymentIds = sharedCartSnapshot.paymentMethods.map(String::trim)
+                .filter(String::isNotBlank).distinct()
+            val rawPaymentIds = (checkoutPaymentIds + cartPaymentIds).distinct()
+            val mappedPaymentIds = es.criosrango.shared.model.normalizePaymentGatewayIds(rawPaymentIds)
+                .map { it.gatewayId }
+            val shippingMethodIds = sharedCartSnapshot.shippingRates
+                .flatMap { shippingPackage -> shippingPackage.rates.map { it.methodId } }
+                .map(String::trim).filter(String::isNotBlank).distinct()
+
+            Log.d("CRCheckoutDiag", "APP_CHECKOUT_RESPONSE_RECEIVED=${sharedCheckoutSnapshot != null}")
+            Log.d("CRCheckoutDiag", "APP_CHECKOUT_PAYMENT_METHOD_IDS=${checkoutPaymentIds.joinToString(",")}")
+            Log.d("CRCheckoutDiag", "APP_CART_PAYMENT_METHOD_IDS=${cartPaymentIds.joinToString(",")}")
+            Log.d("CRCheckoutDiag", "APP_CHECKOUT_SHIPPING_METHOD_IDS=${shippingMethodIds.joinToString(",")}")
+            Log.d("CRCheckoutDiag", "APP_CECABANK_RECEIVED_FROM_BACKEND=${"cecabank_gateway" in rawPaymentIds}")
+            Log.d("CRCheckoutDiag", "APP_CECABANK_SURVIVES_MAPPING=${"cecabank_gateway" in mappedPaymentIds}")
+            Log.d("CRCheckoutDiag", "APP_CECABANK_VISIBLE_IN_UI=${"cecabank_gateway" in mappedPaymentIds}")
+        }
+    }
     val sharedCheckoutPhase by sharedCheckoutStore.phase.collectAsStateWithLifecycle()
     val checkoutBusy = sharedCheckoutPhase == es.criosrango.shared.StoreCheckoutPhase.LOADING ||
         sharedCheckoutPhase == es.criosrango.shared.StoreCheckoutPhase.CREATING_ORDER
