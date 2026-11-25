@@ -40,9 +40,20 @@ data class CheckoutResponse(
     @SerialName("payment_requirements") val paymentRequirements: List<String> = emptyList(),
     @SerialName("redirect_url") val redirectUrl: String? = null,
     @SerialName("payment_result") val paymentResult: PaymentResult? = null,
+    val extensions: CheckoutExtensions? = null,
     @SerialName("__experimentalCart") val experimentalCart: ExperimentalCart? = null,
     val totals: StoreCartTotals = StoreCartTotals(),
     val errors: List<StoreCartError> = emptyList()
+)
+
+@Serializable
+data class CheckoutExtensions(
+    @SerialName("criosrango") val criosRango: CheckoutCriosRangoExtension? = null
+)
+
+@Serializable
+data class CheckoutCriosRangoExtension(
+    @SerialName("earned_points") val earnedPoints: Double? = null
 )
 
 @Serializable

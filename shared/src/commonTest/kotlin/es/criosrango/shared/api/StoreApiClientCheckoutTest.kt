@@ -21,7 +21,7 @@ import es.criosrango.shared.model.UpdateCustomerRequest
 
 class StoreApiClientCheckoutTest {
     private val cartJson = """{"items":[],"coupons":[],"totals":{"total_price":"12300","total_shipping":"1000"},"payment_methods":["cecabank_gateway","cheque","redsys"],"shipping_rates":[],"items_count":0,"errors":[]}"""
-    private val checkoutJson = """{"order_id":321,"order_key":"wc_order_key","status":"pending","payment_method":"cecabank_gateway","payment_methods":["cecabank_gateway","cheque","cod","bacs","redsys"],"payment_requirements":[],"redirect_url":"https://pay.example/321","totals":{"total_price":"12300"},"errors":[]}"""
+    private val checkoutJson = """{"order_id":321,"order_key":"wc_order_key","status":"pending","payment_method":"cecabank_gateway","payment_methods":["cecabank_gateway","cheque","cod","bacs","redsys"],"payment_requirements":[],"redirect_url":"https://pay.example/321","extensions":{"criosrango":{"earned_points":108.5}},"totals":{"total_price":"12300"},"errors":[]}"""
 
     private fun client(requests: MutableList<io.ktor.client.request.HttpRequestData>): HttpClient =
         HttpClient(MockEngine { request ->
@@ -158,6 +158,11 @@ class StoreApiClientCheckoutTest {
         assertEquals("1", requests.last().headers["X-CriosRango-App"])
         assertEquals(321, order.orderId)
         assertEquals("wc_order_key", order.orderKey)
+        assertEquals(108.5, order.extensions?.criosRango?.earnedPoints)
+        val integralPoints = Json { ignoreUnknownKeys = true }.decodeFromString<es.criosrango.shared.model.CheckoutResponse>(
+            """{"extensions":{"criosrango":{"earned_points":108}}}"""
+        )
+        assertEquals(108.0, integralPoints.extensions?.criosRango?.earnedPoints)
         assertEquals("https://pay.example/321", order.redirectUrl)
         api.close()
     }

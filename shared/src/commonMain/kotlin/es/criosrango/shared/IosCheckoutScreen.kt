@@ -34,6 +34,8 @@ import es.criosrango.shared.model.CustomerAddress
 import es.criosrango.shared.model.StoreShippingDestination
 import es.criosrango.shared.model.supportedPaymentOptions
 import es.criosrango.shared.model.consumerDiscount
+import es.criosrango.shared.model.consumerLineTotal
+import es.criosrango.shared.model.consumerTotal
 import es.criosrango.shared.validateCheckoutAddress
 import es.criosrango.shared.CHECKOUT_SPANISH_PROVINCES
 import es.criosrango.shared.model.normalizePaymentGatewayIds
@@ -115,7 +117,8 @@ fun StoreCheckoutScreen(
         }
     }
 
-    val paymentOptions = normalizePaymentGatewayIds(checkout?.rawPaymentGatewayIds().orEmpty() + cart.paymentMethods)
+    // Payment gateways are sourced from the authoritative GET /checkout response.
+    val paymentOptions = normalizePaymentGatewayIds(checkout?.rawPaymentGatewayIds().orEmpty())
     LaunchedEffect(paymentOptions) {
         if (selectedPayment !in paymentOptions.map { it.gatewayId }) {
             selectedPayment = paymentOptions.firstOrNull()?.gatewayId.orEmpty()
@@ -237,6 +240,22 @@ fun StoreCheckoutScreen(
                 }
             }
         }
+        checkout?.extensions?.criosRango?.earnedPoints?.takeIf { it >= 0.0 }?.let { earnedPoints ->
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = CheckoutUiSoftGreen
+                ) {
+                    Text(
+                        text = "Sumarás ${formatEarnedPoints(earnedPoints)} puntos con esta compra",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = CheckoutUiGreen
+                    )
+                }
+            }
+        }
         if (cart.items.isEmpty() && phase != StoreCheckoutPhase.LOADING) item {
             Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), tonalElevation = 1.dp) {
                 Column(
@@ -289,82 +308,61 @@ fun StoreCheckoutScreen(
         }
         item { CheckoutSection(2, "Envío") }
         if (shippingOptions.isEmpty() && checkout != null) item { Text("No hay tarifas disponibles para esta dirección.") }
-        items(shippingOptions) { pair ->
-            val pack = pair.first
-            val rate = pair.second
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable {
-                    selectedShipping = pack.packageId to rate.rateId
-                    checkoutStore.selectShipping(pack.packageId, rate.rateId)
-                }.padding(vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RadioButton(
-                    selected = selectedShipping == (pack.packageId to rate.rateId),
-                    onClick = {
-                        selectedShipping = pack.packageId to rate.rateId
-                        checkoutStore.selectShipping(pack.packageId, rate.rateId)
-                    },
-                    colors = RadioButtonDefaults.colors(selectedColor = CheckoutUiGreen, unselectedColor = Color(0xFF777277))
-                )
-                Column(Modifier.weight(1f)) {
-                    Text(resolveShippingPresentationName(rate.methodId, rate.rateId, rate.name))
-                    Text(if (rate.price.toLongOrNull() == 0L) "Gratis" else formatStorePrice(rate.price, rate.currencyMinorUnit, rate.currencySymbol), style = MaterialTheme.typography.bodySmall)
+        if (shippingOptions.isNotEmpty()) item {
+            CheckoutShippingCard(
+                options = shippingOptions,
+                selectedShipping = selectedShipping,
+                onSelect = { packageId, rateId ->
+                    selectedShipping = packageId to rateId
+                    checkoutStore.selectShipping(packageId, rateId)
                 }
-            }
+            )
         }
         item {
             CheckoutSection(3, "Resumen")
-            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text(
-                    if (cart.items.size == 1) "1 producto" else cart.items.size.toString() + " productos",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                cart.items.forEach { line ->
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(normalizeWooPlainText(line.name), Modifier.weight(1f))
-                        Text("×" + line.quantity, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                HorizontalDivider()
-                CheckoutAmount("Subtotal", formatStorePrice(cart.totals.consumerSubtotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
-                if (cart.coupons.isNotEmpty()) {
-                    Text("Cupones aplicados", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    cart.coupons.forEach { coupon ->
-                        Text("• " + resolveCouponPresentation(coupon, pendingRewards).title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                val discount = cart.totals.consumerDiscount()
-                if (discount.toLongOrNull()?.let { it > 0L } == true) {
-                    CheckoutAmount("Descuentos", "-" + formatStorePrice(discount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol))
-                }
-                val shipping = cart.totals.consumerShipping()
-                CheckoutAmount(
-                    "Envío",
-                    when {
-                        checkoutBusy -> "Calculando…"
-                        selectedShipping == null -> "Pendiente"
-                        shipping == null -> "Pendiente"
-                        shipping == "0" -> "Gratis"
-                        else -> formatStorePrice(shipping, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)
-                    }
-                )
-                CheckoutAmount("Total (IVA incluido)", formatStorePrice(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol), true)
-            }
+            CheckoutSummaryCard(
+                cart = cart,
+                checkoutBusy = checkoutBusy,
+                shippingSelected = selectedShipping != null,
+                pendingRewards = pendingRewards
+            )
         }
         item { CheckoutSection(4, "Pago") }
         if (paymentOptions.isEmpty() && checkout != null) item { Text("No hay métodos de pago disponibles.") }
         item {
-            Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                paymentOptions.forEach { option ->
-                    val bizum = option.kind == es.criosrango.shared.model.CheckoutPaymentKind.BIZUM
-                    CheckoutPaymentOption(
-                        selected = selectedPayment == option.gatewayId,
-                        title = if (bizum) "Bizum" else "Pago con tarjeta",
-                        subtitle = if (bizum) "Recibirás las instrucciones de pago al finalizar el pedido" else "Pago seguro con tarjeta",
-                        icon = if (bizum) Icons.Outlined.AccountBalanceWallet else Icons.Outlined.CreditCard,
-                        onClick = { selectedPayment = option.gatewayId }
-                    )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = Color.White,
+                border = BorderStroke(1.dp, CheckoutUiBorder)
+            ) {
+                Column(Modifier.fillMaxWidth().selectableGroup()) {
+                    paymentOptions.forEachIndexed { index, option ->
+                        val bizum = option.kind == es.criosrango.shared.model.CheckoutPaymentKind.BIZUM
+                        val cod = option.gatewayId.equals("cod", ignoreCase = true)
+                        CheckoutPaymentOption(
+                            selected = selectedPayment == option.gatewayId,
+                            title = when {
+                                bizum -> "Bizum"
+                                cod -> "En tienda"
+                                else -> "Pago con tarjeta"
+                            },
+                            subtitle = when {
+                                bizum -> "Recibirás las instrucciones de pago al finalizar el pedido"
+                                cod -> "Paga en efectivo en la tienda"
+                                else -> "Pago seguro con tarjeta"
+                            },
+                            icon = when {
+                                bizum -> Icons.Outlined.AccountBalanceWallet
+                                cod -> Icons.Outlined.Store
+                                else -> Icons.Outlined.CreditCard
+                            },
+                            onClick = { selectedPayment = option.gatewayId }
+                        )
+                        if (index < paymentOptions.lastIndex) {
+                            HorizontalDivider(color = CheckoutUiBorder.copy(alpha = 0.7f))
+                        }
+                    }
                 }
             }
         }
@@ -435,7 +433,7 @@ fun StoreCheckoutScreen(
                     when {
                         phase == StoreCheckoutPhase.CREATING_ORDER -> "Creando pedido…"
                         paymentInProgress -> "Abriendo Cecabank…"
-                        else -> "Pagar " + formatStorePrice(cart.totals.totalPrice, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)
+                        else -> "Realizar pedido"
                     }
                 )
             }
@@ -554,6 +552,148 @@ private fun checkoutFieldColors() = OutlinedTextFieldDefaults.colors(
 
 
 @Composable
+private fun CheckoutShippingCard(
+    options: List<Pair<es.criosrango.shared.model.StoreShippingPackage, es.criosrango.shared.model.StoreShippingOption>>,
+    selectedShipping: Pair<Int, String>?,
+    onSelect: (Int, String) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, CheckoutUiBorder)
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            options.forEachIndexed { index, pair ->
+                val pack = pair.first
+                val rate = pair.second
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 64.dp)
+                        .clickable { onSelect(pack.packageId, rate.rateId) }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = selectedShipping == (pack.packageId to rate.rateId),
+                        onClick = { onSelect(pack.packageId, rate.rateId) },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = CheckoutUiGreen,
+                            unselectedColor = Color(0xFF777277)
+                        )
+                    )
+                    Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                        Text(resolveShippingPresentationName(rate.methodId, rate.rateId, rate.name))
+                        Text(
+                            if (rate.price.toLongOrNull() == 0L) "Gratis"
+                            else formatStorePrice(rate.price, rate.currencyMinorUnit, rate.currencySymbol),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                if (index < options.lastIndex) {
+                    HorizontalDivider(color = CheckoutUiBorder.copy(alpha = 0.7f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CheckoutSummaryCard(
+    cart: es.criosrango.shared.model.StoreCart,
+    checkoutBusy: Boolean,
+    shippingSelected: Boolean,
+    pendingRewards: List<LoyaltyReward>
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, CheckoutUiBorder)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            cart.items.forEachIndexed { index, line ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text(normalizeWooPlainText(line.name), Modifier.weight(1f))
+                        Text(
+                            formatStorePrice(line.consumerLineTotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    line.variation.forEach { variation ->
+                        Text(
+                            "${normalizeWooPlainText(variation.attribute)}: ${normalizeWooPlainText(variation.value)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        "Cantidad: ${line.quantity}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (index < cart.items.lastIndex) HorizontalDivider(color = CheckoutUiBorder.copy(alpha = 0.7f))
+            }
+            HorizontalDivider(color = CheckoutUiBorder)
+            CheckoutAmount(
+                "Subtotal",
+                formatStorePrice(cart.totals.consumerSubtotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol)
+            )
+            if (cart.coupons.isNotEmpty()) {
+                cart.coupons.forEach { coupon ->
+                    Text(
+                        resolveCouponPresentation(coupon, pendingRewards).title,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            val discount = cart.totals.consumerDiscount()
+            if (discount.toLongOrNull()?.let { it > 0L } == true) {
+                CheckoutAmount(
+                    "Descuentos",
+                    "-" + formatStorePrice(discount, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)
+                )
+            }
+            if (shippingSelected) {
+                val shipping = cart.totals.consumerShipping()
+                CheckoutAmount(
+                    "Envío",
+                    when {
+                        checkoutBusy -> "Calculando…"
+                        shipping == null -> "Pendiente"
+                        shipping == "0" -> "Gratis"
+                        else -> formatStorePrice(shipping, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)
+                    }
+                )
+            }
+            CheckoutAmount(
+                "Total",
+                formatStorePrice(cart.totals.consumerTotal(), cart.totals.currencyMinorUnit, cart.totals.currencySymbol),
+                true
+            )
+            Text(
+                "(incluye ${formatStorePrice(cart.totals.totalTax, cart.totals.currencyMinorUnit, cart.totals.currencySymbol)} Impuestos)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
 private fun CheckoutPaymentOption(
     selected: Boolean,
     title: String,
@@ -561,41 +701,37 @@ private fun CheckoutPaymentOption(
     icon: ImageVector,
     onClick: () -> Unit
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 82.dp).selectable(
-            selected = selected,
-            role = Role.RadioButton,
-            onClick = onClick
-        ),
-        shape = RoundedCornerShape(16.dp),
-        color = if (selected) CheckoutUiSoftGreen else Color.Transparent,
-        border = BorderStroke(1.dp, CheckoutUiBorder)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RadioButton(
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .selectable(
                 selected = selected,
-                onClick = null,
-                colors = RadioButtonDefaults.colors(
-                    selectedColor = CheckoutUiGreen,
-                    unselectedColor = Color(0xFF777277)
-                )
+                role = Role.RadioButton,
+                onClick = onClick
             )
-            Spacer(Modifier.width(14.dp))
-            androidx.compose.material3.Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = CheckoutUiGreen,
-                modifier = Modifier.size(28.dp)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = null,
+            colors = RadioButtonDefaults.colors(
+                selectedColor = CheckoutUiGreen,
+                unselectedColor = Color(0xFF777277)
             )
-            Spacer(Modifier.width(18.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge, color = Color(0xFF303030))
-                Spacer(Modifier.height(3.dp))
-                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Color(0xFF999399))
-            }
+        )
+        Spacer(Modifier.width(10.dp))
+        androidx.compose.material3.Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = CheckoutUiGreen,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = Color(0xFF303030))
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Color(0xFF999399))
         }
     }
 }
@@ -617,5 +753,9 @@ private fun CheckoutAmount(label: String, value: String, strong: Boolean = false
         Text(value, fontWeight = if (strong) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal)
     }
 }
+
+private fun formatEarnedPoints(points: Double): String =
+    if (points % 1.0 == 0.0) points.toLong().toString()
+    else points.toString().replace('.', ',')
 
 private fun pow10(exponent: Int): Long = (1..exponent.coerceAtLeast(0)).fold(1L) { acc, _ -> acc * 10L }
