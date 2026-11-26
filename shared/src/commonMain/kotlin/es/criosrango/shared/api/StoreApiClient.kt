@@ -213,10 +213,17 @@ class StoreApiClient(
     }
 
 
-    suspend fun checkout(): CheckoutResponse =
-        executeCart {
+    suspend fun checkout(): CheckoutResponse {
+        val response: CheckoutResponse = executeCart {
             client.get(baseUrl + "checkout") { sessionHeaders() }
         }
+        crCheckoutPointsDebug(
+            "HTTP: extensions=${response.extensions != null} " +
+                "criosrango=${response.extensions?.criosRango != null} " +
+                "earned_points=${response.extensions?.criosRango?.earnedPoints ?: "null"}"
+        )
+        return response
+    }
 
     suspend fun updateCustomer(request: UpdateCustomerRequest): StoreCart =
         executeCart {

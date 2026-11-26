@@ -36,6 +36,7 @@ compose.resources {
 
 android {
     namespace = "es.criosrango.shared"
+    buildFeatures { buildConfig = true }
     compileSdk = 35
     defaultConfig { minSdk = 24 }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

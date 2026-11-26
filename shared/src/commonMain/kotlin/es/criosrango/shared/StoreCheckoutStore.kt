@@ -85,6 +85,11 @@ class StoreCheckoutStore(
 
     private val _checkout = MutableStateFlow<CheckoutResponse?>(null)
     val checkout: StateFlow<CheckoutResponse?> = _checkout.asStateFlow()
+
+    private fun publishCheckout(response: CheckoutResponse) {
+        crCheckoutPointsDebug("STORE: earned_points=${response.extensions?.criosRango?.earnedPoints ?: "null"}")
+        _checkout.value = response
+    }
     private val _cart = MutableStateFlow(StoreCart())
     val cart: StateFlow<StoreCart> = _cart.asStateFlow()
     private val _phase = MutableStateFlow(StoreCheckoutPhase.IDLE)
@@ -179,7 +184,7 @@ class StoreCheckoutStore(
                     _cart.value = updatedCart
                     checkoutResponse
                 }.onSuccess {
-                    _checkout.value = it
+                    publishCheckout(it)
                     _phase.value = StoreCheckoutPhase.READY
                 }.onFailure { fail(it) }
             }
@@ -206,7 +211,7 @@ class StoreCheckoutStore(
                     _cart.value = updatedCart
                     checkoutResponse
                 }.onSuccess {
-                    _checkout.value = it
+                    publishCheckout(it)
                     _phase.value = StoreCheckoutPhase.READY
                 }.onFailure { fail(it) }
             }
@@ -241,7 +246,7 @@ class StoreCheckoutStore(
                         if (requotedCheckout.errors.isNotEmpty()) {
                             throw IllegalStateException(requotedCheckout.errors.joinToString("\n") { it.message })
                         }
-                        _checkout.value = requotedCheckout
+                        publishCheckout(requotedCheckout)
                     }
                     val response = api.createCheckout(
                         CreateOrderRequest(
@@ -259,7 +264,7 @@ class StoreCheckoutStore(
                         throw IllegalStateException("La tienda no ha confirmado la creación del pedido.")
                     }
                     val effectiveResponse = response.copy(paymentMethod = response.paymentMethod ?: paymentMethod)
-                    _checkout.value = effectiveResponse
+                    publishCheckout(effectiveResponse)
                     _createdOrder.value = effectiveResponse
                     if (paymentMethod.equals("bizum", ignoreCase = true) || paymentMethod.equals("cheque", ignoreCase = true)) {
                         cartStore.clearAfterConfirmedPayment()

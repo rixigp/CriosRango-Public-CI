@@ -241,7 +241,9 @@ fun StoreCheckoutScreen(
                 }
             }
         }
-        checkout?.extensions?.criosRango?.earnedPoints?.takeIf { it >= 0.0 }?.let { earnedPoints ->
+        val earnedPoints = checkout?.extensions?.criosRango?.earnedPoints
+        crCheckoutPointsDebug("UI: earned_points=${earnedPoints ?: "null"} render=${earnedPoints?.let { it >= 0.0 } == true}")
+        earnedPoints?.takeIf { it >= 0.0 }?.let { earnedPoints ->
             item {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
