@@ -319,8 +319,8 @@ fun StoreCheckoutScreen(
                 }
             )
         }
+        item { CheckoutSection(3, "Resumen") }
         item {
-            CheckoutSection(3, "Resumen")
             CheckoutSummaryCard(
                 cart = cart,
                 checkoutBusy = checkoutBusy,
