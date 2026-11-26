@@ -163,6 +163,10 @@ class StoreApiClientCheckoutTest {
             """{"extensions":{"criosrango":{"earned_points":108}}}"""
         )
         assertEquals(108.0, integralPoints.extensions?.criosRango?.earnedPoints)
+        val unavailablePoints = Json { ignoreUnknownKeys = true }.decodeFromString<es.criosrango.shared.model.CheckoutResponse>(
+            """{"extensions":{"criosrango":{"earned_points":null}}}"""
+        )
+        assertEquals(null, unavailablePoints.extensions?.criosRango?.earnedPoints)
         assertEquals("https://pay.example/321", order.redirectUrl)
         api.close()
     }
