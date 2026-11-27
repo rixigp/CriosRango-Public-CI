@@ -242,6 +242,15 @@ fun StoreCheckoutScreen(
             }
         }
         val earnedPoints = checkout?.extensions?.criosRango?.earnedPoints
+        if (crCheckoutPointsDebugEnabled()) {
+            item {
+                Text(
+                    text = "DEBUG puntos API: ${earnedPoints ?: "null"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
         crCheckoutPointsDebug("UI: earned_points=${earnedPoints ?: "null"} render=${earnedPoints?.let { it >= 0.0 } == true}")
         earnedPoints?.takeIf { it >= 0.0 }?.let { earnedPoints ->
             item {
